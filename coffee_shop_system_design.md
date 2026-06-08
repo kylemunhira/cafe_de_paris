@@ -8,7 +8,7 @@ This document defines the architecture and design for a scalable multi-branch co
 ## 1. System Architecture
 
 ### Central HQ (Main System)
-- Central database (PostgreSQL)
+- Central database (PostgreSQL)  //hknjn
 - Product master data management
 - Pricing control
 - Stock distribution management
