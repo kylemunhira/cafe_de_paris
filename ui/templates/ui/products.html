@@ -1,0 +1,222 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Products — Café de Paris{% endblock %}
+{% block page_title %}Products{% endblock %}
+
+{% block topbar_actions %}
+<div style="display: flex; align-items: center; gap: 0.5rem;">
+  <a href="/api/products/export-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+    Upload CSV
+    <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
+  </label>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1rem;">Add product</h3>
+  <form id="product-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="product-name">Name</label>
+        <input type="text" id="product-name" name="name" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="product-category">Category</label>
+        <select id="product-category" name="category" required>
+          <option value="">Select category…</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="product-price">Selling price</label>
+        <input type="number" id="product-price" name="selling_price" required min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label for="product-tax">Tax rate (%)</label>
+        <input type="number" id="product-tax" name="tax_rate" min="0" max="100" step="0.01" placeholder="15.5">
+      </div>
+      <div class="form-group">
+        <label for="product-qty">Initial qty</label>
+        <input type="number" id="product-qty" name="remaining_qty" min="0" step="0.01" value="0">
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="product-active" name="is_active" checked>
+        Active product
+      </label>
+    </div>
+    <div style="display: flex; justify-content: flex-end;">
+      <button type="submit" class="btn btn-primary" id="product-submit">Add product</button>
+    </div>
+  </form>
+</div>
+
+<div class="category-tabs" id="category-tabs" style="margin-bottom: 1.25rem;"></div>
+<div class="product-grid-page" id="product-list">
+  <div class="skeleton" style="height: 140px;"></div>
+  <div class="skeleton" style="height: 140px;"></div>
+  <div class="skeleton" style="height: 140px;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function formatPercent(value) {
+  const rate = Number(value);
+  return Number.isFinite(rate) ? `${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })}%` : "0%";
+}
+
+let products = [];
+let categories = [];
+let activeCategory = "all";
+const productForm = document.getElementById("product-form");
+const categorySelect = document.getElementById("product-category");
+const productSubmit = document.getElementById("product-submit");
+const categoryTabs = document.getElementById("category-tabs");
+const productList = document.getElementById("product-list");
+const csvUpload = document.getElementById("csv-upload");
+
+function renderCategoryOptions() {
+  const options = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  categorySelect.innerHTML = `<option value="">Select category…</option>${options}`;
+  categorySelect.disabled = !categories.length;
+  if (!categories.length) {
+    categorySelect.innerHTML = `<option value="">No categories — add one in admin first</option>`;
+  }
+}
+
+function render() {
+  const categories = [...new Set(products.map(p => p.category_name))].sort();
+  const tabs = ["all", ...categories];
+
+  categoryTabs.innerHTML = tabs.map(cat => `
+    <button class="category-tab${activeCategory === cat ? " active" : ""}" data-cat="${cat}">
+      ${cat === "all" ? "All" : cat}
+    </button>
+  `).join("");
+
+  const filtered = activeCategory === "all"
+    ? products
+    : products.filter(p => p.category_name === activeCategory);
+
+  if (!filtered.length) {
+    productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>No products found</p></div>`;
+    return;
+  }
+
+  productList.innerHTML = filtered.map(p => `
+    <div class="card" style="padding: 1.25rem 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+        <h3 style="margin: 0; font-size: 1rem;">${p.name}</h3>
+        <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
+      </div>
+      <p style="margin: 0.5rem 0; color: var(--color-muted); font-size: 0.85rem;">${p.category_name}</p>
+      <div style="display: flex; justify-content: space-between; align-items: end; gap: 0.75rem; margin-top: 0.75rem;">
+        <p style="margin: 0; font-family: Fraunces, Georgia, serif; font-size: 1.35rem; font-weight: 600; color: var(--color-amber-glow);">
+          ${formatCurrency(p.selling_price)}
+        </p>
+        <div style="text-align: right; font-size: 0.8rem; color: var(--color-muted);">
+          <div>Qty: <strong style="color: var(--color-espresso);">${formatQty(p.remaining_qty)}</strong></div>
+          <div>Tax: <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function loadProducts() {
+  const productsData = await apiGet("/products/?page_size=500");
+  products = unwrapList(productsData);
+  render();
+}
+
+async function loadCategories() {
+  const data = await apiGet("/categories/?page_size=500");
+  categories = unwrapList(data);
+  renderCategoryOptions();
+}
+
+productForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  productSubmit.disabled = true;
+
+  const taxRaw = document.getElementById("product-tax").value.trim();
+  const qtyRaw = document.getElementById("product-qty").value.trim();
+
+  const payload = {
+    name: document.getElementById("product-name").value.trim(),
+    category: Number(categorySelect.value),
+    selling_price: document.getElementById("product-price").value,
+    is_active: document.getElementById("product-active").checked,
+  };
+  if (taxRaw) payload.tax_rate = taxRaw;
+  if (qtyRaw) payload.remaining_qty = qtyRaw;
+
+  try {
+    await apiPost("/products/", payload);
+    showToast("Product added");
+    productForm.reset();
+    document.getElementById("product-qty").value = "0";
+    document.getElementById("product-active").checked = true;
+    await loadProducts();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    productSubmit.disabled = false;
+  }
+});
+
+categoryTabs.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  activeCategory = tab.dataset.cat;
+  render();
+});
+
+csvUpload.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const result = await apiUpload("/products/import-csv/", formData);
+    const parts = [];
+    if (result.created) parts.push(`${result.created} created`);
+    if (result.updated) parts.push(`${result.updated} updated`);
+    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    await loadProducts();
+  } catch (err) {
+    let message = err.message;
+    try {
+      const data = JSON.parse(err.message);
+      if (data?.errors?.length) {
+        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
+        message = `Import failed — ${preview}`;
+      }
+    } catch {
+      // use raw message
+    }
+    showToast(message, true);
+  }
+});
+
+Promise.all([loadCategories(), loadProducts()]).catch(err => {
+  productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Failed to load products: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

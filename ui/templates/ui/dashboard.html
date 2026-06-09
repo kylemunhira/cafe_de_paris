@@ -1,0 +1,110 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Dashboard — Café de Paris{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stat-grid" id="stats">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center;">
+    <h3 style="margin: 0; font-size: 1.1rem;">Recent Orders</h3>
+    <a href="{% url 'ui:pos' %}" class="btn btn-accent btn-sm">New Sale</a>
+  </div>
+  <div class="table-wrap" id="recent-orders">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, formatDate, statusBadge } from "{% static 'ui/js/api.js' %}";
+
+async function loadDashboard() {
+  const [ordersData, branchesData, productsData] = await Promise.all([
+    apiGet("/orders/"),
+    apiGet("/branches/"),
+    apiGet("/products/"),
+  ]);
+
+  const orders = unwrapList(ordersData);
+  const branches = unwrapList(branchesData);
+  const products = unwrapList(productsData).filter(p => p.is_active);
+
+  const today = new Date().toDateString();
+  const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === today);
+  const openOrders = orders.filter(o => o.status === "open");
+  const paidToday = todayOrders.filter(o => o.status === "paid");
+  const revenueToday = paidToday.reduce((sum, o) => sum + Number(o.total_amount), 0);
+
+  document.getElementById("stats").innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Today's Revenue</div>
+      <div class="value">${formatCurrency(revenueToday)}</div>
+      <div class="sub">${paidToday.length} paid order${paidToday.length !== 1 ? "s" : ""}</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Open Orders</div>
+      <div class="value">${openOrders.length}</div>
+      <div class="sub">Awaiting payment</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Active Branches</div>
+      <div class="value">${branches.filter(b => b.is_active).length}</div>
+      <div class="sub">${branches.length} total</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Products</div>
+      <div class="value">${products.length}</div>
+      <div class="sub">On menu</div>
+    </div>
+  `;
+
+  const recent = orders.slice(0, 8);
+  const container = document.getElementById("recent-orders");
+
+  if (!recent.length) {
+    container.innerHTML = `<div class="empty-state"><p>No orders yet. Create your first sale from the POS.</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Branch</th>
+          <th>Type</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${recent.map(o => `
+          <tr>
+            <td><strong>#${o.id}</strong></td>
+            <td>${o.branch_name}</td>
+            <td>${o.order_type.replace("_", " ")}</td>
+            <td>${formatCurrency(o.total_amount)}</td>
+            <td>${statusBadge(o.status)}</td>
+            <td>${formatDate(o.created_at)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+loadDashboard().catch(err => {
+  document.getElementById("stats").innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Failed to load dashboard: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

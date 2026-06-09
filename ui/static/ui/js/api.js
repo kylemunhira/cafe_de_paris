@@ -1,0 +1,124 @@
+const API_BASE = "/api";
+
+function csrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  if (meta?.content) return meta.content;
+
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function mutationHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = csrfToken();
+  if (token) headers["X-CSRFToken"] = token;
+  return headers;
+}
+
+async function parseResponse(res) {
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { detail: text };
+  }
+  if (!res.ok) {
+    const message =
+      data?.detail ||
+      (typeof data === "object" ? JSON.stringify(data) : text) ||
+      res.statusText;
+    throw new Error(message);
+  }
+  return data;
+}
+
+export async function apiGet(endpoint) {
+  const res = await fetch(`${API_BASE}${endpoint}`);
+  return parseResponse(res);
+}
+
+export async function apiPost(endpoint, body) {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method: "POST",
+    headers: mutationHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  return parseResponse(res);
+}
+
+export async function apiPatch(endpoint, body) {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method: "PATCH",
+    headers: mutationHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  return parseResponse(res);
+}
+
+export async function apiDelete(endpoint) {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method: "DELETE",
+    headers: mutationHeaders(),
+  });
+  if (res.status === 204) return null;
+  return parseResponse(res);
+}
+
+export async function apiUpload(endpoint, formData) {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method: "POST",
+    headers: mutationHeaders(),
+    body: formData,
+  });
+  return parseResponse(res);
+}
+
+export function unwrapList(data) {
+  return data?.results ?? data ?? [];
+}
+
+export function formatCurrency(amount) {
+  const value = Number(amount);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+export function formatDate(iso) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(iso));
+}
+
+export function statusBadge(status) {
+  const map = {
+    open: "badge-open",
+    paid: "badge-paid",
+    cancelled: "badge-cancelled",
+    requested: "badge-requested",
+    approved: "badge-approved",
+    dispatched: "badge-dispatched",
+    delivered: "badge-delivered",
+  };
+  return `<span class="badge ${map[status] || ""}">${status}</span>`;
+}
+
+export function showToast(message, isError = false) {
+  let container = document.querySelector(".toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast${isError ? " error" : ""}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
+}

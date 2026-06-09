@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS — Café de Paris</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="pos-topbar">
+    <div>
+      <h1>Café de Paris POS</h1>
+      <p id="branch-label">Branch</p>
+    </div>
+    <div class="pos-topbar-actions">
+      <span id="sync-status" class="sync-badge">Offline</span>
+      <button type="button" class="btn btn-ghost" id="sync-btn">Sync now</button>
+      <button type="button" class="btn btn-ghost" id="logout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main class="page-body">
+    <div class="pos-mode-bar">
+      <div class="pos-mode-toggle" role="tablist">
+        <button type="button" class="pos-mode-btn active" data-mode="order">Order</button>
+        <button type="button" class="pos-mode-btn" data-mode="receipt">Receipt</button>
+      </div>
+    </div>
+
+    <div class="pos-layout">
+      <div class="pos-products">
+        <div class="form-row pos-order-only">
+          <div class="form-group">
+            <label for="order-type">Order type</label>
+            <select id="order-type">
+              <option value="takeaway">Takeaway</option>
+              <option value="dine_in">Dine in</option>
+            </select>
+          </div>
+          <div class="form-group" id="table-group" style="display: none;">
+            <label for="table-number">Table</label>
+            <input type="text" id="table-number" placeholder="e.g. 5">
+          </div>
+        </div>
+
+        <div id="order-mode-panel">
+          <div class="category-tabs" id="category-tabs"></div>
+          <div class="product-grid" id="product-grid">
+            <div class="empty-state wide"><p>Loading products…</p></div>
+          </div>
+        </div>
+
+        <div id="receipt-mode-panel" class="card receipt-panel" style="display: none;">
+          <div class="receipt-panel-header">
+            <h3>Open orders</h3>
+            <p>Select an order to collect payment</p>
+          </div>
+          <div class="receipt-orders-list" id="receipt-orders-list"></div>
+        </div>
+      </div>
+
+      <div class="card cart-panel">
+        <div class="cart-header">
+          <h3 id="panel-title">Current order</h3>
+        </div>
+        <div class="cart-items" id="cart-items"></div>
+        <div class="cart-footer">
+          <div id="receipt-payment-section" style="display: none;">
+            <div class="form-group">
+              <label for="payment-currency">Payment currency</label>
+              <select id="payment-currency"></select>
+            </div>
+            <div class="receipt-totals" id="receipt-totals"></div>
+          </div>
+          <div class="cart-total">
+            <span id="cart-total-label">Total</span>
+            <span class="amount" id="cart-total">$0.00</span>
+          </div>
+          <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>Place order</button>
+          <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>Clear cart</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="js/pos.js"></script>
+</body>
+</html>

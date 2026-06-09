@@ -1,0 +1,33 @@
+{
+  "name": "cafe-de-paris-pos",
+  "version": "1.0.0",
+  "description": "Offline cashier POS for Café de Paris",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
+  },
+  "build": {
+    "appId": "com.cafedeparis.pos",
+    "productName": "Café de Paris POS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9"
+  }
+}

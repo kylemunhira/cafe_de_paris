@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Café de Paris POS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="login-page">
+  <div class="card login-card">
+    <div class="login-brand">
+      <h1>Café de Paris</h1>
+      <p>Cashier POS — sign in to take orders offline</p>
+    </div>
+    <div id="login-error" class="login-error" hidden></div>
+    <form id="login-form" class="login-form">
+      <div class="form-group">
+        <label for="server-url">Server URL</label>
+        <input type="url" id="server-url" placeholder="http://127.0.0.1:8000" required>
+      </div>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Sign in</button>
+    </form>
+    <p class="login-hint">Cashier accounts only. Orders sync to the web app when online.</p>
+  </div>
+  <script type="module">
+    import { desktopLogin, showToast } from "./js/api.js";
+    import { pullCatalog } from "./js/sync.js";
+
+    const form = document.getElementById("login-form");
+    const errorBox = document.getElementById("login-error");
+    const serverInput = document.getElementById("server-url");
+
+    (async () => {
+      const savedUrl = await window.pos.getSetting("server_url");
+      serverInput.value = savedUrl || "http://127.0.0.1:8000";
+      const session = await window.pos.getSession();
+      if (session?.token) window.location.href = "index.html";
+    })();
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.hidden = true;
+      const submitBtn = form.querySelector("button[type=submit]");
+      submitBtn.disabled = true;
+
+      try {
+        const serverUrl = serverInput.value.trim();
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+        const result = await desktopLogin(serverUrl, username, password);
+
+        await window.pos.saveSession({
+          token: result.token,
+          user: result.user,
+          branch: result.branch,
+          serverUrl,
+          inclusiveTaxRate: null,
+        });
+        await window.pos.setSetting("server_url", serverUrl);
+
+        const session = await window.pos.getSession();
+        await pullCatalog(session);
+        window.location.href = "index.html";
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.hidden = false;
+        showToast(err.message, true);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

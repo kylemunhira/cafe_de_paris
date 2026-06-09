@@ -1,0 +1,156 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Currency Rates — Café de Paris{% endblock %}
+{% block page_title %}Currency Rates{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1rem;">Add exchange rate</h3>
+  <form id="rate-form">
+    <div class="form-group">
+      <label for="rate-currency">Currency</label>
+      <select id="rate-currency" name="currency" required>
+        <option value="">Select currency…</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="rate-value">Rate (per 1 base unit)</label>
+        <input type="number" id="rate-value" name="rate" required min="0.000001" step="0.000001" placeholder="25.50">
+      </div>
+      <div class="form-group">
+        <label for="rate-date">Effective from</label>
+        <input type="date" id="rate-date" name="effective_from" required>
+      </div>
+    </div>
+    <p style="margin: 0 0 1rem; font-size: 0.8rem; color: var(--color-muted);">
+      How many units of the selected currency equal 1 unit of the base currency.
+    </p>
+    <div style="display: flex; justify-content: flex-end;">
+      <button type="submit" class="btn btn-primary" id="submit-btn">Add rate</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">Exchange rates</h3>
+    <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">
+      Rates used when customers pay in each currency at the receipt.
+    </p>
+  </div>
+  <div class="table-wrap" id="rates-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+const rateForm = document.getElementById("rate-form");
+const submitBtn = document.getElementById("submit-btn");
+const rateCurrencySelect = document.getElementById("rate-currency");
+const ratesTable = document.getElementById("rates-table");
+const rateDateInput = document.getElementById("rate-date");
+
+rateDateInput.value = new Date().toISOString().slice(0, 10);
+
+function formatRate(value) {
+  const rate = Number(value);
+  return Number.isFinite(rate)
+    ? rate.toLocaleString("en-US", { maximumFractionDigits: 6 })
+    : "—";
+}
+
+function renderRates(rates) {
+  if (!rates.length) {
+    ratesTable.innerHTML = `<div class="empty-state"><p>No exchange rates yet</p></div>`;
+    return;
+  }
+
+  ratesTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Currency</th>
+          <th>Rate</th>
+          <th>Effective from</th>
+          <th>Status</th>
+          <th>Added</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rates.map(r => `
+          <tr>
+            <td><strong>${r.currency_name}</strong>${r.currency_code ? ` (${r.currency_code})` : ""}</td>
+            <td>${formatRate(r.rate)}</td>
+            <td>${r.effective_from}</td>
+            <td>
+              <span class="badge ${r.is_active ? "badge-active" : "badge-inactive"}">
+                ${r.is_active ? "Active" : "Inactive"}
+              </span>
+            </td>
+            <td>${formatDate(r.created_at)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function populateCurrencySelect(currencies) {
+  const options = currencies.filter(c => c.is_active && !c.is_base);
+  rateCurrencySelect.innerHTML = `
+    <option value="">Select currency…</option>
+    ${options.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
+  `;
+}
+
+async function loadAll() {
+  const [currenciesData, ratesData] = await Promise.all([
+    apiGet("/currencies/?page_size=500"),
+    apiGet("/currency-rates/?page_size=500"),
+  ]);
+  populateCurrencySelect(unwrapList(currenciesData));
+  renderRates(unwrapList(ratesData));
+}
+
+rateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const currencyId = Number(rateCurrencySelect.value);
+  if (!currencyId) {
+    showToast("Please select a currency", true);
+    return;
+  }
+
+  const payload = {
+    currency: currencyId,
+    rate: rateForm.rate.value,
+    effective_from: rateForm.effective_from.value,
+  };
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    await apiPost("/currency-rates/", payload);
+    showToast("Exchange rate added");
+    rateForm.rate.value = "";
+    await loadAll();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Add rate";
+  }
+});
+
+loadAll().catch(err => {
+  ratesTable.innerHTML = `<div class="empty-state">Failed to load rates: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

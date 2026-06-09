@@ -1,0 +1,205 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Branches — Café de Paris{% endblock %}
+{% block page_title %}Branches{% endblock %}
+
+{% block content %}
+{% if can_manage_branches %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add branch</h3>
+  <form id="branch-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="code">Receipt code</label>
+        <input type="text" id="code" name="code" maxlength="3" autocomplete="off" placeholder="e.g. HIG, CHU" style="text-transform: uppercase;">
+      </div>
+      <div class="form-group">
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="branch-type">Type</label>
+        <select id="branch-type" name="branch_type" required>
+          <option value="branch">Branch</option>
+          <option value="hq">Headquarters</option>
+          <option value="bakery">Bakery</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="active-field" style="display: none;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="is-active" name="is_active" checked>
+        Active branch
+      </label>
+    </div>
+    <div id="fiscalization-fields" style="display: none;">
+      <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input type="checkbox" id="fiscalization-enabled" name="fiscalization_enabled">
+          Fiscalization enabled
+        </label>
+      </div>
+      <div class="form-group">
+        <label for="zimra-device-id">ZIMRA device ID</label>
+        <input type="text" id="zimra-device-id" name="zimra_device_id" autocomplete="off" placeholder="e.g. 30541">
+      </div>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Add branch</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="branch-cards" id="branch-list">
+  <div class="card skeleton" style="height: 160px;"></div>
+  <div class="card skeleton" style="height: 160px;"></div>
+  <div class="card skeleton" style="height: 160px;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+const canManageBranches = {{ can_manage_branches|yesno:"true,false" }};
+const typeLabels = { hq: "Headquarters", branch: "Branch", bakery: "Bakery" };
+
+const branchForm = document.getElementById("branch-form");
+const formTitle = document.getElementById("form-title");
+const nameInput = document.getElementById("name");
+const codeInput = document.getElementById("code");
+const locationInput = document.getElementById("location");
+const branchTypeSelect = document.getElementById("branch-type");
+const activeField = document.getElementById("active-field");
+const isActiveInput = document.getElementById("is-active");
+const fiscalizationFields = document.getElementById("fiscalization-fields");
+const fiscalizationEnabledInput = document.getElementById("fiscalization-enabled");
+const zimraDeviceIdInput = document.getElementById("zimra-device-id");
+const submitBtn = document.getElementById("submit-btn");
+const cancelBtn = document.getElementById("cancel-btn");
+const branchList = document.getElementById("branch-list");
+
+let branches = [];
+let editingBranchId = null;
+
+function setFormMode(mode) {
+  if (!canManageBranches) return;
+
+  const isEdit = mode === "edit";
+  editingBranchId = isEdit ? editingBranchId : null;
+
+  formTitle.textContent = isEdit ? "Edit branch" : "Add branch";
+  submitBtn.textContent = isEdit ? "Save changes" : "Add branch";
+  cancelBtn.style.display = isEdit ? "" : "none";
+  activeField.style.display = isEdit ? "" : "none";
+  fiscalizationFields.style.display = isEdit ? "" : "none";
+
+  if (!isEdit) {
+    branchForm.reset();
+    isActiveInput.checked = true;
+    fiscalizationEnabledInput.checked = false;
+    zimraDeviceIdInput.value = "";
+  }
+}
+
+function startEdit(branch) {
+  if (!canManageBranches) return;
+
+  editingBranchId = branch.id;
+  nameInput.value = branch.name;
+  codeInput.value = branch.code || "";
+  locationInput.value = branch.location || "";
+  branchTypeSelect.value = branch.branch_type;
+  isActiveInput.checked = branch.is_active;
+  fiscalizationEnabledInput.checked = branch.fiscalization_enabled;
+  zimraDeviceIdInput.value = branch.zimra_device_id || "";
+  setFormMode("edit");
+  branchForm.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderBranches() {
+  if (!branches.length) {
+    branchList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>No branches configured</p></div>`;
+    return;
+  }
+
+  branchList.innerHTML = branches.map(b => `
+    <div class="card branch-card">
+      <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+        <h3>${b.name}</h3>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="badge ${b.is_active ? "badge-active" : "badge-inactive"}">${b.is_active ? "Active" : "Inactive"}</span>
+          ${b.fiscalization_enabled ? `<span class="badge badge-active">Fiscal${b.zimra_device_id ? ` · ${b.zimra_device_id}` : ""}</span>` : ""}
+          ${canManageBranches ? `<button type="button" class="btn btn-ghost btn-sm" data-edit="${b.id}">Edit</button>` : ""}
+        </div>
+      </div>
+      <p class="location">${b.location || "No location set"}${b.code ? ` · Receipt code: ${b.code}` : ""}</p>
+      <span class="branch-type">${typeLabels[b.branch_type] || b.branch_type}</span>
+      <p style="margin: 0.75rem 0 0; font-size: 0.75rem; color: var(--color-muted);">Since ${formatDate(b.created_at)}</p>
+    </div>
+  `).join("");
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/");
+  branches = unwrapList(data);
+  renderBranches();
+}
+
+if (canManageBranches) {
+  cancelBtn.addEventListener("click", () => setFormMode("create"));
+
+  branchList.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-edit]");
+    if (!btn) return;
+    const branch = branches.find(b => String(b.id) === btn.dataset.edit);
+    if (branch) startEdit(branch);
+  });
+
+  branchForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const payload = {
+      name: nameInput.value.trim(),
+      code: codeInput.value.trim().toUpperCase(),
+      location: locationInput.value.trim(),
+      branch_type: branchTypeSelect.value,
+    };
+
+    if (!payload.name) {
+      showToast("Branch name is required", true);
+      return;
+    }
+
+    try {
+      if (editingBranchId) {
+        payload.is_active = isActiveInput.checked;
+        payload.fiscalization_enabled = fiscalizationEnabledInput.checked;
+        payload.zimra_device_id = zimraDeviceIdInput.value.trim();
+        await apiPatch(`/branches/${editingBranchId}/`, payload);
+        showToast("Branch updated");
+      } else {
+        await apiPost("/branches/", payload);
+        showToast("Branch created");
+      }
+      setFormMode("create");
+      await loadBranches();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  });
+}
+
+loadBranches().catch(err => {
+  branchList.innerHTML =
+    `<div class="empty-state" style="grid-column: 1/-1;">Failed to load branches: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

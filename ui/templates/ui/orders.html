@@ -1,0 +1,146 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Orders — Café de Paris{% endblock %}
+{% block page_title %}Orders{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'ui:pos' %}" class="btn btn-accent btn-sm">New Sale</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="all">All</button>
+    <button class="category-tab" data-filter="open">Open</button>
+    <button class="category-tab" data-filter="paid">Paid</button>
+    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+  </div>
+  <div class="table-wrap" id="orders-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+let allOrders = [];
+let activeFilter = "all";
+let currencies = [];
+const container = document.getElementById("orders-table");
+
+function renderOrders() {
+  const filtered = activeFilter === "all"
+    ? allOrders
+    : allOrders.filter(o => o.status === activeFilter);
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state"><p>No orders found</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Branch</th>
+          <th>Type</th>
+          <th>Items</th>
+          <th>Total</th>
+          <th>Currency</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(o => `
+          <tr>
+            <td><strong>#${o.id}</strong></td>
+            <td>${o.branch_name}</td>
+            <td>${o.order_type.replace("_", " ")}</td>
+            <td>${o.items?.length || 0}</td>
+            <td>${formatCurrency(o.total_amount)}</td>
+            <td>${o.status === "paid" ? (o.payment_currency_name || "—") : "—"}</td>
+            <td>${statusBadge(o.status)}</td>
+            <td>${formatDate(o.created_at)}</td>
+            <td>
+              ${o.status === "open" ? `<button class="btn btn-accent btn-sm pay-btn" data-id="${o.id}">Pay</button>` : ""}
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+container.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".pay-btn");
+  if (!btn) return;
+
+  const id = btn.dataset.id;
+  const options = currencies.filter(c => c.is_active);
+  if (!options.length) {
+    showToast("No currencies configured", true);
+    return;
+  }
+
+  let currencyId = options[0].id;
+  if (options.length > 1) {
+    const labels = options.map((c, i) => {
+      const rate = c.is_base ? "base" : (c.current_rate || "no rate");
+      return `${i + 1}. ${c.name} (${rate})`;
+    }).join("\n");
+    const choice = window.prompt(`Select payment currency (enter number):\n${labels}`, "1");
+    const index = Number(choice) - 1;
+    if (!Number.isInteger(index) || index < 0 || index >= options.length) {
+      showToast("Payment cancelled", true);
+      return;
+    }
+    currencyId = options[index].id;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const paid = await apiPost(`/orders/${id}/pay/`, { currency_id: currencyId });
+    const order = allOrders.find(o => String(o.id) === id);
+    if (order) {
+      order.status = "paid";
+      order.payment_currency_name = paid.payment_currency_name;
+      order.amount_paid = paid.amount_paid;
+    }
+    renderOrders();
+    showToast(`Order #${id} paid in ${paid.payment_currency_name}`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = "Pay";
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll("[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeFilter = tab.dataset.filter;
+    renderOrders();
+  });
+});
+
+Promise.all([
+  apiGet("/orders/"),
+  apiGet("/currencies/?page_size=500"),
+]).then(([ordersData, currenciesData]) => {
+  allOrders = unwrapList(ordersData);
+  currencies = unwrapList(currenciesData);
+  renderOrders();
+}).catch(err => {
+  container.innerHTML = `<div class="empty-state">Failed to load orders: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

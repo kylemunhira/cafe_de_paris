@@ -1,0 +1,279 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delivery Note #{{ note.id }} — Café de Paris</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #2c1810;
+      background: #fff;
+      font-size: 11pt;
+      line-height: 1.45;
+    }
+
+    .toolbar {
+      padding: 1rem;
+      text-align: center;
+      background: #faf6f1;
+      border-bottom: 1px solid #e8dfd4;
+    }
+
+    .toolbar button {
+      background: #2c1810;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1.25rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .sheet {
+      max-width: 210mm;
+      min-height: 277mm;
+      margin: 0 auto;
+      padding: 18mm;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #2c1810;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand p {
+      margin: 0.25rem 0 0;
+      color: #6b5c52;
+      font-size: 0.85rem;
+    }
+
+    .doc-meta {
+      text-align: right;
+    }
+
+    .doc-meta h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .doc-meta p {
+      margin: 0.35rem 0 0;
+      color: #6b5c52;
+      font-size: 0.85rem;
+    }
+
+    .addresses {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .address-box h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b5c52;
+    }
+
+    .address-box p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.5rem;
+    }
+
+    th, td {
+      border: 1px solid #d8cfc4;
+      padding: 0.55rem 0.65rem;
+      text-align: left;
+    }
+
+    th {
+      background: #f5ebe0;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    td.qty, th.qty {
+      text-align: right;
+      width: 90px;
+    }
+
+    .summary {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 2rem;
+    }
+
+    .summary-box {
+      min-width: 220px;
+      border: 1px solid #d8cfc4;
+      padding: 0.75rem 1rem;
+      background: #faf6f1;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .summary-row + .summary-row {
+      margin-top: 0.35rem;
+    }
+
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-top: 2.5rem;
+    }
+
+    .signature-line {
+      border-top: 1px solid #2c1810;
+      padding-top: 0.4rem;
+      font-size: 0.8rem;
+      color: #6b5c52;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
+    @media print {
+      .toolbar {
+        display: none;
+      }
+
+      .sheet {
+        max-width: none;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print delivery note</button>
+  </div>
+
+  <div class="sheet">
+    <div class="header">
+      <div class="brand">
+        <h1>Café de Paris</h1>
+        <p>Central Bakery — Stock Distribution</p>
+      </div>
+      <div class="doc-meta">
+        <h2>Delivery Note</h2>
+        <p><strong>No.</strong> DN-{{ note.id|stringformat:"05d" }}</p>
+        <p><strong>Date</strong> {{ note.created_at|date:"d M Y, H:i" }}</p>
+        <p><span class="status">{{ note.get_status_display }}</span></p>
+      </div>
+    </div>
+
+    <div class="addresses">
+      <div class="address-box">
+        <h3>From (Dispatch)</h3>
+        <p><strong>{{ note.from_branch.name }}</strong></p>
+        {% if note.from_branch.location %}
+          <p>{{ note.from_branch.location }}</p>
+        {% endif %}
+      </div>
+      <div class="address-box">
+        <h3>To (Deliver)</h3>
+        <p><strong>{{ note.to_branch.name }}</strong></p>
+        {% if note.to_branch.location %}
+          <p>{{ note.to_branch.location }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 40px;">#</th>
+          <th>Product</th>
+          <th class="qty">Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in note.lines.all %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>{{ line.product.name }}</td>
+          <td class="qty">{{ line.quantity }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3">No line items</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="summary">
+      <div class="summary-box">
+        <div class="summary-row">
+          <span>Line items</span>
+          <strong>{{ note.lines.count }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Total quantity</span>
+          <strong>{{ note.total_quantity }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="signatures">
+      <div>
+        <div class="signature-line">Dispatched by (Bakery)</div>
+      </div>
+      <div>
+        <div class="signature-line">Received by (Branch)</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

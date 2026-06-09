@@ -1,0 +1,190 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}GRV — Café de Paris{% endblock %}
+{% block page_title %}Goods Received Voucher{% endblock %}
+
+{% block content %}
+<div class="stat-grid" id="grv-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(3, 1fr);">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="incoming">Incoming</button>
+    <button class="category-tab" data-filter="requested">Not approved</button>
+    <button class="category-tab" data-filter="dispatched">Awaiting receipt</button>
+    <button class="category-tab" data-filter="delivered">Received</button>
+    <button class="category-tab" data-filter="all">All</button>
+  </div>
+  <div class="table-wrap" id="grv-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
+
+let allNotes = [];
+const INCOMING_STATUSES = ["requested", "approved", "dispatched"];
+let activeFilter = "incoming";
+const grvTable = document.getElementById("grv-table");
+const grvStats = document.getElementById("grv-stats");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function formatLineSummary(note) {
+  if (!note.lines?.length) return "—";
+  const preview = note.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
+  const extra = note.lines.length > 2 ? ` +${note.lines.length - 2} more` : "";
+  return preview.join(", ") + extra;
+}
+
+function noteActions(note) {
+  const id = note.id;
+  const actions = [
+    `<a href="${printUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-ghost btn-sm">Print GRV</a>`,
+  ];
+
+  if (note.status === "requested") {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
+  } else if (note.status === "dispatched") {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="deliver" data-id="${id}">Confirm receipt</button>`);
+  }
+
+  return actions.join(" ");
+}
+
+function renderStats() {
+  const notApproved = allNotes.filter(n => n.status === "requested").length;
+  const awaiting = allNotes.filter(n => n.status === "dispatched").length;
+  const received = allNotes.filter(n => n.status === "delivered").length;
+
+  grvStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Not approved</div>
+      <div class="value">${notApproved}</div>
+      <div class="sub">Pending your approval</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Awaiting receipt</div>
+      <div class="value">${awaiting}</div>
+      <div class="sub">Dispatched to your branch</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Received</div>
+      <div class="value">${received}</div>
+      <div class="sub">Completed GRVs</div>
+    </div>
+  `;
+}
+
+function filterNotes() {
+  if (activeFilter === "all") return allNotes;
+  if (activeFilter === "incoming") {
+    return allNotes.filter(n => INCOMING_STATUSES.includes(n.status));
+  }
+  return allNotes.filter(n => n.status === activeFilter);
+}
+
+function renderNotes() {
+  const filtered = filterNotes();
+
+  if (!filtered.length) {
+    const messages = {
+      incoming: "No incoming deliveries to your branch",
+      requested: "No deliveries pending your approval",
+      dispatched: "No deliveries awaiting receipt",
+      delivered: "No received deliveries yet",
+      all: "No goods received vouchers found",
+    };
+    grvTable.innerHTML = `<div class="empty-state"><p>${messages[activeFilter] || messages.all}</p></div>`;
+    return;
+  }
+
+  grvTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>GRV</th>
+          <th>Products</th>
+          <th>Items</th>
+          <th>Total qty</th>
+          <th>From</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(n => `
+          <tr>
+            <td><strong>GRV-${String(n.id).padStart(5, "0")}</strong></td>
+            <td style="max-width: 260px;">${formatLineSummary(n)}</td>
+            <td>${n.line_count || n.lines?.length || 0}</td>
+            <td>${formatQty(n.total_quantity)}</td>
+            <td>${n.from_branch_name}</td>
+            <td>${statusBadge(n.status)}</td>
+            <td>${formatDate(n.created_at)}</td>
+            <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${noteActions(n)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadData() {
+  const notesData = await apiGet("/delivery-notes/?incoming=true");
+  allNotes = unwrapList(notesData).filter(n => n.status !== "cancelled");
+  renderStats();
+  renderNotes();
+}
+
+grvTable.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(`/delivery-notes/${id}/${action}/`, {});
+    const index = allNotes.findIndex(n => String(n.id) === id);
+    if (index >= 0) allNotes[index] = updated;
+
+    renderNotes();
+    renderStats();
+    const label = action === "approve" ? "approved" : "received";
+    showToast(`GRV-${String(id).padStart(5, "0")} ${label}`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = action === "approve" ? "Approve" : "Confirm receipt";
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll("[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeFilter = tab.dataset.filter;
+    renderNotes();
+  });
+});
+
+loadData().catch(err => {
+  grvTable.innerHTML = `<div class="empty-state">Failed to load GRVs: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

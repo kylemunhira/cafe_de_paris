@@ -1,0 +1,219 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Reports — Café de Paris{% endblock %}
+{% block page_title %}Reports{% endblock %}
+
+{% block topbar_actions %}
+<a href="#" id="export-csv" class="btn btn-ghost btn-sm">Export Sales CSV</a>
+{% endblock %}
+
+{% block content %}
+<div class="card report-filters">
+  <div class="report-filters-grid">
+    <label>
+      <span>From</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>To</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="report-stats">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="report-grid">
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Sales by Branch</h3></div>
+    <div class="table-wrap" id="by-branch-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Sales by Category</h3></div>
+    <div class="table-wrap" id="by-category-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Top Products</h3></div>
+    <div class="table-wrap" id="top-products-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header">
+      <h3>Low Stock</h3>
+      <span class="report-panel-note" id="low-stock-note"></span>
+    </div>
+    <div class="table-wrap" id="low-stock-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const exportCsv = document.getElementById("export-csv");
+
+function setDefaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  filterTo.value = today.toISOString().slice(0, 10);
+  filterFrom.value = start.toISOString().slice(0, 10);
+}
+
+function queryString() {
+  const params = new URLSearchParams();
+  if (filterFrom.value) params.set("from", filterFrom.value);
+  if (filterTo.value) params.set("to", filterTo.value);
+  if (filterBranch.value) params.set("branch", filterBranch.value);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function renderTable(containerId, columns, rows, emptyMessage) {
+  const container = document.getElementById(containerId);
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state"><p>${emptyMessage}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>${columns.map(col => `<th>${col.label}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => `
+          <tr>${columns.map(col => `<td>${col.render(row)}</td>`).join("")}</tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/");
+  const branches = unwrapList(data);
+  filterBranch.innerHTML = `
+    <option value="">All branches</option>
+    ${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
+  `;
+}
+
+async function loadReport() {
+  const report = await apiGet(`/reports/summary/${queryString()}`);
+  const summary = report.summary;
+
+  document.getElementById("report-stats").innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Total Revenue</div>
+      <div class="value">${formatCurrency(summary.total_revenue)}</div>
+      <div class="sub">${report.period.from} to ${report.period.to}</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Paid Orders</div>
+      <div class="value">${summary.order_count}</div>
+      <div class="sub">In selected period</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Avg Order Value</div>
+      <div class="value">${formatCurrency(summary.avg_order_value)}</div>
+      <div class="sub">Per paid order</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Tax Collected</div>
+      <div class="value">${formatCurrency(summary.tax_collected)}</div>
+      <div class="sub">Based on product tax rates</div>
+    </div>
+  `;
+
+  renderTable(
+    "by-branch-table",
+    [
+      { label: "Branch", render: row => row.branch_name },
+      { label: "Orders", render: row => row.orders },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+    ],
+    report.by_branch,
+    "No paid orders for this period",
+  );
+
+  renderTable(
+    "by-category-table",
+    [
+      { label: "Category", render: row => row.category },
+      { label: "Qty Sold", render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+    ],
+    report.by_category,
+    "No category sales for this period",
+  );
+
+  renderTable(
+    "top-products-table",
+    [
+      { label: "Product", render: row => row.product_name },
+      { label: "Qty Sold", render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+    ],
+    report.top_products,
+    "No product sales for this period",
+  );
+
+  document.getElementById("low-stock-note").textContent =
+    `≤ ${Number(report.low_stock_threshold).toLocaleString("en-US", { maximumFractionDigits: 2 })} units`;
+
+  renderTable(
+    "low-stock-table",
+    [
+      { label: "Product", render: row => row.product_name },
+      { label: "Category", render: row => row.category },
+      { label: "Remaining", render: row => Number(row.remaining_qty).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+    ],
+    report.low_stock,
+    "All products are above the low-stock threshold",
+  );
+}
+
+document.getElementById("apply-filters").addEventListener("click", () => {
+  loadReport().catch(err => showToast(err.message, true));
+});
+
+exportCsv.addEventListener("click", (e) => {
+  e.preventDefault();
+  window.location.href = `/api/reports/export-csv/${queryString()}`;
+});
+
+setDefaultDates();
+Promise.all([loadBranches(), loadReport()]).catch(err => {
+  showToast(`Failed to load reports: ${err.message}`, true);
+});
+</script>
+{% endblock %}

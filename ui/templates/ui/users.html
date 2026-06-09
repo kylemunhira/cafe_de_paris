@@ -1,0 +1,268 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Users — Café de Paris{% endblock %}
+{% block page_title %}Users{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add staff user</h3>
+  <form id="user-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+        <p id="password-hint" style="display: none; margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--color-muted);">
+          Leave blank to keep the current password.
+        </p>
+      </div>
+      <div class="form-group">
+        <label for="role">Role</label>
+        <select id="role" name="role" required>
+          <option value="">Loading roles…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="branch">Branch</label>
+        <select id="branch" name="branch" required>
+          <option value="">Select branch…</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="active-field" style="display: none;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="is_active" name="is_active" checked>
+        Active user
+      </label>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Add user</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">Staff members</h3>
+  </div>
+  <div class="table-wrap" id="users-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+const userForm = document.getElementById("user-form");
+const formTitle = document.getElementById("form-title");
+const branchSelect = document.getElementById("branch");
+const roleSelect = document.getElementById("role");
+const passwordInput = document.getElementById("password");
+const passwordHint = document.getElementById("password-hint");
+const activeField = document.getElementById("active-field");
+const isActiveInput = document.getElementById("is_active");
+const submitBtn = document.getElementById("submit-btn");
+const cancelBtn = document.getElementById("cancel-btn");
+const usersTable = document.getElementById("users-table");
+
+let users = [];
+let editingUserId = null;
+
+function setFormMode(mode) {
+  const isEdit = mode === "edit";
+  editingUserId = isEdit ? editingUserId : null;
+
+  formTitle.textContent = isEdit ? "Edit staff user" : "Add staff user";
+  submitBtn.textContent = isEdit ? "Save changes" : "Add user";
+  cancelBtn.style.display = isEdit ? "" : "none";
+  activeField.style.display = isEdit ? "" : "none";
+  passwordHint.style.display = isEdit ? "" : "none";
+  passwordInput.required = !isEdit;
+
+  if (!isEdit) {
+    userForm.reset();
+    isActiveInput.checked = true;
+  }
+}
+
+function resetForm() {
+  editingUserId = null;
+  setFormMode("add");
+}
+
+function startEdit(user) {
+  editingUserId = user.id;
+  setFormMode("edit");
+
+  userForm.username.value = user.username;
+  userForm.email.value = user.email || "";
+  passwordInput.value = "";
+  roleSelect.value = user.role;
+  branchSelect.value = String(user.branch);
+  isActiveInput.checked = user.is_active;
+
+  document.querySelector(".user-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderUsers() {
+  if (!users.length) {
+    usersTable.innerHTML = `<div class="empty-state"><p>No staff users yet</p></div>`;
+    return;
+  }
+
+  usersTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Branch</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Joined</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${users.map(user => `
+          <tr>
+            <td><strong>${user.username}</strong></td>
+            <td>${user.email || "—"}</td>
+            <td>${user.branch_name}</td>
+            <td><span class="branch-type">${user.role_display}</span></td>
+            <td>
+              <span class="badge ${user.is_active ? "badge-active" : "badge-inactive"}">
+                ${user.is_active ? "Active" : "Inactive"}
+              </span>
+            </td>
+            <td>${formatDate(user.date_joined)}</td>
+            <td>
+              <button type="button" class="btn btn-ghost btn-sm edit-user-btn" data-id="${user.id}">Edit</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/?page_size=500");
+  const branches = unwrapList(data).filter(b => b.is_active);
+
+  branchSelect.innerHTML = `
+    <option value="">Select branch…</option>
+    ${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
+  `;
+}
+
+async function loadRoles() {
+  const roles = await apiGet("/users/roles/");
+
+  roleSelect.innerHTML = roles.map((role, index) => `
+    <option value="${role.value}"${index === 0 ? " selected" : ""}>${role.label}</option>
+  `).join("");
+}
+
+async function loadUsers() {
+  const data = await apiGet("/users/?page_size=500");
+  users = unwrapList(data);
+  renderUsers();
+}
+
+function parseApiError(err) {
+  let message = err.message;
+  try {
+    const data = JSON.parse(err.message);
+    if (typeof data === "object" && data !== null) {
+      const firstKey = Object.keys(data)[0];
+      const firstError = Array.isArray(data[firstKey]) ? data[firstKey][0] : data[firstKey];
+      message = firstError || message;
+    }
+  } catch {
+    // use raw message
+  }
+  return message;
+}
+
+userForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const branchId = Number(branchSelect.value);
+  const role = roleSelect.value;
+  if (!branchId) {
+    showToast("Please select a branch", true);
+    return;
+  }
+  if (!role) {
+    showToast("Please select a role", true);
+    return;
+  }
+
+  const payload = {
+    username: userForm.username.value.trim(),
+    email: userForm.email.value.trim(),
+    branch: branchId,
+    role,
+  };
+
+  if (passwordInput.value) {
+    payload.password = passwordInput.value;
+  } else if (!editingUserId) {
+    showToast("Password is required", true);
+    return;
+  }
+
+  if (editingUserId) {
+    payload.is_active = isActiveInput.checked;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    if (editingUserId) {
+      await apiPatch(`/users/${editingUserId}/`, payload);
+      showToast(`User "${payload.username}" updated`);
+      resetForm();
+    } else {
+      await apiPost("/users/", payload);
+      showToast(`User "${payload.username}" added`);
+      userForm.reset();
+    }
+    await loadUsers();
+  } catch (err) {
+    showToast(parseApiError(err), true);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = editingUserId ? "Save changes" : "Add user";
+  }
+});
+
+cancelBtn.addEventListener("click", resetForm);
+
+usersTable.addEventListener("click", (e) => {
+  const btn = e.target.closest(".edit-user-btn");
+  if (!btn) return;
+  const user = users.find(u => String(u.id) === btn.dataset.id);
+  if (user) startEdit(user);
+});
+
+Promise.all([loadBranches(), loadRoles(), loadUsers()]).catch(err => {
+  usersTable.innerHTML = `<div class="empty-state">Failed to load users: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

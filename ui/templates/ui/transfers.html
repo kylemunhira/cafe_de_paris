@@ -1,0 +1,420 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Stock Transfers — Café de Paris{% endblock %}
+{% block page_title %}Bakery Stock Transfers{% endblock %}
+
+{% block content %}
+<div class="stat-grid" id="bakery-stats" style="margin-bottom: 1.25rem;">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New delivery note</h3>
+  <form id="transfer-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="from-branch">Central bakery</label>
+        <select id="from-branch" required disabled>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="to-branch">Destination (branch or HQ)</label>
+        <select id="to-branch" required>
+          <option value="">Select branch…</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row" style="align-items: end;">
+      <div class="form-group" style="flex: 2;">
+        <label for="product">Product</label>
+        <select id="product">
+          <option value="">Select product…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 120px;">
+        <label for="quantity">Qty</label>
+        <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 0 0 auto;">
+        <button type="button" id="add-line-btn" class="btn btn-ghost">Add product</button>
+      </div>
+    </div>
+    <p id="stock-hint" style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-muted);"></p>
+
+    <div class="table-wrap" id="lines-wrap" style="display: none; margin-bottom: 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th style="text-align: right;">Qty</th>
+            <th style="text-align: right;">Available</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body"></tbody>
+      </table>
+    </div>
+
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create delivery note</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="all">All</button>
+    <button class="category-tab" data-filter="requested">Requested</button>
+    <button class="category-tab" data-filter="approved">Approved</button>
+    <button class="category-tab" data-filter="dispatched">Dispatched</button>
+    <button class="category-tab" data-filter="delivered">Delivered</button>
+    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+  </div>
+  <div class="table-wrap" id="transfers-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const CAN_RECEIVE = {{ can_receive_on_transfers_page|yesno:"true,false" }};
+</script>
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
+
+let allNotes = [];
+let bakeryInventory = [];
+let bakeryBranches = [];
+let destinationBranches = [];
+let products = [];
+let draftLines = [];
+let activeFilter = "all";
+
+const fromBranchSelect = document.getElementById("from-branch");
+const toBranchSelect = document.getElementById("to-branch");
+const productSelect = document.getElementById("product");
+const quantityInput = document.getElementById("quantity");
+const stockHint = document.getElementById("stock-hint");
+const transfersTable = document.getElementById("transfers-table");
+const bakeryStats = document.getElementById("bakery-stats");
+const transferForm = document.getElementById("transfer-form");
+const linesWrap = document.getElementById("lines-wrap");
+const linesBody = document.getElementById("lines-body");
+const submitBtn = document.getElementById("submit-btn");
+const addLineBtn = document.getElementById("add-line-btn");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function getBakeryStock(productId) {
+  const item = bakeryInventory.find(i => String(i.product) === String(productId));
+  return item ? Number(item.quantity) : 0;
+}
+
+function getProductName(productId) {
+  return products.find(p => String(p.id) === String(productId))?.name || `Product ${productId}`;
+}
+
+function updateStockHint() {
+  const productId = productSelect.value;
+  if (!productId) {
+    stockHint.textContent = "";
+    return;
+  }
+  stockHint.textContent = `Available at bakery: ${formatQty(getBakeryStock(productId))}`;
+}
+
+function renderDraftLines() {
+  if (!draftLines.length) {
+    linesWrap.style.display = "none";
+    linesBody.innerHTML = "";
+    submitBtn.disabled = true;
+    return;
+  }
+
+  linesWrap.style.display = "block";
+  submitBtn.disabled = false;
+  linesBody.innerHTML = draftLines.map((line, index) => `
+    <tr>
+      <td>${line.product_name}</td>
+      <td style="text-align: right;">${formatQty(line.quantity)}</td>
+      <td style="text-align: right;">${formatQty(getBakeryStock(line.product))}</td>
+      <td style="text-align: right;">
+        <button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderBakeryStats() {
+  const totalSkus = bakeryInventory.length;
+  const totalUnits = bakeryInventory.reduce((sum, item) => sum + Number(item.quantity), 0);
+  const pending = allNotes.filter(n => ["requested", "approved", "dispatched"].includes(n.status)).length;
+
+  bakeryStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Bakery SKUs in stock</div>
+      <div class="value">${totalSkus}</div>
+      <div class="sub">${formatQty(totalUnits)} total units</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Active delivery notes</div>
+      <div class="value">${pending}</div>
+      <div class="sub">Awaiting delivery</div>
+    </div>
+  `;
+}
+
+function noteActions(note) {
+  const id = note.id;
+  const actions = [
+    `<a href="${printUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-ghost btn-sm">Print</a>`,
+  ];
+
+  if (note.status === "requested") {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  } else if (note.status === "approved") {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="dispatch" data-id="${id}">Dispatch</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  } else if (note.status === "dispatched" && CAN_RECEIVE) {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="deliver" data-id="${id}">Deliver</button>`);
+  }
+
+  return actions.join(" ");
+}
+
+function formatLineSummary(note) {
+  if (!note.lines?.length) return "—";
+  const preview = note.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
+  const extra = note.lines.length > 2 ? ` +${note.lines.length - 2} more` : "";
+  return preview.join(", ") + extra;
+}
+
+function renderNotes() {
+  const filtered = activeFilter === "all"
+    ? allNotes
+    : allNotes.filter(n => n.status === activeFilter);
+
+  if (!filtered.length) {
+    transfersTable.innerHTML = `<div class="empty-state"><p>No delivery notes found</p></div>`;
+    return;
+  }
+
+  transfersTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Note</th>
+          <th>Products</th>
+          <th>Items</th>
+          <th>Total qty</th>
+          <th>To</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(n => `
+          <tr>
+            <td><strong>DN-${String(n.id).padStart(5, "0")}</strong></td>
+            <td style="max-width: 260px;">${formatLineSummary(n)}</td>
+            <td>${n.line_count || n.lines?.length || 0}</td>
+            <td>${formatQty(n.total_quantity)}</td>
+            <td>${n.to_branch_name}</td>
+            <td>${statusBadge(n.status)}</td>
+            <td>${formatDate(n.created_at)}</td>
+            <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${noteActions(n)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function populateFormOptions() {
+  fromBranchSelect.innerHTML = bakeryBranches.map(b => `
+    <option value="${b.id}" selected>${b.name}</option>
+  `).join("");
+
+  toBranchSelect.innerHTML = `
+    <option value="">Select branch…</option>
+    ${destinationBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
+  `;
+
+  const stockedProductIds = new Set(bakeryInventory.map(i => String(i.product)));
+  const availableProducts = products.filter(p => p.is_active && stockedProductIds.has(String(p.id)));
+
+  productSelect.innerHTML = `
+    <option value="">Select product…</option>
+    ${availableProducts.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+  `;
+}
+
+async function loadData() {
+  const [branchesData, productsData, notesData] = await Promise.all([
+    apiGet("/branches/"),
+    apiGet("/products/?page_size=500"),
+    apiGet("/delivery-notes/?bakery_only=true"),
+  ]);
+
+  const branches = unwrapList(branchesData);
+  products = unwrapList(productsData);
+  allNotes = unwrapList(notesData);
+
+  bakeryBranches = branches.filter(b => b.branch_type === "bakery" && b.is_active);
+  destinationBranches = branches.filter(
+    b => (b.branch_type === "branch" || b.branch_type === "hq") && b.is_active
+  );
+
+  if (!bakeryBranches.length) {
+    transferForm.innerHTML = `<div class="empty-state"><p>No central bakery configured. Add a branch with type "Bakery".</p></div>`;
+    transfersTable.innerHTML = `<div class="empty-state"><p>Cannot load delivery notes without a bakery branch.</p></div>`;
+    bakeryStats.innerHTML = "";
+    return;
+  }
+
+  const bakeryId = bakeryBranches[0].id;
+  const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
+  bakeryInventory = unwrapList(inventoryData);
+
+  populateFormOptions();
+  renderBakeryStats();
+  renderNotes();
+  updateStockHint();
+}
+
+productSelect.addEventListener("change", updateStockHint);
+
+addLineBtn.addEventListener("click", () => {
+  const productId = productSelect.value;
+  const quantity = Number(quantityInput.value);
+
+  if (!productId) {
+    showToast("Select a product first", true);
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showToast("Enter a valid quantity", true);
+    return;
+  }
+  if (draftLines.some(line => String(line.product) === String(productId))) {
+    showToast("Product already added — remove it first to change quantity", true);
+    return;
+  }
+
+  draftLines.push({
+    product: Number(productId),
+    product_name: getProductName(productId),
+    quantity: String(quantity),
+  });
+
+  productSelect.value = "";
+  quantityInput.value = "";
+  updateStockHint();
+  renderDraftLines();
+});
+
+linesBody.addEventListener("click", (e) => {
+  const btn = e.target.closest(".remove-line-btn");
+  if (!btn) return;
+  draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+transferForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (!toBranchSelect.value) {
+    showToast("Select a destination branch", true);
+    return;
+  }
+  if (!draftLines.length) {
+    showToast("Add at least one product", true);
+    return;
+  }
+
+  const payload = {
+    from_branch: Number(fromBranchSelect.value),
+    to_branch: Number(toBranchSelect.value),
+    lines: draftLines.map(line => ({
+      product: line.product,
+      quantity: line.quantity,
+    })),
+  };
+
+  submitBtn.disabled = true;
+
+  try {
+    const note = await apiPost("/delivery-notes/from-bakery/", payload);
+    allNotes.unshift(note);
+    draftLines = [];
+    renderDraftLines();
+    toBranchSelect.value = "";
+    renderNotes();
+    renderBakeryStats();
+    showToast(`Delivery note DN-${String(note.id).padStart(5, "0")} created`);
+    window.open(printUrlTemplate.replace("{id}", note.id), "_blank");
+  } catch (err) {
+    showToast(err.message, true);
+    submitBtn.disabled = draftLines.length > 0;
+  }
+});
+
+transfersTable.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(`/delivery-notes/${id}/${action}/`, {});
+    const index = allNotes.findIndex(n => String(n.id) === id);
+    if (index >= 0) allNotes[index] = updated;
+
+    if (action === "dispatch" || action === "deliver") {
+      const bakeryId = bakeryBranches[0]?.id;
+      if (bakeryId) {
+        const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
+        bakeryInventory = unwrapList(inventoryData);
+        populateFormOptions();
+        updateStockHint();
+      }
+    }
+
+    renderNotes();
+    renderBakeryStats();
+    showToast(`Delivery note #${id} ${action}ed`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll("[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeFilter = tab.dataset.filter;
+    renderNotes();
+  });
+});
+
+loadData().catch(err => {
+  transfersTable.innerHTML = `<div class="empty-state">Failed to load delivery notes: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

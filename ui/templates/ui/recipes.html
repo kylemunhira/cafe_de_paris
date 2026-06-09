@@ -1,0 +1,250 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Recipes — Café de Paris{% endblock %}
+{% block page_title %}Recipes (BOM){% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Add ingredient to recipe</h3>
+  <form id="recipe-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="output-product">Finished product</label>
+        <select id="output-product" required>
+          <option value="">Select product…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ingredient">Ingredient</label>
+        <select id="ingredient" required>
+          <option value="">Select ingredient…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 140px;">
+        <label for="quantity">Qty required</label>
+        <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0" required>
+      </div>
+      <div class="form-group" style="flex: 0 0 auto; align-self: end;">
+        <button type="submit" class="btn btn-primary">Add line</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="category-tabs" id="product-tabs" style="margin-bottom: 1.25rem;"></div>
+
+<div id="recipe-list">
+  <div class="skeleton" style="height: 120px; margin-bottom: 1rem;"></div>
+  <div class="skeleton" style="height: 120px;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, apiDelete, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
+
+let products = [];
+let recipes = [];
+let activeProduct = "all";
+
+const recipeForm = document.getElementById("recipe-form");
+const outputSelect = document.getElementById("output-product");
+const ingredientSelect = document.getElementById("ingredient");
+const quantityInput = document.getElementById("quantity");
+const productTabs = document.getElementById("product-tabs");
+const recipeList = document.getElementById("recipe-list");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function outputProducts() {
+  return products.filter(p => p.category_name !== "Ingredients" && p.is_active);
+}
+
+function ingredientProducts() {
+  return products.filter(p => p.category_name === "Ingredients" && p.is_active);
+}
+
+function recipesByProduct() {
+  const grouped = new Map();
+  for (const line of recipes) {
+    if (!grouped.has(line.product)) {
+      grouped.set(line.product, {
+        productId: line.product,
+        productName: line.product_name,
+        productCategory: line.product_category,
+        lines: [],
+      });
+    }
+    grouped.get(line.product).lines.push(line);
+  }
+  return [...grouped.values()].sort((a, b) => a.productName.localeCompare(b.productName));
+}
+
+function populateSelects() {
+  const outputs = outputProducts();
+  const ingredients = ingredientProducts();
+
+  outputSelect.innerHTML = `<option value="">Select product…</option>` +
+    outputs.map(p => `<option value="${p.id}">${p.name} (${p.category_name})</option>`).join("");
+
+  ingredientSelect.innerHTML = `<option value="">Select ingredient…</option>` +
+    ingredients.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+}
+
+function renderTabs(groups) {
+  const tabs = [{ id: "all", label: "All products" }, ...groups.map(g => ({
+    id: String(g.productId),
+    label: g.productName,
+  }))];
+
+  productTabs.innerHTML = tabs.map(tab => `
+    <button class="category-tab${activeProduct === tab.id ? " active" : ""}" data-product="${tab.id}">
+      ${tab.label}
+    </button>
+  `).join("");
+}
+
+function renderRecipes() {
+  const groups = recipesByProduct();
+  renderTabs(groups);
+
+  const filtered = activeProduct === "all"
+    ? groups
+    : groups.filter(g => String(g.productId) === activeProduct);
+
+  if (!filtered.length) {
+    recipeList.innerHTML = `
+      <div class="empty-state card" style="padding: 2.5rem; text-align: center;">
+        <p style="margin: 0; color: var(--color-muted);">No recipe lines yet. Add ingredients above to define a bill of materials.</p>
+      </div>`;
+    return;
+  }
+
+  recipeList.innerHTML = filtered.map(group => `
+    <div class="card" style="padding: 0; margin-bottom: 1rem; overflow: hidden;">
+      <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;">
+        <div>
+          <h3 style="margin: 0; font-size: 1rem;">${group.productName}</h3>
+          <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);">${group.productCategory}</p>
+        </div>
+        <span class="badge badge-active">${group.lines.length} ingredient${group.lines.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Ingredient</th>
+              <th>Category</th>
+              <th style="text-align: right;">Qty required</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${group.lines.map(line => `
+              <tr data-id="${line.id}">
+                <td>${line.ingredient_name}</td>
+                <td style="color: var(--color-muted); font-size: 0.9rem;">${line.ingredient_category}</td>
+                <td style="text-align: right;">
+                  <input
+                    type="number"
+                    class="qty-input"
+                    data-id="${line.id}"
+                    value="${line.quantity_required}"
+                    min="0.01"
+                    step="0.01"
+                    style="width: 90px; text-align: right; padding: 0.35rem 0.5rem; border: 1px solid rgba(44,24,16,0.12); border-radius: 6px;"
+                  >
+                </td>
+                <td style="text-align: right;">
+                  <button type="button" class="btn btn-ghost btn-sm delete-btn" data-id="${line.id}">Remove</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function loadData() {
+  const [productsData, recipesData] = await Promise.all([
+    apiGet("/products/?page_size=500"),
+    apiGet("/recipes/?page_size=500"),
+  ]);
+  products = unwrapList(productsData);
+  recipes = unwrapList(recipesData);
+  populateSelects();
+  renderRecipes();
+}
+
+recipeForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const created = await apiPost("/recipes/", {
+      product: Number(outputSelect.value),
+      ingredient: Number(ingredientSelect.value),
+      quantity_required: quantityInput.value,
+    });
+    recipes.push(created);
+    quantityInput.value = "";
+    ingredientSelect.value = "";
+    renderRecipes();
+    showToast("Recipe line added");
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+productTabs.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  activeProduct = tab.dataset.product;
+  renderRecipes();
+});
+
+recipeList.addEventListener("click", async (e) => {
+  const deleteBtn = e.target.closest(".delete-btn");
+  if (deleteBtn) {
+    const id = deleteBtn.dataset.id;
+    if (!confirm("Remove this ingredient from the recipe?")) return;
+    try {
+      await apiDelete(`/recipes/${id}/`);
+      recipes = recipes.filter(r => String(r.id) !== String(id));
+      renderRecipes();
+      showToast("Recipe line removed");
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+});
+
+recipeList.addEventListener("change", async (e) => {
+  const input = e.target.closest(".qty-input");
+  if (!input) return;
+
+  const id = input.dataset.id;
+  const previous = recipes.find(r => String(r.id) === String(id))?.quantity_required;
+  try {
+    const updated = await apiPatch(`/recipes/${id}/`, {
+      quantity_required: input.value,
+    });
+    const index = recipes.findIndex(r => String(r.id) === String(id));
+    if (index >= 0) recipes[index] = updated;
+    showToast("Quantity updated");
+  } catch (err) {
+    if (previous !== undefined) input.value = previous;
+    showToast(err.message, true);
+  }
+});
+
+loadData().catch(err => {
+  recipeList.innerHTML = `<div class="empty-state card" style="padding: 2rem;"><p>${err.message}</p></div>`;
+});
+</script>
+{% endblock %}

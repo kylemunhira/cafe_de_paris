@@ -1,0 +1,614 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Point of Sale — Café de Paris{% endblock %}
+{% block page_title %}Point of Sale{% endblock %}
+
+{% block content %}
+<div class="pos-mode-bar">
+  <div class="pos-mode-toggle" role="tablist" aria-label="POS mode">
+    <button type="button" class="pos-mode-btn active" data-mode="order" role="tab" aria-selected="true">Order</button>
+    <button type="button" class="pos-mode-btn" data-mode="receipt" role="tab" aria-selected="false">Receipt</button>
+  </div>
+</div>
+
+<div class="pos-layout">
+  <div class="pos-products">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="branch-select">Branch</label>
+        <select id="branch-select"><option value="">Loading…</option></select>
+      </div>
+      <div class="form-group pos-order-only">
+        <label for="order-type">Order Type</label>
+        <select id="order-type">
+          <option value="takeaway">Takeaway</option>
+          <option value="dine_in">Dine In</option>
+        </select>
+      </div>
+      <div class="form-group pos-order-only" id="table-group" style="display: none;">
+        <label for="table-number">Table</label>
+        <input type="text" id="table-number" placeholder="e.g. 5">
+      </div>
+    </div>
+
+    <div id="order-mode-panel">
+      <div class="category-tabs" id="category-tabs"></div>
+      <div class="product-grid" id="product-grid">
+        <div class="skeleton" style="height: 100px; grid-column: 1/-1;"></div>
+      </div>
+    </div>
+
+    <div id="receipt-mode-panel" class="card" style="padding: 0; display: none;">
+      <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+        <h3 style="margin: 0; font-size: 1rem;">Open Orders</h3>
+        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Select an order to collect payment</p>
+      </div>
+      <div class="receipt-orders-list" id="receipt-orders-list">
+        <div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card cart-panel">
+    <div class="cart-header">
+      <h3 style="margin: 0; font-size: 1.1rem;" id="panel-title">Current Order</h3>
+    </div>
+    <div class="cart-items" id="cart-items">
+      <div class="empty-state" style="padding: 2rem 0;">
+        <p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p>
+      </div>
+    </div>
+    <div class="cart-footer">
+      <div id="receipt-payment-section" style="display: none; margin-bottom: 1rem;">
+        <div class="form-group">
+          <label for="payment-currency">Payment currency</label>
+          <select id="payment-currency">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+        <div class="receipt-totals" id="receipt-totals"></div>
+      </div>
+      <div class="cart-total">
+        <span style="font-weight: 600; color: var(--color-muted);" id="cart-total-label">Total</span>
+        <span class="amount" id="cart-total">$0.00</span>
+      </div>
+      <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>
+        Place Order
+      </button>
+      <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>
+        Clear Cart
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load l10n %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+const INCLUSIVE_TAX_RATE = {{ inclusive_tax_rate|unlocalize }};
+
+const cart = new Map();
+let products = [];
+let categories = [];
+let activeCategory = "all";
+let posMode = "order";
+let openOrders = [];
+let selectedOrder = null;
+let currencies = [];
+let baseCurrency = null;
+let selectedCurrencyId = null;
+
+const branchSelect = document.getElementById("branch-select");
+const orderType = document.getElementById("order-type");
+const tableGroup = document.getElementById("table-group");
+const tableNumber = document.getElementById("table-number");
+const categoryTabs = document.getElementById("category-tabs");
+const productGrid = document.getElementById("product-grid");
+const cartItems = document.getElementById("cart-items");
+const cartTotal = document.getElementById("cart-total");
+const checkoutBtn = document.getElementById("checkout-btn");
+const clearBtn = document.getElementById("clear-btn");
+const panelTitle = document.getElementById("panel-title");
+const orderModePanel = document.getElementById("order-mode-panel");
+const receiptModePanel = document.getElementById("receipt-mode-panel");
+const receiptOrdersList = document.getElementById("receipt-orders-list");
+const receiptPaymentSection = document.getElementById("receipt-payment-section");
+const paymentCurrencySelect = document.getElementById("payment-currency");
+const receiptTotals = document.getElementById("receipt-totals");
+const cartTotalLabel = document.getElementById("cart-total-label");
+
+orderType.addEventListener("change", () => {
+  tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
+});
+
+document.querySelectorAll(".pos-mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const mode = btn.dataset.mode;
+    if (mode === posMode) return;
+    setPosMode(mode);
+  });
+});
+
+function setPosMode(mode) {
+  posMode = mode;
+  document.querySelectorAll(".pos-mode-btn").forEach(btn => {
+    const active = btn.dataset.mode === mode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+
+  document.querySelectorAll(".pos-order-only").forEach(el => {
+    if (mode !== "order") {
+      el.style.display = "none";
+    } else if (el.id === "table-group") {
+      el.style.display = orderType.value === "dine_in" ? "block" : "none";
+    } else {
+      el.style.display = "";
+    }
+  });
+  orderModePanel.style.display = mode === "order" ? "" : "none";
+  receiptModePanel.style.display = mode === "receipt" ? "" : "none";
+
+  if (mode === "receipt") {
+    selectedOrder = null;
+    loadOpenOrders();
+    renderReceiptPanel();
+  } else {
+    receiptPaymentSection.style.display = "none";
+    cartTotalLabel.textContent = "Total";
+    renderCart();
+  }
+}
+
+function getCartTotal() {
+  let total = 0;
+  for (const [, item] of cart) {
+    total += item.price * item.quantity;
+  }
+  return total;
+}
+
+function formatMoney(amount) {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return "—";
+  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatCurrencyAmount(amount, currency) {
+  const formatted = formatMoney(amount);
+  if (formatted === "—") return formatted;
+  const symbol = currency?.symbol?.trim();
+  return symbol ? `${symbol}${formatted}` : formatCurrency(amount);
+}
+
+function roundMoney(amount) {
+  return Math.round(Number(amount) * 100) / 100;
+}
+
+function computeTaxBreakdown(inclusiveTotal) {
+  const total = roundMoney(inclusiveTotal);
+  if (!Number.isFinite(total)) {
+    return { subtotal: 0, tax: 0, total: 0 };
+  }
+  const divisor = 1 + INCLUSIVE_TAX_RATE / 100;
+  const subtotal = roundMoney(total / divisor);
+  const tax = roundMoney(total - subtotal);
+  return { subtotal, tax, total };
+}
+
+function getOrderInclusiveTotal(order) {
+  if (!order) return 0;
+  if (order.items?.length) {
+    return order.items.reduce(
+      (sum, item) => sum + roundMoney(Number(item.price) * Number(item.quantity)),
+      0,
+    );
+  }
+  return roundMoney(order.total_amount);
+}
+
+function getSelectedCurrency() {
+  if (!selectedCurrencyId) return null;
+  return currencies.find(c => c.id === selectedCurrencyId) || null;
+}
+
+function computePaymentAmounts(inclusiveTotal) {
+  const currency = getSelectedCurrency();
+  if (!currency) {
+    return { inclusiveTotal, rate: null, amountDue: null, currency: null, hasRate: false };
+  }
+  const rate = currency.is_base ? 1 : Number(currency.current_rate);
+  const hasRate = currency.is_base || (Number.isFinite(rate) && rate > 0);
+  const amountDue = hasRate ? roundMoney(inclusiveTotal * rate) : null;
+  return { inclusiveTotal, rate, amountDue, currency, hasRate };
+}
+
+function renderPaymentCurrencySelect() {
+  const active = currencies.filter(c => c.is_active);
+  if (!active.length) {
+    paymentCurrencySelect.innerHTML = `<option value="">No currencies configured</option>`;
+    selectedCurrencyId = null;
+    return;
+  }
+
+  if (!selectedCurrencyId || !active.some(c => c.id === selectedCurrencyId)) {
+    selectedCurrencyId = active[0].id;
+  }
+
+  paymentCurrencySelect.innerHTML = active.map(c => {
+    const rateLabel = c.is_base
+      ? " (base)"
+      : c.current_rate
+        ? ` (rate ${c.current_rate})`
+        : " (no rate)";
+    return `<option value="${c.id}"${c.id === selectedCurrencyId ? " selected" : ""}>${c.name}${rateLabel}</option>`;
+  }).join("");
+}
+
+function renderReceiptTotals(inclusiveTotal) {
+  const { subtotal, tax, total } = computeTaxBreakdown(inclusiveTotal);
+  const { rate, amountDue, currency, hasRate } = computePaymentAmounts(total);
+  const rateRow = currency && !currency.is_base && hasRate
+    ? `<div class="receipt-total-row"><span>Exchange rate</span><span>${rate}</span></div>`
+    : "";
+  const missingRate = currency && !currency.is_base && !hasRate
+    ? `<div class="receipt-total-row" style="color: #b45309;"><span>No rate set</span><span>Add under Rates</span></div>`
+    : "";
+
+  receiptTotals.innerHTML = `
+    <div class="receipt-total-row"><span>Subtotal${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${formatCurrencyAmount(subtotal, baseCurrency)}</span></div>
+    <div class="receipt-total-row"><span>Tax (${INCLUSIVE_TAX_RATE}%)</span><span>${formatCurrencyAmount(tax, baseCurrency)}</span></div>
+    <div class="receipt-total-row"><span>Total${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${formatCurrencyAmount(total, baseCurrency)}</span></div>
+    ${rateRow}
+    ${missingRate}
+    <div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? formatCurrencyAmount(amountDue, currency) : "—"}</span></div>
+  `;
+  cartTotal.textContent = hasRate ? formatCurrencyAmount(amountDue, currency) : formatCurrencyAmount(total, baseCurrency);
+  cartTotalLabel.textContent = hasRate && currency && !currency.is_base ? "Amount due" : "Total";
+}
+
+function renderCart() {
+  panelTitle.textContent = "Current Order";
+  checkoutBtn.textContent = "Place Order";
+  clearBtn.style.display = "";
+  receiptPaymentSection.style.display = "none";
+  cartTotalLabel.textContent = "Total";
+
+  if (cart.size === 0) {
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p></div>`;
+    cartTotal.textContent = formatCurrency(0);
+    checkoutBtn.disabled = true;
+    clearBtn.disabled = true;
+    return;
+  }
+
+  cartItems.innerHTML = [...cart.values()].map(item => `
+    <div class="cart-item" data-id="${item.id}">
+      <div class="info">
+        <div class="name">${item.name}</div>
+        <div class="line-total">${formatCurrency(item.price)} each</div>
+      </div>
+      <div class="qty-control">
+        <button class="qty-btn" data-action="dec" data-id="${item.id}">−</button>
+        <span style="min-width: 1.5rem; text-align: center; font-weight: 600;">${item.quantity}</span>
+        <button class="qty-btn" data-action="inc" data-id="${item.id}">+</button>
+      </div>
+    </div>
+  `).join("");
+
+  cartTotal.textContent = formatCurrency(getCartTotal());
+  checkoutBtn.disabled = !branchSelect.value;
+  clearBtn.disabled = false;
+}
+
+function renderReceiptPanel() {
+  panelTitle.textContent = selectedOrder ? `Order #${selectedOrder.id}` : "Receipt";
+  clearBtn.style.display = "none";
+
+  if (!selectedOrder) {
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to view details</p></div>`;
+    cartTotal.textContent = formatCurrency(0);
+    cartTotalLabel.textContent = "Total";
+    receiptPaymentSection.style.display = "none";
+    checkoutBtn.textContent = "Collect Payment";
+    checkoutBtn.disabled = true;
+    return;
+  }
+
+  const typeLabel = selectedOrder.order_type.replace("_", " ");
+  const tableInfo = selectedOrder.table_number
+    ? `<div class="receipt-meta">Table ${selectedOrder.table_number}</div>`
+    : "";
+
+  cartItems.innerHTML = `
+    <div class="receipt-order-meta">
+      <div class="receipt-meta">${typeLabel}</div>
+      ${tableInfo}
+      <div class="receipt-meta">${formatDate(selectedOrder.created_at)}</div>
+    </div>
+    ${(selectedOrder.items || []).map(item => `
+      <div class="cart-item">
+        <div class="info">
+          <div class="name">${item.product_name}</div>
+          <div class="line-total">${formatCurrency(item.price)} × ${item.quantity}</div>
+        </div>
+        <div class="line-total" style="font-weight: 600;">${formatCurrency(item.price * item.quantity)}</div>
+      </div>
+    `).join("")}
+  `;
+
+  renderPaymentCurrencySelect();
+  receiptPaymentSection.style.display = "";
+  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  renderReceiptTotals(inclusiveTotal);
+  checkoutBtn.textContent = "Collect Payment";
+  const { hasRate } = computePaymentAmounts(inclusiveTotal);
+  checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
+}
+
+function renderOpenOrdersList() {
+  if (!openOrders.length) {
+    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders for this branch</p></div>`;
+    return;
+  }
+
+  receiptOrdersList.innerHTML = openOrders.map(o => {
+    const typeLabel = o.order_type.replace("_", " ");
+    const tableLabel = o.table_number ? ` · Table ${o.table_number}` : "";
+    const selected = selectedOrder?.id === o.id ? " selected" : "";
+    return `
+      <button type="button" class="receipt-order-card${selected}" data-id="${o.id}">
+        <div class="receipt-order-card-top">
+          <strong>#${o.id}</strong>
+          <span class="receipt-order-amount">${formatCurrency(o.total_amount)}</span>
+        </div>
+        <div class="receipt-order-card-meta">${typeLabel}${tableLabel} · ${o.items?.length || 0} items</div>
+        <div class="receipt-order-card-time">${formatDate(o.created_at)}</div>
+      </button>
+    `;
+  }).join("");
+}
+
+async function loadOpenOrders() {
+  if (!branchSelect.value) {
+    openOrders = [];
+    renderOpenOrdersList();
+    return;
+  }
+
+  try {
+    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}`);
+    openOrders = unwrapList(data);
+    if (selectedOrder && !openOrders.some(o => o.id === selectedOrder.id)) {
+      selectedOrder = null;
+    }
+    renderOpenOrdersList();
+    if (posMode === "receipt") renderReceiptPanel();
+  } catch (err) {
+    showToast(`Failed to load orders: ${err.message}`, true);
+  }
+}
+
+function addToCart(product) {
+  const existing = cart.get(product.id);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cart.set(product.id, {
+      id: product.id,
+      name: product.name,
+      price: Number(product.selling_price),
+      quantity: 1,
+    });
+  }
+  renderCart();
+}
+
+function updateQty(id, delta) {
+  const item = cart.get(id);
+  if (!item) return;
+  item.quantity += delta;
+  if (item.quantity <= 0) cart.delete(id);
+  renderCart();
+}
+
+cartItems.addEventListener("click", (e) => {
+  if (posMode !== "order") return;
+  const btn = e.target.closest(".qty-btn");
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  updateQty(id, btn.dataset.action === "inc" ? 1 : -1);
+});
+
+function renderCategories() {
+  const tabs = [{ id: "all", name: "All" }, ...categories];
+  categoryTabs.innerHTML = tabs.map(cat => `
+    <button class="category-tab${activeCategory === String(cat.id) ? " active" : ""}" data-id="${cat.id}">
+      ${cat.name}
+    </button>
+  `).join("");
+}
+
+function renderProducts() {
+  const filtered = activeCategory === "all"
+    ? products
+    : products.filter(p => p.category === Number(activeCategory));
+
+  if (!filtered.length) {
+    productGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>No products in this category</p></div>`;
+    return;
+  }
+
+  productGrid.innerHTML = filtered.map(p => `
+    <div class="card product-card" data-id="${p.id}">
+      <div class="name">${p.name}</div>
+      <div class="price">${formatCurrency(p.selling_price)}</div>
+    </div>
+  `).join("");
+}
+
+categoryTabs.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  activeCategory = tab.dataset.id;
+  renderCategories();
+  renderProducts();
+});
+
+productGrid.addEventListener("click", (e) => {
+  const card = e.target.closest(".product-card");
+  if (!card) return;
+  const product = products.find(p => p.id === Number(card.dataset.id));
+  if (product) addToCart(product);
+});
+
+receiptOrdersList.addEventListener("click", (e) => {
+  const card = e.target.closest(".receipt-order-card");
+  if (!card) return;
+  const id = Number(card.dataset.id);
+  selectedOrder = openOrders.find(o => o.id === id) || null;
+  renderOpenOrdersList();
+  renderReceiptPanel();
+});
+
+clearBtn.addEventListener("click", () => {
+  cart.clear();
+  renderCart();
+});
+
+branchSelect.addEventListener("change", () => {
+  if (posMode === "order") {
+    renderCart();
+  } else {
+    selectedOrder = null;
+    loadOpenOrders();
+  }
+});
+
+paymentCurrencySelect.addEventListener("change", () => {
+  selectedCurrencyId = Number(paymentCurrencySelect.value) || null;
+  if (selectedOrder) {
+    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    renderReceiptTotals(inclusiveTotal);
+    const { hasRate } = computePaymentAmounts(inclusiveTotal);
+    checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
+  }
+});
+
+checkoutBtn.addEventListener("click", async () => {
+  if (posMode === "receipt") {
+    await paySelectedOrder();
+  } else {
+    await placeOrder();
+  }
+});
+
+async function placeOrder() {
+  if (!branchSelect.value || cart.size === 0) return;
+
+  checkoutBtn.disabled = true;
+  checkoutBtn.innerHTML = `<span class="loading-spinner"></span> Processing…`;
+
+  try {
+    const payload = {
+      branch: Number(branchSelect.value),
+      order_type: orderType.value,
+      items: [...cart.values()].map(item => ({
+        product_id: item.id,
+        quantity: item.quantity,
+      })),
+    };
+    if (orderType.value === "dine_in" && tableNumber.value.trim()) {
+      payload.table_number = tableNumber.value.trim();
+    }
+
+    const order = await apiPost("/orders/", payload);
+    cart.clear();
+    renderCart();
+    showToast(`Order #${order.id} placed — ${formatCurrency(order.total_amount)}`);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    checkoutBtn.textContent = "Place Order";
+    checkoutBtn.disabled = cart.size === 0 || !branchSelect.value;
+  }
+}
+
+async function paySelectedOrder() {
+  if (!selectedOrder || !selectedCurrencyId) {
+    showToast("Please select a payment currency", true);
+    return;
+  }
+
+  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  const { hasRate, currency, amountDue } = computePaymentAmounts(inclusiveTotal);
+  if (!hasRate) {
+    showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
+    return;
+  }
+
+  checkoutBtn.disabled = true;
+  checkoutBtn.innerHTML = `<span class="loading-spinner"></span> Processing…`;
+
+  // Open now (sync with click) so popup blockers allow auto-print after payment.
+  const printWindow = window.open("about:blank", "_blank");
+
+  try {
+    const order = await apiPost(`/orders/${selectedOrder.id}/pay/`, {
+      currency_id: selectedCurrencyId,
+    });
+    const currencyName = order.payment_currency_name || currency?.name || "Payment";
+    const receiptLabel = order.receipt_number ? `Receipt #${order.receipt_number} · ` : "";
+    showToast(`${receiptLabel}Order #${order.id} paid in ${currencyName} — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}`);
+    const receiptUrl = `/pos/receipt/${order.id}/print/?auto=1`;
+    if (printWindow) {
+      printWindow.location.href = receiptUrl;
+    } else {
+      window.open(receiptUrl, "_blank", "noopener");
+    }
+    selectedOrder = null;
+    await loadOpenOrders();
+    renderReceiptPanel();
+  } catch (err) {
+    if (printWindow) printWindow.close();
+    showToast(err.message, true);
+  } finally {
+    checkoutBtn.textContent = "Collect Payment";
+    const ready = selectedOrder && selectedCurrencyId && computePaymentAmounts(getOrderInclusiveTotal(selectedOrder)).hasRate;
+    checkoutBtn.disabled = !ready;
+  }
+}
+
+async function init() {
+  const [branchesData, productsData, categoriesData, currenciesData] = await Promise.all([
+    apiGet("/branches/"),
+    apiGet("/products/"),
+    apiGet("/categories/"),
+    apiGet("/currencies/?page_size=500"),
+  ]);
+
+  currencies = unwrapList(currenciesData);
+  baseCurrency = currencies.find(c => c.is_base) || null;
+
+  const branches = unwrapList(branchesData).filter(b => b.is_active && b.branch_type !== "hq");
+  products = unwrapList(productsData).filter(p => p.is_active && p.category_name !== "Ingredients");
+  categories = unwrapList(categoriesData).filter(c =>
+    products.some(p => p.category === c.id)
+  );
+
+  branchSelect.innerHTML = branches.length
+    ? branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")
+    : `<option value="">No branches available</option>`;
+
+  renderCategories();
+  renderProducts();
+  renderCart();
+}
+
+init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
+</script>
+{% endblock %}

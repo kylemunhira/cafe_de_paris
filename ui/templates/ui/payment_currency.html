@@ -1,0 +1,156 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Currency — Café de Paris{% endblock %}
+{% block page_title %}Currency{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; max-width: 640px;">
+  <h3 style="margin: 0 0 1rem; font-size: 1rem;">Add currency</h3>
+  <form id="currency-form">
+    <div class="form-group">
+      <label for="currency-name">Name</label>
+      <input type="text" id="currency-name" name="name" required placeholder="US Dollar">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="currency-code">Code <span style="font-weight: 400; color: var(--color-muted);">(optional)</span></label>
+        <input type="text" id="currency-code" name="code" maxlength="10" placeholder="USD" style="text-transform: uppercase;">
+      </div>
+      <div class="form-group">
+        <label for="currency-symbol">Symbol</label>
+        <input type="text" id="currency-symbol" name="symbol" maxlength="10" placeholder="$">
+      </div>
+    </div>
+    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+      <input type="checkbox" id="currency-base" name="is_base">
+      <label for="currency-base" style="margin: 0;">Set as base currency (order prices are in this currency)</label>
+    </div>
+    <div style="display: flex; justify-content: flex-end;">
+      <button type="submit" class="btn btn-primary" id="currency-submit">Add currency</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">Currencies</h3>
+    <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">
+      Set exchange rates for each currency under Payment &amp; Rates → Rates.
+    </p>
+  </div>
+  <div class="table-wrap" id="currencies-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
+
+const currencyForm = document.getElementById("currency-form");
+const currencySubmit = document.getElementById("currency-submit");
+const currenciesTable = document.getElementById("currencies-table");
+
+function formatRate(value) {
+  const rate = Number(value);
+  return Number.isFinite(rate)
+    ? rate.toLocaleString("en-US", { maximumFractionDigits: 6 })
+    : "—";
+}
+
+function renderCurrencies(currencies) {
+  if (!currencies.length) {
+    currenciesTable.innerHTML = `<div class="empty-state"><p>No currencies yet</p></div>`;
+    return;
+  }
+
+  currenciesTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Code</th>
+          <th>Symbol</th>
+          <th>Base</th>
+          <th>Current rate</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${currencies.map(c => `
+          <tr>
+            <td><strong>${c.name}</strong></td>
+            <td>${c.code || "—"}</td>
+            <td>${c.symbol || "—"}</td>
+            <td>${c.is_base ? '<span class="badge badge-active">Base</span>' : "—"}</td>
+            <td>${formatRate(c.current_rate)}</td>
+            <td>
+              <span class="badge ${c.is_active ? "badge-active" : "badge-inactive"}">
+                ${c.is_active ? "Active" : "Inactive"}
+              </span>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadCurrencies() {
+  const data = await apiGet("/currencies/?page_size=500");
+  renderCurrencies(unwrapList(data));
+}
+
+currencyForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    name: currencyForm.name.value.trim(),
+    code: currencyForm.code.value.trim().toUpperCase(),
+    symbol: currencyForm.symbol.value.trim(),
+    is_base: currencyForm.is_base.checked,
+  };
+
+  if (!payload.name) {
+    showToast("Currency name is required", true);
+    return;
+  }
+
+  currencySubmit.disabled = true;
+  currencySubmit.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const created = await apiPost("/currencies/", payload);
+    showToast(`Currency "${created.name}" added`);
+    currencyForm.reset();
+    await loadCurrencies();
+    if (created.is_base) {
+      await apiPost("/currency-rates/", {
+        currency: created.id,
+        rate: "1",
+        effective_from: new Date().toISOString().slice(0, 10),
+      });
+      await loadCurrencies();
+    }
+  } catch (err) {
+    let message = err.message;
+    try {
+      const data = JSON.parse(err.message);
+      if (data?.name?.length) message = data.name[0];
+    } catch {
+      // use raw message
+    }
+    showToast(message, true);
+  } finally {
+    currencySubmit.disabled = false;
+    currencySubmit.textContent = "Add currency";
+  }
+});
+
+loadCurrencies().catch(err => {
+  currenciesTable.innerHTML = `<div class="empty-state">Failed to load: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

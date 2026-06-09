@@ -1,0 +1,348 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Receipt #{{ order.id }} — Café de Paris</title>
+  <style>
+    @page {
+      size: 80mm auto;
+      margin: 4mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #2c1810;
+      background: #f5f0ea;
+      font-size: 10pt;
+      line-height: 1.4;
+    }
+
+    .toolbar {
+      padding: 1rem;
+      text-align: center;
+      background: #faf6f1;
+      border-bottom: 1px solid #e8dfd4;
+    }
+
+    .toolbar button {
+      background: #2c1810;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1.25rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .receipt {
+      width: 72mm;
+      max-width: 100%;
+      margin: 1rem auto;
+      padding: 4mm 3mm;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(44, 24, 16, 0.08);
+    }
+
+    .center {
+      text-align: center;
+    }
+
+    .brand {
+      margin-bottom: 0.75rem;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand p {
+      margin: 0.2rem 0 0;
+      color: #6b5c52;
+      font-size: 0.75rem;
+    }
+
+    .meta {
+      font-size: 0.78rem;
+      color: #6b5c52;
+      margin-bottom: 0.75rem;
+    }
+
+    .meta p {
+      margin: 0.15rem 0;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px dashed #c4a77d;
+      margin: 0.65rem 0;
+    }
+
+    .items {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .items th {
+      text-align: left;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b5c52;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid #e8dfd4;
+    }
+
+    .items th.qty,
+    .items th.amt {
+      text-align: right;
+    }
+
+    .items td {
+      padding: 0.35rem 0;
+      vertical-align: top;
+    }
+
+    .items td.qty,
+    .items td.amt {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .item-name {
+      font-weight: 600;
+    }
+
+    .item-detail {
+      font-size: 0.72rem;
+      color: #6b5c52;
+    }
+
+    .totals {
+      font-size: 0.82rem;
+    }
+
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin: 0.2rem 0;
+    }
+
+    .total-row.grand {
+      margin-top: 0.45rem;
+      padding-top: 0.45rem;
+      border-top: 1px solid #2c1810;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .payment-box {
+      margin-top: 0.5rem;
+      padding: 0.45rem 0.5rem;
+      background: #faf6f1;
+      border-radius: 4px;
+      font-size: 0.78rem;
+    }
+
+    .footer {
+      margin-top: 0.85rem;
+      font-size: 0.75rem;
+      color: #6b5c52;
+    }
+
+    .fiscal-qr {
+      margin-top: 0.75rem;
+      padding-top: 0.5rem;
+    }
+
+    .fiscal-qr img {
+      display: inline-block;
+      width: 120px;
+      height: 120px;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .toolbar {
+        display: none;
+      }
+
+      .receipt {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print receipt</button>
+  </div>
+
+  <div class="receipt">
+    <div class="center brand">
+      <h1>Café de Paris</h1>
+      {% if order.branch.location %}<p>{{ order.branch.location }}</p>{% endif %}
+    </div>
+
+    <div class="center meta">
+      <p><strong>Sales Receipt</strong></p>
+      {% if order.receipt_number %}<p>Receipt #{{ order.receipt_number }}</p>{% endif %}
+      <p>Order #{{ order.id }}</p>
+      <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
+      <p>{{ order.get_order_type_display }}{% if order.table_number %} · Table {{ order.table_number }}{% endif %}</p>
+    </div>
+
+    <hr class="divider">
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="qty">Qty</th>
+          <th class="amt">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in order.items.all %}
+        <tr>
+          <td>
+            <div class="item-name">{{ item.product.name }}</div>
+            <div class="item-detail">{{ item.price|floatformat:2 }} each</div>
+          </td>
+          <td class="qty">{{ item.quantity }}</td>
+          <td class="amt">{{ item.line_total|floatformat:2 }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3">No items</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <hr class="divider">
+
+    <div class="totals">
+      <div class="total-row">
+        <span>Subtotal{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
+        <span>{{ tax_breakdown.subtotal|floatformat:2 }}</span>
+      </div>
+      <div class="total-row">
+        <span>Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</span>
+        <span>{{ tax_breakdown.tax|floatformat:2 }}</span>
+      </div>
+      <div class="total-row">
+        <span>Total{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
+        <span>{{ tax_breakdown.total|floatformat:2 }}</span>
+      </div>
+      {% if order.payment_currency %}
+      <div class="payment-box">
+        <div class="total-row">
+          <span>Paid in</span>
+          <strong>{{ order.payment_currency.name }}</strong>
+        </div>
+        {% if order.exchange_rate and not order.payment_currency.is_base %}
+        <div class="total-row">
+          <span>Exchange rate</span>
+          <span>{{ order.exchange_rate }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="total-row grand">
+        <span>Amount paid</span>
+        <span>{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if fiscal %}
+    <hr class="divider">
+    <div class="center meta fiscal-meta">
+      <p><strong>Fiscal receipt</strong></p>
+      {% if fiscal.device_branch_name %}<p>{{ fiscal.device_branch_name }}</p>{% endif %}
+      {% if fiscal.device_serial_no %}<p>Device: {{ fiscal.device_serial_no }}</p>{% endif %}
+      {% if fiscal.fiscal_invoice_number %}<p>Invoice: {{ fiscal.fiscal_invoice_number }}</p>{% endif %}
+      {% if fiscal.fiscal_day_number %}<p>Fiscal day: {{ fiscal.fiscal_day_number }}</p>{% endif %}
+      {% if fiscal.receipt_counter %}<p>Receipt #{{ fiscal.receipt_counter }} / {{ fiscal.receipt_global_no }}</p>{% endif %}
+      {% if fiscal.verification_code %}<p>Verification: {{ fiscal.verification_code }}</p>{% endif %}
+      {% if fiscal.qr_string and not fiscal.qr_url %}
+      <p style="margin-top: 0.5rem; font-size: 0.65rem; word-break: break-all;">{{ fiscal.qr_string }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="center footer">
+      <p>Thank you for your visit!</p>
+      <p>PAID</p>
+    </div>
+
+    {% if fiscal and fiscal.qr_url %}
+    <div class="center fiscal-qr" id="fiscal-qr" aria-label="Fiscal QR code"></div>
+    {% endif %}
+  </div>
+
+  {% if fiscal and fiscal.qr_url %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    const fiscalQrUrl = "{{ fiscal.qr_url|escapejs }}";
+    const posUrl = "{% url 'ui:pos' %}";
+    const autoPrint = {{ auto_print|yesno:"true,false" }};
+
+    function renderFiscalQr() {
+      const el = document.getElementById("fiscal-qr");
+      if (!el || !fiscalQrUrl) return;
+      new QRCode(el, {
+        text: fiscalQrUrl,
+        width: 120,
+        height: 120,
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
+
+    window.addEventListener("load", () => {
+      renderFiscalQr();
+      if (!autoPrint) return;
+      requestAnimationFrame(() => {
+        window.print();
+      });
+    });
+
+    if (autoPrint) {
+      window.addEventListener("afterprint", () => {
+        window.close();
+        setTimeout(() => {
+          if (!window.closed) window.location.replace(posUrl);
+        }, 150);
+      });
+    }
+  </script>
+  {% elif auto_print %}
+  <script>
+    const posUrl = "{% url 'ui:pos' %}";
+    window.addEventListener("load", () => window.print());
+    window.addEventListener("afterprint", () => {
+      window.close();
+      setTimeout(() => {
+        if (!window.closed) window.location.replace(posUrl);
+      }, 150);
+    });
+  </script>
+  {% endif %}
+</body>
+</html>
