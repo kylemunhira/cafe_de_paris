@@ -76,11 +76,13 @@ def _pay_order(order, payment_data):
         )
 
     receipt_number = allocate_receipt_number(order.branch)
+    paid_at = payment_data.get("paid_at") or timezone.now()
     order.payment_currency = currency
     order.exchange_rate = rate
     order.amount_paid = currency.convert_from_base(order.total_amount)
     order.status = OrderStatus.PAID
     order.receipt_number = receipt_number
+    order.paid_at = paid_at
     order.save(
         update_fields=[
             "payment_currency",
@@ -88,6 +90,7 @@ def _pay_order(order, payment_data):
             "amount_paid",
             "status",
             "receipt_number",
+            "paid_at",
         ]
     )
 
@@ -98,6 +101,17 @@ def _pay_order(order, payment_data):
     return fiscal_receipt
 
 
+def _apply_payment_if_needed(order, payment):
+    if not payment or order.status == OrderStatus.PAID:
+        return None
+    try:
+        return _pay_order(order, payment)
+    except (ZimraConfigurationError, ZimraSubmissionError):
+        raise
+    except ReceiptNumberError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 @transaction.atomic
 def import_client_order(branch, validated_data):
     """
@@ -105,21 +119,14 @@ def import_client_order(branch, validated_data):
     Raises ValueError for business rule failures, Zimra errors for fiscal failures.
     """
     client_id = validated_data["client_id"]
+    payment = validated_data.get("payment")
     existing = _existing_synced_order(client_id)
     if existing:
-        return existing, True, None
+        fiscal_receipt = _apply_payment_if_needed(existing, payment)
+        return existing, True, fiscal_receipt
 
     order = _create_order(branch, validated_data)
-
-    fiscal_receipt = None
-    payment = validated_data.get("payment")
-    if payment:
-        try:
-            fiscal_receipt = _pay_order(order, payment)
-        except (ZimraConfigurationError, ZimraSubmissionError):
-            raise
-        except ReceiptNumberError as exc:
-            raise ValueError(str(exc)) from exc
+    fiscal_receipt = _apply_payment_if_needed(order, payment)
 
     SyncedClientOrder.objects.create(client_id=client_id, order=order)
     return order, False, fiscal_receipt

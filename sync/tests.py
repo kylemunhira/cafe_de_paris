@@ -65,6 +65,43 @@ class DesktopSyncTests(TestCase):
         self.assertEqual(len(response.data["products"]), 1)
         self.assertEqual(len(response.data["currencies"]), 1)
 
+    def test_push_open_order_then_payment(self):
+        client_id = "660e8400-e29b-41d4-a716-446655440001"
+        open_payload = {
+            "orders": [
+                {
+                    "client_id": client_id,
+                    "order_type": "takeaway",
+                    "items": [{"product_id": self.product.id, "quantity": "1"}],
+                }
+            ]
+        }
+        first = self.client.post("/api/sync/push/", open_payload, format="json")
+        self.assertEqual(first.status_code, 200)
+        order = Order.objects.get()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertFalse(order.receipt_number)
+
+        paid_payload = {
+            "orders": [
+                {
+                    "client_id": client_id,
+                    "order_type": "takeaway",
+                    "items": [{"product_id": self.product.id, "quantity": "1"}],
+                    "payment": {"currency_id": self.base_currency.id},
+                }
+            ]
+        }
+        second = self.client.post("/api/sync/push/", paid_payload, format="json")
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.data["results"][0]["already_synced"])
+        self.assertTrue(second.data["results"][0]["receipt_number"])
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+        self.assertTrue(order.receipt_number)
+        self.assertEqual(Order.objects.count(), 1)
+
     def test_push_order_idempotent(self):
         payload = {
             "orders": [

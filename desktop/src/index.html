@@ -16,6 +16,8 @@
     </div>
     <div class="pos-topbar-actions">
       <span id="sync-status" class="sync-badge">Offline</span>
+      <button type="button" class="btn btn-ghost" id="dayend-btn">Day end</button>
+      <button type="button" class="btn btn-ghost" id="settings-btn">Settings</button>
       <button type="button" class="btn btn-ghost" id="sync-btn">Sync now</button>
       <button type="button" class="btn btn-ghost" id="logout-btn">Sign out</button>
     </div>
@@ -85,6 +87,26 @@
     </div>
   </main>
 
+  <div id="settings-modal" class="modal-overlay" hidden>
+    <div class="modal card" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="settings-title">Settings</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="settings-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="printer-select">Receipt printer</label>
+          <select id="printer-select"></select>
+          <p class="settings-hint" id="printer-hint">
+            80mm thermal layout. Order tickets and sales receipts print to the selected printer.
+          </p>
+        </div>
+        <button type="button" class="btn btn-ghost" id="printer-test-btn">Print test page</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/settings.js"></script>
   <script type="module" src="js/pos.js"></script>
 </body>
 </html>

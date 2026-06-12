@@ -13,8 +13,13 @@ contextBridge.exposeInMainWorld("pos", {
   markOrderSynced: (clientId, result) =>
     ipcRenderer.invoke("orders:mark-synced", clientId, result),
   pendingSyncCount: () => ipcRenderer.invoke("sync:pending-count"),
+  getDayEndReport: (options) => ipcRenderer.invoke("reports:day-end", options || {}),
   getSetting: (key) => ipcRenderer.invoke("settings:get", key),
   setSetting: (key, value) => ipcRenderer.invoke("settings:set", key, value),
   openExternal: (url) => ipcRenderer.invoke("app:open-external", url),
   print: (payload) => ipcRenderer.invoke("print:document", payload),
+  listPrinters: () => ipcRenderer.invoke("printers:list"),
+  getPrinter: () => ipcRenderer.invoke("printer:get"),
+  setPrinter: (deviceName) => ipcRenderer.invoke("printer:set", deviceName),
+  printTest: () => ipcRenderer.invoke("print:test"),
 });

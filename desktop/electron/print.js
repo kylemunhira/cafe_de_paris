@@ -1,77 +1,35 @@
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { BrowserWindow } = require("electron");
 
-const RECEIPT_STYLES = `
-  @page { size: 80mm auto; margin: 4mm; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: "Segoe UI", system-ui, sans-serif;
-    color: #2c1810;
-    background: #fff;
-    font-size: 10pt;
-    line-height: 1.4;
+const RECEIPT_WIDTH_MM = 80;
+const CONTENT_WIDTH_MM = 58;
+const LINE_CHARS = 32;
+const ITEM_NAME_W = 16;
+const ITEM_QTY_W = 5;
+const ITEM_AMT_W = 8;
+const MM_TO_MICRONS = 1000;
+const PRINT_WINDOW_WIDTH = Math.round((CONTENT_WIDTH_MM / 25.4) * 96);
+let cachedReceiptStyles = null;
+
+function resolveReceiptStylesPath() {
+  const candidates = [
+    path.join(__dirname, "..", "receipt-css", "receipt-print.css"),
+    path.join(__dirname, "..", "..", "ui", "static", "ui", "css", "receipt-print.css"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
   }
-  .receipt {
-    width: 72mm;
-    max-width: 100%;
-    margin: 0 auto;
-    padding: 4mm 3mm;
+  throw new Error("Receipt print stylesheet not found");
+}
+
+function getReceiptStyles() {
+  if (!cachedReceiptStyles) {
+    cachedReceiptStyles = fs.readFileSync(resolveReceiptStylesPath(), "utf8");
   }
-  .center { text-align: center; }
-  .brand { margin-bottom: 0.75rem; }
-  .brand h1 { margin: 0; font-size: 1.15rem; }
-  .brand p { margin: 0.2rem 0 0; color: #6b5c52; font-size: 0.75rem; }
-  .meta { font-size: 0.78rem; color: #6b5c52; margin-bottom: 0.75rem; }
-  .meta p { margin: 0.15rem 0; }
-  .badge {
-    display: inline-block;
-    margin: 0.35rem 0;
-    padding: 0.2rem 0.55rem;
-    border: 1px solid #2c1810;
-    border-radius: 4px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-  }
-  .divider { border: none; border-top: 1px dashed #c4a77d; margin: 0.65rem 0; }
-  .items { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  .items th {
-    text-align: left;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #6b5c52;
-    padding-bottom: 0.35rem;
-    border-bottom: 1px solid #e8dfd4;
-  }
-  .items th.qty, .items th.amt { text-align: right; }
-  .items td { padding: 0.35rem 0; vertical-align: top; }
-  .items td.qty, .items td.amt { text-align: right; white-space: nowrap; }
-  .item-name { font-weight: 600; }
-  .item-detail { font-size: 0.72rem; color: #6b5c52; }
-  .totals { font-size: 0.82rem; }
-  .total-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin: 0.2rem 0;
-  }
-  .total-row.grand {
-    margin-top: 0.45rem;
-    padding-top: 0.45rem;
-    border-top: 1px solid #2c1810;
-    font-size: 0.95rem;
-    font-weight: 700;
-  }
-  .payment-box {
-    margin-top: 0.5rem;
-    padding: 0.45rem 0.5rem;
-    background: #faf6f1;
-    border-radius: 4px;
-    font-size: 0.78rem;
-  }
-  .footer { margin-top: 0.85rem; font-size: 0.75rem; color: #6b5c52; }
-`;
+  return cachedReceiptStyles;
+}
 
 function esc(value) {
   return String(value ?? "")
@@ -81,47 +39,160 @@ function esc(value) {
     .replace(/"/g, "&quot;");
 }
 
-function money(amount, symbol = "") {
+function money(amount) {
   const value = Number(amount);
-  const formatted = Number.isFinite(value)
-    ? value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : "0.00";
-  return symbol ? `${symbol}${formatted}` : formatted;
+  return Number.isFinite(value) ? value.toFixed(2) : "0.00";
+}
+
+function qty(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+}
+
+function formatTaxRate(rate) {
+  const value = Number(rate);
+  return Number.isFinite(value) ? value.toFixed(1) : "0.0";
 }
 
 function formatDateTime(iso) {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
+  const d = new Date(iso);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const day = d.getDate();
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const mins = String(d.getMinutes()).padStart(2, "0");
+  return `${day} ${month} ${year}, ${hours}:${mins}`;
+}
+
+function formatReportDate(dateStr) {
+  if (!dateStr) return "—";
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${day} ${months[month - 1]} ${year}`;
 }
 
 function orderTypeLabel(value) {
-  return value === "dine_in" ? "Dine in" : "Takeaway";
+  return value === "dine_in" ? "Dine In" : "Takeaway";
 }
 
-function renderItemsRows(items) {
+function currencyCode(currency) {
+  return currency?.code || currency?.name || "";
+}
+
+function truncText(text, max) {
+  const value = String(text);
+  return value.length > max ? `${value.slice(0, max - 1)}.` : value;
+}
+
+function padLine(left, right, width = LINE_CHARS) {
+  const l = String(left);
+  const r = String(right);
+  const gap = Math.max(1, width - l.length - r.length);
+  return `${l}${" ".repeat(gap)}${r}`;
+}
+
+function formatPaidAmount(payment) {
+  const amt = money(payment.amountPaid);
+  if (payment.symbol) return `${payment.symbol}${amt}`;
+  const code = payment.currencyCode || payment.currencyName || "";
+  return code ? `${code} ${amt}` : amt;
+}
+
+function renderLocation(location) {
+  if (!location) return "";
+  return `<p class="address">${esc(location)}</p>`;
+}
+
+function orderTypeLine(order) {
+  const type = esc(orderTypeLabel(order.order_type));
+  return order.table_number
+    ? `${type} · Table ${esc(order.table_number)}`
+    : type;
+}
+
+function itemColumns(name, quantity, amount) {
+  const label = truncText(name, ITEM_NAME_W).padEnd(ITEM_NAME_W);
+  const q = qty(quantity).padStart(ITEM_QTY_W);
+  const a = money(amount).padStart(ITEM_AMT_W);
+  return `${label}${q}${a}`;
+}
+
+function renderItemsBlock(items) {
   if (!items?.length) {
-    return `<tr><td colspan="3">No items</td></tr>`;
+    return `<pre class="lines">No items</pre>`;
   }
-  return items
-    .map((item) => {
-      const qty = Number(item.quantity);
-      const price = Number(item.price);
-      const line = qty * price;
-      const name = esc(item.product_name || item.name || "Item");
-      return `
-        <tr>
-          <td>
-            <div class="item-name">${name}</div>
-            <div class="item-detail">${money(price)} each</div>
-          </td>
-          <td class="qty">${qty}</td>
-          <td class="amt">${money(line)}</td>
-        </tr>`;
-    })
-    .join("");
+
+  const lines = [
+    "ITEM".padEnd(ITEM_NAME_W) + "QTY".padStart(ITEM_QTY_W) + "AMT".padStart(ITEM_AMT_W),
+    "-".repeat(LINE_CHARS),
+  ];
+
+  for (const item of items) {
+    const price = Number(item.price);
+    const lineTotal = Number(item.quantity) * price;
+    const name = item.product_name || item.name || "Item";
+    lines.push(itemColumns(name, item.quantity, lineTotal));
+    lines.push(`  ${qty(item.quantity)} x ${money(price)}`);
+  }
+
+  return `<pre class="lines">${esc(lines.join("\n"))}</pre>`;
+}
+
+function renderSummaryBlock(rows, { grand = false, boxed = false } = {}) {
+  const text = rows.map(([left, right]) => padLine(left, right)).join("\n");
+  const classes = ["summary-lines", grand ? "grand" : "", boxed ? "boxed" : ""]
+    .filter(Boolean)
+    .join(" ");
+  return `<pre class="${classes}">${esc(text)}</pre>`;
+}
+
+function renderFiscalBlock(fiscal) {
+  if (!fiscal) return "";
+
+  const lines = [
+    fiscal.device_branch_name ? `<p>${esc(fiscal.device_branch_name)}</p>` : "",
+    fiscal.device_serial_no ? `<p>Device: ${esc(fiscal.device_serial_no)}</p>` : "",
+    fiscal.fiscal_invoice_number ? `<p>Invoice: ${esc(fiscal.fiscal_invoice_number)}</p>` : "",
+    fiscal.fiscal_day_number ? `<p>Fiscal day: ${esc(fiscal.fiscal_day_number)}</p>` : "",
+    fiscal.receipt_counter
+      ? `<p>Receipt #${esc(fiscal.receipt_counter)} / ${esc(fiscal.receipt_global_no)}</p>`
+      : "",
+    fiscal.verification_code ? `<p>Verification: ${esc(fiscal.verification_code)}</p>` : "",
+    fiscal.qr_string && !fiscal.qr_url
+      ? `<p style="margin-top: 0.5rem; font-size: 10px; word-break: break-all;">${esc(fiscal.qr_string)}</p>`
+      : "",
+  ].join("");
+
+  return `
+    <hr class="divider">
+    <div class="center meta fiscal-meta">
+      <p><strong>Fiscal receipt</strong></p>
+      ${lines}
+    </div>`;
+}
+
+function renderFiscalQr(fiscal) {
+  if (!fiscal?.qr_data_url) return "";
+  return `<div class="center fiscal-qr"><img src="${fiscal.qr_data_url}" alt="Fiscal QR code" width="120" height="120"></div>`;
+}
+
+function renderBrandHeader(branch) {
+  return `
+    <div class="center brand">
+      <h1>Café de Paris</h1>
+      ${renderLocation(branch?.location)}
+    </div>`;
+}
+
+function renderTotalsSection(tax, baseCurrency) {
+  const baseLabel = baseCurrency ? ` (${currencyCode(baseCurrency)})` : "";
+  return renderSummaryBlock([
+    [`Subtotal${baseLabel}`, money(tax?.subtotal)],
+    [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
+    [`Total${baseLabel}`, money(tax?.total)],
+  ]);
 }
 
 function wrapDocument(title, body) {
@@ -130,180 +201,376 @@ function wrapDocument(title, body) {
 <head>
   <meta charset="UTF-8">
   <title>${esc(title)}</title>
-  <style>${RECEIPT_STYLES}</style>
+  <style>${getReceiptStyles()}</style>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: ${CONTENT_WIDTH_MM}mm;
+      background: #fff;
+    }
+    .receipt {
+      width: ${CONTENT_WIDTH_MM}mm;
+      max-width: ${CONTENT_WIDTH_MM}mm;
+      margin: 0;
+      padding: 2mm 1mm;
+      box-shadow: none;
+    }
+    pre.lines,
+    pre.summary-lines {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 11px;
+      line-height: 1.35;
+      margin: 0;
+      white-space: pre;
+      width: 100%;
+      overflow: hidden;
+    }
+    pre.summary-lines.grand {
+      font-weight: 700;
+      border-top: 1px solid #000;
+      padding-top: 0.35rem;
+      margin-top: 0.35rem;
+    }
+    pre.summary-lines.boxed {
+      background: #f5f5f5;
+      padding: 0.25rem;
+      margin-top: 0.35rem;
+    }
+  </style>
 </head>
 <body>${body}</body>
 </html>`;
 }
 
 function renderOrderSlipHtml(data) {
-  const { branch, order, cashier } = data;
-  const ref = order.receipt_number || order.client_id?.slice(0, 8).toUpperCase() || "—";
-  const tableLine = order.table_number
-    ? `<p>Table ${esc(order.table_number)}</p>`
-    : "";
+  const { branch, order, tax, baseCurrency } = data;
+  const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
 
   return wrapDocument(
-    `Order ${ref}`,
+    `Order ${orderId}`,
     `
     <div class="receipt">
-      <div class="center brand">
-        <h1>Café de Paris</h1>
-        ${branch?.name ? `<p>${esc(branch.name)}</p>` : ""}
-        ${branch?.location ? `<p>${esc(branch.location)}</p>` : ""}
-      </div>
+      ${renderBrandHeader(branch)}
       <div class="center meta">
         <p><strong>Order ticket</strong></p>
-        <span class="badge">UNPAID</span>
-        <p>Ref ${esc(ref)}</p>
+        <p>Order #${esc(orderId)}</p>
         <p>${esc(formatDateTime(order.created_at))}</p>
-        <p>${esc(orderTypeLabel(order.order_type))}</p>
-        ${tableLine}
-        ${cashier?.display_name ? `<p>Cashier: ${esc(cashier.display_name)}</p>` : ""}
+        <p>${orderTypeLine(order)}</p>
       </div>
       <hr class="divider">
-      <table class="items">
-        <thead>
-          <tr><th>Item</th><th class="qty">Qty</th><th class="amt">Amount</th></tr>
-        </thead>
-        <tbody>${renderItemsRows(order.items)}</tbody>
-      </table>
+      ${renderItemsBlock(order.items)}
       <hr class="divider">
-      <div class="totals">
-        <div class="total-row grand">
-          <span>Total due</span>
-          <span>${money(order.total_amount)}</span>
-        </div>
-      </div>
+      ${renderTotalsSection(tax, baseCurrency)}
       <div class="center footer">
         <p>Present this ticket when paying.</p>
+        <p>UNPAID</p>
       </div>
     </div>`
   );
 }
 
 function renderReceiptHtml(data) {
-  const { branch, order, tax, payment, baseCurrency } = data;
-  const ref = order.receipt_number || order.client_id?.slice(0, 8).toUpperCase() || "—";
-  const serverLine = order.server_id ? `<p>Order #${esc(order.server_id)}</p>` : "";
-  const tableLine = order.table_number
-    ? `<p>${esc(orderTypeLabel(order.order_type))} · Table ${esc(order.table_number)}</p>`
-    : `<p>${esc(orderTypeLabel(order.order_type))}</p>`;
+  const { branch, order, tax, payment, baseCurrency, fiscal } = data;
+  const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
+  const receiptLine = order.receipt_number ? `<p>Receipt #${esc(order.receipt_number)}</p>` : "";
+  const paymentRows = payment
+    ? [
+        ["Paid in", payment.currencyCode || payment.currencyName || ""],
+        ...(payment.exchangeRate && !payment.isBase
+          ? [["Exchange rate", String(payment.exchangeRate)]]
+          : []),
+      ]
+    : [];
 
   const paymentBlock = payment
     ? `
-      <div class="payment-box">
-        <div class="total-row">
-          <span>Paid in</span>
-          <strong>${esc(payment.currencyName)}</strong>
-        </div>
-        ${
-          payment.exchangeRate && !payment.isBase
-            ? `<div class="total-row"><span>Exchange rate</span><span>${esc(payment.exchangeRate)}</span></div>`
-            : ""
-        }
-      </div>
-      <div class="total-row grand">
-        <span>Amount paid</span>
-        <span>${money(payment.amountPaid, payment.symbol || "")}</span>
-      </div>`
+      ${renderSummaryBlock(paymentRows, { boxed: true })}
+      ${renderSummaryBlock([["Amount paid", formatPaidAmount(payment)]], { grand: true })}`
     : "";
 
   return wrapDocument(
-    `Receipt ${ref}`,
+    `Receipt ${order.receipt_number || orderId}`,
+    `
+    <div class="receipt">
+      ${renderBrandHeader(branch)}
+      <div class="center meta">
+        <p><strong>Sales Receipt</strong></p>
+        ${receiptLine}
+        <p>Order #${esc(orderId)}</p>
+        <p>${esc(formatDateTime(order.paid_at || order.created_at))}</p>
+        <p>${orderTypeLine(order)}</p>
+      </div>
+      <hr class="divider">
+      ${renderItemsBlock(order.items)}
+      <hr class="divider">
+      ${renderTotalsSection(tax, baseCurrency)}
+      ${paymentBlock}
+      ${renderFiscalBlock(fiscal)}
+      <div class="center footer">
+        <p>Thank you for your visit!</p>
+        <p>PAID</p>
+      </div>
+      ${renderFiscalQr(fiscal)}
+    </div>`
+  );
+}
+
+const PRINT_DELAY_MS = 800;
+const CLEANUP_DELAY_MS = 1000;
+const MIN_PAGE_HEIGHT_MM = 80;
+const PAGE_MARGIN_MM = 6;
+
+function buildPrintOptions(deviceName, { pageHeightMm, usePrinterDefault = false } = {}) {
+  const options = {
+    silent: true,
+    printBackground: true,
+    margins: { marginType: "none" },
+    landscape: false,
+    pagesPerSheet: 1,
+    collate: false,
+    copies: 1,
+    scaleFactor: 100,
+  };
+
+  if (usePrinterDefault) {
+    options.usePrinterDefaultPageSize = true;
+  } else {
+    const heightMm = Math.max(pageHeightMm || MIN_PAGE_HEIGHT_MM, MIN_PAGE_HEIGHT_MM);
+    options.pageSize = {
+      width: RECEIPT_WIDTH_MM * MM_TO_MICRONS,
+      height: heightMm * MM_TO_MICRONS,
+    };
+  }
+
+  if (deviceName) {
+    options.deviceName = deviceName;
+  }
+  return options;
+}
+
+function writeTempHtml(html) {
+  const tempPath = path.join(
+    os.tmpdir(),
+    `cafe-pos-print-${Date.now()}-${Math.random().toString(36).slice(2)}.html`
+  );
+  fs.writeFileSync(tempPath, html, "utf8");
+  return tempPath;
+}
+
+function removeTempFile(tempPath) {
+  try {
+    fs.unlinkSync(tempPath);
+  } catch {
+    // Ignore cleanup errors.
+  }
+}
+
+async function measureContentHeightMm(printWin) {
+  const heightPx = await printWin.webContents.executeJavaScript(`
+    Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.body.offsetHeight
+    )
+  `);
+  return Math.ceil((heightPx / 96) * 25.4) + PAGE_MARGIN_MM;
+}
+
+function printHtml(html, { deviceName } = {}) {
+  return new Promise((resolve, reject) => {
+    const tempPath = writeTempHtml(html);
+    const printWin = new BrowserWindow({
+      show: false,
+      width: PRINT_WINDOW_WIDTH,
+      height: 1200,
+      paintWhenInitiallyHidden: true,
+      webPreferences: {
+        sandbox: false,
+        backgroundThrottling: false,
+      },
+    });
+
+    printWin.webContents.setBackgroundThrottling(false);
+
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      setTimeout(() => {
+        if (!printWin.isDestroyed()) printWin.close();
+        removeTempFile(tempPath);
+      }, CLEANUP_DELAY_MS);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    const attemptPrint = async (retryStep = 0) => {
+      let options;
+      if (retryStep === 0) {
+        const pageHeightMm = await measureContentHeightMm(printWin);
+        options = buildPrintOptions(deviceName, { pageHeightMm, usePrinterDefault: false });
+      } else if (retryStep === 1) {
+        options = buildPrintOptions(deviceName, { usePrinterDefault: true });
+      } else {
+        options = buildPrintOptions("", { usePrinterDefault: true });
+      }
+
+      printWin.webContents.print(options, (success, failureReason) => {
+        if (success) {
+          finish();
+          return;
+        }
+
+        const reason = failureReason || "Print failed";
+        if (retryStep < 2) {
+          attemptPrint(retryStep + 1).catch((err) => finish(err));
+          return;
+        }
+
+        finish(new Error(reason));
+      });
+    };
+
+    printWin.webContents.on("did-fail-load", (_event, _code, description) => {
+      finish(new Error(description || "Failed to load print preview"));
+    });
+
+    printWin.webContents.once("did-finish-load", () => {
+      setTimeout(() => {
+        attemptPrint(0).catch((err) => finish(err));
+      }, PRINT_DELAY_MS);
+    });
+
+    printWin.loadFile(tempPath).catch((err) => {
+      finish(err);
+    });
+  });
+}
+
+function renderTestPageHtml() {
+  return wrapDocument(
+    "Printer test",
     `
     <div class="receipt">
       <div class="center brand">
         <h1>Café de Paris</h1>
-        ${branch?.location ? `<p>${esc(branch.location)}</p>` : ""}
+        <p>Printer test</p>
       </div>
       <div class="center meta">
-        <p><strong>Sales receipt</strong></p>
-        <p>Receipt #${esc(ref)}</p>
-        ${serverLine}
-        <p>${esc(formatDateTime(order.paid_at || order.created_at))}</p>
-        ${tableLine}
+        <p>${esc(formatDateTime(new Date().toISOString()))}</p>
       </div>
       <hr class="divider">
-      <table class="items">
-        <thead>
-          <tr><th>Item</th><th class="qty">Qty</th><th class="amt">Amount</th></tr>
-        </thead>
-        <tbody>${renderItemsRows(order.items)}</tbody>
-      </table>
-      <hr class="divider">
-      <div class="totals">
-        <div class="total-row">
-          <span>Subtotal${baseCurrency?.name ? ` (${esc(baseCurrency.name)})` : ""}</span>
-          <span>${money(tax?.subtotal)}</span>
-        </div>
-        <div class="total-row">
-          <span>Tax (${esc(tax?.taxRate ?? "0")}%)</span>
-          <span>${money(tax?.tax)}</span>
-        </div>
-        <div class="total-row">
-          <span>Total${baseCurrency?.name ? ` (${esc(baseCurrency.name)})` : ""}</span>
-          <span>${money(tax?.total)}</span>
-        </div>
-        ${paymentBlock}
-      </div>
+      ${renderItemsBlock([
+        { product_name: "Test item", quantity: 1, price: 10.5 },
+      ])}
+      ${renderSummaryBlock([
+        ["Subtotal (USD)", "9.09"],
+        ["Tax (15.5%)", "1.41"],
+        ["Total (USD)", "10.50"],
+      ])}
+      ${renderSummaryBlock([["Amount paid", "USD$10.50"]], { grand: true })}
       <div class="center footer">
-        <p>Thank you for your visit!</p>
-        <p><strong>PAID</strong></p>
+        <p>Amounts should line up on the right.</p>
       </div>
     </div>`
   );
 }
 
-function printHtml(html) {
-  return new Promise((resolve, reject) => {
-    const printWin = new BrowserWindow({
-      show: false,
-      webPreferences: { sandbox: true },
-    });
-
-    const cleanup = () => {
-      if (!printWin.isDestroyed()) printWin.close();
-    };
-
-    printWin.webContents.on("did-fail-load", (_event, _code, description) => {
-      cleanup();
-      reject(new Error(description || "Failed to load print preview"));
-    });
-
-    printWin.webContents.once("did-finish-load", () => {
-      // Brief delay so layout is ready; silent prints to the system default printer.
-      setTimeout(() => {
-        printWin.webContents.print(
-          {
-            silent: true,
-            printBackground: true,
-            margins: { marginType: "none" },
-          },
-          (success, failureReason) => {
-            cleanup();
-            if (success) resolve();
-            else reject(new Error(failureReason || "Print failed"));
-          }
-        );
-      }, 200);
-    });
-
-    printWin
-      .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-      .catch((err) => {
-        cleanup();
-        reject(err);
-      });
-  });
+function formatPaymentLine(payment) {
+  const currency = payment.currency;
+  const label = truncText(currency?.code || currency?.name || "—", 10).padEnd(10);
+  const amount = money(payment.total_paid);
+  const symbol = currency?.symbol || "";
+  const amountText = symbol ? `${symbol}${amount}` : amount;
+  const count = `(${payment.order_count})`;
+  return padLine(`${label} ${amountText}`, count, LINE_CHARS);
 }
 
-async function printDocument(payload) {
+function renderProductSummaryBlock(products) {
+  if (!products?.length) {
+    return `<pre class="lines">No items sold</pre>`;
+  }
+
+  const lines = [
+    "PRODUCT".padEnd(ITEM_NAME_W) + "QTY".padStart(ITEM_QTY_W) + "AMT".padStart(ITEM_AMT_W),
+    "-".repeat(LINE_CHARS),
+  ];
+
+  for (const row of products) {
+    lines.push(itemColumns(row.product_name, row.quantity, row.revenue));
+  }
+
+  return `<pre class="lines">${esc(lines.join("\n"))}</pre>`;
+}
+
+function renderDayEndReportHtml(data) {
+  const { branch, report, tax, baseCurrency, printedAt } = data;
+  const baseLabel = baseCurrency ? ` (${currencyCode(baseCurrency)})` : "";
+  const orderTypeRows = (report.orderTypes || []).map((row) => [
+    orderTypeLabel(row.order_type),
+    String(row.count),
+  ]);
+
+  const paymentLines = (report.payments || []).map((payment) => formatPaymentLine(payment));
+
+  return wrapDocument(
+    `Day end ${report.reportDate || ""}`,
+    `
+    <div class="receipt">
+      ${renderBrandHeader(branch)}
+      <div class="center meta">
+        <p><strong>Day End Report</strong></p>
+        <p>${esc(formatReportDate(report.reportDate))}</p>
+        <p>Printed ${esc(formatDateTime(printedAt))}</p>
+      </div>
+      <hr class="divider">
+      ${renderSummaryBlock(
+        [
+          ["Orders", String(report.orderCount || 0)],
+          ...(orderTypeRows.length ? orderTypeRows : []),
+        ],
+        { boxed: true }
+      )}
+      <hr class="divider">
+      <div class="center meta"><p><strong>Sales${esc(baseLabel)}</strong></p></div>
+      ${
+        report.orderCount
+          ? renderSummaryBlock([
+              [`Subtotal${baseLabel}`, money(tax?.subtotal)],
+              [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
+              [`Total${baseLabel}`, money(tax?.total)],
+            ])
+          : `<pre class="lines">No sales recorded</pre>`
+      }
+      ${
+        paymentLines.length
+          ? `
+      <hr class="divider">
+      <div class="center meta"><p><strong>Payments collected</strong></p></div>
+      <pre class="lines">${esc(paymentLines.join("\n"))}</pre>`
+          : ""
+      }
+      <hr class="divider">
+      <div class="center meta"><p><strong>Items sold</strong></p></div>
+      ${renderProductSummaryBlock(report.products)}
+      <div class="center footer">
+        <p>End of day summary</p>
+      </div>
+    </div>`
+  );
+}
+
+async function printDocument(payload, { deviceName } = {}) {
   const html =
     payload.type === "order"
       ? renderOrderSlipHtml(payload)
-      : renderReceiptHtml(payload);
-  await printHtml(html);
+      : payload.type === "test"
+        ? renderTestPageHtml()
+        : payload.type === "dayend"
+          ? renderDayEndReportHtml(payload)
+          : renderReceiptHtml(payload);
+  await printHtml(html, { deviceName });
 }
 
 module.exports = { printDocument };

@@ -16,7 +16,11 @@
     },
     "files": [
       "electron/**/*",
-      "src/**/*"
+      "src/**/*",
+      {
+        "from": "../ui/static/ui/css/receipt-print.css",
+        "to": "receipt-css/receipt-print.css"
+      }
     ],
     "win": {
       "target": "nsis"

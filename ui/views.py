@@ -1,4 +1,5 @@
 from accounts.branch_access import (
+    effective_branch_id,
     filter_by_branch_field,
     filter_by_branch_participation,
     user_can_access_bakery_transfers,
@@ -8,9 +9,12 @@ from accounts.branch_access import (
 )
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.http import Http404
+from django.utils import timezone
 from django.views.generic import DetailView, TemplateView
 
+from branches.models import Branch
 from inventory.models import DeliveryNote
+from orders.day_end import build_day_end_report
 from orders.models import Order, OrderStatus
 from orders.tax import get_inclusive_tax_rate, order_receipt_tax_breakdown
 from payments.models import Currency
@@ -150,6 +154,44 @@ class PaidOrderPrintView(LoginRequiredMixin, DetailView):
 
 class ReceiptPrintView(PaidOrderPrintView):
     template_name = "ui/receipt_print.html"
+
+
+class DayEndPrintView(UserPassesTestMixin, LoginRequiredMixin, TemplateView):
+    template_name = "ui/day_end_print.html"
+
+    def test_func(self):
+        return user_can_access_pos(self.request.user)
+
+    def get_branch(self):
+        requested = self.request.GET.get("branch")
+        try:
+            branch_id = effective_branch_id(self.request.user, requested)
+        except ValueError as exc:
+            raise Http404(str(exc)) from exc
+
+        if branch_id is None:
+            if not requested:
+                raise Http404("Branch is required for the day-end report.")
+            try:
+                branch_id = int(requested)
+            except (TypeError, ValueError) as exc:
+                raise Http404("Invalid branch.") from exc
+
+        branch = Branch.objects.filter(pk=branch_id, is_active=True).first()
+        if not branch:
+            raise Http404("Branch not found.")
+        return branch
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        branch = self.get_branch()
+        report_date = self.request.GET.get("date") or None
+        context["branch"] = branch
+        context["report"] = build_day_end_report(branch, report_date)
+        context["base_currency"] = Currency.objects.filter(is_base=True).first()
+        context["printed_at"] = timezone.now()
+        context["auto_print"] = self.request.GET.get("auto") == "1"
+        return context
 
 
 class InvoicePrintView(PaidOrderPrintView):

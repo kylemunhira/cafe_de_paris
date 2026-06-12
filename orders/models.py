@@ -72,6 +72,11 @@ class Order(models.Model):
         help_text="Assigned at payment, e.g. HIG0906267 (code + DDMMYY + daily count).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When payment was collected (used for day-end reports).",
+    )
 
     class Meta:
         ordering = ["-created_at"]

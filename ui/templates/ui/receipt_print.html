@@ -5,189 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Receipt #{{ order.id }} — Café de Paris</title>
-  <style>
-    @page {
-      size: 80mm auto;
-      margin: 4mm;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      color: #2c1810;
-      background: #f5f0ea;
-      font-size: 10pt;
-      line-height: 1.4;
-    }
-
-    .toolbar {
-      padding: 1rem;
-      text-align: center;
-      background: #faf6f1;
-      border-bottom: 1px solid #e8dfd4;
-    }
-
-    .toolbar button {
-      background: #2c1810;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 0.6rem 1.25rem;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-
-    .receipt {
-      width: 72mm;
-      max-width: 100%;
-      margin: 1rem auto;
-      padding: 4mm 3mm;
-      background: #fff;
-      box-shadow: 0 2px 12px rgba(44, 24, 16, 0.08);
-    }
-
-    .center {
-      text-align: center;
-    }
-
-    .brand {
-      margin-bottom: 0.75rem;
-    }
-
-    .brand h1 {
-      margin: 0;
-      font-size: 1.15rem;
-      letter-spacing: -0.02em;
-    }
-
-    .brand p {
-      margin: 0.2rem 0 0;
-      color: #6b5c52;
-      font-size: 0.75rem;
-    }
-
-    .meta {
-      font-size: 0.78rem;
-      color: #6b5c52;
-      margin-bottom: 0.75rem;
-    }
-
-    .meta p {
-      margin: 0.15rem 0;
-    }
-
-    .divider {
-      border: none;
-      border-top: 1px dashed #c4a77d;
-      margin: 0.65rem 0;
-    }
-
-    .items {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.82rem;
-    }
-
-    .items th {
-      text-align: left;
-      font-size: 0.68rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #6b5c52;
-      padding-bottom: 0.35rem;
-      border-bottom: 1px solid #e8dfd4;
-    }
-
-    .items th.qty,
-    .items th.amt {
-      text-align: right;
-    }
-
-    .items td {
-      padding: 0.35rem 0;
-      vertical-align: top;
-    }
-
-    .items td.qty,
-    .items td.amt {
-      text-align: right;
-      white-space: nowrap;
-    }
-
-    .item-name {
-      font-weight: 600;
-    }
-
-    .item-detail {
-      font-size: 0.72rem;
-      color: #6b5c52;
-    }
-
-    .totals {
-      font-size: 0.82rem;
-    }
-
-    .total-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin: 0.2rem 0;
-    }
-
-    .total-row.grand {
-      margin-top: 0.45rem;
-      padding-top: 0.45rem;
-      border-top: 1px solid #2c1810;
-      font-size: 0.95rem;
-      font-weight: 700;
-    }
-
-    .payment-box {
-      margin-top: 0.5rem;
-      padding: 0.45rem 0.5rem;
-      background: #faf6f1;
-      border-radius: 4px;
-      font-size: 0.78rem;
-    }
-
-    .footer {
-      margin-top: 0.85rem;
-      font-size: 0.75rem;
-      color: #6b5c52;
-    }
-
-    .fiscal-qr {
-      margin-top: 0.75rem;
-      padding-top: 0.5rem;
-    }
-
-    .fiscal-qr img {
-      display: inline-block;
-      width: 120px;
-      height: 120px;
-    }
-
-    @media print {
-      body {
-        background: #fff;
-      }
-
-      .toolbar {
-        display: none;
-      }
-
-      .receipt {
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        box-shadow: none;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
   <div class="toolbar">
@@ -197,7 +15,7 @@
   <div class="receipt">
     <div class="center brand">
       <h1>Café de Paris</h1>
-      {% if order.branch.location %}<p>{{ order.branch.location }}</p>{% endif %}
+      {% if order.branch.location %}<p class="address">{{ order.branch.location }}</p>{% endif %}
     </div>
 
     <div class="center meta">
@@ -213,20 +31,20 @@
     <table class="items">
       <thead>
         <tr>
-          <th>Item</th>
-          <th class="qty">Qty</th>
-          <th class="amt">Amount</th>
+          <th class="col-item">Item</th>
+          <th class="col-qty">Qty</th>
+          <th class="col-amt">Amt</th>
         </tr>
       </thead>
       <tbody>
         {% for item in order.items.all %}
         <tr>
-          <td>
+          <td class="col-item">
             <div class="item-name">{{ item.product.name }}</div>
             <div class="item-detail">{{ item.price|floatformat:2 }} each</div>
           </td>
-          <td class="qty">{{ item.quantity }}</td>
-          <td class="amt">{{ item.line_total|floatformat:2 }}</td>
+          <td class="col-qty">{{ item.quantity|floatformat:2 }}</td>
+          <td class="col-amt">{{ item.line_total|floatformat:2 }}</td>
         </tr>
         {% empty %}
         <tr>
@@ -238,38 +56,42 @@
 
     <hr class="divider">
 
-    <div class="totals">
-      <div class="total-row">
-        <span>Subtotal{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
-        <span>{{ tax_breakdown.subtotal|floatformat:2 }}</span>
-      </div>
-      <div class="total-row">
-        <span>Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</span>
-        <span>{{ tax_breakdown.tax|floatformat:2 }}</span>
-      </div>
-      <div class="total-row">
-        <span>Total{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
-        <span>{{ tax_breakdown.total|floatformat:2 }}</span>
-      </div>
-      {% if order.payment_currency %}
-      <div class="payment-box">
-        <div class="total-row">
-          <span>Paid in</span>
-          <strong>{{ order.payment_currency.name }}</strong>
-        </div>
+    <table class="summary">
+      <tr>
+        <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-amt">{{ tax_breakdown.subtotal|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-label">Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
+        <td class="col-amt">{{ tax_breakdown.tax|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-amt">{{ tax_breakdown.total|floatformat:2 }}</td>
+      </tr>
+    </table>
+    {% if order.payment_currency %}
+    <div class="payment-box">
+      <table class="summary">
+        <tr>
+          <td class="col-label">Paid in</td>
+          <td class="col-amt"><strong>{{ order.payment_currency.code|default:order.payment_currency.name }}</strong></td>
+        </tr>
         {% if order.exchange_rate and not order.payment_currency.is_base %}
-        <div class="total-row">
-          <span>Exchange rate</span>
-          <span>{{ order.exchange_rate }}</span>
-        </div>
+        <tr>
+          <td class="col-label">Exchange rate</td>
+          <td class="col-amt">{{ order.exchange_rate }}</td>
+        </tr>
         {% endif %}
-      </div>
-      <div class="total-row grand">
-        <span>Amount paid</span>
-        <span>{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }}</span>
-      </div>
-      {% endif %}
+      </table>
     </div>
+    <table class="summary grand">
+      <tr>
+        <td class="col-label">Amount paid</td>
+        <td class="col-amt">{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }}</td>
+      </tr>
+    </table>
+    {% endif %}
 
     {% if fiscal %}
     <hr class="divider">

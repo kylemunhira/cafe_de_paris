@@ -6,7 +6,7 @@ Standalone Electron app for **cashiers only**. Works offline with a local SQLite
 
 - Take orders and collect payments without internet
 - Local product catalog and currencies (pulled from server)
-- **Thermal-style printing** — auto-prints to the **default printer** (order ticket + sales receipt)
+- **Thermal-style printing** — auto-prints order tickets and sales receipts (printer selectable in **Settings**)
 - **Automatic sync** when internet and server are available (on connect, every 30s, after orders)
 - Cashier / branch manager accounts only
 
@@ -16,8 +16,9 @@ Standalone Electron app for **cashiers only**. Works offline with a local SQLite
 |------|-------------|
 | **Place order** | Order ticket (UNPAID) — items, total, table/type |
 | **Collect payment** | Sales receipt (PAID) — tax breakdown, amount paid |
+| **Day end** | Daily sales summary — totals, payments by currency, items sold |
 
-Printing goes straight to the **Windows default printer** (80mm receipt layout). Set your receipt printer as the system default in Windows Settings → Printers. Works fully offline; receipt numbers update after sync when the server assigns the official number.
+Open **Settings** in the POS top bar to choose a receipt printer, or leave **System default** to use the Windows default. Use **Print test page** to verify the connection. Layout is 80mm thermal-style. Works fully offline; receipt numbers update after sync when the server assigns the official number.
 
 Sync runs automatically when the network is up and the server responds (`GET /api/sync/ping/`). Pending orders upload as soon as connectivity returns.
 

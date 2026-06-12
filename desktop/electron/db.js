@@ -301,6 +301,73 @@ function getCatalogSyncedAt() {
   return getSetting("catalog_synced_at");
 }
 
+function getDayEndReport({ startIso, endIso }) {
+  const orders = db
+    .prepare(
+      `SELECT client_id, order_type, total_amount, payment_currency_id,
+              exchange_rate, amount_paid, receipt_number, paid_at
+       FROM orders
+       WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?
+       ORDER BY paid_at`
+    )
+    .all(startIso, endIso);
+
+  const payments = db
+    .prepare(
+      `SELECT payment_currency_id, COUNT(*) AS order_count, SUM(amount_paid) AS total_paid
+       FROM orders
+       WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?
+       GROUP BY payment_currency_id
+       ORDER BY payment_currency_id`
+    )
+    .all(startIso, endIso)
+    .map((row) => {
+      const currency = row.payment_currency_id
+        ? db.prepare("SELECT id, code, name, symbol, is_base FROM currencies WHERE id = ?").get(
+            row.payment_currency_id
+          )
+        : null;
+      return {
+        currency_id: row.payment_currency_id,
+        order_count: row.order_count,
+        total_paid: row.total_paid,
+        currency,
+      };
+    });
+
+  const products = db
+    .prepare(
+      `SELECT oi.product_name, SUM(oi.quantity) AS quantity, SUM(oi.quantity * oi.price) AS revenue
+       FROM order_items oi
+       INNER JOIN orders o ON o.client_id = oi.order_client_id
+       WHERE o.status = 'paid' AND o.paid_at >= ? AND o.paid_at < ?
+       GROUP BY oi.product_id, oi.product_name
+       ORDER BY revenue DESC, oi.product_name`
+    )
+    .all(startIso, endIso);
+
+  const orderTypes = db
+    .prepare(
+      `SELECT order_type, COUNT(*) AS count
+       FROM orders
+       WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?
+       GROUP BY order_type`
+    )
+    .all(startIso, endIso);
+
+  const grossTotal = orders.reduce((sum, order) => sum + Number(order.total_amount), 0);
+
+  return {
+    orderCount: orders.length,
+    grossTotal,
+    payments,
+    products,
+    orderTypes,
+    startIso,
+    endIso,
+  };
+}
+
 module.exports = {
   initDb,
   getDbPath,
@@ -321,4 +388,5 @@ module.exports = {
   markOrderSynced,
   pendingSyncCount,
   getCatalogSyncedAt,
+  getDayEndReport,
 };

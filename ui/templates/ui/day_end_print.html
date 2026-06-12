@@ -1,0 +1,132 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Day end — {{ branch.name }} — Café de Paris</title>
+  <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print report</button>
+  </div>
+
+  <div class="receipt">
+    <div class="center brand">
+      <h1>Café de Paris</h1>
+      {% if branch.location %}<p class="address">{{ branch.location }}</p>{% endif %}
+    </div>
+
+    <div class="center meta">
+      <p><strong>Day End Report</strong></p>
+      <p>{{ report.report_date|date:"d M Y" }}</p>
+      <p>Printed {{ printed_at|date:"d M Y, H:i" }}</p>
+      <p>{{ branch.name }}</p>
+    </div>
+
+    <hr class="divider">
+
+    <div class="payment-box">
+      <table class="summary">
+        <tr>
+          <td class="col-label">Orders</td>
+          <td class="col-amt">{{ report.order_count }}</td>
+        </tr>
+        {% for row in report.order_types %}
+        <tr>
+          <td class="col-label">{{ row.label }}</td>
+          <td class="col-amt">{{ row.count }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <hr class="divider">
+
+    <div class="center meta"><p><strong>Sales{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></p></div>
+
+    {% if report.order_count %}
+    <table class="summary">
+      <tr>
+        <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-amt">{{ report.tax_breakdown.subtotal|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-label">Tax ({{ report.tax_breakdown.tax_rate|floatformat:1 }}%)</td>
+        <td class="col-amt">{{ report.tax_breakdown.tax|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-amt">{{ report.tax_breakdown.total|floatformat:2 }}</td>
+      </tr>
+    </table>
+    {% else %}
+    <p class="center meta">No sales recorded for this day.</p>
+    {% endif %}
+
+    {% if report.payments %}
+    <hr class="divider">
+    <div class="center meta"><p><strong>Payments collected</strong></p></div>
+    <table class="summary">
+      {% for payment in report.payments %}
+      <tr>
+        <td class="col-label">
+          {{ payment.payment_currency__code|default:payment.payment_currency__name|default:"—" }}
+        </td>
+        <td class="col-amt">
+          {% if payment.payment_currency__symbol %}{{ payment.payment_currency__symbol }}{% endif %}{{ payment.total_paid|floatformat:2 }}
+          ({{ payment.order_count }})
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    <hr class="divider">
+    <div class="center meta"><p><strong>Items sold</strong></p></div>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="col-item">Item</th>
+          <th class="col-qty">Qty</th>
+          <th class="col-amt">Amt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.products %}
+        <tr>
+          <td class="col-item">
+            <div class="item-name">{{ row.product__name }}</div>
+          </td>
+          <td class="col-qty">{{ row.quantity|floatformat:2 }}</td>
+          <td class="col-amt">{{ row.revenue|floatformat:2 }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3">No items sold</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="center footer">
+      <p>End of day summary</p>
+    </div>
+  </div>
+
+  {% if auto_print %}
+  <script>
+    const posUrl = "{% url 'ui:pos' %}";
+    window.addEventListener("load", () => window.print());
+    window.addEventListener("afterprint", () => {
+      window.close();
+      setTimeout(() => {
+        if (!window.closed) window.location.replace(posUrl);
+      }, 150);
+    });
+  </script>
+  {% endif %}
+</body>
+</html>

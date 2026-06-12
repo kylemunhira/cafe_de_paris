@@ -1,5 +1,5 @@
 import { formatCurrency, formatDate, showToast } from "./api.js";
-import { printOrderSlip, printSalesReceipt } from "./print-client.js";
+import { printDayEndReport, printOrderSlip, printSalesReceipt } from "./print-client.js";
 import { isBrowserOnline, runFullSync, runFullSyncIfOnline, startAutoSync } from "./sync.js";
 
 const cart = new Map();
@@ -20,6 +20,7 @@ const branchLabel = document.getElementById("branch-label");
 const syncStatus = document.getElementById("sync-status");
 const syncBtn = document.getElementById("sync-btn");
 const logoutBtn = document.getElementById("logout-btn");
+const dayendBtn = document.getElementById("dayend-btn");
 const categoryTabs = document.getElementById("category-tabs");
 const productGrid = document.getElementById("product-grid");
 const cartItems = document.getElementById("cart-items");
@@ -399,6 +400,20 @@ syncBtn.addEventListener("click", async () => {
   syncBtn.disabled = false;
 });
 
+dayendBtn.addEventListener("click", async () => {
+  dayendBtn.disabled = true;
+  try {
+    const report = await window.pos.getDayEndReport();
+    await printDayEndReport(session, report, { taxRate: inclusiveTaxRate });
+    const label = report.orderCount === 1 ? "1 order" : `${report.orderCount} orders`;
+    showToast(`Day end report printed · ${label}`);
+  } catch (err) {
+    showToast(`Day end report failed: ${err.message}`, true);
+  } finally {
+    dayendBtn.disabled = false;
+  }
+});
+
 logoutBtn.addEventListener("click", async () => {
   if (stopAutoSync) stopAutoSync();
   window.removeEventListener("offline", updateSyncBadge);
@@ -425,7 +440,7 @@ async function placeOrder() {
     await updateSyncBadge();
     showToast(`Order placed — ${money(order.total_amount)}`);
     try {
-      await printOrderSlip(session, order);
+      await printOrderSlip(session, order, { taxRate: inclusiveTaxRate });
     } catch (printErr) {
       showToast(`Order saved but print failed: ${printErr.message}`, true);
     }

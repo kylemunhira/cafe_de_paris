@@ -4,6 +4,10 @@
 {% block title %}Point of Sale — Café de Paris{% endblock %}
 {% block page_title %}Point of Sale{% endblock %}
 
+{% block topbar_actions %}
+<button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">Day end</button>
+{% endblock %}
+
 {% block content %}
 <div class="pos-mode-bar">
   <div class="pos-mode-toggle" role="tablist" aria-label="POS mode">
@@ -120,6 +124,7 @@ const receiptPaymentSection = document.getElementById("receipt-payment-section")
 const paymentCurrencySelect = document.getElementById("payment-currency");
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
+const dayendBtn = document.getElementById("dayend-btn");
 
 orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
@@ -582,6 +587,20 @@ async function paySelectedOrder() {
     checkoutBtn.disabled = !ready;
   }
 }
+
+dayendBtn?.addEventListener("click", () => {
+  if (!branchSelect.value) {
+    showToast("Select a branch first", true);
+    return;
+  }
+  const printWindow = window.open("about:blank", "_blank");
+  const url = `/pos/day-end/print/?branch=${encodeURIComponent(branchSelect.value)}&auto=1`;
+  if (printWindow) {
+    printWindow.location.href = url;
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+});
 
 async function init() {
   const [branchesData, productsData, categoriesData, currenciesData] = await Promise.all([

@@ -19,6 +19,11 @@ urlpatterns = [
         views.ReceiptPrintView.as_view(),
         name="receipt-print",
     ),
+    path(
+        "pos/day-end/print/",
+        views.DayEndPrintView.as_view(),
+        name="day-end-print",
+    ),
     path("orders/", views.OrdersView.as_view(), name="orders"),
     path("invoices/", views.InvoicesView.as_view(), name="invoices"),
     path(

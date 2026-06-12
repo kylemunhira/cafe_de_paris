@@ -1,5 +1,6 @@
 from accounts.branch_access import filter_by_branch_field
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -87,6 +88,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.amount_paid = currency.convert_from_base(order.total_amount)
             order.status = OrderStatus.PAID
             order.receipt_number = receipt_number
+            order.paid_at = timezone.now()
             order.save(
                 update_fields=[
                     "payment_currency",
@@ -94,6 +96,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "amount_paid",
                     "status",
                     "receipt_number",
+                    "paid_at",
                 ]
             )
 

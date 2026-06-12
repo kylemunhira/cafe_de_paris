@@ -2,11 +2,13 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import StaffProfile
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
+from orders.day_end import build_day_end_report
 from orders.models import Order, OrderStatus
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
 from payments.models import Currency, CurrencyRate
@@ -183,3 +185,81 @@ class ReceiptPrintTests(TestCase):
         open_order = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
         response = self.client.get(f"/invoices/{open_order.id}/print/")
         self.assertEqual(response.status_code, 404)
+
+
+class DayEndReportTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.branch = Branch.objects.create(
+            name="Highland",
+            code="HIG",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        category = ProductCategory.objects.create(name="Coffee")
+        self.latte = Product.objects.create(
+            name="Latte",
+            category=category,
+            selling_price=Decimal("4.00"),
+        )
+        self.espresso = Product.objects.create(
+            name="Espresso",
+            category=category,
+            selling_price=Decimal("3.50"),
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        StaffProfile.objects.create(user=self.user, branch=self.branch)
+        self.client.force_login(self.user)
+        self.today = timezone.localdate()
+        self._receipt_seq = 0
+
+    def _create_paid_order(self, *, product, quantity, order_type="takeaway"):
+        self._receipt_seq += 1
+        order = Order.objects.create(
+            branch=self.branch,
+            status=OrderStatus.PAID,
+            order_type=order_type,
+            payment_currency=self.usd,
+            exchange_rate=Decimal("1"),
+            amount_paid=product.selling_price * quantity,
+            total_amount=product.selling_price * quantity,
+            receipt_number=f"HIG{self.today.strftime('%d%m%y')}{self._receipt_seq}",
+            paid_at=timezone.now(),
+        )
+        order.items.create(
+            product=product,
+            quantity=quantity,
+            price=product.selling_price,
+        )
+        return order
+
+    def test_build_day_end_report_aggregates_sales(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("2"))
+        self._create_paid_order(product=self.espresso, quantity=Decimal("1"), order_type="dine_in")
+
+        report = build_day_end_report(self.branch)
+        self.assertEqual(report["order_count"], 2)
+        self.assertEqual(report["gross_total"], Decimal("11.50"))
+        self.assertEqual(len(report["products"]), 2)
+        self.assertEqual(report["tax_breakdown"]["total"], Decimal("11.50"))
+
+    def test_day_end_print_view(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+
+        response = self.client.get(f"/pos/day-end/print/?branch={self.branch.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Day End Report")
+        self.assertContains(response, "Latte")
+        self.assertContains(response, "Orders")
+        self.assertContains(response, "Highland")

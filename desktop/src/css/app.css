@@ -449,6 +449,57 @@ h1, h3 {
 
 .toast.error { background: #9b2c1f; }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(44, 24, 16, 0.35);
+  z-index: 200;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(44, 24, 16, 0.06);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal-close-btn {
+  padding: 0.45rem 0.85rem;
+}
+
+.modal-body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.settings-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
 @media (max-width: 900px) {
   .pos-layout { grid-template-columns: 1fr; }
   .cart-panel { position: static; max-height: none; }

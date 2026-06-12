@@ -3,7 +3,53 @@ const path = require("path");
 const db = require("./db");
 const { printDocument } = require("./print");
 
+const PRINTER_SETTING_KEY = "printer_device_name";
+
 let mainWindow;
+
+function localDayBounds(dateStr) {
+  const now = new Date();
+  let year;
+  let month;
+  let day;
+
+  if (dateStr) {
+    const parts = dateStr.split("-").map(Number);
+    year = parts[0];
+    month = parts[1] - 1;
+    day = parts[2];
+  } else {
+    year = now.getFullYear();
+    month = now.getMonth();
+    day = now.getDate();
+  }
+
+  const start = new Date(year, month, day, 0, 0, 0, 0);
+  const end = new Date(year, month, day + 1, 0, 0, 0, 0);
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    reportDate: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  };
+}
+
+function getConfiguredPrinter() {
+  return db.getSetting(PRINTER_SETTING_KEY, "") || "";
+}
+
+async function listSystemPrinters() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return [];
+  }
+  const printers = await mainWindow.webContents.getPrintersAsync();
+  return printers.map((printer) => ({
+    name: printer.name,
+    displayName: printer.displayName || printer.name,
+    isDefault: Boolean(printer.isDefault),
+    status: printer.status,
+  }));
+}
 
 function createWindow(startPage = "login.html") {
   mainWindow = new BrowserWindow({
@@ -66,6 +112,14 @@ ipcMain.handle("orders:mark-synced", (_event, clientId, result) =>
 );
 ipcMain.handle("sync:pending-count", () => db.pendingSyncCount());
 
+ipcMain.handle("reports:day-end", (_event, { date } = {}) => {
+  const bounds = localDayBounds(date || null);
+  return {
+    ...bounds,
+    ...db.getDayEndReport(bounds),
+  };
+});
+
 ipcMain.handle("settings:get", (_event, key) => db.getSetting(key));
 ipcMain.handle("settings:set", (_event, key, value) => {
   db.setSetting(key, value);
@@ -81,7 +135,21 @@ ipcMain.handle("app:open-external", (_event, url) => {
   shell.openExternal(url);
 });
 
+ipcMain.handle("printers:list", () => listSystemPrinters());
+
+ipcMain.handle("printer:get", () => getConfiguredPrinter());
+
+ipcMain.handle("printer:set", (_event, deviceName) => {
+  db.setSetting(PRINTER_SETTING_KEY, deviceName || "");
+  return getConfiguredPrinter();
+});
+
 ipcMain.handle("print:document", async (_event, payload) => {
-  await printDocument(payload);
+  await printDocument(payload, { deviceName: getConfiguredPrinter() });
+  return true;
+});
+
+ipcMain.handle("print:test", async () => {
+  await printDocument({ type: "test" }, { deviceName: getConfiguredPrinter() });
   return true;
 });
