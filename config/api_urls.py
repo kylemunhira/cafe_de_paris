@@ -13,6 +13,7 @@ from inventory.views import (
 )
 from bakery.views import RecipeViewSet
 from orders.views import OrderViewSet
+from purchasing.views import PurchaseOrderViewSet, SupplierViewSet
 from payments.views import CurrencyRateViewSet, CurrencyViewSet
 from reports.views import ReportExportCsvView, ReportSummaryView
 from sync.views import SyncPingView, SyncPullView, SyncPushView
@@ -29,6 +30,8 @@ router.register("inventory", BranchInventoryViewSet, basename="inventory")
 router.register("transfers", StockTransferViewSet, basename="transfer")
 router.register("delivery-notes", DeliveryNoteViewSet, basename="delivery-note")
 router.register("stock-takes", StockTakeViewSet, basename="stock-take")
+router.register("suppliers", SupplierViewSet, basename="supplier")
+router.register("purchase-orders", PurchaseOrderViewSet, basename="purchase-order")
 router.register("recipes", RecipeViewSet, basename="recipe")
 
 urlpatterns = [

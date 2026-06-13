@@ -22,8 +22,16 @@
         "to": "receipt-css/receipt-print.css"
       }
     ],
+    "extraFiles": [
+      {
+        "from": "config.json",
+        "to": "config.json"
+      }
+    ],
     "win": {
-      "target": "nsis"
+      "icon": "build/app_icon.ico",
+      "target": "nsis",
+      "signAndEditExecutable": false
     }
   },
   "dependencies": {

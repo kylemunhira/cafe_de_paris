@@ -40,7 +40,19 @@ npm run rebuild
 npm start
 ```
 
-Sign in with the server URL (e.g. `http://127.0.0.1:8000`), cashier username, and password.
+Set the server URL in `config.json` (see below), then sign in with cashier username and password.
+
+## Server URL (`config.json`)
+
+The API server address is **not** shown on the login screen. Edit `desktop/config.json` before install or deployment:
+
+```json
+{
+  "serverUrl": "http://127.0.0.1:8000"
+}
+```
+
+After `npm run build`, the installer places `config.json` next to the `.exe` so you can change the URL without rebuilding. Restart the app after editing.
 
 ## Build Windows installer
 

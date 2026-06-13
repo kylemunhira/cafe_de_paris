@@ -1,7 +1,13 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const db = require("./db");
+const { loadConfig } = require("./config");
 const { printDocument } = require("./print");
+
+function sessionWithConfig(session) {
+  if (!session) return null;
+  return { ...session, serverUrl: loadConfig().serverUrl };
+}
 
 const PRINTER_SETTING_KEY = "printer_device_name";
 
@@ -51,6 +57,8 @@ async function listSystemPrinters() {
   }));
 }
 
+const APP_ICON = path.join(__dirname, "..", "build", "app_icon.ico");
+
 function createWindow(startPage = "login.html") {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -58,6 +66,7 @@ function createWindow(startPage = "login.html") {
     minWidth: 1024,
     minHeight: 700,
     title: "Café de Paris POS",
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -84,14 +93,15 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-ipcMain.handle("session:get", () => db.getSession());
+ipcMain.handle("config:get", () => loadConfig());
+ipcMain.handle("session:get", () => sessionWithConfig(db.getSession()));
 ipcMain.handle("session:clear", () => {
   db.clearSession();
   return true;
 });
 ipcMain.handle("session:save", (_event, payload) => {
   db.saveSession(payload);
-  return db.getSession();
+  return sessionWithConfig(db.getSession());
 });
 
 ipcMain.handle("catalog:list", () => ({

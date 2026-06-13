@@ -1,0 +1,406 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Purchase Orders — Café de Paris{% endblock %}
+{% block page_title %}Purchase Orders{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New purchase order</h3>
+  <form id="po-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="po-branch">Branch</label>
+        <select id="po-branch" required>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="po-supplier">Supplier</label>
+        <select id="po-supplier" required>
+          <option value="">Select supplier…</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="po-notes">Notes</label>
+      <input type="text" id="po-notes" placeholder="Optional reference or delivery instructions">
+    </div>
+
+    <div class="form-row" style="align-items: end;">
+      <div class="form-group" style="flex: 2;">
+        <label for="po-product">Product</label>
+        <select id="po-product">
+          <option value="">Select product…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 100px;">
+        <label for="po-qty">Qty</label>
+        <input type="number" id="po-qty" min="0.01" step="0.01" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 0 0 120px;">
+        <label for="po-cost">Unit cost</label>
+        <input type="number" id="po-cost" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group" style="flex: 0 0 auto;">
+        <button type="button" id="add-line-btn" class="btn btn-ghost">Add line</button>
+      </div>
+    </div>
+
+    <div class="table-wrap" id="lines-wrap" style="display: none; margin-bottom: 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th style="text-align: right;">Qty</th>
+            <th style="text-align: right;">Unit cost</th>
+            <th style="text-align: right;">Line total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align: right; font-weight: 600;">Total</td>
+            <td style="text-align: right; font-weight: 600;" id="lines-total">$0.00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create draft PO</button>
+  </form>
+</div>
+
+<div class="stat-grid" id="po-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(4, 1fr);">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="all">All</button>
+    <button class="category-tab" data-filter="draft">Draft</button>
+    <button class="category-tab" data-filter="submitted">Submitted</button>
+    <button class="category-tab" data-filter="approved">Approved</button>
+    <button class="category-tab" data-filter="received">Received</button>
+    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+  </div>
+  <div class="table-wrap" id="po-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const CAN_APPROVE = {{ can_approve_purchase_orders|yesno:"true,false" }};
+</script>
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+let allOrders = [];
+let branches = [];
+let suppliers = [];
+let products = [];
+let draftLines = [];
+let activeFilter = "all";
+
+const poForm = document.getElementById("po-form");
+const branchSelect = document.getElementById("po-branch");
+const supplierSelect = document.getElementById("po-supplier");
+const notesInput = document.getElementById("po-notes");
+const productSelect = document.getElementById("po-product");
+const qtyInput = document.getElementById("po-qty");
+const costInput = document.getElementById("po-cost");
+const linesWrap = document.getElementById("lines-wrap");
+const linesBody = document.getElementById("lines-body");
+const linesTotal = document.getElementById("lines-total");
+const submitBtn = document.getElementById("submit-btn");
+const poTable = document.getElementById("po-table");
+const poStats = document.getElementById("po-stats");
+const addLineBtn = document.getElementById("add-line-btn");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function lineSummary(order) {
+  if (!order.lines?.length) return "—";
+  const preview = order.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
+  const extra = order.lines.length > 2 ? ` +${order.lines.length - 2} more` : "";
+  return preview.join(", ") + extra;
+}
+
+function renderDraftLines() {
+  if (!draftLines.length) {
+    linesWrap.style.display = "none";
+    submitBtn.disabled = true;
+    return;
+  }
+
+  linesWrap.style.display = "";
+  submitBtn.disabled = !branchSelect.value || !supplierSelect.value;
+
+  let total = 0;
+  linesBody.innerHTML = draftLines.map((line, index) => {
+    const lineTotal = line.quantity * line.unit_cost;
+    total += lineTotal;
+    return `
+      <tr>
+        <td>${line.product_name}</td>
+        <td style="text-align: right;">${formatQty(line.quantity)}</td>
+        <td style="text-align: right;">${formatCurrency(line.unit_cost)}</td>
+        <td style="text-align: right;">${formatCurrency(lineTotal)}</td>
+        <td><button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button></td>
+      </tr>
+    `;
+  }).join("");
+  linesTotal.textContent = formatCurrency(total);
+}
+
+function orderActions(order) {
+  const actions = [];
+  const id = order.id;
+
+  if (order.status === "draft") {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="submit" data-id="${id}">Submit</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  } else if (order.status === "submitted" && CAN_APPROVE) {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  } else if (order.status === "approved") {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="receive" data-id="${id}">Confirm receipt</button>`);
+    if (CAN_APPROVE) {
+      actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+    }
+  }
+
+  return actions.join(" ");
+}
+
+function renderStats() {
+  const counts = {
+    draft: allOrders.filter(o => o.status === "draft").length,
+    submitted: allOrders.filter(o => o.status === "submitted").length,
+    approved: allOrders.filter(o => o.status === "approved").length,
+    received: allOrders.filter(o => o.status === "received").length,
+  };
+
+  poStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Draft</div>
+      <div class="value">${counts.draft}</div>
+      <div class="sub">Not yet submitted</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Awaiting approval</div>
+      <div class="value">${counts.submitted}</div>
+      <div class="sub">Submitted to HQ</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Approved</div>
+      <div class="value">${counts.approved}</div>
+      <div class="sub">Awaiting delivery</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Received</div>
+      <div class="value">${counts.received}</div>
+      <div class="sub">Stock updated</div>
+    </div>
+  `;
+}
+
+function renderOrders() {
+  const filtered = activeFilter === "all"
+    ? allOrders
+    : allOrders.filter(o => o.status === activeFilter);
+
+  if (!filtered.length) {
+    poTable.innerHTML = `<div class="empty-state"><p>No purchase orders found</p></div>`;
+    return;
+  }
+
+  poTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>PO #</th>
+          <th>Supplier</th>
+          <th>Branch</th>
+          <th>Products</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(o => `
+          <tr>
+            <td><strong>PO-${String(o.id).padStart(5, "0")}</strong></td>
+            <td>${o.supplier_name}</td>
+            <td>${o.branch_name}</td>
+            <td style="max-width: 220px;">${lineSummary(o)}</td>
+            <td>${formatCurrency(o.total_amount)}</td>
+            <td>${statusBadge(o.status)}</td>
+            <td>${formatDate(o.created_at)}</td>
+            <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${orderActions(o)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadData() {
+  const [branchesData, suppliersData, productsData, ordersData] = await Promise.all([
+    apiGet("/branches/?page_size=500"),
+    apiGet("/suppliers/?active_only=true&page_size=500"),
+    apiGet("/products/?page_size=500"),
+    apiGet("/purchase-orders/?page_size=500"),
+  ]);
+
+  branches = unwrapList(branchesData).filter(b => b.is_active && b.branch_type !== "bakery");
+  suppliers = unwrapList(suppliersData);
+  products = unwrapList(productsData).filter(p => p.is_active);
+  allOrders = unwrapList(ordersData);
+
+  branchSelect.innerHTML = branches.length === 1
+    ? branches.map(b => `<option value="${b.id}" selected>${b.name}</option>`).join("")
+    : `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}`;
+  if (branches.length === 1) branchSelect.disabled = true;
+
+  supplierSelect.innerHTML = suppliers.length
+    ? `<option value="">Select supplier…</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
+    : `<option value="">No suppliers — ask HQ to add suppliers first</option>`;
+  supplierSelect.disabled = !suppliers.length;
+
+  productSelect.innerHTML = `<option value="">Select product…</option>${products.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}`;
+
+  renderStats();
+  renderOrders();
+  renderDraftLines();
+}
+
+addLineBtn.addEventListener("click", () => {
+  const productId = productSelect.value;
+  const quantity = Number(qtyInput.value);
+  const unitCost = Number(costInput.value) || 0;
+
+  if (!productId) {
+    showToast("Select a product", true);
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showToast("Enter a valid quantity", true);
+    return;
+  }
+  if (draftLines.some(l => String(l.product) === productId)) {
+    showToast("Product already added", true);
+    return;
+  }
+
+  const product = products.find(p => String(p.id) === productId);
+  draftLines.push({
+    product: Number(productId),
+    product_name: product.name,
+    quantity,
+    unit_cost: unitCost,
+  });
+
+  productSelect.value = "";
+  qtyInput.value = "";
+  costInput.value = "";
+  renderDraftLines();
+});
+
+linesBody.addEventListener("click", (e) => {
+  const btn = e.target.closest(".remove-line-btn");
+  if (!btn) return;
+  draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+branchSelect.addEventListener("change", renderDraftLines);
+supplierSelect.addEventListener("change", renderDraftLines);
+
+poForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!draftLines.length) {
+    showToast("Add at least one product line", true);
+    return;
+  }
+
+  submitBtn.disabled = true;
+  try {
+    const created = await apiPost("/purchase-orders/", {
+      branch: Number(branchSelect.value),
+      supplier: Number(supplierSelect.value),
+      notes: notesInput.value.trim(),
+      lines: draftLines.map(l => ({
+        product: l.product,
+        quantity: l.quantity,
+        unit_cost: l.unit_cost,
+      })),
+    });
+    allOrders.unshift(created);
+    draftLines = [];
+    notesInput.value = "";
+    renderDraftLines();
+    renderStats();
+    renderOrders();
+    showToast(`PO-${String(created.id).padStart(5, "0")} created as draft`);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = !draftLines.length;
+  }
+});
+
+poTable.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(`/purchase-orders/${id}/${action}/`, {});
+    const index = allOrders.findIndex(o => String(o.id) === id);
+    if (index >= 0) allOrders[index] = updated;
+    renderOrders();
+    renderStats();
+    const labels = {
+      submit: "submitted",
+      approve: "approved",
+      receive: "received — stock updated",
+      cancel: "cancelled",
+    };
+    showToast(`PO-${String(id).padStart(5, "0")} ${labels[action] || action}`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll("[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeFilter = tab.dataset.filter;
+    renderOrders();
+  });
+});
+
+loadData().catch(err => {
+  poTable.innerHTML = `<div class="empty-state">Failed to load purchase orders: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

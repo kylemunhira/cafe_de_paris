@@ -1,0 +1,196 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Suppliers — Café de Paris{% endblock %}
+{% block page_title %}Suppliers{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add supplier</h3>
+  <form id="supplier-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="supplier-name">Name</label>
+        <input type="text" id="supplier-name" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="contact-person">Contact person</label>
+        <input type="text" id="contact-person" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="supplier-email">Email</label>
+        <input type="email" id="supplier-email" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="supplier-phone">Phone</label>
+        <input type="text" id="supplier-phone" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="supplier-address">Address</label>
+      <textarea id="supplier-address" rows="2" style="width: 100%; resize: vertical;"></textarea>
+    </div>
+    <div class="form-group">
+      <label for="supplier-notes">Notes</label>
+      <textarea id="supplier-notes" rows="2" style="width: 100%; resize: vertical;"></textarea>
+    </div>
+    <div class="form-group" id="active-field" style="display: none;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="supplier-active" checked>
+        Active supplier
+      </label>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Add supplier</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div class="table-wrap" id="suppliers-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+let suppliers = [];
+let editingId = null;
+
+const supplierForm = document.getElementById("supplier-form");
+const formTitle = document.getElementById("form-title");
+const nameInput = document.getElementById("supplier-name");
+const contactInput = document.getElementById("contact-person");
+const emailInput = document.getElementById("supplier-email");
+const phoneInput = document.getElementById("supplier-phone");
+const addressInput = document.getElementById("supplier-address");
+const notesInput = document.getElementById("supplier-notes");
+const activeField = document.getElementById("active-field");
+const activeInput = document.getElementById("supplier-active");
+const submitBtn = document.getElementById("submit-btn");
+const cancelBtn = document.getElementById("cancel-btn");
+const suppliersTable = document.getElementById("suppliers-table");
+
+function resetForm() {
+  editingId = null;
+  formTitle.textContent = "Add supplier";
+  submitBtn.textContent = "Add supplier";
+  cancelBtn.style.display = "none";
+  activeField.style.display = "none";
+  supplierForm.reset();
+  activeInput.checked = true;
+}
+
+function startEdit(supplier) {
+  editingId = supplier.id;
+  formTitle.textContent = "Edit supplier";
+  submitBtn.textContent = "Save changes";
+  cancelBtn.style.display = "";
+  activeField.style.display = "";
+  nameInput.value = supplier.name;
+  contactInput.value = supplier.contact_person || "";
+  emailInput.value = supplier.email || "";
+  phoneInput.value = supplier.phone || "";
+  addressInput.value = supplier.address || "";
+  notesInput.value = supplier.notes || "";
+  activeInput.checked = supplier.is_active;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function render() {
+  if (!suppliers.length) {
+    suppliersTable.innerHTML = `<div class="empty-state"><p>No suppliers yet — add your first supplier above</p></div>`;
+    return;
+  }
+
+  suppliersTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Contact</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Added</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${suppliers.map(s => `
+          <tr>
+            <td><strong>${s.name}</strong></td>
+            <td>${s.contact_person || "—"}</td>
+            <td>${s.phone || "—"}</td>
+            <td>${s.email || "—"}</td>
+            <td><span class="badge ${s.is_active ? "badge-active" : "badge-inactive"}">${s.is_active ? "Active" : "Inactive"}</span></td>
+            <td>${formatDate(s.created_at)}</td>
+            <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${s.id}">Edit</button></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadSuppliers() {
+  const data = await apiGet("/suppliers/?page_size=500");
+  suppliers = unwrapList(data);
+  render();
+}
+
+supplierForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+
+  const payload = {
+    name: nameInput.value.trim(),
+    contact_person: contactInput.value.trim(),
+    email: emailInput.value.trim(),
+    phone: phoneInput.value.trim(),
+    address: addressInput.value.trim(),
+    notes: notesInput.value.trim(),
+  };
+
+  try {
+    if (editingId) {
+      payload.is_active = activeInput.checked;
+      const updated = await apiPatch(`/suppliers/${editingId}/`, payload);
+      const index = suppliers.findIndex(s => s.id === editingId);
+      if (index >= 0) suppliers[index] = updated;
+      showToast("Supplier updated");
+    } else {
+      payload.is_active = true;
+      const created = await apiPost("/suppliers/", payload);
+      suppliers.unshift(created);
+      showToast("Supplier added");
+    }
+    resetForm();
+    render();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+cancelBtn.addEventListener("click", resetForm);
+
+suppliersTable.addEventListener("click", (e) => {
+  const btn = e.target.closest(".edit-btn");
+  if (!btn) return;
+  const supplier = suppliers.find(s => String(s.id) === btn.dataset.id);
+  if (supplier) startEdit(supplier);
+});
+
+loadSuppliers().catch(err => {
+  suppliersTable.innerHTML = `<div class="empty-state">Failed to load suppliers: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

@@ -111,6 +111,30 @@ class StockTakeView(BaseUIView):
     active_nav = "stock_take"
 
 
+class SuppliersView(UserPassesTestMixin, BaseUIView):
+    template_name = "ui/suppliers.html"
+    active_nav = "suppliers"
+
+    def test_func(self):
+        from accounts.branch_access import user_can_manage_suppliers
+
+        return user_can_manage_suppliers(self.request.user)
+
+
+class PurchaseOrdersView(BaseUIView):
+    template_name = "ui/purchase_orders.html"
+    active_nav = "purchase_orders"
+
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import user_can_approve_purchase_orders
+
+        context = super().get_context_data(**kwargs)
+        context["can_approve_purchase_orders"] = user_can_approve_purchase_orders(
+            self.request.user
+        )
+        return context
+
+
 class DeliveryNotePrintView(LoginRequiredMixin, DetailView):
     model = DeliveryNote
     template_name = "ui/delivery_note_print.html"

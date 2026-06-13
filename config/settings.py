@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "catalog",
     "customers",
     "inventory",
+    "purchasing",
     "orders",
     "payments",
     "zimra_fiscal",

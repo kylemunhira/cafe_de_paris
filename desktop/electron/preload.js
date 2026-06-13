@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pos", {
+  getConfig: () => ipcRenderer.invoke("config:get"),
   getSession: () => ipcRenderer.invoke("session:get"),
   saveSession: (payload) => ipcRenderer.invoke("session:save", payload),
   clearSession: () => ipcRenderer.invoke("session:clear"),

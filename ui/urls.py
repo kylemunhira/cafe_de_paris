@@ -37,6 +37,8 @@ urlpatterns = [
     path("grv/", views.GrvView.as_view(), name="grv"),
     path("recipes/", views.RecipesView.as_view(), name="recipes"),
     path("stock-take/", views.StockTakeView.as_view(), name="stock-take"),
+    path("suppliers/", views.SuppliersView.as_view(), name="suppliers"),
+    path("purchase-orders/", views.PurchaseOrdersView.as_view(), name="purchase-orders"),
     path(
         "transfers/delivery-note/<int:pk>/print/",
         views.DeliveryNotePrintView.as_view(),

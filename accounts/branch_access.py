@@ -153,3 +153,21 @@ def user_can_approve_delivery(user, note):
     return user_can_manage_outgoing_delivery(user, note) or user_can_receive_delivery(
         user, note
     )
+
+
+def user_can_manage_suppliers(user):
+    """HQ admins and designated global users manage supplier master data."""
+    return user_has_global_branch_access(user)
+
+
+def user_can_approve_purchase_orders(user):
+    """HQ admins approve submitted purchase orders."""
+    return user_has_global_branch_access(user)
+
+
+def user_can_receive_purchase_order(user, purchase_order):
+    """Receiving branch staff (or HQ admins) confirm goods receipt."""
+    if user_has_global_branch_access(user):
+        return True
+    branch_id = get_staff_branch_id(user)
+    return branch_id is not None and branch_id == purchase_order.branch_id

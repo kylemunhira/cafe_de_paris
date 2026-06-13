@@ -105,6 +105,9 @@ export function statusBadge(status) {
     approved: "badge-approved",
     dispatched: "badge-dispatched",
     delivered: "badge-delivered",
+    draft: "badge-open",
+    submitted: "badge-requested",
+    received: "badge-delivered",
   };
   return `<span class="badge ${map[status] || ""}">${status}</span>`;
 }

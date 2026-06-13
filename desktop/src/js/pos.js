@@ -392,7 +392,7 @@ syncBtn.addEventListener("click", async () => {
   if (!result.synced && result.reason === "offline") {
     showToast("No internet connection.", true);
   } else if (!result.synced && result.reason === "server_unreachable") {
-    showToast("Cannot reach server. Check the server URL and that it is running.", true);
+    showToast("Cannot reach server. Check config.json and that the server is running.", true);
   } else if (result.synced) {
     await loadCatalog();
   }

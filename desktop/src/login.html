@@ -17,10 +17,6 @@
     <div id="login-error" class="login-error" hidden></div>
     <form id="login-form" class="login-form">
       <div class="form-group">
-        <label for="server-url">Server URL</label>
-        <input type="url" id="server-url" placeholder="http://127.0.0.1:8000" required>
-      </div>
-      <div class="form-group">
         <label for="username">Username</label>
         <input type="text" id="username" autocomplete="username" required>
       </div>
@@ -38,11 +34,8 @@
 
     const form = document.getElementById("login-form");
     const errorBox = document.getElementById("login-error");
-    const serverInput = document.getElementById("server-url");
 
     (async () => {
-      const savedUrl = await window.pos.getSetting("server_url");
-      serverInput.value = savedUrl || "http://127.0.0.1:8000";
       const session = await window.pos.getSession();
       if (session?.token) window.location.href = "index.html";
     })();
@@ -54,7 +47,7 @@
       submitBtn.disabled = true;
 
       try {
-        const serverUrl = serverInput.value.trim();
+        const { serverUrl } = await window.pos.getConfig();
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value;
         const result = await desktopLogin(serverUrl, username, password);
@@ -63,10 +56,8 @@
           token: result.token,
           user: result.user,
           branch: result.branch,
-          serverUrl,
           inclusiveTaxRate: null,
         });
-        await window.pos.setSetting("server_url", serverUrl);
 
         const session = await window.pos.getSession();
         await pullCatalog(session);
