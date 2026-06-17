@@ -1,5 +1,6 @@
 import csv
 import io
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -7,8 +8,10 @@ from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from bakery.models import Recipe
 from catalog.models import Product
-from orders.models import Order, OrderItem, OrderStatus
+from orders.models import Expense, Order, OrderItem, OrderStatus
+from orders.tax import get_inclusive_tax_rate, split_inclusive_total
 
 LOW_STOCK_THRESHOLD = Decimal("10")
 
@@ -86,7 +89,7 @@ def _aggregate_item_sales(items):
 
     for item in items:
         line_total = item.quantity * item.price
-        tax_collected += line_total * item.product.tax_rate / Decimal("100")
+        tax_collected += split_inclusive_total(line_total)["tax"]
 
         category_name = item.product.category.name
         category_row = category_buckets.setdefault(
@@ -221,10 +224,12 @@ def export_sales_csv(from_date=None, to_date=None, branch_id=None):
     )
     writer.writeheader()
 
+    inclusive_tax_rate = get_inclusive_tax_rate()
+
     for item in paid_items:
         line_total = item.quantity * item.price
-        tax_rate = item.product.tax_rate
-        tax_amount = (line_total * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
+        tax_rate = inclusive_tax_rate
+        tax_amount = split_inclusive_total(line_total, tax_rate)["tax"]
         writer.writerow(
             {
                 "order_id": item.order_id,
@@ -241,3 +246,112 @@ def export_sales_csv(from_date=None, to_date=None, branch_id=None):
         )
 
     return output.getvalue()
+
+
+def _quantize_percent(numerator, denominator):
+    if not denominator:
+        return None
+    return (numerator / denominator * Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _product_unit_costs():
+    costs = defaultdict(Decimal)
+    recipes = Recipe.objects.select_related("ingredient")
+    for recipe in recipes:
+        costs[recipe.product_id] += (
+            recipe.quantity_required * recipe.ingredient.selling_price
+        )
+    return {product_id: cost.quantize(Decimal("0.01")) for product_id, cost in costs.items()}
+
+
+def _period_expenses(from_date, to_date, branch_id):
+    expenses = Expense.objects.all()
+    if from_date:
+        expenses = expenses.filter(expense_date__gte=from_date)
+    if to_date:
+        expenses = expenses.filter(expense_date__lte=to_date)
+    if branch_id:
+        expenses = expenses.filter(branch_id=branch_id)
+    return expenses
+
+
+def build_profit_report(from_date=None, to_date=None, branch_id=None):
+    from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
+    paid_items = list(_paid_order_items(from_date, to_date, branch_id))
+    unit_costs = _product_unit_costs()
+
+    product_buckets = {}
+    total_revenue = Decimal("0")
+    total_cogs = Decimal("0")
+    revenue_without_recipe = Decimal("0")
+    products_without_recipe = 0
+
+    for item in paid_items:
+        line_revenue = item.quantity * item.price
+        total_revenue += line_revenue
+
+        unit_cost = unit_costs.get(item.product_id)
+        line_cogs = Decimal("0")
+        if unit_cost is not None:
+            line_cogs = (unit_cost * item.quantity).quantize(Decimal("0.01"))
+            total_cogs += line_cogs
+        else:
+            revenue_without_recipe += line_revenue
+
+        product_row = product_buckets.setdefault(
+            item.product_id,
+            {
+                "product_id": item.product_id,
+                "product_name": item.product.name,
+                "category": item.product.category.name,
+                "quantity": Decimal("0"),
+                "revenue": Decimal("0"),
+                "unit_cost": unit_cost,
+                "cogs": Decimal("0"),
+            },
+        )
+        product_row["quantity"] += item.quantity
+        product_row["revenue"] += line_revenue
+        product_row["cogs"] += line_cogs
+
+    by_product = []
+    for row in product_buckets.values():
+        if row["unit_cost"] is None:
+            products_without_recipe += 1
+        gross_profit = row["revenue"] - row["cogs"]
+        by_product.append(
+            {
+                **row,
+                "gross_profit": gross_profit,
+                "gp_percent": _quantize_percent(gross_profit, row["revenue"]),
+            }
+        )
+
+    by_product.sort(key=lambda row: (-row["gross_profit"], row["product_name"]))
+
+    gross_profit = total_revenue - total_cogs
+    operating_expenses = _decimal(
+        _period_expenses(from_date, to_date, branch_id).aggregate(
+            total=Sum("amount")
+        )["total"]
+    )
+    net_profit = gross_profit - operating_expenses
+
+    return {
+        "period": {
+            "from": from_date.isoformat() if from_date else None,
+            "to": to_date.isoformat() if to_date else None,
+        },
+        "filters": {"branch_id": branch_id},
+        "summary": {
+            "total_revenue": total_revenue,
+            "total_cogs": total_cogs,
+            "gross_profit": gross_profit,
+            "gross_profit_percent": _quantize_percent(gross_profit, total_revenue),
+            "operating_expenses": operating_expenses,
+            "net_profit": net_profit,
+            "products_without_recipe": products_without_recipe,
+            "revenue_without_recipe": revenue_without_recipe,
+        },
+        "by_product": by_product,
+    }

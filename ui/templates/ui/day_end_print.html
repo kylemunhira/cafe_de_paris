@@ -83,6 +83,78 @@
     </table>
     {% endif %}
 
+    {% if report.expenses %}
+    <hr class="divider">
+    <div class="center meta"><p><strong>Expenses</strong></p></div>
+    <table class="summary">
+      {% for row in report.expenses %}
+      <tr>
+        <td class="col-label">{{ row.description }}</td>
+        <td class="col-amt">
+          {% if row.currency__symbol %}{{ row.currency__symbol }}{% endif %}{{ row.amount|floatformat:2 }}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if report.cashup_rows %}
+    <hr class="divider">
+    <div class="center meta"><p><strong>Cash-up reconciliation</strong></p></div>
+    <table class="summary">
+      {% for row in report.cashup_rows %}
+      <tr>
+        <td class="col-label">
+          {{ row.payment_currency__code|default:row.payment_currency__name|default:"—" }} expected
+        </td>
+        <td class="col-amt">
+          {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.expected_total|floatformat:2 }}
+        </td>
+      </tr>
+      {% if row.expenses_total %}
+      <tr>
+        <td class="col-label">Less expenses</td>
+        <td class="col-amt">
+          {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.expenses_total|floatformat:2 }}
+        </td>
+      </tr>
+      <tr>
+        <td class="col-label">Net expected in till</td>
+        <td class="col-amt">
+          {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.net_expected_total|floatformat:2 }}
+        </td>
+      </tr>
+      {% endif %}
+      <tr>
+        <td class="col-label">Counted</td>
+        <td class="col-amt">
+          {% if row.counted_total is not None %}
+            {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.counted_total|floatformat:2 }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td class="col-label">Variance</td>
+        <td class="col-amt">
+          {% if row.variance is not None %}
+            {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.variance|floatformat:2 }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if report.has_counted_entries %}
+      <tr>
+        <td class="col-label"><strong>Total variance</strong></td>
+        <td class="col-amt"><strong>{{ report.variance_total|floatformat:2 }}</strong></td>
+      </tr>
+      {% endif %}
+    </table>
+    {% endif %}
+
     <hr class="divider">
     <div class="center meta"><p><strong>Items sold</strong></p></div>
 

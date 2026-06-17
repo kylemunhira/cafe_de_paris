@@ -60,6 +60,7 @@ class BranchInventoryViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset()
         branch_id = self.request.query_params.get("branch")
         product_id = self.request.query_params.get("product")
+        category = self.request.query_params.get("category")
         low_stock = self.request.query_params.get("low_stock")
 
         queryset = filter_by_branch_field(
@@ -67,6 +68,8 @@ class BranchInventoryViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if product_id:
             queryset = queryset.filter(product_id=product_id)
+        if category:
+            queryset = queryset.filter(product__category__name=category)
         if low_stock and low_stock.lower() in ("1", "true", "yes"):
             try:
                 threshold = Decimal(

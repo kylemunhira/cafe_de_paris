@@ -120,6 +120,23 @@ class InventoryTransferWorkflowTests(TestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["branch"], self.branch.id)
 
+    def test_category_filter(self):
+        ingredients = ProductCategory.objects.create(name="Ingredients")
+        ingredient = Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=ingredient,
+            quantity=Decimal("12"),
+        )
+        response = self.client.get("/api/inventory/?category=Ingredients")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["product"], ingredient.id)
+
 
 class BakeryTransferTests(TestCase):
     def setUp(self):
@@ -136,7 +153,7 @@ class BakeryTransferTests(TestCase):
             name="HQ",
             branch_type=BranchType.HQ,
         )
-        category = ProductCategory.objects.create(name="Pastries")
+        category = ProductCategory.objects.create(name="Breads & pastries")
         self.product = Product.objects.create(
             name="Croissant",
             category=category,
@@ -224,6 +241,31 @@ class BakeryTransferTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("branch", str(response.data).lower())
 
+    def test_rejects_ingredient_transfer(self):
+        ingredients = ProductCategory.objects.create(name="Ingredients")
+        flour = Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.bakery,
+            product=flour,
+            quantity=Decimal("100"),
+        )
+        response = self.client.post(
+            "/api/transfers/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.branch.id,
+                "product": flour.id,
+                "quantity": "5",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("finished bakery", str(response.data).lower())
+
     def test_bakery_only_filter(self):
         StockTransfer.objects.create(
             from_branch=self.bakery,
@@ -273,7 +315,7 @@ class DeliveryNoteTests(TestCase):
             branch=self.branch,
             role=StaffRole.CASHIER,
         )
-        pastries = ProductCategory.objects.create(name="Pastries")
+        pastries = ProductCategory.objects.create(name="Breads & pastries")
         coffee = ProductCategory.objects.create(name="Coffee")
         self.croissant = Product.objects.create(
             name="Croissant",
@@ -434,6 +476,26 @@ class DeliveryNoteTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_rejects_ingredient_in_delivery_note(self):
+        ingredients = ProductCategory.objects.create(name="Ingredients")
+        flour = Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        self.client.force_authenticate(user=self.baker)
+        response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": flour.id, "quantity": "5"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("finished bakery", str(response.data).lower())
 
     def test_delivery_note_print_page(self):
         self.client.force_login(self.baker)

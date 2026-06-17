@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from branches.models import Branch, BranchType
+from catalog.constants import BAKERY_SELLABLE_CATEGORIES, is_bakery_transfer_product
 from catalog.models import Product
 
 from .models import (
@@ -123,14 +124,20 @@ class BakeryTransferCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Quantity must be greater than zero.")
         return value
 
+    def validate_product(self, product):
+        if not product.is_active:
+            raise serializers.ValidationError("Cannot transfer an inactive product.")
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be transferred to branches. "
+                f"Allowed categories: {', '.join(sorted(BAKERY_SELLABLE_CATEGORIES))}."
+            )
+        return product
+
     def validate(self, attrs):
         if attrs["from_branch"] == attrs["to_branch"]:
             raise serializers.ValidationError(
                 {"to_branch": "Source and destination branches must differ."}
-            )
-        if not attrs["product"].is_active:
-            raise serializers.ValidationError(
-                {"product": "Cannot transfer an inactive product."}
             )
         return attrs
 
@@ -184,6 +191,14 @@ class DeliveryNoteLineCreateSerializer(serializers.Serializer):
         queryset=Product.objects.filter(is_active=True)
     )
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def validate_product(self, product):
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be transferred to branches. "
+                f"Allowed categories: {', '.join(sorted(BAKERY_SELLABLE_CATEGORIES))}."
+            )
+        return product
 
     def validate_quantity(self, value):
         if value <= Decimal("0"):

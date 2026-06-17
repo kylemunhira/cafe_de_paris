@@ -5,6 +5,7 @@
 {% block page_title %}Point of Sale{% endblock %}
 
 {% block topbar_actions %}
+<button type="button" class="btn btn-ghost btn-sm" id="expense-btn">Add expense</button>
 <button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">Day end</button>
 {% endblock %}
 
@@ -37,6 +38,16 @@
     </div>
 
     <div id="order-mode-panel">
+      <div style="margin-bottom: 0.75rem;">
+        <input
+          type="search"
+          id="product-search"
+          class="report-input"
+          placeholder="Search products…"
+          style="max-width: 360px;"
+          autocomplete="off"
+        >
+      </div>
       <div class="category-tabs" id="category-tabs"></div>
       <div class="product-grid" id="product-grid">
         <div class="skeleton" style="height: 100px; grid-column: 1/-1;"></div>
@@ -86,12 +97,70 @@
     </div>
   </div>
 </div>
+
+<div
+  id="expense-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card" style="width:min(480px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <h3 style="margin:0; font-size:1.05rem;">Record expense</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="expense-close-btn">Close</button>
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="expense-date">Date</label>
+      <input type="date" id="expense-date">
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="expense-description">Description</label>
+      <input type="text" id="expense-description" maxlength="200" placeholder="e.g. Milk delivery, petty cash">
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="expense-currency">Currency</label>
+      <select id="expense-currency">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="expense-amount">Amount</label>
+      <input type="number" id="expense-amount" step="0.01" min="0.01" placeholder="0.00">
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+      <button type="button" class="btn btn-ghost" id="expense-cancel-btn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="expense-save-btn">Save expense</button>
+    </div>
+  </div>
+</div>
+
+<div
+  id="dayend-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card" style="width:min(560px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <h3 style="margin:0; font-size:1.05rem;">Day-end cash-up</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="dayend-close-btn">Close</button>
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="dayend-date">Report date</label>
+      <input type="date" id="dayend-date">
+    </div>
+    <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
+      Enter counted amounts per currency. Leave blank for currencies you have not counted.
+    </p>
+    <div id="dayend-currency-fields" style="display:grid; gap:0.6rem;"></div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+      <button type="button" class="btn btn-ghost" id="dayend-cancel-btn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="dayend-print-btn">Print cash-up</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 {% load l10n %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 
 const INCLUSIVE_TAX_RATE = {{ inclusive_tax_rate|unlocalize }};
 
@@ -99,6 +168,7 @@ const cart = new Map();
 let products = [];
 let categories = [];
 let activeCategory = "all";
+let searchQuery = "";
 let posMode = "order";
 let openOrders = [];
 let selectedOrder = null;
@@ -111,6 +181,7 @@ const orderType = document.getElementById("order-type");
 const tableGroup = document.getElementById("table-group");
 const tableNumber = document.getElementById("table-number");
 const categoryTabs = document.getElementById("category-tabs");
+const productSearchInput = document.getElementById("product-search");
 const productGrid = document.getElementById("product-grid");
 const cartItems = document.getElementById("cart-items");
 const cartTotal = document.getElementById("cart-total");
@@ -125,6 +196,21 @@ const paymentCurrencySelect = document.getElementById("payment-currency");
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const dayendBtn = document.getElementById("dayend-btn");
+const expenseBtn = document.getElementById("expense-btn");
+const expenseModal = document.getElementById("expense-modal");
+const expenseCloseBtn = document.getElementById("expense-close-btn");
+const expenseCancelBtn = document.getElementById("expense-cancel-btn");
+const expenseSaveBtn = document.getElementById("expense-save-btn");
+const expenseDateInput = document.getElementById("expense-date");
+const expenseDescriptionInput = document.getElementById("expense-description");
+const expenseCurrencySelect = document.getElementById("expense-currency");
+const expenseAmountInput = document.getElementById("expense-amount");
+const dayendModal = document.getElementById("dayend-modal");
+const dayendCloseBtn = document.getElementById("dayend-close-btn");
+const dayendCancelBtn = document.getElementById("dayend-cancel-btn");
+const dayendPrintBtn = document.getElementById("dayend-print-btn");
+const dayendDateInput = document.getElementById("dayend-date");
+const dayendCurrencyFields = document.getElementById("dayend-currency-fields");
 
 orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
@@ -365,14 +451,18 @@ function renderOpenOrdersList() {
     const typeLabel = o.order_type.replace("_", " ");
     const tableLabel = o.table_number ? ` · Table ${o.table_number}` : "";
     const selected = selectedOrder?.id === o.id ? " selected" : "";
+    const readyClass = o.kitchen_status === "ready" ? " receipt-order-ready" : "";
     return `
-      <button type="button" class="receipt-order-card${selected}" data-id="${o.id}">
+      <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.id}">
         <div class="receipt-order-card-top">
           <strong>#${o.id}</strong>
           <span class="receipt-order-amount">${formatCurrency(o.total_amount)}</span>
         </div>
         <div class="receipt-order-card-meta">${typeLabel}${tableLabel} · ${o.items?.length || 0} items</div>
-        <div class="receipt-order-card-time">${formatDate(o.created_at)}</div>
+        <div class="receipt-order-card-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+          <span>${formatDate(o.created_at)}</span>
+          ${kitchenStatusBadge(o.kitchen_status || "pending")}
+        </div>
       </button>
     `;
   }).join("");
@@ -438,13 +528,26 @@ function renderCategories() {
   `).join("");
 }
 
+function matchesProductSearch(product) {
+  if (!searchQuery) return true;
+  const haystack = [product.name, product.category_name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
 function renderProducts() {
-  const filtered = activeCategory === "all"
+  let filtered = activeCategory === "all"
     ? products
     : products.filter(p => p.category === Number(activeCategory));
+  filtered = filtered.filter(matchesProductSearch);
 
   if (!filtered.length) {
-    productGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>No products in this category</p></div>`;
+    const message = searchQuery
+      ? "No matching products"
+      : "No products in this category";
+    productGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
     return;
   }
 
@@ -461,6 +564,11 @@ categoryTabs.addEventListener("click", (e) => {
   if (!tab) return;
   activeCategory = tab.dataset.id;
   renderCategories();
+  renderProducts();
+});
+
+productSearchInput.addEventListener("input", () => {
+  searchQuery = productSearchInput.value.trim().toLowerCase();
   renderProducts();
 });
 
@@ -593,41 +701,237 @@ dayendBtn?.addEventListener("click", () => {
     showToast("Select a branch first", true);
     return;
   }
+  openDayEndModal();
+});
+
+expenseBtn?.addEventListener("click", () => {
+  if (!branchSelect.value) {
+    showToast("Select a branch first", true);
+    return;
+  }
+  openExpenseModal();
+});
+
+function closeExpenseModal() {
+  expenseModal.style.display = "none";
+}
+
+function openExpenseModal() {
+  const activeCurrencies = currencies.filter(c => c.is_active);
+  expenseDateInput.value = getTodayISO();
+  expenseDescriptionInput.value = "";
+  expenseAmountInput.value = "";
+  expenseCurrencySelect.innerHTML = activeCurrencies.map(currency => {
+    const label = currency.code || currency.name || `Currency ${currency.id}`;
+    const symbol = currency.symbol ? ` (${currency.symbol})` : "";
+    return `<option value="${currency.id}">${label}${symbol}</option>`;
+  }).join("");
+  if (baseCurrency) {
+    expenseCurrencySelect.value = String(baseCurrency.id);
+  } else if (activeCurrencies.length) {
+    expenseCurrencySelect.value = String(activeCurrencies[0].id);
+  }
+  expenseModal.style.display = "flex";
+  expenseDescriptionInput.focus();
+}
+
+async function saveExpense() {
+  const description = (expenseDescriptionInput.value || "").trim();
+  const amountRaw = (expenseAmountInput.value || "").trim();
+  const expenseDate = (expenseDateInput.value || "").trim() || getTodayISO();
+  const currencyId = expenseCurrencySelect.value;
+
+  if (!description) {
+    showToast("Enter a description", true);
+    expenseDescriptionInput.focus();
+    return;
+  }
+  if (!amountRaw) {
+    showToast("Enter an amount", true);
+    expenseAmountInput.focus();
+    return;
+  }
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    showToast("Amount must be a positive number", true);
+    expenseAmountInput.focus();
+    return;
+  }
+  if (!currencyId) {
+    showToast("Select a currency", true);
+    return;
+  }
+
+  expenseSaveBtn.disabled = true;
+  try {
+    await apiPost("/expenses/", {
+      branch: Number(branchSelect.value),
+      expense_date: expenseDate,
+      amount: amount.toFixed(2),
+      currency: Number(currencyId),
+      description,
+    });
+    showToast("Expense recorded");
+    closeExpenseModal();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    expenseSaveBtn.disabled = false;
+  }
+}
+
+expenseCloseBtn?.addEventListener("click", closeExpenseModal);
+expenseCancelBtn?.addEventListener("click", closeExpenseModal);
+expenseSaveBtn?.addEventListener("click", saveExpense);
+expenseModal?.addEventListener("click", (event) => {
+  if (event.target === expenseModal) closeExpenseModal();
+});
+expenseModal?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeExpenseModal();
+});
+
+function getTodayISO() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function closeDayEndModal() {
+  dayendModal.style.display = "none";
+}
+
+function openDayEndModal() {
+  const activeCurrencies = currencies.filter(c => c.is_active);
+  dayendDateInput.value = getTodayISO();
+  dayendCurrencyFields.innerHTML = activeCurrencies.map(currency => {
+    const label = currency.code || currency.name || `Currency ${currency.id}`;
+    const symbol = currency.symbol ? ` (${currency.symbol})` : "";
+    return `
+      <div class="form-group" style="margin:0;">
+        <label for="dayend-counted-${currency.id}">${label}${symbol}</label>
+        <input
+          type="number"
+          id="dayend-counted-${currency.id}"
+          data-currency-id="${currency.id}"
+          step="0.01"
+          min="0"
+          placeholder="Leave blank to skip"
+        >
+      </div>
+    `;
+  }).join("");
+  dayendModal.style.display = "flex";
+  dayendDateInput.focus();
+}
+
+function buildDayEndQuery() {
+  const reportDate = (dayendDateInput.value || "").trim() || getTodayISO();
+  const params = new URLSearchParams({
+    branch: String(branchSelect.value),
+    date: reportDate,
+    auto: "1",
+  });
+  const inputs = dayendCurrencyFields.querySelectorAll("input[data-currency-id]");
+  for (const input of inputs) {
+    const raw = (input.value || "").trim();
+    if (!raw) continue;
+    const parsed = Number(raw);
+    const currencyId = input.dataset.currencyId;
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return { error: `Invalid amount for currency ${currencyId}` };
+    }
+    params.set(`counted_${currencyId}`, String(parsed));
+  }
+  return { params };
+}
+
+function printDayEndReport() {
+  const { params, error } = buildDayEndQuery();
+  if (error) {
+    showToast(error, true);
+    return;
+  }
   const printWindow = window.open("about:blank", "_blank");
-  const url = `/pos/day-end/print/?branch=${encodeURIComponent(branchSelect.value)}&auto=1`;
+  const url = `/pos/day-end/print/?${params.toString()}`;
   if (printWindow) {
     printWindow.location.href = url;
   } else {
     window.open(url, "_blank", "noopener");
   }
+  closeDayEndModal();
+}
+
+dayendCloseBtn?.addEventListener("click", closeDayEndModal);
+dayendCancelBtn?.addEventListener("click", closeDayEndModal);
+dayendPrintBtn?.addEventListener("click", printDayEndReport);
+dayendModal?.addEventListener("click", (event) => {
+  if (event.target === dayendModal) closeDayEndModal();
+});
+dayendModal?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeDayEndModal();
 });
 
 async function init() {
-  const [branchesData, productsData, categoriesData, currenciesData] = await Promise.all([
-    apiGet("/branches/"),
-    apiGet("/products/"),
-    apiGet("/categories/"),
-    apiGet("/currencies/?page_size=500"),
-  ]);
+  try {
+    const [branchesData, productsData, categoriesData, currenciesData] = await Promise.all([
+      apiGet("/branches/?page_size=500"),
+      apiGet("/products/?page_size=500"),
+      apiGet("/categories/?page_size=500"),
+      apiGet("/currencies/?page_size=500"),
+    ]);
 
-  currencies = unwrapList(currenciesData);
-  baseCurrency = currencies.find(c => c.is_base) || null;
+    currencies = unwrapList(currenciesData);
+    baseCurrency = currencies.find(c => c.is_base) || null;
 
-  const branches = unwrapList(branchesData).filter(b => b.is_active && b.branch_type !== "hq");
-  products = unwrapList(productsData).filter(p => p.is_active && p.category_name !== "Ingredients");
-  categories = unwrapList(categoriesData).filter(c =>
-    products.some(p => p.category === c.id)
-  );
+    const branches = unwrapList(branchesData).filter(
+      b => b.is_active && b.branch_type !== "bakery"
+    );
+    products = unwrapList(productsData).filter(
+      p => p.is_active && p.category_name !== "Ingredients"
+    );
+    categories = unwrapList(categoriesData).filter(c =>
+      products.some(p => p.category === c.id)
+    );
 
-  branchSelect.innerHTML = branches.length
-    ? branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")
-    : `<option value="">No branches available</option>`;
+    if (!branches.length) {
+      branchSelect.innerHTML = `<option value="">No branches available</option>`;
+      branchSelect.disabled = true;
+    } else {
+      const preferred = preferredBranchId
+        && branches.some(b => String(b.id) === preferredBranchId)
+        ? preferredBranchId
+        : "";
 
-  renderCategories();
-  renderProducts();
-  renderCart();
+      if (branches.length === 1) {
+        branchSelect.innerHTML = branches.map(
+          b => `<option value="${b.id}" selected>${b.name}</option>`
+        ).join("");
+        branchSelect.disabled = true;
+      } else {
+        branchSelect.innerHTML = branches.map(
+          b => `<option value="${b.id}"${String(b.id) === preferred ? " selected" : ""}>${b.name}</option>`
+        ).join("");
+      }
+    }
+
+    renderCategories();
+    renderProducts();
+    renderCart();
+  } catch (err) {
+    branchSelect.innerHTML = `<option value="">Failed to load</option>`;
+    productGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>Could not load POS data. Refresh the page or check your connection.</p></div>`;
+    throw err;
+  }
 }
 
+const preferredBranchId = "{{ staff_branch_id|default:'' }}";
+
 init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
+
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
+});
 </script>
 {% endblock %}

@@ -18,6 +18,13 @@ class RecipeSerializer(serializers.ModelSerializer):
         source="ingredient.category.name",
         read_only=True,
     )
+    ingredient_unit_cost = serializers.DecimalField(
+        source="ingredient.selling_price",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    line_cost = serializers.SerializerMethodField()
 
     class Meta:
         model = Recipe
@@ -30,7 +37,14 @@ class RecipeSerializer(serializers.ModelSerializer):
             "ingredient_name",
             "ingredient_category",
             "quantity_required",
+            "ingredient_unit_cost",
+            "line_cost",
         ]
+
+    def get_line_cost(self, obj):
+        return (obj.quantity_required * obj.ingredient.selling_price).quantize(
+            Decimal("0.01")
+        )
 
     def validate_quantity_required(self, value):
         if value <= Decimal("0"):

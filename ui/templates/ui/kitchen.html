@@ -1,0 +1,275 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Kitchen — Café de Paris{% endblock %}
+{% block page_title %}Kitchen{% endblock %}
+
+{% block extra_head %}
+<style>
+  .kitchen-toolbar {
+    display: flex;
+    gap: 1rem;
+    align-items: end;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .kitchen-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  @media (max-width: 1100px) {
+    .kitchen-board { grid-template-columns: 1fr; }
+  }
+  .kitchen-column {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(44, 24, 16, 0.06);
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+  }
+  .kitchen-column-header {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid rgba(44, 24, 16, 0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+  }
+  .kitchen-column-body {
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex: 1;
+  }
+  .kitchen-order-card {
+    background: #fff;
+    border: 1px solid rgba(44, 24, 16, 0.08);
+    border-radius: var(--radius-md);
+    padding: 0.9rem;
+    box-shadow: 0 1px 2px rgba(44, 24, 16, 0.04);
+  }
+  .kitchen-order-card.ready-card {
+    border-color: #86efac;
+    background: #f0fdf4;
+  }
+  .kitchen-order-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+  .kitchen-order-meta {
+    font-size: 0.82rem;
+    color: var(--color-muted);
+    margin-bottom: 0.65rem;
+  }
+  .kitchen-items {
+    margin: 0 0 0.75rem;
+    padding-left: 1.1rem;
+    font-size: 0.92rem;
+  }
+  .kitchen-items li { margin-bottom: 0.2rem; }
+  .kitchen-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .kitchen-empty {
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 2rem 1rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kitchen-toolbar card" style="padding: 1rem 1.25rem;">
+  <div class="form-group" style="margin: 0; min-width: 220px;">
+    <label for="kitchen-branch">Branch</label>
+    <select id="kitchen-branch">
+      <option value="">Loading…</option>
+    </select>
+  </div>
+  <div style="font-size: 0.85rem; color: var(--color-muted); padding-bottom: 0.15rem;">
+    Open POS orders appear here for the kitchen to prepare.
+  </div>
+</div>
+
+<div class="kitchen-board" id="kitchen-board">
+  <div class="kitchen-column">
+    <div class="kitchen-column-header">
+      <span>New orders</span>
+      <span class="badge badge-open" id="count-pending">0</span>
+    </div>
+    <div class="kitchen-column-body" id="col-pending"></div>
+  </div>
+  <div class="kitchen-column">
+    <div class="kitchen-column-header">
+      <span>Preparing</span>
+      <span class="badge badge-requested" id="count-preparing">0</span>
+    </div>
+    <div class="kitchen-column-body" id="col-preparing"></div>
+  </div>
+  <div class="kitchen-column">
+    <div class="kitchen-column-header">
+      <span>Ready for pickup</span>
+      <span class="badge badge-delivered" id="count-ready">0</span>
+    </div>
+    <div class="kitchen-column-body" id="col-ready"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+let branches = [];
+let orders = [];
+let refreshTimer = null;
+
+const branchSelect = document.getElementById("kitchen-branch");
+const colPending = document.getElementById("col-pending");
+const colPreparing = document.getElementById("col-preparing");
+const colReady = document.getElementById("col-ready");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function orderMeta(order) {
+  const typeLabel = order.order_type.replace("_", " ");
+  const tableLabel = order.table_number ? ` · Table ${order.table_number}` : "";
+  return `${typeLabel}${tableLabel} · ${formatDate(order.created_at)}`;
+}
+
+function renderOrderCard(order) {
+  const items = (order.items || []).map(item =>
+    `<li><strong>${formatQty(item.quantity)}×</strong> ${item.product_name}</li>`
+  ).join("");
+
+  let actions = "";
+  if (order.kitchen_status === "pending") {
+    actions = `<button type="button" class="btn btn-accent btn-sm kitchen-action-btn" data-action="start-preparing" data-id="${order.id}">Start preparing</button>`;
+  } else if (order.kitchen_status === "preparing") {
+    actions = `<button type="button" class="btn btn-primary btn-sm kitchen-action-btn" data-action="mark-ready" data-id="${order.id}">Mark ready</button>`;
+  } else {
+    actions = `<span class="badge badge-delivered">Ready for cashier</span>`;
+  }
+
+  return `
+    <div class="kitchen-order-card${order.kitchen_status === "ready" ? " ready-card" : ""}">
+      <div class="kitchen-order-top">
+        <strong>Order #${order.id}</strong>
+        ${kitchenStatusBadge(order.kitchen_status)}
+      </div>
+      <div class="kitchen-order-meta">${orderMeta(order)}</div>
+      <ul class="kitchen-items">${items || "<li>No items</li>"}</ul>
+      <div class="kitchen-actions">${actions}</div>
+    </div>
+  `;
+}
+
+function renderBoard() {
+  const pending = orders.filter(o => o.kitchen_status === "pending");
+  const preparing = orders.filter(o => o.kitchen_status === "preparing");
+  const ready = orders.filter(o => o.kitchen_status === "ready");
+
+  document.getElementById("count-pending").textContent = pending.length;
+  document.getElementById("count-preparing").textContent = preparing.length;
+  document.getElementById("count-ready").textContent = ready.length;
+
+  colPending.innerHTML = pending.length
+    ? pending.map(renderOrderCard).join("")
+    : `<div class="kitchen-empty">No new orders</div>`;
+  colPreparing.innerHTML = preparing.length
+    ? preparing.map(renderOrderCard).join("")
+    : `<div class="kitchen-empty">Nothing in progress</div>`;
+  colReady.innerHTML = ready.length
+    ? ready.map(renderOrderCard).join("")
+    : `<div class="kitchen-empty">No orders ready yet</div>`;
+}
+
+async function loadOrders() {
+  if (!branchSelect.value) {
+    orders = [];
+    renderBoard();
+    return;
+  }
+
+  try {
+    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}&page_size=500`);
+    orders = unwrapList(data).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    renderBoard();
+  } catch (err) {
+    showToast(`Failed to load kitchen orders: ${err.message}`, true);
+  }
+}
+
+const preferredBranchId = "{{ staff_branch_id|default:'' }}";
+
+async function loadBranches() {
+  const data = await apiGet("/branches/?page_size=500");
+  branches = unwrapList(data).filter(
+    b => b.is_active && b.branch_type !== "bakery"
+  );
+
+  if (!branches.length) {
+    branchSelect.innerHTML = `<option value="">No branches available</option>`;
+    branchSelect.disabled = true;
+    await loadOrders();
+    return;
+  }
+
+  const preferred = preferredBranchId
+    && branches.some(b => String(b.id) === preferredBranchId)
+    ? preferredBranchId
+    : "";
+
+  if (branches.length === 1) {
+    branchSelect.innerHTML = branches.map(
+      b => `<option value="${b.id}" selected>${b.name}</option>`
+    ).join("");
+    branchSelect.disabled = true;
+  } else {
+    branchSelect.innerHTML = `<option value="">Select branch…</option>${branches.map(
+      b => `<option value="${b.id}"${String(b.id) === preferred ? " selected" : ""}>${b.name}</option>`
+    ).join("")}`;
+  }
+
+  await loadOrders();
+}
+
+branchSelect.addEventListener("change", loadOrders);
+
+document.getElementById("kitchen-board").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".kitchen-action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(`/orders/${id}/${action}/`, {});
+    const index = orders.findIndex(o => String(o.id) === id);
+    if (index >= 0) orders[index] = updated;
+    renderBoard();
+    showToast(`Order #${id} ${action === "start-preparing" ? "is being prepared" : "is ready"}`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.disabled = false;
+    btn.textContent = action === "start-preparing" ? "Start preparing" : "Mark ready";
+  }
+});
+
+loadBranches().catch(err => showToast(err.message, true));
+refreshTimer = setInterval(loadOrders, 15000);
+window.addEventListener("beforeunload", () => clearInterval(refreshTimer));
+</script>
+{% endblock %}

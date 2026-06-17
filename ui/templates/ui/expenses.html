@@ -1,0 +1,321 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Expenses — Café de Paris{% endblock %}
+{% block page_title %}Expenses{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record expense</h3>
+  <form id="expense-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="expense-branch">Branch</label>
+        <select id="expense-branch" required>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="expense-date">Date</label>
+        <input type="date" id="expense-date" required>
+      </div>
+      <div class="form-group">
+        <label for="expense-currency">Currency</label>
+        <select id="expense-currency" required>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="expense-amount">Amount</label>
+        <input type="number" id="expense-amount" step="0.01" min="0.01" placeholder="0.00" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="expense-description">Description</label>
+      <input type="text" id="expense-description" maxlength="200" placeholder="e.g. Milk delivery, petty cash" required>
+    </div>
+    <button type="submit" class="btn btn-primary" id="expense-submit-btn">Save expense</button>
+  </form>
+</div>
+
+<div class="card report-filters" style="margin-bottom: 1.25rem;">
+  <div class="report-filters-grid">
+    <label>
+      <span>From</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>To</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="expense-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(2, 1fr);">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <input
+      type="search"
+      id="expense-search"
+      class="report-input"
+      placeholder="Search description, branch, recorded by…"
+      style="max-width: 360px;"
+    >
+  </div>
+  <div class="table-wrap" id="expenses-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
+
+const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
+
+let branches = [];
+let currencies = [];
+let allExpenses = [];
+let searchQuery = "";
+
+const expenseForm = document.getElementById("expense-form");
+const expenseBranch = document.getElementById("expense-branch");
+const expenseDate = document.getElementById("expense-date");
+const expenseCurrency = document.getElementById("expense-currency");
+const expenseAmount = document.getElementById("expense-amount");
+const expenseDescription = document.getElementById("expense-description");
+const expenseSubmitBtn = document.getElementById("expense-submit-btn");
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const applyFiltersBtn = document.getElementById("apply-filters");
+const expenseStats = document.getElementById("expense-stats");
+const expensesTable = document.getElementById("expenses-table");
+const searchInput = document.getElementById("expense-search");
+
+function getTodayISO() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function setDefaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  filterTo.value = getTodayISO();
+  filterFrom.value = start.toISOString().slice(0, 10);
+  expenseDate.value = getTodayISO();
+}
+
+function formatAmount(expense) {
+  const value = Number(expense.amount);
+  if (!Number.isFinite(value)) return "—";
+  const symbol = expense.currency_symbol || "";
+  return `${symbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function matchesSearch(expense) {
+  if (!searchQuery) return true;
+  const haystack = [
+    expense.description,
+    expense.branch_name,
+    expense.currency_code,
+    expense.currency_name,
+    expense.recorded_by_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function renderStats() {
+  const count = allExpenses.length;
+  const totalsByCurrency = new Map();
+  for (const expense of allExpenses) {
+    const key = expense.currency_code || expense.currency_name || "—";
+    const prev = totalsByCurrency.get(key) || { symbol: expense.currency_symbol || "", total: 0 };
+    prev.total += Number(expense.amount) || 0;
+    totalsByCurrency.set(key, prev);
+  }
+  const totalSummary = [...totalsByCurrency.entries()]
+    .map(([code, row]) => `${row.symbol}${row.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${code}`)
+    .join(" · ") || "—";
+
+  expenseStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Expenses</div>
+      <div class="value">${count}</div>
+      <div class="sub">In selected period</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Total spent</div>
+      <div class="value" style="font-size: 1.25rem;">${totalSummary}</div>
+      <div class="sub">By currency</div>
+    </div>
+  `;
+}
+
+function renderExpenses() {
+  const filtered = allExpenses.filter(matchesSearch);
+
+  if (!filtered.length) {
+    expensesTable.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching expenses" : "No expenses in this period"}</p></div>`;
+    return;
+  }
+
+  expensesTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Branch</th>
+          <th>Description</th>
+          <th style="text-align: right;">Amount</th>
+          <th>Recorded by</th>
+          <th>Logged</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(expense => `
+          <tr>
+            <td>${expense.expense_date}</td>
+            <td>${expense.branch_name}</td>
+            <td>${expense.description}</td>
+            <td style="text-align: right; white-space: nowrap;">
+              ${formatAmount(expense)}
+              ${expense.currency_code ? `<span style="color: var(--color-muted); font-size: 0.85em;">${expense.currency_code}</span>` : ""}
+            </td>
+            <td>${expense.recorded_by_name || "—"}</td>
+            <td>${formatDate(expense.created_at)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function populateBranchSelects() {
+  const options = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+  expenseBranch.innerHTML = `<option value="">Select branch…</option>${options}`;
+  filterBranch.innerHTML = `<option value="">All branches</option>${options}`;
+
+  if (STAFF_BRANCH_ID) {
+    expenseBranch.value = String(STAFF_BRANCH_ID);
+    filterBranch.value = String(STAFF_BRANCH_ID);
+  } else if (branches.length === 1) {
+    expenseBranch.value = String(branches[0].id);
+  }
+}
+
+function populateCurrencySelect() {
+  const active = currencies.filter(c => c.is_active);
+  expenseCurrency.innerHTML = active.map(currency => {
+    const label = currency.code || currency.name || `Currency ${currency.id}`;
+    const symbol = currency.symbol ? ` (${currency.symbol})` : "";
+    return `<option value="${currency.id}">${label}${symbol}</option>`;
+  }).join("");
+  const base = active.find(c => c.is_base);
+  if (base) expenseCurrency.value = String(base.id);
+  else if (active.length) expenseCurrency.value = String(active[0].id);
+}
+
+function listParams() {
+  const params = {};
+  if (filterFrom.value) params.from = filterFrom.value;
+  if (filterTo.value) params.to = filterTo.value;
+  if (filterBranch.value) params.branch = filterBranch.value;
+  return params;
+}
+
+async function loadExpenses() {
+  expensesTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    allExpenses = await fetchAllPages("/expenses/", listParams());
+    renderStats();
+    renderExpenses();
+  } catch (err) {
+    expensesTable.innerHTML = `<div class="empty-state">Failed to load expenses: ${err.message}</div>`;
+  }
+}
+
+expenseForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const branchId = expenseBranch.value;
+  const description = expenseDescription.value.trim();
+  const amountRaw = expenseAmount.value.trim();
+  const amount = Number(amountRaw);
+
+  if (!branchId) {
+    showToast("Select a branch", true);
+    return;
+  }
+  if (!description) {
+    showToast("Enter a description", true);
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    showToast("Amount must be a positive number", true);
+    return;
+  }
+
+  expenseSubmitBtn.disabled = true;
+  try {
+    await apiPost("/expenses/", {
+      branch: Number(branchId),
+      expense_date: expenseDate.value || getTodayISO(),
+      amount: amount.toFixed(2),
+      currency: Number(expenseCurrency.value),
+      description,
+    });
+    showToast("Expense recorded");
+    expenseDescription.value = "";
+    expenseAmount.value = "";
+    await loadExpenses();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    expenseSubmitBtn.disabled = false;
+  }
+});
+
+applyFiltersBtn.addEventListener("click", loadExpenses);
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderExpenses();
+});
+
+setDefaultDates();
+
+Promise.all([
+  apiGet("/branches/"),
+  apiGet("/currencies/"),
+])
+  .then(([branchData, currencyData]) => {
+    branches = unwrapList(branchData);
+    currencies = unwrapList(currencyData);
+    populateBranchSelects();
+    populateCurrencySelect();
+    return loadExpenses();
+  })
+  .catch(err => {
+    expensesTable.innerHTML = `<div class="empty-state">Failed to load page: ${err.message}</div>`;
+  });
+</script>
+{% endblock %}

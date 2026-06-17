@@ -2,12 +2,43 @@ from decimal import Decimal
 
 from accounts.branch_access import effective_branch_id
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
-from branches.models import Branch
+from branches.models import Branch, BranchType
 from catalog.models import Product
 
 from .models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, Supplier
+from .services import apply_purchase_order_inventory
+
+INGREDIENTS_CATEGORY = "Ingredients"
+
+
+def _validate_purchase_lines_for_branch(branch, lines):
+    """Bakery POs may only include raw materials; other branches may buy any product."""
+    errors = []
+    for index, line in enumerate(lines):
+        product = line["product"]
+        is_ingredient = product.category.name == INGREDIENTS_CATEGORY
+        if branch.branch_type == BranchType.BAKERY and not is_ingredient:
+            errors.append(
+                {
+                    "lines": {
+                        index: {
+                            "product": (
+                                "Bakery purchase orders can only include raw materials "
+                                f"({INGREDIENTS_CATEGORY} category)."
+                            )
+                        }
+                    }
+                }
+            )
+    if errors:
+        merged = {}
+        for entry in errors:
+            for field, value in entry.items():
+                merged.setdefault(field, {}).update(value)
+        raise serializers.ValidationError(merged)
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -47,7 +78,7 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
 
 class PurchaseOrderLineCreateSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(
-        queryset=Product.objects.filter(is_active=True)
+        queryset=Product.objects.filter(is_active=True).select_related("category")
     )
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
     unit_cost = serializers.DecimalField(
@@ -146,6 +177,13 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
             )
         return branch
 
+    def validate(self, attrs):
+        branch = attrs.get("branch")
+        lines = attrs.get("lines")
+        if branch and lines:
+            _validate_purchase_lines_for_branch(branch, lines)
+        return attrs
+
     def create(self, validated_data):
         lines_data = validated_data.pop("lines")
         notes = validated_data.pop("notes", "")
@@ -153,9 +191,14 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
         created_by = request.user if request and request.user.is_authenticated else None
 
         with transaction.atomic():
+            now = timezone.now()
             purchase_order = PurchaseOrder.objects.create(
                 notes=notes,
                 created_by=created_by,
+                status=PurchaseOrderStatus.RECEIVED,
+                submitted_at=now,
+                approved_at=now,
+                received_at=now,
                 **validated_data,
             )
             PurchaseOrderLine.objects.bulk_create(
@@ -169,6 +212,7 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
                     for line in lines_data
                 ]
             )
+            apply_purchase_order_inventory(purchase_order)
         return purchase_order
 
 
@@ -187,6 +231,12 @@ class PurchaseOrderUpdateSerializer(serializers.Serializer):
             if len(product_ids) != len(set(product_ids)):
                 raise serializers.ValidationError("Each product may only appear once.")
         return value
+
+    def validate(self, attrs):
+        lines = attrs.get("lines")
+        if lines is not None:
+            _validate_purchase_lines_for_branch(self.instance.branch, lines)
+        return attrs
 
     def update(self, instance, validated_data):
         if instance.status != PurchaseOrderStatus.DRAFT:

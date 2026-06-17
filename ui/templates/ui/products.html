@@ -56,6 +56,16 @@
   </form>
 </div>
 
+<div style="margin-bottom: 1rem;">
+  <input
+    type="search"
+    id="product-search"
+    class="report-input"
+    placeholder="Search products…"
+    style="max-width: 360px;"
+    autocomplete="off"
+  >
+</div>
 <div class="category-tabs" id="category-tabs" style="margin-bottom: 1.25rem;"></div>
 <div class="product-grid-page" id="product-list">
   <div class="skeleton" style="height: 140px;"></div>
@@ -81,10 +91,12 @@ function formatPercent(value) {
 let products = [];
 let categories = [];
 let activeCategory = "all";
+let searchQuery = "";
 const productForm = document.getElementById("product-form");
 const categorySelect = document.getElementById("product-category");
 const productSubmit = document.getElementById("product-submit");
 const categoryTabs = document.getElementById("category-tabs");
+const productSearchInput = document.getElementById("product-search");
 const productList = document.getElementById("product-list");
 const csvUpload = document.getElementById("csv-upload");
 
@@ -97,6 +109,15 @@ function renderCategoryOptions() {
   }
 }
 
+function matchesSearch(product) {
+  if (!searchQuery) return true;
+  const haystack = [product.name, product.category_name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
 function render() {
   const categories = [...new Set(products.map(p => p.category_name))].sort();
   const tabs = ["all", ...categories];
@@ -107,12 +128,14 @@ function render() {
     </button>
   `).join("");
 
-  const filtered = activeCategory === "all"
+  let filtered = activeCategory === "all"
     ? products
     : products.filter(p => p.category_name === activeCategory);
+  filtered = filtered.filter(matchesSearch);
 
   if (!filtered.length) {
-    productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>No products found</p></div>`;
+    const message = searchQuery ? "No matching products" : "No products found";
+    productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
     return;
   }
 
@@ -137,14 +160,14 @@ function render() {
 }
 
 async function loadProducts() {
-  const productsData = await apiGet("/products/?page_size=500");
+  const productsData = await apiGet("/products/?exclude_category=Ingredients&page_size=500");
   products = unwrapList(productsData);
   render();
 }
 
 async function loadCategories() {
   const data = await apiGet("/categories/?page_size=500");
-  categories = unwrapList(data);
+  categories = unwrapList(data).filter(c => c.name !== "Ingredients");
   renderCategoryOptions();
 }
 
@@ -182,6 +205,11 @@ categoryTabs.addEventListener("click", (e) => {
   const tab = e.target.closest(".category-tab");
   if (!tab) return;
   activeCategory = tab.dataset.cat;
+  render();
+});
+
+productSearchInput.addEventListener("input", () => {
+  searchQuery = productSearchInput.value.trim().toLowerCase();
   render();
 });
 

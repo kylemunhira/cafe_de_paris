@@ -77,12 +77,6 @@
           <td class="col-label">Paid in</td>
           <td class="col-amt"><strong>{{ order.payment_currency.code|default:order.payment_currency.name }}</strong></td>
         </tr>
-        {% if order.exchange_rate and not order.payment_currency.is_base %}
-        <tr>
-          <td class="col-label">Exchange rate</td>
-          <td class="col-amt">{{ order.exchange_rate }}</td>
-        </tr>
-        {% endif %}
       </table>
     </div>
     <table class="summary grand">

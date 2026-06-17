@@ -17,7 +17,10 @@ from .models import SyncedClientOrder
 def get_branch_catalog_payload(branch):
     """Products and categories a cashier POS needs for the assigned branch."""
     products = (
-        ProductSerializer.Meta.model.objects.filter(is_active=True)
+        ProductSerializer.Meta.model.objects.filter(
+            is_active=True,
+            category__is_asset=False,
+        )
         .exclude(category__name="Ingredients")
         .select_related("category")
         .order_by("name")

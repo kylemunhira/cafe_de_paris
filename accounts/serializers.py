@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
-from branches.models import Branch
+from branches.models import Branch, BranchType
 
 from .models import StaffProfile, StaffRole
 
@@ -27,6 +27,10 @@ class StaffUserSerializer(serializers.ModelSerializer):
         source="staff_profile.get_role_display",
         read_only=True,
     )
+    pos_access = serializers.BooleanField(
+        source="staff_profile.pos_access",
+        required=False,
+    )
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
@@ -39,6 +43,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
             "branch_name",
             "role",
             "role_display",
+            "pos_access",
             "is_active",
             "date_joined",
             "password",
@@ -63,12 +68,20 @@ class StaffUserSerializer(serializers.ModelSerializer):
         profile_data = validated_data.pop("staff_profile")
         branch = profile_data["branch"]
         role = profile_data.get("role", StaffRole.CASHIER)
+        pos_access = profile_data.get("pos_access")
+        if pos_access is None:
+            pos_access = branch.branch_type == BranchType.BRANCH
         password = validated_data.pop("password")
 
         user = User(**validated_data)
         user.set_password(password)
         user.save()
-        StaffProfile.objects.create(user=user, branch=branch, role=role)
+        StaffProfile.objects.create(
+            user=user,
+            branch=branch,
+            role=role,
+            pos_access=pos_access,
+        )
         return user
 
     @transaction.atomic
@@ -87,5 +100,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
             profile.branch = profile_data["branch"]
         if "role" in profile_data:
             profile.role = profile_data["role"]
+        if "pos_access" in profile_data:
+            profile.pos_access = profile_data["pos_access"]
         profile.save()
         return instance

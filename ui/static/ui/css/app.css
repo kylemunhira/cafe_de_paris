@@ -583,6 +583,11 @@ table.data-table tbody tr:hover {
   box-shadow: 0 0 0 2px rgba(44, 24, 16, 0.08);
 }
 
+.receipt-order-card.receipt-order-ready {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 .receipt-order-card-top {
   display: flex;
   justify-content: space-between;
@@ -948,6 +953,21 @@ table.data-table tbody tr:hover {
 
 .report-panel-note {
   font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.report-section-header {
+  margin: 1.5rem 0 1rem;
+}
+
+.report-section-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.report-section-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
   color: var(--color-muted);
 }
 

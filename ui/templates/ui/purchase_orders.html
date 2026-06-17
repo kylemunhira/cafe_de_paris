@@ -1,12 +1,15 @@
 {% extends "ui/base.html" %}
 {% load static %}
 
-{% block title %}Purchase Orders — Café de Paris{% endblock %}
-{% block page_title %}Purchase Orders{% endblock %}
+{% block title %}Purchases — Café de Paris{% endblock %}
+{% block page_title %}Purchases{% endblock %}
 
 {% block content %}
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New purchase order</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record purchase</h3>
+  <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted);">
+    Stock is added to the branch immediately when you save.
+  </p>
   <form id="po-form">
     <div class="form-row">
       <div class="form-group">
@@ -27,9 +30,20 @@
       <input type="text" id="po-notes" placeholder="Optional reference or delivery instructions">
     </div>
 
+    <div class="form-group" id="po-type-wrap">
+      <label>Purchase for</label>
+      <div class="category-tabs" id="po-type-tabs" style="margin-top: 0.35rem;">
+        <button type="button" class="category-tab" data-type="ingredients">Raw materials</button>
+        <button type="button" class="category-tab active" data-type="pos">POS products</button>
+      </div>
+      <p class="form-hint" id="po-type-hint" style="margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
+        Menu items sold at the till — same products as on POS.
+      </p>
+    </div>
+
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
-        <label for="po-product">Product</label>
+        <label for="po-product" id="po-product-label">Product</label>
         <select id="po-product">
           <option value="">Select product…</option>
         </select>
@@ -69,13 +83,11 @@
       </table>
     </div>
 
-    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create draft PO</button>
+    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Record purchase</button>
   </form>
 </div>
 
-<div class="stat-grid" id="po-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(4, 1fr);">
-  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
-  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+<div class="stat-grid" id="po-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(2, 1fr);">
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
 </div>
@@ -83,10 +95,6 @@
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
     <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="draft">Draft</button>
-    <button class="category-tab" data-filter="submitted">Submitted</button>
-    <button class="category-tab" data-filter="approved">Approved</button>
-    <button class="category-tab" data-filter="received">Received</button>
     <button class="category-tab" data-filter="cancelled">Cancelled</button>
   </div>
   <div class="table-wrap" id="po-table">
@@ -96,9 +104,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-  const CAN_APPROVE = {{ can_approve_purchase_orders|yesno:"true,false" }};
-</script>
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 
@@ -108,12 +113,22 @@ let suppliers = [];
 let products = [];
 let draftLines = [];
 let activeFilter = "all";
+let purchaseType = "pos";
+
+const canPurchaseForAnyBranch = {{ can_purchase_for_any_branch|yesno:"true,false" }};
+const staffBranchId = "{{ staff_branch_id|default:'' }}";
+
+const INGREDIENTS_CATEGORY = "Ingredients";
 
 const poForm = document.getElementById("po-form");
 const branchSelect = document.getElementById("po-branch");
 const supplierSelect = document.getElementById("po-supplier");
 const notesInput = document.getElementById("po-notes");
+const poTypeWrap = document.getElementById("po-type-wrap");
+const poTypeTabs = document.getElementById("po-type-tabs");
+const poTypeHint = document.getElementById("po-type-hint");
 const productSelect = document.getElementById("po-product");
+const productLabel = document.getElementById("po-product-label");
 const qtyInput = document.getElementById("po-qty");
 const costInput = document.getElementById("po-cost");
 const linesWrap = document.getElementById("lines-wrap");
@@ -134,6 +149,106 @@ function lineSummary(order) {
   const preview = order.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
   const extra = order.lines.length > 2 ? ` +${order.lines.length - 2} more` : "";
   return preview.join(", ") + extra;
+}
+
+function selectedBranch() {
+  const branchId = branchSelect.value;
+  if (!branchId) return null;
+  return branches.find(b => String(b.id) === branchId) || null;
+}
+
+function branchTypeLabel(branch) {
+  if (branch.branch_type === "bakery") return " (Bakery)";
+  if (branch.branch_type === "hq") return " (HQ)";
+  return "";
+}
+
+function isBakeryBranch(branch) {
+  return branch?.branch_type === "bakery";
+}
+
+function branchesForPurchase(allBranches) {
+  if (canPurchaseForAnyBranch) return allBranches;
+  if (!staffBranchId) return [];
+  return allBranches.filter(b => String(b.id) === staffBranchId);
+}
+
+function isIngredientProduct(product) {
+  return product.category_name === INGREDIENTS_CATEGORY;
+}
+
+async function fetchAllProducts(params = {}) {
+  const query = new URLSearchParams({ page_size: "1000", ...params });
+  let page = 1;
+  let all = [];
+  while (true) {
+    query.set("page", String(page));
+    const data = await apiGet(`/products/?${query}`);
+    all = all.concat(unwrapList(data));
+    if (!data.next) break;
+    page += 1;
+  }
+  return all;
+}
+
+function purchaseTypeHintText(type, branch) {
+  if (isBakeryBranch(branch)) {
+    return "Bakery purchase orders use raw materials only (Ingredients category).";
+  }
+  if (type === "ingredients") {
+    return "Kitchen supplies from the Ingredients category — milk, beans, flour, etc. These do not appear on POS.";
+  }
+  return "Menu items sold at the till — same products as on POS.";
+}
+
+function updatePurchaseTypeUi() {
+  const branch = selectedBranch();
+  const isBakery = isBakeryBranch(branch);
+
+  poTypeWrap.style.display = isBakery ? "none" : "";
+  poTypeHint.textContent = purchaseTypeHintText(isBakery ? "ingredients" : purchaseType, branch);
+
+  if (isBakery) {
+    purchaseType = "ingredients";
+  }
+
+  poTypeTabs?.querySelectorAll(".category-tab").forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.type === purchaseType);
+  });
+}
+
+function productsForBranch(branch, type = purchaseType) {
+  const effectiveType = isBakeryBranch(branch) ? "ingredients" : type;
+  if (effectiveType === "ingredients") {
+    return products.filter(isIngredientProduct);
+  }
+  return products.filter(p => !isIngredientProduct(p));
+}
+
+function productSelectHtml(branch, available, type) {
+  const isBakery = isBakeryBranch(branch);
+  const isIngredients = isBakery || type === "ingredients";
+
+  if (!available.length) {
+    if (isIngredients) {
+      return `<option value="">No raw materials — add products in the Ingredients category first</option>`;
+    }
+    return `<option value="">No POS products available</option>`;
+  }
+
+  const placeholder = isIngredients ? "Select raw material…" : "Select POS product…";
+  return `<option value="">${placeholder}</option>${available.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}`;
+}
+
+function populateProductSelect() {
+  const branch = selectedBranch();
+  const available = productsForBranch(branch);
+  const isBakery = isBakeryBranch(branch);
+  const isIngredients = isBakery || purchaseType === "ingredients";
+
+  updatePurchaseTypeUi();
+  productLabel.textContent = isIngredients ? "Raw material" : "POS product";
+  productSelect.innerHTML = productSelectHtml(branch, available, purchaseType);
 }
 
 function renderDraftLines() {
@@ -163,54 +278,20 @@ function renderDraftLines() {
   linesTotal.textContent = formatCurrency(total);
 }
 
-function orderActions(order) {
-  const actions = [];
-  const id = order.id;
-
-  if (order.status === "draft") {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="submit" data-id="${id}">Submit</button>`);
-    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
-  } else if (order.status === "submitted" && CAN_APPROVE) {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
-    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
-  } else if (order.status === "approved") {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="receive" data-id="${id}">Confirm receipt</button>`);
-    if (CAN_APPROVE) {
-      actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
-    }
-  }
-
-  return actions.join(" ");
-}
-
 function renderStats() {
-  const counts = {
-    draft: allOrders.filter(o => o.status === "draft").length,
-    submitted: allOrders.filter(o => o.status === "submitted").length,
-    approved: allOrders.filter(o => o.status === "approved").length,
-    received: allOrders.filter(o => o.status === "received").length,
-  };
+  const received = allOrders.filter(o => o.status === "received");
+  const totalValue = received.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
 
   poStats.innerHTML = `
     <div class="card stat-card">
-      <div class="label">Draft</div>
-      <div class="value">${counts.draft}</div>
-      <div class="sub">Not yet submitted</div>
+      <div class="label">Purchases</div>
+      <div class="value">${received.length}</div>
+      <div class="sub">Stock added to branches</div>
     </div>
     <div class="card stat-card">
-      <div class="label">Awaiting approval</div>
-      <div class="value">${counts.submitted}</div>
-      <div class="sub">Submitted to HQ</div>
-    </div>
-    <div class="card stat-card">
-      <div class="label">Approved</div>
-      <div class="value">${counts.approved}</div>
-      <div class="sub">Awaiting delivery</div>
-    </div>
-    <div class="card stat-card">
-      <div class="label">Received</div>
-      <div class="value">${counts.received}</div>
-      <div class="sub">Stock updated</div>
+      <div class="label">Total value</div>
+      <div class="value">${formatCurrency(totalValue)}</div>
+      <div class="sub">All recorded purchases</div>
     </div>
   `;
 }
@@ -221,9 +302,16 @@ function renderOrders() {
     : allOrders.filter(o => o.status === activeFilter);
 
   if (!filtered.length) {
-    poTable.innerHTML = `<div class="empty-state"><p>No purchase orders found</p></div>`;
+    poTable.innerHTML = `<div class="empty-state"><p>No purchases recorded yet</p></div>`;
     return;
   }
+
+  const branchColumn = canPurchaseForAnyBranch
+    ? `<th>Branch</th>`
+    : "";
+  const branchCell = o => canPurchaseForAnyBranch
+    ? `<td>${o.branch_name}</td>`
+    : "";
 
   poTable.innerHTML = `
     <table class="data-table">
@@ -231,12 +319,11 @@ function renderOrders() {
         <tr>
           <th>PO #</th>
           <th>Supplier</th>
-          <th>Branch</th>
+          ${branchColumn}
           <th>Products</th>
           <th>Total</th>
           <th>Status</th>
           <th>Date</th>
-          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -244,12 +331,11 @@ function renderOrders() {
           <tr>
             <td><strong>PO-${String(o.id).padStart(5, "0")}</strong></td>
             <td>${o.supplier_name}</td>
-            <td>${o.branch_name}</td>
+            ${branchCell(o)}
             <td style="max-width: 220px;">${lineSummary(o)}</td>
             <td>${formatCurrency(o.total_amount)}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${formatDate(o.created_at)}</td>
-            <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${orderActions(o)}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -258,29 +344,36 @@ function renderOrders() {
 }
 
 async function loadData() {
-  const [branchesData, suppliersData, productsData, ordersData] = await Promise.all([
+  const [branchesData, suppliersData, ingredientProducts, posProducts, ordersData] = await Promise.all([
     apiGet("/branches/?page_size=500"),
     apiGet("/suppliers/?active_only=true&page_size=500"),
-    apiGet("/products/?page_size=500"),
+    fetchAllProducts({ category: INGREDIENTS_CATEGORY }),
+    fetchAllProducts({ exclude_category: INGREDIENTS_CATEGORY }),
     apiGet("/purchase-orders/?page_size=500"),
   ]);
 
-  branches = unwrapList(branchesData).filter(b => b.is_active && b.branch_type !== "bakery");
+  branches = branchesForPurchase(unwrapList(branchesData).filter(b => b.is_active));
   suppliers = unwrapList(suppliersData);
-  products = unwrapList(productsData).filter(p => p.is_active);
+  products = [...ingredientProducts, ...posProducts].filter(p => p.is_active);
   allOrders = unwrapList(ordersData);
 
-  branchSelect.innerHTML = branches.length === 1
-    ? branches.map(b => `<option value="${b.id}" selected>${b.name}</option>`).join("")
-    : `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}`;
-  if (branches.length === 1) branchSelect.disabled = true;
+  if (!branches.length) {
+    branchSelect.innerHTML = `<option value="">No branch assigned</option>`;
+    branchSelect.disabled = true;
+  } else if (branches.length === 1 || !canPurchaseForAnyBranch) {
+    branchSelect.innerHTML = branches.map(b => `<option value="${b.id}" selected>${b.name}${branchTypeLabel(b)}</option>`).join("");
+    branchSelect.disabled = true;
+  } else {
+    branchSelect.innerHTML = `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}${branchTypeLabel(b)}</option>`).join("")}`;
+    branchSelect.disabled = false;
+  }
 
   supplierSelect.innerHTML = suppliers.length
     ? `<option value="">Select supplier…</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
     : `<option value="">No suppliers — ask HQ to add suppliers first</option>`;
   supplierSelect.disabled = !suppliers.length;
 
-  productSelect.innerHTML = `<option value="">Select product…</option>${products.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}`;
+  populateProductSelect();
 
   renderStats();
   renderOrders();
@@ -293,7 +386,9 @@ addLineBtn.addEventListener("click", () => {
   const unitCost = Number(costInput.value) || 0;
 
   if (!productId) {
-    showToast("Select a product", true);
+    const branch = selectedBranch();
+    const isIngredients = isBakeryBranch(branch) || purchaseType === "ingredients";
+    showToast(isIngredients ? "Select a raw material" : "Select a POS product", true);
     return;
   }
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -326,7 +421,27 @@ linesBody.addEventListener("click", (e) => {
   renderDraftLines();
 });
 
-branchSelect.addEventListener("change", renderDraftLines);
+branchSelect.addEventListener("change", () => {
+  const branch = selectedBranch();
+  const allowedIds = new Set(
+    products.filter(p => {
+      if (isBakeryBranch(branch)) return isIngredientProduct(p);
+      return true;
+    }).map(p => p.id)
+  );
+  draftLines = draftLines.filter(line => allowedIds.has(line.product));
+  productSelect.value = "";
+  populateProductSelect();
+  renderDraftLines();
+});
+
+poTypeTabs?.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab || tab.dataset.type === purchaseType) return;
+  purchaseType = tab.dataset.type;
+  productSelect.value = "";
+  populateProductSelect();
+});
 supplierSelect.addEventListener("change", renderDraftLines);
 
 poForm.addEventListener("submit", async (e) => {
@@ -354,39 +469,11 @@ poForm.addEventListener("submit", async (e) => {
     renderDraftLines();
     renderStats();
     renderOrders();
-    showToast(`PO-${String(created.id).padStart(5, "0")} created as draft`);
+    showToast(`PO-${String(created.id).padStart(5, "0")} recorded — stock updated`);
   } catch (err) {
     showToast(err.message, true);
   } finally {
     submitBtn.disabled = !draftLines.length;
-  }
-});
-
-poTable.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".action-btn");
-  if (!btn) return;
-
-  const { action, id } = btn.dataset;
-  btn.disabled = true;
-  btn.innerHTML = `<span class="loading-spinner"></span>`;
-
-  try {
-    const updated = await apiPost(`/purchase-orders/${id}/${action}/`, {});
-    const index = allOrders.findIndex(o => String(o.id) === id);
-    if (index >= 0) allOrders[index] = updated;
-    renderOrders();
-    renderStats();
-    const labels = {
-      submit: "submitted",
-      approve: "approved",
-      receive: "received — stock updated",
-      cancel: "cancelled",
-    };
-    showToast(`PO-${String(id).padStart(5, "0")} ${labels[action] || action}`);
-  } catch (err) {
-    showToast(err.message, true);
-    btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
-    btn.disabled = false;
   }
 });
 
@@ -400,7 +487,7 @@ document.querySelectorAll("[data-filter]").forEach(tab => {
 });
 
 loadData().catch(err => {
-  poTable.innerHTML = `<div class="empty-state">Failed to load purchase orders: ${err.message}</div>`;
+  poTable.innerHTML = `<div class="empty-state">Failed to load purchases: ${err.message}</div>`;
 });
 </script>
 {% endblock %}

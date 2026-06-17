@@ -1,0 +1,350 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Ingredients — Café de Paris{% endblock %}
+{% block page_title %}Ingredients{% endblock %}
+
+{% block topbar_actions %}
+<div style="display: flex; align-items: center; gap: 0.5rem;">
+  <a href="/api/products/export-ingredients-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+    Upload CSV
+    <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
+  </label>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add ingredient</h3>
+  <form id="ingredient-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="ingredient-name">Name</label>
+        <input type="text" id="ingredient-name" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="ingredient-cost">Unit cost</label>
+        <input type="number" id="ingredient-cost" required min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label for="ingredient-qty" id="ingredient-qty-label">Branch stock</label>
+        <input type="number" id="ingredient-qty" min="0" step="0.01" value="0">
+      </div>
+    </div>
+    <div class="form-group" id="active-field" style="display: none;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="ingredient-active" checked>
+        Active ingredient
+      </label>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Add ingredient</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; align-items: end; gap: 1rem; flex-wrap: wrap;">
+    <div class="form-group" style="margin: 0; min-width: 220px;">
+      <label for="branch-select">Branch</label>
+      <select id="branch-select">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
+      Stock is tracked separately for each branch. Purchases and stock takes update the selected branch.
+    </p>
+  </div>
+  <div class="table-wrap" id="ingredients-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+const INGREDIENTS_CATEGORY = "Ingredients";
+
+let branches = [];
+let ingredients = [];
+let branchInventory = new Map();
+let selectedBranchId = null;
+let editingId = null;
+
+const ingredientForm = document.getElementById("ingredient-form");
+const formTitle = document.getElementById("form-title");
+const nameInput = document.getElementById("ingredient-name");
+const costInput = document.getElementById("ingredient-cost");
+const qtyInput = document.getElementById("ingredient-qty");
+const qtyLabel = document.getElementById("ingredient-qty-label");
+const activeField = document.getElementById("active-field");
+const activeInput = document.getElementById("ingredient-active");
+const submitBtn = document.getElementById("submit-btn");
+const cancelBtn = document.getElementById("cancel-btn");
+const ingredientsTable = document.getElementById("ingredients-table");
+const csvUpload = document.getElementById("csv-upload");
+const branchSelect = document.getElementById("branch-select");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function selectedBranch() {
+  return branches.find(b => b.id === selectedBranchId) || null;
+}
+
+function updateQtyLabel() {
+  const branch = selectedBranch();
+  qtyLabel.textContent = branch ? `Stock at ${branch.name}` : "Branch stock";
+}
+
+async function fetchAllInventory(params = {}) {
+  const query = new URLSearchParams({ page_size: "1000", ...params });
+  let page = 1;
+  let all = [];
+  while (true) {
+    query.set("page", String(page));
+    const data = await apiGet(`/inventory/?${query}`);
+    all = all.concat(unwrapList(data));
+    if (!data.next) break;
+    page += 1;
+  }
+  return all;
+}
+
+function resetForm() {
+  editingId = null;
+  formTitle.textContent = "Add ingredient";
+  submitBtn.textContent = "Add ingredient";
+  cancelBtn.style.display = "none";
+  activeField.style.display = "none";
+  ingredientForm.reset();
+  qtyInput.value = "0";
+  activeInput.checked = true;
+}
+
+function startEdit(ingredient) {
+  editingId = ingredient.id;
+  formTitle.textContent = "Edit ingredient";
+  submitBtn.textContent = "Save changes";
+  cancelBtn.style.display = "";
+  activeField.style.display = "";
+  nameInput.value = ingredient.name;
+  costInput.value = ingredient.selling_price;
+  qtyInput.value = ingredient.branch_qty;
+  activeInput.checked = ingredient.is_active;
+  updateQtyLabel();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function render() {
+  const branch = selectedBranch();
+
+  if (!selectedBranchId) {
+    ingredientsTable.innerHTML = `<div class="empty-state"><p>Select a branch to view ingredient stock</p></div>`;
+    return;
+  }
+
+  if (!ingredients.length) {
+    ingredientsTable.innerHTML = `<div class="empty-state"><p>No ingredients yet — add one above or import from CSV</p></div>`;
+    return;
+  }
+
+  ingredientsTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Unit cost</th>
+          <th>Stock at ${branch.name}</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ingredients.map(item => `
+          <tr>
+            <td><strong>${item.name}</strong></td>
+            <td>${formatCurrency(item.selling_price)}</td>
+            <td>${formatQty(item.branch_qty)}</td>
+            <td><span class="badge ${item.is_active ? "badge-active" : "badge-inactive"}">${item.is_active ? "Active" : "Inactive"}</span></td>
+            <td style="text-align: right;">
+              <button type="button" class="btn btn-ghost btn-sm" data-edit="${item.id}">Edit</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadBranchInventory() {
+  if (!selectedBranchId) {
+    branchInventory = new Map();
+    return;
+  }
+
+  const rows = await fetchAllInventory({
+    branch: String(selectedBranchId),
+    category: INGREDIENTS_CATEGORY,
+  });
+  branchInventory = new Map(rows.map(row => [row.product, Number(row.quantity)]));
+}
+
+async function loadIngredients() {
+  const data = await apiGet(`/products/?category=${encodeURIComponent(INGREDIENTS_CATEGORY)}&page_size=500`);
+  const products = unwrapList(data);
+  ingredients = products.map(product => ({
+    ...product,
+    branch_qty: branchInventory.get(product.id) ?? 0,
+  }));
+  render();
+}
+
+async function reload() {
+  await loadBranchInventory();
+  await loadIngredients();
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/?page_size=500");
+  branches = unwrapList(data).filter(b => b.is_active);
+
+  if (!branches.length) {
+    branchSelect.innerHTML = `<option value="">No branches available</option>`;
+    branchSelect.disabled = true;
+    selectedBranchId = null;
+    render();
+    return;
+  }
+
+  branchSelect.innerHTML = branches.length === 1
+    ? branches.map(b => `<option value="${b.id}" selected>${b.name}</option>`).join("")
+    : `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}`;
+
+  branchSelect.disabled = branches.length === 1;
+  selectedBranchId = branches.length === 1 ? branches[0].id : null;
+  updateQtyLabel();
+  await reload();
+}
+
+async function syncBranchStock(productId, newQty) {
+  if (!selectedBranchId) {
+    throw new Error("Select a branch before setting stock");
+  }
+
+  const currentQty = branchInventory.get(productId) ?? 0;
+  const delta = Number(newQty) - currentQty;
+  if (delta === 0) return;
+
+  await apiPost("/inventory/adjust/", {
+    branch: selectedBranchId,
+    product: productId,
+    delta,
+  });
+}
+
+ingredientForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+
+  const payload = {
+    name: nameInput.value.trim(),
+    selling_price: costInput.value,
+    is_active: activeInput.checked,
+  };
+  const targetQty = qtyInput.value || "0";
+
+  try {
+    if (editingId) {
+      await apiPatch(`/products/${editingId}/`, payload);
+      await syncBranchStock(editingId, targetQty);
+      showToast("Ingredient updated");
+    } else {
+      if (Number(targetQty) > 0 && !selectedBranchId) {
+        throw new Error("Select a branch before setting opening stock");
+      }
+
+      const categories = unwrapList(await apiGet("/categories/?page_size=500"));
+      const category = categories.find(c => c.name === INGREDIENTS_CATEGORY);
+      if (!category) {
+        throw new Error('Category "Ingredients" not found — run bakery import or seed first');
+      }
+
+      const created = await apiPost("/products/", {
+        ...payload,
+        category: category.id,
+        tax_rate: "0",
+        remaining_qty: "0",
+      });
+      await syncBranchStock(created.id, targetQty);
+      showToast("Ingredient added");
+    }
+    resetForm();
+    await reload();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+cancelBtn.addEventListener("click", resetForm);
+
+branchSelect.addEventListener("change", async () => {
+  selectedBranchId = branchSelect.value ? Number(branchSelect.value) : null;
+  updateQtyLabel();
+  if (editingId) {
+    const item = ingredients.find(i => i.id === editingId);
+    if (item) qtyInput.value = item.branch_qty;
+  }
+  await reload();
+});
+
+ingredientsTable.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-edit]");
+  if (!btn) return;
+  const item = ingredients.find(i => String(i.id) === btn.dataset.edit);
+  if (item) startEdit(item);
+});
+
+csvUpload.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const result = await apiUpload("/products/import-ingredients-csv/", formData);
+    const parts = [];
+    if (result.created) parts.push(`${result.created} created`);
+    if (result.updated) parts.push(`${result.updated} updated`);
+    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    await reload();
+  } catch (err) {
+    let message = err.message;
+    try {
+      const data = JSON.parse(err.message);
+      if (data?.errors?.length) {
+        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
+        message = `Import failed — ${preview}`;
+      }
+    } catch {
+      // use raw message
+    }
+    showToast(message, true);
+  }
+});
+
+loadBranches().catch(err => {
+  ingredientsTable.innerHTML = `<div class="empty-state">Failed to load ingredients: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

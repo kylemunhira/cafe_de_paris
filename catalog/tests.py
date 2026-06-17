@@ -3,7 +3,13 @@ import io
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from catalog.csv_io import export_products_csv, import_products_csv
+from catalog.csv_io import (
+    export_ingredients_csv,
+    export_products_csv,
+    import_ingredients_csv,
+    import_products_csv,
+)
+from catalog.constants import INGREDIENTS_CATEGORY
 from catalog.models import Product, ProductCategory
 
 
@@ -73,3 +79,39 @@ class ProductCsvTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["created"], 1)
         self.assertTrue(Product.objects.filter(name="Cappuccino").exists())
+
+
+class IngredientCsvTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        self.ingredient = Product.objects.create(
+            name="Butter",
+            category=self.category,
+            selling_price="8.70",
+            remaining_qty="12",
+        )
+
+    def test_export_ingredients_csv(self):
+        csv_text = export_ingredients_csv()
+        self.assertIn("unit_cost", csv_text)
+        self.assertIn("Butter", csv_text)
+        self.assertNotIn("category", csv_text)
+
+    def test_import_ingredients_csv_creates(self):
+        csv_file = io.BytesIO(b"name,unit_cost,remaining_qty\nFlour,1.00,50\n")
+        result = import_ingredients_csv(csv_file)
+        self.assertEqual(result["created"], 1)
+        product = Product.objects.get(name="Flour")
+        self.assertEqual(product.category.name, INGREDIENTS_CATEGORY)
+
+    def test_import_ingredients_endpoint(self):
+        upload = io.BytesIO(b"name,unit_cost\nSugar,1.00\n")
+        upload.name = "ingredients.csv"
+        response = self.client.post(
+            "/api/products/import-ingredients-csv/",
+            {"file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Product.objects.filter(name="Sugar").exists())

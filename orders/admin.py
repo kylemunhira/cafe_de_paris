@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Order, OrderItem
+from .models import Expense, Order, OrderItem
 
 
 class OrderItemInline(admin.TabularInline):
@@ -25,3 +25,18 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ("order", "product", "quantity", "price")
+
+
+@admin.register(Expense)
+class ExpenseAdmin(admin.ModelAdmin):
+    list_display = (
+        "expense_date",
+        "branch",
+        "description",
+        "amount",
+        "currency",
+        "recorded_by",
+        "created_at",
+    )
+    list_filter = ("branch", "expense_date", "currency")
+    search_fields = ("description",)

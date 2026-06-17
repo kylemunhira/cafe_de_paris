@@ -4,6 +4,7 @@ from accounts.branch_access import (
     filter_by_branch_participation,
     user_can_access_bakery_transfers,
     user_can_access_grv,
+    user_can_access_kitchen,
     user_can_access_pos,
     user_can_manage_users,
 )
@@ -42,8 +43,26 @@ class POSView(UserPassesTestMixin, BaseUIView):
         return user_can_access_pos(self.request.user)
 
     def get_context_data(self, **kwargs):
+        from accounts.branch_access import get_staff_branch_id
+
         context = super().get_context_data(**kwargs)
         context["inclusive_tax_rate"] = get_inclusive_tax_rate()
+        context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        return context
+
+
+class KitchenView(UserPassesTestMixin, BaseUIView):
+    template_name = "ui/kitchen.html"
+    active_nav = "kitchen"
+
+    def test_func(self):
+        return user_can_access_kitchen(self.request.user)
+
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import get_staff_branch_id
+
+        context = super().get_context_data(**kwargs)
+        context["staff_branch_id"] = get_staff_branch_id(self.request.user)
         return context
 
 
@@ -55,6 +74,11 @@ class OrdersView(BaseUIView):
 class ProductsView(BaseUIView):
     template_name = "ui/products.html"
     active_nav = "products"
+
+
+class IngredientsView(BaseUIView):
+    template_name = "ui/ingredients.html"
+    active_nav = "ingredients"
 
 
 class BranchesView(BaseUIView):
@@ -121,15 +145,24 @@ class SuppliersView(UserPassesTestMixin, BaseUIView):
         return user_can_manage_suppliers(self.request.user)
 
 
-class PurchaseOrdersView(BaseUIView):
+class PurchaseOrdersView(UserPassesTestMixin, BaseUIView):
     template_name = "ui/purchase_orders.html"
     active_nav = "purchase_orders"
 
+    def test_func(self):
+        from accounts.branch_access import user_can_create_purchase_orders
+
+        return user_can_create_purchase_orders(self.request.user)
+
     def get_context_data(self, **kwargs):
-        from accounts.branch_access import user_can_approve_purchase_orders
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_has_global_branch_access,
+        )
 
         context = super().get_context_data(**kwargs)
-        context["can_approve_purchase_orders"] = user_can_approve_purchase_orders(
+        context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        context["can_purchase_for_any_branch"] = user_has_global_branch_access(
             self.request.user
         )
         return context
@@ -210,8 +243,21 @@ class DayEndPrintView(UserPassesTestMixin, LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         branch = self.get_branch()
         report_date = self.request.GET.get("date") or None
+        counted_by_currency = {}
+        for key, value in self.request.GET.items():
+            if not key.startswith("counted_"):
+                continue
+            try:
+                currency_id = int(key.split("counted_", 1)[1])
+            except (TypeError, ValueError):
+                continue
+            counted_by_currency[currency_id] = value
         context["branch"] = branch
-        context["report"] = build_day_end_report(branch, report_date)
+        context["report"] = build_day_end_report(
+            branch,
+            report_date,
+            counted_by_currency=counted_by_currency,
+        )
         context["base_currency"] = Currency.objects.filter(is_base=True).first()
         context["printed_at"] = timezone.now()
         context["auto_print"] = self.request.GET.get("auto") == "1"
@@ -225,3 +271,18 @@ class InvoicePrintView(PaidOrderPrintView):
 class InvoicesView(BaseUIView):
     template_name = "ui/invoices.html"
     active_nav = "invoices"
+
+
+class ExpensesView(UserPassesTestMixin, BaseUIView):
+    template_name = "ui/expenses.html"
+    active_nav = "expenses"
+
+    def test_func(self):
+        return user_can_access_pos(self.request.user)
+
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import get_staff_branch_id
+
+        context = super().get_context_data(**kwargs)
+        context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        return context

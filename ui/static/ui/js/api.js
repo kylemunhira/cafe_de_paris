@@ -78,6 +78,26 @@ export function unwrapList(data) {
   return data?.results ?? data ?? [];
 }
 
+function apiPathFromNext(nextUrl) {
+  const url = new URL(nextUrl, window.location.origin);
+  return `${url.pathname.replace(/^\/api/, "")}${url.search}`;
+}
+
+/** Fetch every page from a paginated list endpoint. */
+export async function fetchAllPages(endpoint, params = {}) {
+  const query = new URLSearchParams({ page_size: "1000", ...params });
+  let next = `${endpoint}?${query}`;
+  const results = [];
+
+  while (next) {
+    const data = await apiGet(next);
+    results.push(...unwrapList(data));
+    next = data?.next ? apiPathFromNext(data.next) : null;
+  }
+
+  return results;
+}
+
 export function formatCurrency(amount) {
   const value = Number(amount);
   return new Intl.NumberFormat("en-US", {
@@ -108,8 +128,20 @@ export function statusBadge(status) {
     draft: "badge-open",
     submitted: "badge-requested",
     received: "badge-delivered",
+    pending: "badge-open",
+    preparing: "badge-requested",
+    ready: "badge-delivered",
   };
   return `<span class="badge ${map[status] || ""}">${status}</span>`;
+}
+
+export function kitchenStatusBadge(status) {
+  const labels = {
+    pending: "New",
+    preparing: "Preparing",
+    ready: "Ready",
+  };
+  return statusBadge(status).replace(`>${status}<`, `>${labels[status] || status}<`);
 }
 
 export function showToast(message, isError = false) {

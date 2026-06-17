@@ -1,6 +1,7 @@
 from accounts.branch_access import (
     filter_by_branch_field,
     user_can_approve_purchase_orders,
+    user_can_create_purchase_orders,
     user_can_manage_suppliers,
     user_can_receive_purchase_order,
 )
@@ -95,6 +96,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
+        if not user_can_create_purchase_orders(request.user):
+            raise PermissionDenied(
+                "Only branch managers and HQ admins can record purchases."
+            )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         purchase_order = serializer.save()

@@ -43,6 +43,8 @@ class RecipeApiTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         self.assertEqual(create_response.data["product_name"], "Croissant")
         self.assertEqual(create_response.data["ingredient_name"], "Flour")
+        self.assertEqual(create_response.data["ingredient_unit_cost"], "5.00")
+        self.assertEqual(create_response.data["line_cost"], Decimal("1.25"))
 
         list_response = self.client.get(
             f"/api/recipes/?product={self.croissant.id}"
@@ -51,6 +53,7 @@ class RecipeApiTests(TestCase):
         results = list_response.data.get("results", list_response.data)
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["quantity_required"], "0.25")
+        self.assertEqual(results[0]["line_cost"], Decimal("1.25"))
 
     def test_rejects_duplicate_ingredient_for_same_product(self):
         Recipe.objects.create(

@@ -114,6 +114,32 @@ class StaffUserApiTests(APITestCase):
         self.assertEqual(user.staff_profile.role, StaffRole.BRANCH_MANAGER)
         self.assertFalse(user.is_active)
 
+    def test_update_pos_access(self):
+        user = User.objects.create_user(
+            username="hqcashier",
+            email="hq@example.com",
+            password="securepass1",
+        )
+        hq = Branch.objects.create(name="HQ", branch_type=BranchType.HQ)
+        StaffProfile.objects.create(
+            user=user,
+            branch=hq,
+            role=StaffRole.CASHIER,
+            pos_access=False,
+        )
+
+        response = self.client.patch(
+            reverse("staffuser-detail", args=[user.pk]),
+            {"pos_access": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["pos_access"])
+        user.staff_profile.refresh_from_db()
+        self.assertTrue(user.staff_profile.pos_access)
+        self.assertTrue(user_can_access_pos(user))
+
     def test_cashier_cannot_access_users_api(self):
         cashier = User.objects.create_user(username="cashier", password="pass")
         StaffProfile.objects.create(
@@ -218,6 +244,7 @@ class TransferNavAccessTests(APITestCase):
             user=self.cashier,
             branch=self.branch,
             role=StaffRole.CASHIER,
+            pos_access=True,
         )
 
         self.hq_staff = User.objects.create_user(username="hqstaff", password="pass")
@@ -255,6 +282,16 @@ class TransferNavAccessTests(APITestCase):
         self.assertFalse(user_can_access_bakery_transfers(self.hq_staff))
         self.assertTrue(user_can_access_grv(self.hq_staff))
         self.assertFalse(user_can_access_pos(self.hq_staff))
+
+    def test_pos_access_can_be_granted_independently_of_branch(self):
+        hq_cashier = User.objects.create_user(username="hqcashier", password="pass")
+        StaffProfile.objects.create(
+            user=hq_cashier,
+            branch=self.hq,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.assertTrue(user_can_access_pos(hq_cashier))
 
     def test_global_users_use_bakery_transfers_not_grv(self):
         self.assertTrue(user_can_access_bakery_transfers(self.hq_admin))
@@ -420,3 +457,97 @@ class UsersNavAccessTests(APITestCase):
         self.client.force_login(self.zimhope)
         response = self.client.get(reverse("ui:users"))
         self.assertEqual(response.status_code, 200)
+
+
+class PurchaseOrderBranchAccessTests(APITestCase):
+    def setUp(self):
+        from catalog.models import Product, ProductCategory
+        from purchasing.models import PurchaseOrder, Supplier
+
+        self.branch_a = Branch.objects.create(
+            name="Branch A",
+            branch_type=BranchType.BRANCH,
+        )
+        self.branch_b = Branch.objects.create(
+            name="Branch B",
+            branch_type=BranchType.BRANCH,
+        )
+        self.supplier = Supplier.objects.create(name="Main Supplier")
+        category = ProductCategory.objects.create(name="Beverages")
+        self.product = Product.objects.create(
+            name="Coffee",
+            category=category,
+            selling_price="3.00",
+        )
+
+        self.manager_a = User.objects.create_user(username="manager_a", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager_a,
+            branch=self.branch_a,
+            role=StaffRole.BRANCH_MANAGER,
+        )
+
+        self.hq_admin = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=self.hq_admin,
+            branch=self.branch_a,
+            role=StaffRole.HQ_ADMIN,
+        )
+
+        self.po_a = PurchaseOrder.objects.create(
+            branch=self.branch_a,
+            supplier=self.supplier,
+            created_by=self.hq_admin,
+        )
+        self.po_b = PurchaseOrder.objects.create(
+            branch=self.branch_b,
+            supplier=self.supplier,
+            created_by=self.hq_admin,
+        )
+
+        self.po_payload = {
+            "branch": self.branch_b.id,
+            "supplier": self.supplier.id,
+            "notes": "",
+            "lines": [
+                {
+                    "product": self.product.id,
+                    "quantity": "1",
+                    "unit_cost": "10.00",
+                }
+            ],
+        }
+
+    def test_branch_manager_only_sees_own_purchase_orders(self):
+        self.client.force_authenticate(user=self.manager_a)
+        response = self.client.get("/api/purchase-orders/")
+        po_branches = {row["branch"] for row in response.data["results"]}
+        self.assertEqual(po_branches, {self.branch_a.id})
+
+    def test_branch_manager_cannot_filter_other_branch_purchase_orders(self):
+        self.client.force_authenticate(user=self.manager_a)
+        response = self.client.get(f"/api/purchase-orders/?branch={self.branch_b.id}")
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["branch"], self.branch_a.id)
+
+    def test_branch_manager_cannot_create_purchase_for_other_branch(self):
+        self.client.force_authenticate(user=self.manager_a)
+        response = self.client.post(
+            "/api/purchase-orders/", self.po_payload, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("branch", response.data)
+
+    def test_hq_admin_sees_all_purchase_orders(self):
+        self.client.force_authenticate(user=self.hq_admin)
+        response = self.client.get("/api/purchase-orders/")
+        po_branches = {row["branch"] for row in response.data["results"]}
+        self.assertEqual(po_branches, {self.branch_a.id, self.branch_b.id})
+
+    def test_hq_admin_can_create_purchase_for_other_branch(self):
+        self.client.force_authenticate(user=self.hq_admin)
+        response = self.client.post(
+            "/api/purchase-orders/", self.po_payload, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["branch"], self.branch_b.id)

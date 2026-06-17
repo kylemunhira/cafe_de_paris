@@ -252,8 +252,15 @@ function populateFormOptions() {
     ${destinationBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
 
+  const BAKERY_TRANSFER_CATEGORIES = new Set([
+    "Breads & pastries", "Cakes & desserts", "Savory",
+  ]);
   const stockedProductIds = new Set(bakeryInventory.map(i => String(i.product)));
-  const availableProducts = products.filter(p => p.is_active && stockedProductIds.has(String(p.id)));
+  const availableProducts = products.filter(
+    p => p.is_active
+      && BAKERY_TRANSFER_CATEGORIES.has(p.category_name)
+      && stockedProductIds.has(String(p.id))
+  );
 
   productSelect.innerHTML = `
     <option value="">Select product…</option>

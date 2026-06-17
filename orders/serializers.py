@@ -5,7 +5,7 @@ from rest_framework import serializers
 from catalog.models import Product
 from payments.models import Currency
 
-from .models import Order, OrderItem
+from .models import Expense, Order, OrderItem
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -40,6 +40,10 @@ class OrderSerializer(serializers.ModelSerializer):
         default=None,
     )
 
+    kitchen_status_display = serializers.CharField(
+        source="get_kitchen_status_display", read_only=True
+    )
+
     class Meta:
         model = Order
         fields = [
@@ -56,6 +60,10 @@ class OrderSerializer(serializers.ModelSerializer):
             "exchange_rate",
             "amount_paid",
             "status",
+            "kitchen_status",
+            "kitchen_status_display",
+            "kitchen_started_at",
+            "kitchen_ready_at",
             "receipt_number",
             "items",
             "created_at",
@@ -92,3 +100,73 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
         order.recalculate_total()
         return order
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+    currency_name = serializers.CharField(source="currency.name", read_only=True)
+    currency_symbol = serializers.CharField(source="currency.symbol", read_only=True)
+    recorded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Expense
+        fields = [
+            "id",
+            "branch",
+            "branch_name",
+            "expense_date",
+            "amount",
+            "currency",
+            "currency_code",
+            "currency_name",
+            "currency_symbol",
+            "description",
+            "recorded_by",
+            "recorded_by_name",
+            "created_at",
+        ]
+        read_only_fields = ["recorded_by", "created_at"]
+
+    def get_recorded_by_name(self, obj):
+        if not obj.recorded_by:
+            return None
+        return obj.recorded_by.get_full_name() or obj.recorded_by.username
+
+
+class ExpenseCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Expense
+        fields = ["branch", "expense_date", "amount", "currency", "description"]
+
+    def validate_amount(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Amount must be greater than zero.")
+        return value
+
+    def validate_description(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Description is required.")
+        return value
+
+    def validate_branch(self, branch):
+        from accounts.branch_access import effective_branch_id
+
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return branch
+        try:
+            allowed_branch_id = effective_branch_id(request.user, branch.id)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if allowed_branch_id is not None and branch.id != allowed_branch_id:
+            raise serializers.ValidationError(
+                "You can only record expenses for your assigned branch."
+            )
+        return branch
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        recorded_by = request.user if request and request.user.is_authenticated else None
+        return Expense.objects.create(recorded_by=recorded_by, **validated_data)

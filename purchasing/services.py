@@ -17,6 +17,15 @@ class InvalidPurchaseOrderStateError(Exception):
         )
 
 
+def apply_purchase_order_inventory(purchase_order: PurchaseOrder) -> None:
+    for line in purchase_order.lines.select_related("product"):
+        adjust_inventory(
+            purchase_order.branch,
+            line.product,
+            line.quantity,
+        )
+
+
 def submit_purchase_order(purchase_order: PurchaseOrder) -> PurchaseOrder:
     if purchase_order.status != PurchaseOrderStatus.DRAFT:
         raise InvalidPurchaseOrderStateError(
@@ -49,12 +58,7 @@ def receive_purchase_order(purchase_order: PurchaseOrder) -> PurchaseOrder:
             purchase_order, PurchaseOrderStatus.APPROVED, "receive"
         )
     with transaction.atomic():
-        for line in purchase_order.lines.select_related("product"):
-            adjust_inventory(
-                purchase_order.branch,
-                line.product,
-                line.quantity,
-            )
+        apply_purchase_order_inventory(purchase_order)
         purchase_order.status = PurchaseOrderStatus.RECEIVED
         purchase_order.received_at = timezone.now()
         purchase_order.save(update_fields=["status", "received_at"])

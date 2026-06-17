@@ -39,11 +39,19 @@
         </select>
       </div>
     </div>
-    <div class="form-group" id="active-field" style="display: none;">
-      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-        <input type="checkbox" id="is_active" name="is_active" checked>
-        Active user
-      </label>
+    <div class="form-row">
+      <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input type="checkbox" id="pos_access" name="pos_access">
+          POS access (web &amp; desktop)
+        </label>
+      </div>
+      <div class="form-group" id="active-field" style="display: none;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input type="checkbox" id="is_active" name="is_active" checked>
+          Active user
+        </label>
+      </div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
       <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
@@ -74,12 +82,20 @@ const passwordInput = document.getElementById("password");
 const passwordHint = document.getElementById("password-hint");
 const activeField = document.getElementById("active-field");
 const isActiveInput = document.getElementById("is_active");
+const posAccessInput = document.getElementById("pos_access");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const usersTable = document.getElementById("users-table");
 
 let users = [];
+let branches = [];
 let editingUserId = null;
+
+function updatePosAccessDefault() {
+  if (editingUserId) return;
+  const branch = branches.find(b => String(b.id) === branchSelect.value);
+  posAccessInput.checked = branch?.branch_type === "branch";
+}
 
 function setFormMode(mode) {
   const isEdit = mode === "edit";
@@ -95,6 +111,7 @@ function setFormMode(mode) {
   if (!isEdit) {
     userForm.reset();
     isActiveInput.checked = true;
+    updatePosAccessDefault();
   }
 }
 
@@ -112,6 +129,7 @@ function startEdit(user) {
   passwordInput.value = "";
   roleSelect.value = user.role;
   branchSelect.value = String(user.branch);
+  posAccessInput.checked = user.pos_access;
   isActiveInput.checked = user.is_active;
 
   document.querySelector(".user-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -131,6 +149,7 @@ function renderUsers() {
           <th>Email</th>
           <th>Branch</th>
           <th>Role</th>
+          <th>POS</th>
           <th>Status</th>
           <th>Joined</th>
           <th></th>
@@ -143,6 +162,11 @@ function renderUsers() {
             <td>${user.email || "—"}</td>
             <td>${user.branch_name}</td>
             <td><span class="branch-type">${user.role_display}</span></td>
+            <td>
+              <span class="badge ${user.pos_access ? "badge-active" : "badge-inactive"}">
+                ${user.pos_access ? "Yes" : "No"}
+              </span>
+            </td>
             <td>
               <span class="badge ${user.is_active ? "badge-active" : "badge-inactive"}">
                 ${user.is_active ? "Active" : "Inactive"}
@@ -161,12 +185,13 @@ function renderUsers() {
 
 async function loadBranches() {
   const data = await apiGet("/branches/?page_size=500");
-  const branches = unwrapList(data).filter(b => b.is_active);
+  branches = unwrapList(data).filter(b => b.is_active);
 
   branchSelect.innerHTML = `
     <option value="">Select branch…</option>
     ${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
+  updatePosAccessDefault();
 }
 
 async function loadRoles() {
@@ -217,6 +242,7 @@ userForm.addEventListener("submit", async (e) => {
     email: userForm.email.value.trim(),
     branch: branchId,
     role,
+    pos_access: posAccessInput.checked,
   };
 
   if (passwordInput.value) {
@@ -253,6 +279,7 @@ userForm.addEventListener("submit", async (e) => {
 });
 
 cancelBtn.addEventListener("click", resetForm);
+branchSelect.addEventListener("change", updatePosAccessDefault);
 
 usersTable.addEventListener("click", (e) => {
   const btn = e.target.closest(".edit-user-btn");

@@ -32,6 +32,8 @@
   </form>
 </div>
 
+<div class="category-tabs" id="category-tabs" style="margin-bottom: 0.75rem;"></div>
+<p id="recipe-summary" style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);"></p>
 <div class="category-tabs" id="product-tabs" style="margin-bottom: 1.25rem;"></div>
 
 <div id="recipe-list">
@@ -42,22 +44,39 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiDelete, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiDelete, fetchAllPages, showToast } from "{% static 'ui/js/api.js' %}";
+
+const KITCHEN_CATEGORY_NAMES = new Set([
+  "Breakfast", "Mains", "Sandwiches", "Burgers", "Salads", "Seafood",
+]);
+const BAKERY_CATEGORY_NAMES = new Set([
+  "Breads & pastries", "Cakes & desserts", "Savory",
+]);
 
 let products = [];
 let recipes = [];
+let activeCategory = "all";
 let activeProduct = "all";
 
 const recipeForm = document.getElementById("recipe-form");
 const outputSelect = document.getElementById("output-product");
 const ingredientSelect = document.getElementById("ingredient");
 const quantityInput = document.getElementById("quantity");
+const categoryTabs = document.getElementById("category-tabs");
+const recipeSummary = document.getElementById("recipe-summary");
 const productTabs = document.getElementById("product-tabs");
 const recipeList = document.getElementById("recipe-list");
 
 function formatQty(value) {
   const qty = Number(value);
   return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function formatMoney(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "0.00";
 }
 
 function outputProducts() {
@@ -68,20 +87,47 @@ function ingredientProducts() {
   return products.filter(p => p.category_name === "Ingredients" && p.is_active);
 }
 
+function matchesCategoryFilter(categoryName) {
+  if (activeCategory === "all") return true;
+  if (activeCategory === "kitchen") return KITCHEN_CATEGORY_NAMES.has(categoryName);
+  if (activeCategory === "bakery") return BAKERY_CATEGORY_NAMES.has(categoryName);
+  return categoryName === activeCategory;
+}
+
 function recipesByProduct() {
   const grouped = new Map();
   for (const line of recipes) {
+    if (!matchesCategoryFilter(line.product_category)) continue;
     if (!grouped.has(line.product)) {
       grouped.set(line.product, {
         productId: line.product,
         productName: line.product_name,
         productCategory: line.product_category,
         lines: [],
+        totalCost: 0,
       });
     }
-    grouped.get(line.product).lines.push(line);
+    const group = grouped.get(line.product);
+    group.lines.push(line);
+    group.totalCost += Number(line.line_cost || 0);
   }
   return [...grouped.values()].sort((a, b) => a.productName.localeCompare(b.productName));
+}
+
+function renderCategoryTabs(groups) {
+  const categoryNames = [...new Set(groups.map(g => g.productCategory))].sort();
+  const tabs = [
+    { id: "all", label: "All" },
+    { id: "kitchen", label: "Kitchen" },
+    { id: "bakery", label: "Bakery" },
+    ...categoryNames.map(name => ({ id: name, label: name })),
+  ];
+
+  categoryTabs.innerHTML = tabs.map(tab => `
+    <button class="category-tab${activeCategory === tab.id ? " active" : ""}" data-category="${tab.id}">
+      ${tab.label}
+    </button>
+  `).join("");
 }
 
 function populateSelects() {
@@ -110,7 +156,13 @@ function renderTabs(groups) {
 
 function renderRecipes() {
   const groups = recipesByProduct();
+  renderCategoryTabs(groups);
   renderTabs(groups);
+
+  const lineCount = groups.reduce((sum, group) => sum + group.lines.length, 0);
+  recipeSummary.textContent = groups.length
+    ? `${groups.length} recipe${groups.length === 1 ? "" : "s"}, ${lineCount} ingredient line${lineCount === 1 ? "" : "s"}`
+    : "";
 
   const filtered = activeProduct === "all"
     ? groups
@@ -129,7 +181,9 @@ function renderRecipes() {
       <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;">
         <div>
           <h3 style="margin: 0; font-size: 1rem;">${group.productName}</h3>
-          <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);">${group.productCategory}</p>
+          <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
+            ${group.productCategory} • Cost ${formatMoney(group.totalCost)}
+          </p>
         </div>
         <span class="badge badge-active">${group.lines.length} ingredient${group.lines.length === 1 ? "" : "s"}</span>
       </div>
@@ -140,6 +194,8 @@ function renderRecipes() {
               <th>Ingredient</th>
               <th>Category</th>
               <th style="text-align: right;">Qty required</th>
+              <th style="text-align: right;">Unit cost</th>
+              <th style="text-align: right;">Line cost</th>
               <th></th>
             </tr>
           </thead>
@@ -159,6 +215,8 @@ function renderRecipes() {
                     style="width: 90px; text-align: right; padding: 0.35rem 0.5rem; border: 1px solid rgba(44,24,16,0.12); border-radius: 6px;"
                   >
                 </td>
+                <td style="text-align: right;">${formatMoney(line.ingredient_unit_cost)}</td>
+                <td style="text-align: right; font-weight: 600;">${formatMoney(line.line_cost)}</td>
                 <td style="text-align: right;">
                   <button type="button" class="btn btn-ghost btn-sm delete-btn" data-id="${line.id}">Remove</button>
                 </td>
@@ -172,12 +230,10 @@ function renderRecipes() {
 }
 
 async function loadData() {
-  const [productsData, recipesData] = await Promise.all([
-    apiGet("/products/?page_size=500"),
-    apiGet("/recipes/?page_size=500"),
+  [products, recipes] = await Promise.all([
+    fetchAllPages("/products/"),
+    fetchAllPages("/recipes/"),
   ]);
-  products = unwrapList(productsData);
-  recipes = unwrapList(recipesData);
   populateSelects();
   renderRecipes();
 }
@@ -198,6 +254,14 @@ recipeForm.addEventListener("submit", async (e) => {
   } catch (err) {
     showToast(err.message, true);
   }
+});
+
+categoryTabs.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  activeCategory = tab.dataset.category;
+  activeProduct = "all";
+  renderRecipes();
 });
 
 productTabs.addEventListener("click", (e) => {

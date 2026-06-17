@@ -12,10 +12,10 @@ from inventory.views import (
     StockTransferViewSet,
 )
 from bakery.views import RecipeViewSet
-from orders.views import OrderViewSet
+from orders.views import ExpenseViewSet, OrderViewSet
 from purchasing.views import PurchaseOrderViewSet, SupplierViewSet
 from payments.views import CurrencyRateViewSet, CurrencyViewSet
-from reports.views import ReportExportCsvView, ReportSummaryView
+from reports.views import ReportExportCsvView, ReportProfitView, ReportSummaryView
 from sync.views import SyncPingView, SyncPullView, SyncPushView
 
 router = DefaultRouter()
@@ -24,6 +24,7 @@ router.register("branches", BranchViewSet)
 router.register("categories", ProductCategoryViewSet)
 router.register("products", ProductViewSet)
 router.register("orders", OrderViewSet)
+router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("currencies", CurrencyViewSet)
 router.register("currency-rates", CurrencyRateViewSet, basename="currency-rate")
 router.register("inventory", BranchInventoryViewSet, basename="inventory")
@@ -40,6 +41,7 @@ urlpatterns = [
     path("sync/pull/", SyncPullView.as_view(), name="sync-pull"),
     path("sync/push/", SyncPushView.as_view(), name="sync-push"),
     path("reports/summary/", ReportSummaryView.as_view(), name="report-summary"),
+    path("reports/profit/", ReportProfitView.as_view(), name="report-profit"),
     path("reports/export-csv/", ReportExportCsvView.as_view(), name="report-export-csv"),
     path("", include(router.urls)),
 ]

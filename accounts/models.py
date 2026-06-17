@@ -28,6 +28,10 @@ class StaffProfile(models.Model):
         choices=StaffRole.choices,
         default=StaffRole.CASHIER,
     )
+    pos_access = models.BooleanField(
+        default=False,
+        help_text="Allows web and desktop POS for this user.",
+    )
 
     class Meta:
         ordering = ["user__username"]

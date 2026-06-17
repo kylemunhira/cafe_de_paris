@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 
+from .constants import INGREDIENTS_CATEGORY
 from .models import Product, ProductCategory
 
 CSV_HEADERS = [
@@ -13,6 +14,14 @@ CSV_HEADERS = [
     "selling_price",
     "remaining_qty",
     "tax_rate",
+    "is_active",
+]
+
+INGREDIENT_CSV_HEADERS = [
+    "id",
+    "name",
+    "unit_cost",
+    "remaining_qty",
     "is_active",
 ]
 
@@ -30,6 +39,27 @@ def export_products_csv():
                 "selling_price": product.selling_price,
                 "remaining_qty": product.remaining_qty,
                 "tax_rate": product.tax_rate,
+                "is_active": "true" if product.is_active else "false",
+            }
+        )
+    return output.getvalue()
+
+
+def export_ingredients_csv():
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=INGREDIENT_CSV_HEADERS)
+    writer.writeheader()
+    for product in (
+        Product.objects.select_related("category")
+        .filter(category__name=INGREDIENTS_CATEGORY)
+        .order_by("name")
+    ):
+        writer.writerow(
+            {
+                "id": product.id,
+                "name": product.name,
+                "unit_cost": product.selling_price,
+                "remaining_qty": product.remaining_qty,
                 "is_active": "true" if product.is_active else "false",
             }
         )
@@ -145,6 +175,90 @@ def import_products_csv(file_obj):
                         selling_price=price,
                         remaining_qty=remaining_qty or Decimal("0"),
                         tax_rate=tax_rate or Decimal("0"),
+                        is_active=is_active,
+                    )
+                    created += 1
+            except Exception as exc:
+                errors.append({"row": row_num, "message": str(exc)})
+
+        if errors:
+            transaction.set_rollback(True)
+            return {"created": 0, "updated": 0, "errors": errors}
+
+    return {"created": created, "updated": updated, "errors": errors}
+
+
+def import_ingredients_csv(file_obj):
+    try:
+        text = io.TextIOWrapper(file_obj, encoding="utf-8-sig")
+        reader = csv.DictReader(text)
+    except UnicodeDecodeError:
+        return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "File must be UTF-8 encoded CSV"}]}
+
+    if not reader.fieldnames:
+        return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "CSV file is empty"}]}
+
+    normalized_headers = {h.strip().lower(): h for h in reader.fieldnames if h}
+    missing = [h for h in ("name", "unit_cost") if h not in normalized_headers]
+    if missing:
+        return {
+            "created": 0,
+            "updated": 0,
+            "errors": [{"row": 0, "message": f"Missing required columns: {', '.join(missing)}"}],
+        }
+
+    category, _ = ProductCategory.objects.get_or_create(name=INGREDIENTS_CATEGORY)
+    created = 0
+    updated = 0
+    errors = []
+
+    with transaction.atomic():
+        for row_num, row in enumerate(reader, start=2):
+            if not any(str(v).strip() for v in row.values() if v is not None):
+                continue
+
+            try:
+                name = str(row.get(normalized_headers.get("name", "name"), "")).strip()
+                if not name:
+                    raise ValueError("name is required")
+
+                unit_cost = _parse_decimal(
+                    row.get(normalized_headers.get("unit_cost", "unit_cost")),
+                    "unit_cost",
+                    required=True,
+                    min_value=Decimal("0"),
+                )
+                remaining_qty = _parse_decimal(
+                    row.get(normalized_headers.get("remaining_qty", "remaining_qty")),
+                    "remaining_qty",
+                    min_value=Decimal("0"),
+                )
+                is_active = _parse_bool(row.get(normalized_headers.get("is_active", "is_active")))
+
+                id_header = normalized_headers.get("id")
+                product_id = str(row.get(id_header, "")).strip() if id_header else ""
+
+                if product_id:
+                    try:
+                        product = Product.objects.get(
+                            pk=int(product_id),
+                            category=category,
+                        )
+                    except (ValueError, Product.DoesNotExist) as exc:
+                        raise ValueError(f"ingredient id {product_id!r} not found") from exc
+                    product.name = name
+                    product.selling_price = unit_cost
+                    if remaining_qty is not None:
+                        product.remaining_qty = remaining_qty
+                    product.is_active = is_active
+                    product.save()
+                    updated += 1
+                else:
+                    Product.objects.create(
+                        name=name,
+                        category=category,
+                        selling_price=unit_cost,
+                        remaining_qty=remaining_qty or Decimal("0"),
                         is_active=is_active,
                     )
                     created += 1

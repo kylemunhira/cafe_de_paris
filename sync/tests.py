@@ -48,6 +48,7 @@ class DesktopSyncTests(TestCase):
             user=self.cashier,
             branch=self.branch,
             role=StaffRole.CASHIER,
+            pos_access=True,
         )
         self.token = Token.objects.create(user=self.cashier)
         self.client = APIClient()
@@ -64,6 +65,29 @@ class DesktopSyncTests(TestCase):
         self.assertEqual(response.data["branch"]["id"], self.branch.id)
         self.assertEqual(len(response.data["products"]), 1)
         self.assertEqual(len(response.data["currencies"]), 1)
+
+    def test_pull_catalog_excludes_non_sellable_products(self):
+        ingredients = ProductCategory.objects.create(name="Ingredients")
+        assets = ProductCategory.objects.create(name="Cutlery", is_asset=True)
+        Product.objects.create(
+            name="Coffee Beans",
+            category=ingredients,
+            selling_price=Decimal("5.00"),
+            is_active=True,
+        )
+        Product.objects.create(
+            name="Spoon",
+            category=assets,
+            selling_price=Decimal("1.00"),
+            is_active=True,
+        )
+
+        response = self.client.get("/api/sync/pull/")
+        self.assertEqual(response.status_code, 200)
+        product_names = {p["name"] for p in response.data["products"]}
+        self.assertEqual(product_names, {"Espresso"})
+        category_names = {c["name"] for c in response.data["categories"]}
+        self.assertEqual(category_names, {"Drinks"})
 
     def test_push_open_order_then_payment(self):
         client_id = "660e8400-e29b-41d4-a716-446655440001"

@@ -108,12 +108,28 @@ def user_can_manage_users(user):
 
 
 def user_can_access_pos(user):
-    """Retail branch staff use POS; central bakery and HQ locations do not."""
+    """POS access is granted per user; HQ admins and global users always have access."""
     if not user or not user.is_authenticated:
         return False
     if user_has_global_branch_access(user):
         return True
-    return get_staff_branch_type(user) == BranchType.BRANCH
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.pos_access
+
+
+def user_can_access_kitchen(user):
+    """Kitchen display for branch/HQ staff preparing POS orders."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    branch_type = get_staff_branch_type(user)
+    if branch_type is None:
+        return user.is_staff or user.is_superuser
+    return branch_type in (BranchType.BRANCH, BranchType.HQ)
 
 
 def user_can_access_bakery_transfers(user):
@@ -158,6 +174,19 @@ def user_can_approve_delivery(user, note):
 def user_can_manage_suppliers(user):
     """HQ admins and designated global users manage supplier master data."""
     return user_has_global_branch_access(user)
+
+
+def user_can_create_purchase_orders(user):
+    """HQ admins and branch managers record purchases (stock added immediately)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.BRANCH_MANAGER
 
 
 def user_can_approve_purchase_orders(user):

@@ -9,7 +9,7 @@ from accounts.models import StaffProfile
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
 from orders.day_end import build_day_end_report
-from orders.models import Order, OrderStatus
+from orders.models import Expense, KitchenStatus, Order, OrderStatus
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
 from payments.models import Currency, CurrencyRate
 
@@ -87,6 +87,62 @@ class OrderPayTests(TestCase):
         self.assertEqual(self.order.amount_paid, Decimal("7.00"))
 
 
+class KitchenOrderTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Test Branch",
+            code="TST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=category,
+            selling_price=Decimal("3.50"),
+        )
+        self.order = Order.objects.create(branch=self.branch)
+        self.order.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        self.order.recalculate_total()
+
+    def test_start_preparing_moves_order_to_preparing(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/start-preparing/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.kitchen_status, KitchenStatus.PREPARING)
+        self.assertIsNotNone(self.order.kitchen_started_at)
+
+    def test_mark_ready_after_preparing(self):
+        self.order.kitchen_status = KitchenStatus.PREPARING
+        self.order.save(update_fields=["kitchen_status"])
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/mark-ready/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.kitchen_status, KitchenStatus.READY)
+        self.assertIsNotNone(self.order.kitchen_ready_at)
+
+    def test_cannot_mark_ready_from_pending(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/mark-ready/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+
 class InclusiveTaxBreakdownTests(TestCase):
     def test_split_inclusive_total_at_15_5_percent(self):
         breakdown = split_inclusive_total(Decimal("11.55"))
@@ -156,7 +212,7 @@ class ReceiptPrintTests(TestCase):
             price=Decimal("4.00"),
         )
         self.user = User.objects.create_user(username="cashier", password="pass")
-        StaffProfile.objects.create(user=self.user, branch=self.branch)
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
         self.client.force_login(self.user)
 
     def test_receipt_print_for_paid_order(self):
@@ -219,7 +275,7 @@ class DayEndReportTests(TestCase):
             effective_from="2026-01-01",
         )
         self.user = User.objects.create_user(username="cashier", password="pass")
-        StaffProfile.objects.create(user=self.user, branch=self.branch)
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
         self.client.force_login(self.user)
         self.today = timezone.localdate()
         self._receipt_seq = 0
@@ -254,6 +310,41 @@ class DayEndReportTests(TestCase):
         self.assertEqual(len(report["products"]), 2)
         self.assertEqual(report["tax_breakdown"]["total"], Decimal("11.50"))
 
+    def test_build_day_end_report_with_counted_cashup(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("2"))
+        report = build_day_end_report(
+            self.branch,
+            counted_by_currency={self.usd.id: "9.00"},
+        )
+        self.assertTrue(report["has_counted_entries"])
+        self.assertEqual(len(report["cashup_rows"]), 1)
+        self.assertEqual(report["cashup_rows"][0]["expected_total"], Decimal("8.00"))
+        self.assertEqual(report["cashup_rows"][0]["counted_total"], Decimal("9.00"))
+        self.assertEqual(report["cashup_rows"][0]["variance"], Decimal("1.00"))
+        self.assertEqual(report["variance_total"], Decimal("1.00"))
+
+    def test_build_day_end_report_with_expenses_adjusts_cashup(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("2"))
+        Expense.objects.create(
+            branch=self.branch,
+            expense_date=self.today,
+            amount=Decimal("2.00"),
+            currency=self.usd,
+            description="Milk",
+            recorded_by=self.user,
+        )
+        report = build_day_end_report(
+            self.branch,
+            counted_by_currency={self.usd.id: "6.00"},
+        )
+        row = report["cashup_rows"][0]
+        self.assertEqual(row["expected_total"], Decimal("8.00"))
+        self.assertEqual(row["expenses_total"], Decimal("2.00"))
+        self.assertEqual(row["net_expected_total"], Decimal("6.00"))
+        self.assertEqual(row["variance"], Decimal("0.00"))
+        self.assertEqual(len(report["expenses"]), 1)
+        self.assertEqual(report["expenses"][0]["description"], "Milk")
+
     def test_day_end_print_view(self):
         self._create_paid_order(product=self.latte, quantity=Decimal("1"))
 
@@ -263,3 +354,118 @@ class DayEndReportTests(TestCase):
         self.assertContains(response, "Latte")
         self.assertContains(response, "Orders")
         self.assertContains(response, "Highland")
+
+
+class ExpenseApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Highland",
+            code="HIG",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
+
+    def test_create_expense(self):
+        response = self.client.post(
+            "/api/expenses/",
+            {
+                "branch": self.branch.id,
+                "expense_date": "2026-06-17",
+                "amount": "15.50",
+                "currency": self.usd.id,
+                "description": "Petty cash — sugar",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Expense.objects.count(), 1)
+        expense = Expense.objects.get()
+        self.assertEqual(expense.description, "Petty cash — sugar")
+        self.assertEqual(expense.recorded_by, self.user)
+
+    def test_list_expenses_filtered_by_date(self):
+        Expense.objects.create(
+            branch=self.branch,
+            expense_date="2026-06-17",
+            amount=Decimal("10.00"),
+            currency=self.usd,
+            description="Today",
+            recorded_by=self.user,
+        )
+        Expense.objects.create(
+            branch=self.branch,
+            expense_date="2026-06-16",
+            amount=Decimal("5.00"),
+            currency=self.usd,
+            description="Yesterday",
+            recorded_by=self.user,
+        )
+        response = self.client.get(
+            f"/api/expenses/?branch={self.branch.id}&date=2026-06-17"
+        )
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get("results", response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["description"], "Today")
+
+    def test_list_expenses_filtered_by_date_range(self):
+        Expense.objects.create(
+            branch=self.branch,
+            expense_date="2026-06-15",
+            amount=Decimal("5.00"),
+            currency=self.usd,
+            description="Old",
+            recorded_by=self.user,
+        )
+        Expense.objects.create(
+            branch=self.branch,
+            expense_date="2026-06-17",
+            amount=Decimal("10.00"),
+            currency=self.usd,
+            description="In range",
+            recorded_by=self.user,
+        )
+        response = self.client.get(
+            f"/api/expenses/?branch={self.branch.id}&from=2026-06-16&to=2026-06-17"
+        )
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get("results", response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["description"], "In range")
+
+
+class ExpensesPageTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.branch = Branch.objects.create(
+            name="Highland",
+            code="HIG",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+
+    def test_expenses_page_requires_pos_access(self):
+        response = self.client.get("/expenses/")
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.user)
+        response = self.client.get("/expenses/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Record expense")

@@ -191,6 +191,10 @@ function renderActiveCount() {
   activeCountPanel.style.display = "block";
   activeCountTitle.textContent = `${activeStockTake.stock_take_type_display} stock take #${activeStockTake.id}`;
   activeCountMeta.textContent = `${activeStockTake.branch_name} · ${activeStockTake.count_date} · ${activeStockTake.lines.length} products`;
+  const isCompleted = activeStockTake.status === "completed";
+  document.getElementById("save-lines-btn").style.display = isCompleted ? "none" : "";
+  document.getElementById("cancel-count-btn").style.display = isCompleted ? "none" : "";
+  document.getElementById("complete-count-btn").style.display = isCompleted ? "none" : "";
 
   const lines = activeStockTake.lines || [];
   if (!lines.length) {
@@ -204,9 +208,9 @@ function renderActiveCount() {
         <tr>
           <th>Category</th>
           <th>Product</th>
-          <th style="text-align: right;">System qty</th>
           <th style="text-align: right; min-width: 120px;">Counted qty</th>
-          <th style="text-align: right;">Variance</th>
+          ${isCompleted ? `<th style="text-align: right;">System qty</th>` : ""}
+          ${isCompleted ? `<th style="text-align: right;">Variance</th>` : ""}
           <th>Notes</th>
         </tr>
       </thead>
@@ -219,17 +223,29 @@ function renderActiveCount() {
             <tr data-line-id="${line.id}">
               <td>${line.category_name}</td>
               <td>${line.product_name}</td>
-              <td style="text-align: right;">${formatQty(line.system_quantity)}</td>
               <td style="text-align: right;">
-                <input type="number" class="counted-input report-input" min="0" step="0.01"
-                  data-line-id="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="0">
+                ${isCompleted
+                  ? formatQty(line.counted_quantity)
+                  : `<input type="number" class="counted-input report-input" min="0" step="0.01"
+                      data-line-id="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="0">`
+                }
               </td>
-              <td style="text-align: right;" class="variance-cell ${varianceClass(variance)}">
-                ${variance === null ? "—" : formatQty(variance)}
-              </td>
+              ${isCompleted
+                ? `<td style="text-align: right;">${formatQty(line.system_quantity)}</td>`
+                : ""
+              }
+              ${isCompleted
+                ? `<td style="text-align: right;" class="variance-cell ${varianceClass(variance)}">
+                    ${variance === null ? "—" : formatQty(variance)}
+                  </td>`
+                : ""
+              }
               <td>
-                <input type="text" class="notes-input report-input" data-line-id="${line.id}"
-                  value="${line.notes || ""}" placeholder="Optional">
+                ${isCompleted
+                  ? (line.notes || "—")
+                  : `<input type="text" class="notes-input report-input" data-line-id="${line.id}"
+                      value="${line.notes || ""}" placeholder="Optional">`
+                }
               </td>
             </tr>
           `;
@@ -315,9 +331,8 @@ async function completeCount() {
   await saveLines();
   if (!confirm("Complete this stock take and post inventory variances?")) return;
   try {
-    await apiPost(`/stock-takes/${activeStockTake.id}/complete/`, {});
+    activeStockTake = await apiPost(`/stock-takes/${activeStockTake.id}/complete/`, {});
     showToast("Stock take completed.", "success");
-    activeStockTake = null;
     renderActiveCount();
     await loadStockTakes();
   } catch (err) {

@@ -14,6 +14,7 @@ urlpatterns = [
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("", views.DashboardView.as_view(), name="dashboard"),
     path("pos/", views.POSView.as_view(), name="pos"),
+    path("kitchen/", views.KitchenView.as_view(), name="kitchen"),
     path(
         "pos/receipt/<int:pk>/print/",
         views.ReceiptPrintView.as_view(),
@@ -32,11 +33,13 @@ urlpatterns = [
         name="invoice-print",
     ),
     path("products/", views.ProductsView.as_view(), name="products"),
+    path("ingredients/", views.IngredientsView.as_view(), name="ingredients"),
     path("branches/", views.BranchesView.as_view(), name="branches"),
     path("transfers/", views.TransfersView.as_view(), name="transfers"),
     path("grv/", views.GrvView.as_view(), name="grv"),
     path("recipes/", views.RecipesView.as_view(), name="recipes"),
     path("stock-take/", views.StockTakeView.as_view(), name="stock-take"),
+    path("expenses/", views.ExpensesView.as_view(), name="expenses"),
     path("suppliers/", views.SuppliersView.as_view(), name="suppliers"),
     path("purchase-orders/", views.PurchaseOrdersView.as_view(), name="purchase-orders"),
     path(

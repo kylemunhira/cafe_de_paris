@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 from branches.models import Branch
@@ -12,6 +13,12 @@ class OrderStatus(models.TextChoices):
     OPEN = "open", "Open"
     PAID = "paid", "Paid"
     CANCELLED = "cancelled", "Cancelled"
+
+
+class KitchenStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PREPARING = "preparing", "Preparing"
+    READY = "ready", "Ready"
 
 
 class OrderType(models.TextChoices):
@@ -64,6 +71,14 @@ class Order(models.Model):
         choices=OrderStatus.choices,
         default=OrderStatus.OPEN,
     )
+    kitchen_status = models.CharField(
+        max_length=20,
+        choices=KitchenStatus.choices,
+        default=KitchenStatus.PENDING,
+        help_text="Preparation progress for open POS orders.",
+    )
+    kitchen_started_at = models.DateTimeField(null=True, blank=True)
+    kitchen_ready_at = models.DateTimeField(null=True, blank=True)
     receipt_number = models.CharField(
         max_length=20,
         blank=True,
@@ -141,3 +156,35 @@ class OrderItem(models.Model):
         order = self.order
         super().delete(*args, **kwargs)
         order.recalculate_total()
+
+
+class Expense(models.Model):
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="expenses",
+    )
+    expense_date = models.DateField(
+        help_text="Business day this expense applies to (for day-end reports).",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="expenses",
+    )
+    description = models.CharField(max_length=200)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expenses_recorded",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-expense_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.description} — {self.amount} ({self.branch})"
