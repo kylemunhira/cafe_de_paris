@@ -81,12 +81,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-  const CAN_RECEIVE = {{ can_receive_on_transfers_page|yesno:"true,false" }};
-</script>
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 
+const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
 
 let allNotes = [];
@@ -252,26 +250,23 @@ function populateFormOptions() {
     ${destinationBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
 
-  const BAKERY_TRANSFER_CATEGORIES = new Set([
-    "Breads & pastries", "Cakes & desserts", "Savory",
-  ]);
-  const stockedProductIds = new Set(bakeryInventory.map(i => String(i.product)));
-  const availableProducts = products.filter(
-    p => p.is_active
-      && BAKERY_TRANSFER_CATEGORIES.has(p.category_name)
-      && stockedProductIds.has(String(p.id))
-  );
+  const availableProducts = products
+    .filter(p => p.is_active)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   productSelect.innerHTML = `
     <option value="">Select product…</option>
-    ${availableProducts.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+    ${availableProducts.map(p => {
+      const stock = formatQty(getBakeryStock(p.id));
+      return `<option value="${p.id}">${p.name} (${stock} at bakery)</option>`;
+    }).join("")}
   `;
 }
 
 async function loadData() {
   const [branchesData, productsData, notesData] = await Promise.all([
     apiGet("/branches/"),
-    apiGet("/products/?page_size=500"),
+    apiGet("/products/?bakery_transfer=true&page_size=1000"),
     apiGet("/delivery-notes/?bakery_only=true"),
   ]);
 

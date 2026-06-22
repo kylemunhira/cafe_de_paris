@@ -1,7 +1,8 @@
-import { syncPull, syncPush, showToast } from "./api.js";
+import { syncPull, syncPush, fetchOpenOrders, showToast } from "./api.js";
 
 const PING_TIMEOUT_MS = 5000;
 const AUTO_SYNC_INTERVAL_MS = 30000;
+const KITCHEN_REFRESH_INTERVAL_MS = 15000;
 
 let syncing = false;
 
@@ -75,15 +76,41 @@ export async function pushPendingOrders(session) {
     await window.pos.markOrderSynced(result.client_id, {
       serverId: result.server_id,
       receiptNumber: result.receipt_number,
+      kitchenStatus: result.kitchen_status,
     });
   }
 
   return { pushed: response.results.length };
 }
 
+export async function pullKitchenStatus(session) {
+  if (!session?.branch?.id || !session?.serverUrl || !session?.token) {
+    return { updated: 0 };
+  }
+
+  const data = await fetchOpenOrders(
+    session.serverUrl,
+    session.token,
+    session.branch.id
+  );
+  const orders = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+  const updates = orders.map((order) => ({
+    server_id: order.id,
+    kitchen_status: order.kitchen_status || "pending",
+    kitchen_started_at: order.kitchen_started_at,
+    kitchen_ready_at: order.kitchen_ready_at,
+  }));
+
+  const updated = updates.length
+    ? await window.pos.updateKitchenStatuses(updates)
+    : 0;
+  return { updated };
+}
+
 export async function runFullSync(session, { silent = false } = {}) {
   await pullCatalog(session);
   const { pushed } = await pushPendingOrders(session);
+  await pullKitchenStatus(session);
   if (!silent) {
     const msg =
       pushed > 0
@@ -146,4 +173,22 @@ export function startAutoSync(session, { onSyncComplete } = {}) {
     clearInterval(interval);
     window.removeEventListener("online", onOnline);
   };
+}
+
+export function startKitchenRefresh(session, { onRefresh } = {}) {
+  const refresh = async () => {
+    if (!navigator.onLine) return;
+    const reachable = await checkServerReachable(session);
+    if (!reachable) return;
+    try {
+      await pullKitchenStatus(session);
+      if (onRefresh) await onRefresh();
+    } catch {
+      // Kitchen status refresh is best-effort.
+    }
+  };
+
+  refresh();
+  const interval = setInterval(refresh, KITCHEN_REFRESH_INTERVAL_MS);
+  return () => clearInterval(interval);
 }

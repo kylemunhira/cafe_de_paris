@@ -197,6 +197,13 @@ class ReceiptPrintTests(TestCase):
             rate=Decimal("1"),
             effective_from="2026-01-01",
         )
+        self.user = User.objects.create_user(
+            username="cashier",
+            password="pass",
+            first_name="Jane",
+            last_name="Cashier",
+        )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
         self.order = Order.objects.create(
             branch=self.branch,
             status=OrderStatus.PAID,
@@ -205,14 +212,14 @@ class ReceiptPrintTests(TestCase):
             amount_paid=Decimal("4.00"),
             total_amount=Decimal("4.00"),
             receipt_number="AVO0906261",
+            created_by=self.user,
+            paid_by=self.user,
         )
         self.order.items.create(
             product=product,
             quantity=Decimal("1"),
             price=Decimal("4.00"),
         )
-        self.user = User.objects.create_user(username="cashier", password="pass")
-        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
         self.client.force_login(self.user)
 
     def test_receipt_print_for_paid_order(self):
@@ -223,6 +230,28 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "Order #")
         self.assertContains(response, "Latte")
         self.assertContains(response, "US Dollar")
+        self.assertContains(response, "Served by Jane Cashier")
+
+    def test_order_slip_print_for_open_order(self):
+        open_order = Order.objects.create(
+            branch=self.branch,
+            status=OrderStatus.OPEN,
+            created_by=self.user,
+        )
+        open_order.items.create(
+            product=Product.objects.get(name="Latte"),
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        response = self.client.get(f"/pos/order/{open_order.id}/print/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Order ticket")
+        self.assertContains(response, "Served by Jane Cashier")
+        self.assertContains(response, "UNPAID")
+
+    def test_order_slip_print_not_available_for_paid_order(self):
+        response = self.client.get(f"/pos/order/{self.order.id}/print/")
+        self.assertEqual(response.status_code, 404)
 
     def test_receipt_print_not_available_for_open_order(self):
         open_order = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)

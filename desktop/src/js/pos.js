@@ -1,6 +1,6 @@
-import { formatCurrency, formatDate, showToast } from "./api.js";
+import { formatCurrency, formatDate, kitchenStatusBadge, showToast } from "./api.js";
 import { printDayEndReport, printOrderSlip, printSalesReceipt } from "./print-client.js";
-import { isBrowserOnline, runFullSync, runFullSyncIfOnline, startAutoSync } from "./sync.js";
+import { isBrowserOnline, runFullSync, runFullSyncIfOnline, startAutoSync, startKitchenRefresh } from "./sync.js";
 
 const cart = new Map();
 let session = null;
@@ -15,6 +15,7 @@ let selectedOrder = null;
 let selectedCurrencyId = null;
 let inclusiveTaxRate = 15.5;
 let stopAutoSync = null;
+let stopKitchenRefresh = null;
 
 const branchLabel = document.getElementById("branch-label");
 const syncStatus = document.getElementById("sync-status");
@@ -64,11 +65,42 @@ function setPosMode(mode) {
     selectedOrder = null;
     loadOpenOrders();
     renderReceiptPanel();
+    startReceiptKitchenRefresh();
   } else {
+    stopReceiptKitchenRefresh();
     receiptPaymentSection.style.display = "none";
     cartTotalLabel.textContent = "Total";
     renderCart();
   }
+}
+
+function stopReceiptKitchenRefresh() {
+  if (stopKitchenRefresh) {
+    stopKitchenRefresh();
+    stopKitchenRefresh = null;
+  }
+}
+
+function startReceiptKitchenRefresh() {
+  stopReceiptKitchenRefresh();
+  if (!session) return;
+
+  stopKitchenRefresh = startKitchenRefresh(session, {
+    onRefresh: async () => {
+      if (posMode !== "receipt") return;
+      const previousStatuses = new Map(
+        openOrders.map((order) => [order.client_id, order.kitchen_status || "pending"])
+      );
+      await loadOpenOrders();
+      for (const order of openOrders) {
+        const previous = previousStatuses.get(order.client_id);
+        if (previous === "preparing" && order.kitchen_status === "ready") {
+          const label = order.receipt_number || order.client_id.slice(0, 8);
+          showToast(`Order ${label} is ready for pickup`);
+        }
+      }
+    },
+  });
 }
 
 function roundMoney(amount) {
@@ -205,6 +237,10 @@ function renderReceiptPanel() {
   const typeLabel = selectedOrder.order_type.replace("_", " ");
   cartItems.innerHTML = `
     <div class="receipt-order-meta">
+      <div class="receipt-meta" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+        <span>Kitchen</span>
+        ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
+      </div>
       <div class="receipt-meta">${typeLabel}</div>
       ${selectedOrder.table_number ? `<div class="receipt-meta">Table ${selectedOrder.table_number}</div>` : ""}
       <div class="receipt-meta">${formatDate(selectedOrder.created_at)}</div>
@@ -241,14 +277,18 @@ function renderOpenOrdersList() {
   receiptOrdersList.innerHTML = openOrders
     .map((o) => {
       const selected = selectedOrder?.client_id === o.client_id ? " selected" : "";
+      const readyClass = o.kitchen_status === "ready" ? " receipt-order-ready" : "";
       return `
-      <button type="button" class="receipt-order-card${selected}" data-id="${o.client_id}">
+      <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.client_id}">
         <div class="receipt-order-card-top">
           <strong>${o.receipt_number || o.client_id.slice(0, 8)}</strong>
           <span class="receipt-order-amount">${money(o.total_amount)}</span>
         </div>
         <div class="receipt-order-card-meta">${o.order_type.replace("_", " ")} · ${o.items.length} items</div>
-        <div class="receipt-order-card-time">${formatDate(o.created_at)}</div>
+        <div class="receipt-order-card-meta" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+          <span>${formatDate(o.created_at)}</span>
+          ${kitchenStatusBadge(o.kitchen_status || "pending")}
+        </div>
       </button>`;
     })
     .join("");
@@ -416,6 +456,7 @@ dayendBtn.addEventListener("click", async () => {
 
 logoutBtn.addEventListener("click", async () => {
   if (stopAutoSync) stopAutoSync();
+  stopReceiptKitchenRefresh();
   window.removeEventListener("offline", updateSyncBadge);
   await window.pos.clearSession();
   window.location.href = "login.html";
@@ -428,6 +469,7 @@ async function placeOrder() {
     const order = await window.pos.createOrder({
       orderType: orderType.value,
       tableNumber: orderType.value === "dine_in" ? tableNumber.value.trim() : "",
+      createdByName: session.user?.display_name || session.user?.username || "",
       items: [...cart.values()].map((item) => ({
         product_id: item.id,
         product_name: item.name,
@@ -474,6 +516,7 @@ async function paySelectedOrder() {
       exchangeRate: rate,
       amountPaid: amountDue,
       receiptNumber: localReceipt,
+      paidByName: session.user?.display_name || session.user?.username || "",
     });
     showToast(`Paid ${money(order.amount_paid, currency)} · ${localReceipt}`);
     try {

@@ -120,6 +120,9 @@ ipcMain.handle("orders:pending-sync", () => db.listPendingSyncOrders());
 ipcMain.handle("orders:mark-synced", (_event, clientId, result) =>
   db.markOrderSynced(clientId, result)
 );
+ipcMain.handle("orders:update-kitchen-statuses", (_event, updates) =>
+  db.updateKitchenStatuses(updates)
+);
 ipcMain.handle("sync:pending-count", () => db.pendingSyncCount());
 
 ipcMain.handle("reports:day-end", (_event, { date } = {}) => {

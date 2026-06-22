@@ -57,7 +57,7 @@
     <div id="receipt-mode-panel" class="card" style="padding: 0; display: none;">
       <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
         <h3 style="margin: 0; font-size: 1rem;">Open Orders</h3>
-        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Select an order to collect payment</p>
+        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Select an order to collect payment · kitchen status updates automatically</p>
       </div>
       <div class="receipt-orders-list" id="receipt-orders-list">
         <div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders</p></div>
@@ -160,7 +160,7 @@
 {% block extra_js %}
 {% load l10n %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 
 const INCLUSIVE_TAX_RATE = {{ inclusive_tax_rate|unlocalize }};
 
@@ -175,6 +175,7 @@ let selectedOrder = null;
 let currencies = [];
 let baseCurrency = null;
 let selectedCurrencyId = null;
+let kitchenRefreshTimer = null;
 
 const branchSelect = document.getElementById("branch-select");
 const orderType = document.getElementById("order-type");
@@ -248,11 +249,29 @@ function setPosMode(mode) {
     selectedOrder = null;
     loadOpenOrders();
     renderReceiptPanel();
+    startKitchenRefresh();
   } else {
+    stopKitchenRefresh();
     receiptPaymentSection.style.display = "none";
     cartTotalLabel.textContent = "Total";
     renderCart();
   }
+}
+
+function stopKitchenRefresh() {
+  if (kitchenRefreshTimer) {
+    clearInterval(kitchenRefreshTimer);
+    kitchenRefreshTimer = null;
+  }
+}
+
+function startKitchenRefresh() {
+  stopKitchenRefresh();
+  kitchenRefreshTimer = setInterval(() => {
+    if (posMode === "receipt" && branchSelect.value) {
+      loadOpenOrders({ notifyReady: true });
+    }
+  }, 15000);
 }
 
 function getCartTotal() {
@@ -417,6 +436,10 @@ function renderReceiptPanel() {
 
   cartItems.innerHTML = `
     <div class="receipt-order-meta">
+      <div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+        <span>Kitchen</span>
+        ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
+      </div>
       <div class="receipt-meta">${typeLabel}</div>
       ${tableInfo}
       <div class="receipt-meta">${formatDate(selectedOrder.created_at)}</div>
@@ -468,18 +491,35 @@ function renderOpenOrdersList() {
   }).join("");
 }
 
-async function loadOpenOrders() {
+async function loadOpenOrders({ notifyReady = false } = {}) {
   if (!branchSelect.value) {
     openOrders = [];
     renderOpenOrdersList();
     return;
   }
 
+  const previousStatuses = notifyReady
+    ? new Map(openOrders.map(o => [o.id, o.kitchen_status]))
+    : null;
+
   try {
-    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}`);
+    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}&page_size=500`);
     openOrders = unwrapList(data);
-    if (selectedOrder && !openOrders.some(o => o.id === selectedOrder.id)) {
-      selectedOrder = null;
+    if (selectedOrder) {
+      const refreshed = openOrders.find(o => o.id === selectedOrder.id);
+      if (refreshed) {
+        selectedOrder = refreshed;
+      } else {
+        selectedOrder = null;
+      }
+    }
+    if (notifyReady && previousStatuses) {
+      for (const order of openOrders) {
+        const previous = previousStatuses.get(order.id);
+        if (previous === "preparing" && order.kitchen_status === "ready") {
+          showToast(`Order #${order.id} is ready for pickup`);
+        }
+      }
     }
     renderOpenOrdersList();
     if (posMode === "receipt") renderReceiptPanel();
@@ -563,6 +603,8 @@ categoryTabs.addEventListener("click", (e) => {
   const tab = e.target.closest(".category-tab");
   if (!tab) return;
   activeCategory = tab.dataset.id;
+  productSearchInput.value = "";
+  searchQuery = "";
   renderCategories();
   renderProducts();
 });
@@ -643,6 +685,13 @@ async function placeOrder() {
     cart.clear();
     renderCart();
     showToast(`Order #${order.id} placed — ${formatCurrency(order.total_amount)}`);
+    const printWindow = window.open("about:blank", "_blank");
+    const orderUrl = `/pos/order/${order.id}/print/?auto=1`;
+    if (printWindow) {
+      printWindow.location.href = orderUrl;
+    } else {
+      window.open(orderUrl, "_blank", "noopener");
+    }
   } catch (err) {
     showToast(err.message, true);
   } finally {
@@ -875,42 +924,42 @@ dayendModal?.addEventListener("keydown", (event) => {
 
 async function init() {
   try {
-    const [branchesData, productsData, categoriesData, currenciesData] = await Promise.all([
-      apiGet("/branches/?page_size=500"),
-      apiGet("/products/?page_size=500"),
-      apiGet("/categories/?page_size=500"),
+    const [branches, productsData, categoriesData, currenciesData] = await Promise.all([
+      apiGet("/branches/?page_size=500").then(data => unwrapList(data)),
+      fetchAllPages("/products/"),
+      fetchAllPages("/categories/"),
       apiGet("/currencies/?page_size=500"),
     ]);
 
     currencies = unwrapList(currenciesData);
     baseCurrency = currencies.find(c => c.is_base) || null;
 
-    const branches = unwrapList(branchesData).filter(
+    const activeBranches = branches.filter(
       b => b.is_active && b.branch_type !== "bakery"
     );
-    products = unwrapList(productsData).filter(
+    products = productsData.filter(
       p => p.is_active && p.category_name !== "Ingredients"
     );
-    categories = unwrapList(categoriesData).filter(c =>
+    categories = categoriesData.filter(c =>
       products.some(p => p.category === c.id)
     );
 
-    if (!branches.length) {
+    if (!activeBranches.length) {
       branchSelect.innerHTML = `<option value="">No branches available</option>`;
       branchSelect.disabled = true;
     } else {
       const preferred = preferredBranchId
-        && branches.some(b => String(b.id) === preferredBranchId)
+        && activeBranches.some(b => String(b.id) === preferredBranchId)
         ? preferredBranchId
         : "";
 
-      if (branches.length === 1) {
-        branchSelect.innerHTML = branches.map(
+      if (activeBranches.length === 1) {
+        branchSelect.innerHTML = activeBranches.map(
           b => `<option value="${b.id}" selected>${b.name}</option>`
         ).join("");
         branchSelect.disabled = true;
       } else {
-        branchSelect.innerHTML = branches.map(
+        branchSelect.innerHTML = activeBranches.map(
           b => `<option value="${b.id}"${String(b.id) === preferred ? " selected" : ""}>${b.name}</option>`
         ).join("");
       }
@@ -929,6 +978,8 @@ async function init() {
 const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 
 init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
+
+window.addEventListener("beforeunload", () => stopKitchenRefresh());
 
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));

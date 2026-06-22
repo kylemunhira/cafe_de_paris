@@ -100,6 +100,11 @@ function formatPaidAmount(payment) {
   return code ? `${code} ${amt}` : amt;
 }
 
+function renderSalespersonLine(name) {
+  if (!name) return "";
+  return `<p>Served by ${esc(name)}</p>`;
+}
+
 function renderLocation(location) {
   if (!location) return "";
   return `<p class="address">${esc(location)}</p>`;
@@ -244,7 +249,7 @@ function wrapDocument(title, body) {
 }
 
 function renderOrderSlipHtml(data) {
-  const { branch, order, tax, baseCurrency } = data;
+  const { branch, order, tax, baseCurrency, salesperson } = data;
   const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
 
   return wrapDocument(
@@ -257,6 +262,7 @@ function renderOrderSlipHtml(data) {
         <p>Order #${esc(orderId)}</p>
         <p>${esc(formatDateTime(order.created_at))}</p>
         <p>${orderTypeLine(order)}</p>
+        ${renderSalespersonLine(salesperson)}
       </div>
       <hr class="divider">
       ${renderItemsBlock(order.items)}
@@ -271,7 +277,7 @@ function renderOrderSlipHtml(data) {
 }
 
 function renderReceiptHtml(data) {
-  const { branch, order, tax, payment, baseCurrency, fiscal } = data;
+  const { branch, order, tax, payment, baseCurrency, fiscal, salesperson } = data;
   const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
   const receiptLine = order.receipt_number ? `<p>Receipt #${esc(order.receipt_number)}</p>` : "";
   const paymentRows = payment
@@ -300,6 +306,7 @@ function renderReceiptHtml(data) {
         <p>Order #${esc(orderId)}</p>
         <p>${esc(formatDateTime(order.paid_at || order.created_at))}</p>
         <p>${orderTypeLine(order)}</p>
+        ${renderSalespersonLine(salesperson)}
       </div>
       <hr class="divider">
       ${renderItemsBlock(order.items)}

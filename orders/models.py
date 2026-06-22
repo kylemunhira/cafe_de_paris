@@ -92,6 +92,22 @@ class Order(models.Model):
         blank=True,
         help_text="When payment was collected (used for day-end reports).",
     )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_created",
+        help_text="POS cashier who placed the order.",
+    )
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_paid",
+        help_text="POS cashier who collected payment.",
+    )
 
     class Meta:
         ordering = ["-created_at"]

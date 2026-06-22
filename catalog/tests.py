@@ -81,6 +81,35 @@ class ProductCsvTests(TestCase):
         self.assertTrue(Product.objects.filter(name="Cappuccino").exists())
 
 
+class BakeryTransferProductFilterTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.bakery_category = ProductCategory.objects.create(name="Breads & pastries")
+        self.component_category = ProductCategory.objects.create(name="Components")
+        self.coffee_category = ProductCategory.objects.create(name="Coffee")
+        self.croissant = Product.objects.create(
+            name="Croissant",
+            category=self.bakery_category,
+            selling_price="2.75",
+        )
+        Product.objects.create(
+            name="Pastry Cream",
+            category=self.component_category,
+            selling_price="0",
+        )
+        Product.objects.create(
+            name="Espresso",
+            category=self.coffee_category,
+            selling_price="3.50",
+        )
+
+    def test_bakery_transfer_filter_returns_sellable_bakery_products_only(self):
+        response = self.client.get("/api/products/?bakery_transfer=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Croissant"})
+
+
 class IngredientCsvTests(TestCase):
     def setUp(self):
         self.client = APIClient()

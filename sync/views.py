@@ -100,7 +100,7 @@ class SyncPushView(DesktopSyncPermissionMixin, APIView):
 
             try:
                 order, already_synced, fiscal_receipt = import_client_order(
-                    branch, serializer.validated_data
+                    branch, serializer.validated_data, user=request.user
                 )
             except (ZimraConfigurationError, ZimraSubmissionError) as exc:
                 return Response(
@@ -117,6 +117,7 @@ class SyncPushView(DesktopSyncPermissionMixin, APIView):
                 "client_id": str(serializer.validated_data["client_id"]),
                 "server_id": order.id,
                 "status": order.status,
+                "kitchen_status": order.kitchen_status,
                 "receipt_number": order.receipt_number or None,
                 "already_synced": already_synced,
             }

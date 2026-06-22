@@ -8,6 +8,12 @@ from payments.models import Currency
 from .models import Expense, Order, OrderItem
 
 
+def staff_display_name(user):
+    if not user:
+        return None
+    return user.get_full_name() or user.username
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
 
@@ -43,6 +49,8 @@ class OrderSerializer(serializers.ModelSerializer):
     kitchen_status_display = serializers.CharField(
         source="get_kitchen_status_display", read_only=True
     )
+    created_by_name = serializers.SerializerMethodField()
+    paid_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -65,10 +73,20 @@ class OrderSerializer(serializers.ModelSerializer):
             "kitchen_started_at",
             "kitchen_ready_at",
             "receipt_number",
+            "created_by",
+            "created_by_name",
+            "paid_by",
+            "paid_by_name",
             "items",
             "created_at",
         ]
         read_only_fields = ["total_amount", "exchange_rate", "amount_paid", "created_at"]
+
+    def get_created_by_name(self, obj):
+        return staff_display_name(obj.created_by)
+
+    def get_paid_by_name(self, obj):
+        return staff_display_name(obj.paid_by)
 
 
 class OrderPaySerializer(serializers.Serializer):
@@ -87,7 +105,9 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop("items")
-        order = Order.objects.create(**validated_data)
+        request = self.context.get("request")
+        user = request.user if request and request.user.is_authenticated else None
+        order = Order.objects.create(created_by=user, **validated_data)
 
         for item_data in items_data:
             product = item_data["product"]

@@ -10,7 +10,15 @@
 
 {% block content %}
 <div class="card" style="padding: 0;">
-  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+    <input
+      type="search"
+      id="order-search"
+      class="report-input"
+      placeholder="Search order #, branch, receipt #, staff…"
+      style="max-width: 320px;"
+      autocomplete="off"
+    >
     <button class="category-tab active" data-filter="all">All</button>
     <button class="category-tab" data-filter="open">Open</button>
     <button class="category-tab" data-filter="paid">Paid</button>
@@ -28,16 +36,43 @@ import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, s
 
 let allOrders = [];
 let activeFilter = "all";
+let searchQuery = "";
 let currencies = [];
 const container = document.getElementById("orders-table");
+const searchInput = document.getElementById("order-search");
+
+function matchesSearch(order) {
+  if (!searchQuery) return true;
+  const itemNames = (order.items || []).map(i => i.product_name).filter(Boolean);
+  const haystack = [
+    order.id,
+    order.branch_name,
+    order.order_type,
+    order.status,
+    order.receipt_number,
+    order.payment_currency_name,
+    order.table_number,
+    order.created_by_name,
+    order.paid_by_name,
+    ...itemNames,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
 
 function renderOrders() {
-  const filtered = activeFilter === "all"
+  let filtered = activeFilter === "all"
     ? allOrders
     : allOrders.filter(o => o.status === activeFilter);
+  filtered = filtered.filter(matchesSearch);
 
   if (!filtered.length) {
-    container.innerHTML = `<div class="empty-state"><p>No orders found</p></div>`;
+    const message = searchQuery || activeFilter !== "all"
+      ? "No matching orders"
+      : "No orders found";
+    container.innerHTML = `<div class="empty-state"><p>${message}</p></div>`;
     return;
   }
 
@@ -121,6 +156,11 @@ container.addEventListener("click", async (e) => {
     btn.textContent = "Pay";
     btn.disabled = false;
   }
+});
+
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderOrders();
 });
 
 document.querySelectorAll("[data-filter]").forEach(tab => {

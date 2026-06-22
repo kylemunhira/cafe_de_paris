@@ -50,12 +50,13 @@ def _existing_synced_order(client_id):
     return record.order if record else None
 
 
-def _create_order(branch, validated_data):
+def _create_order(branch, validated_data, user=None):
     items_data = validated_data["items"]
     order = Order.objects.create(
         branch=branch,
         order_type=validated_data["order_type"],
         table_number=validated_data.get("table_number", ""),
+        created_by=user,
     )
     for item_data in items_data:
         product = item_data["product"]
@@ -69,7 +70,7 @@ def _create_order(branch, validated_data):
     return order
 
 
-def _pay_order(order, payment_data):
+def _pay_order(order, payment_data, user=None):
     currency = payment_data["payment_currency"]
     rate = currency.get_current_rate()
     if rate is None:
@@ -86,6 +87,7 @@ def _pay_order(order, payment_data):
     order.status = OrderStatus.PAID
     order.receipt_number = receipt_number
     order.paid_at = paid_at
+    order.paid_by = user
     order.save(
         update_fields=[
             "payment_currency",
@@ -94,6 +96,7 @@ def _pay_order(order, payment_data):
             "status",
             "receipt_number",
             "paid_at",
+            "paid_by",
         ]
     )
 
@@ -104,11 +107,11 @@ def _pay_order(order, payment_data):
     return fiscal_receipt
 
 
-def _apply_payment_if_needed(order, payment):
+def _apply_payment_if_needed(order, payment, user=None):
     if not payment or order.status == OrderStatus.PAID:
         return None
     try:
-        return _pay_order(order, payment)
+        return _pay_order(order, payment, user=user)
     except (ZimraConfigurationError, ZimraSubmissionError):
         raise
     except ReceiptNumberError as exc:
@@ -116,7 +119,7 @@ def _apply_payment_if_needed(order, payment):
 
 
 @transaction.atomic
-def import_client_order(branch, validated_data):
+def import_client_order(branch, validated_data, user=None):
     """
     Create (or return existing) central order from a desktop payload.
     Raises ValueError for business rule failures, Zimra errors for fiscal failures.
@@ -125,11 +128,11 @@ def import_client_order(branch, validated_data):
     payment = validated_data.get("payment")
     existing = _existing_synced_order(client_id)
     if existing:
-        fiscal_receipt = _apply_payment_if_needed(existing, payment)
+        fiscal_receipt = _apply_payment_if_needed(existing, payment, user=user)
         return existing, True, fiscal_receipt
 
-    order = _create_order(branch, validated_data)
-    fiscal_receipt = _apply_payment_if_needed(order, payment)
+    order = _create_order(branch, validated_data, user=user)
+    fiscal_receipt = _apply_payment_if_needed(order, payment, user=user)
 
     SyncedClientOrder.objects.create(client_id=client_id, order=order)
     return order, False, fiscal_receipt

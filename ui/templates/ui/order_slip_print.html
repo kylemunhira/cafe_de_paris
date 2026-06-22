@@ -1,0 +1,93 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order #{{ order.id }} — Café de Paris</title>
+  <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print order ticket</button>
+  </div>
+
+  <div class="receipt">
+    <div class="center brand">
+      <h1>Café de Paris</h1>
+      {% if order.branch.location %}<p class="address">{{ order.branch.location }}</p>{% endif %}
+    </div>
+
+    <div class="center meta">
+      <p><strong>Order ticket</strong></p>
+      <p>Order #{{ order.id }}</p>
+      <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
+      <p>{{ order.get_order_type_display }}{% if order.table_number %} · Table {{ order.table_number }}{% endif %}</p>
+      {% if salesperson_name %}<p>Served by {{ salesperson_name }}</p>{% endif %}
+    </div>
+
+    <hr class="divider">
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="col-item">Item</th>
+          <th class="col-qty">Qty</th>
+          <th class="col-amt">Amt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in order.items.all %}
+        <tr>
+          <td class="col-item">
+            <div class="item-name">{{ item.product.name }}</div>
+            <div class="item-detail">{{ item.price|floatformat:2 }} each</div>
+          </td>
+          <td class="col-qty">{{ item.quantity|floatformat:2 }}</td>
+          <td class="col-amt">{{ item.line_total|floatformat:2 }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3">No items</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <hr class="divider">
+
+    <table class="summary">
+      <tr>
+        <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-amt">{{ tax_breakdown.subtotal|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-label">Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
+        <td class="col-amt">{{ tax_breakdown.tax|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-amt">{{ tax_breakdown.total|floatformat:2 }}</td>
+      </tr>
+    </table>
+
+    <div class="center footer">
+      <p>Present this ticket when paying.</p>
+      <p>UNPAID</p>
+    </div>
+  </div>
+
+  {% if auto_print %}
+  <script>
+    const posUrl = "{% url 'ui:pos' %}";
+    window.addEventListener("load", () => window.print());
+    window.addEventListener("afterprint", () => {
+      window.close();
+      setTimeout(() => {
+        if (!window.closed) window.location.replace(posUrl);
+      }, 150);
+    });
+  </script>
+  {% endif %}
+</body>
+</html>

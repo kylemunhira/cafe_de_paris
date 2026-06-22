@@ -27,7 +27,12 @@ from .services import (
 
 
 class OrderViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.select_related("branch", "payment_currency").prefetch_related(
+    queryset = Order.objects.select_related(
+        "branch",
+        "payment_currency",
+        "created_by",
+        "paid_by",
+    ).prefetch_related(
         "items__product"
     ).all()
     serializer_class = OrderSerializer
@@ -105,6 +110,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.status = OrderStatus.PAID
             order.receipt_number = receipt_number
             order.paid_at = timezone.now()
+            order.paid_by = request.user
             order.save(
                 update_fields=[
                     "payment_currency",
@@ -113,6 +119,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "status",
                     "receipt_number",
                     "paid_at",
+                    "paid_by",
                 ]
             )
 

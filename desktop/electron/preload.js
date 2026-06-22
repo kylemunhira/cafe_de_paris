@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("pos", {
   listPendingSyncOrders: () => ipcRenderer.invoke("orders:pending-sync"),
   markOrderSynced: (clientId, result) =>
     ipcRenderer.invoke("orders:mark-synced", clientId, result),
+  updateKitchenStatuses: (updates) =>
+    ipcRenderer.invoke("orders:update-kitchen-statuses", updates),
   pendingSyncCount: () => ipcRenderer.invoke("sync:pending-count"),
   getDayEndReport: (options) => ipcRenderer.invoke("reports:day-end", options || {}),
   getSetting: (key) => ipcRenderer.invoke("settings:get", key),

@@ -29,6 +29,17 @@ export async function syncPush(serverUrl, token, orders) {
   return parseResponse(res);
 }
 
+export async function fetchOpenOrders(serverUrl, token, branchId) {
+  const base = serverUrl.replace(/\/$/, "");
+  const res = await fetch(
+    `${base}/api/orders/?status=open&branch=${branchId}&page_size=500`,
+    {
+      headers: { Authorization: `Token ${token}` },
+    }
+  );
+  return parseResponse(res);
+}
+
 async function parseResponse(res) {
   const text = await res.text();
   let data;
@@ -76,4 +87,20 @@ export function showToast(message, isError = false) {
   toast.textContent = message;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3500);
+}
+
+export function kitchenStatusBadge(status) {
+  const labels = {
+    pending: "New",
+    preparing: "Preparing",
+    ready: "Ready",
+  };
+  const classes = {
+    pending: "badge-open",
+    preparing: "badge-requested",
+    ready: "badge-delivered",
+  };
+  const label = labels[status] || status || "New";
+  const className = classes[status] || "badge-open";
+  return `<span class="badge ${className}">${label}</span>`;
 }

@@ -72,6 +72,19 @@ function initDb() {
       FOREIGN KEY (order_client_id) REFERENCES orders(client_id) ON DELETE CASCADE
     );
   `);
+
+  ensureOrderColumn("kitchen_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureOrderColumn("kitchen_started_at", "TEXT");
+  ensureOrderColumn("kitchen_ready_at", "TEXT");
+  ensureOrderColumn("created_by_name", "TEXT NOT NULL DEFAULT ''");
+  ensureOrderColumn("paid_by_name", "TEXT NOT NULL DEFAULT ''");
+}
+
+function ensureOrderColumn(column, definition) {
+  const columns = db.prepare("PRAGMA table_info(orders)").all();
+  if (!columns.some((row) => row.name === column)) {
+    db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 function getSetting(key, defaultValue = null) {
@@ -185,7 +198,7 @@ function newClientId() {
   return crypto.randomUUID();
 }
 
-function createOrder({ orderType, tableNumber, items }) {
+function createOrder({ orderType, tableNumber, items, createdByName = "" }) {
   const clientId = newClientId();
   const createdAt = new Date().toISOString();
   let total = 0;
@@ -198,9 +211,9 @@ function createOrder({ orderType, tableNumber, items }) {
     db.prepare(
       `INSERT INTO orders (
         client_id, order_type, table_number, status, total_amount,
-        sync_status, created_at
-      ) VALUES (?, ?, ?, 'open', ?, 'pending', ?)`
-    ).run(clientId, orderType, tableNumber || "", total, createdAt);
+        sync_status, created_at, created_by_name
+      ) VALUES (?, ?, ?, 'open', ?, 'pending', ?, ?)`
+    ).run(clientId, orderType, tableNumber || "", total, createdAt, createdByName || "");
 
     const insertItem = db.prepare(
       "INSERT INTO order_items (order_client_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)"
@@ -243,7 +256,7 @@ function listOpenOrders() {
   }));
 }
 
-function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumber }) {
+function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumber, paidByName = "" }) {
   const paidAt = new Date().toISOString();
   db.prepare(
     `UPDATE orders SET
@@ -253,9 +266,10 @@ function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumbe
       amount_paid = ?,
       receipt_number = ?,
       paid_at = ?,
+      paid_by_name = ?,
       sync_status = 'pending'
     WHERE client_id = ?`
-  ).run(currencyId, exchangeRate, amountPaid, receiptNumber, paidAt, clientId);
+  ).run(currencyId, exchangeRate, amountPaid, receiptNumber, paidAt, paidByName || "", clientId);
   return getOrder(clientId);
 }
 
@@ -273,21 +287,54 @@ function listPendingSyncOrders() {
     }));
 }
 
-function markOrderSynced(clientId, { serverId, receiptNumber, syncError = null }) {
+function markOrderSynced(
+  clientId,
+  { serverId, receiptNumber, kitchenStatus = null, syncError = null }
+) {
   db.prepare(
     `UPDATE orders SET
       server_id = ?,
       receipt_number = COALESCE(?, receipt_number),
+      kitchen_status = COALESCE(?, kitchen_status),
       sync_status = ?,
       sync_error = ?
     WHERE client_id = ?`
   ).run(
     serverId,
     receiptNumber,
+    kitchenStatus,
     syncError ? "error" : "synced",
     syncError,
     clientId
   );
+}
+
+function updateKitchenStatuses(updates) {
+  if (!updates?.length) return 0;
+
+  const stmt = db.prepare(
+    `UPDATE orders SET
+      kitchen_status = ?,
+      kitchen_started_at = ?,
+      kitchen_ready_at = ?
+    WHERE server_id = ? AND status = 'open'`
+  );
+  let changed = 0;
+
+  const tx = db.transaction(() => {
+    for (const update of updates) {
+      const result = stmt.run(
+        update.kitchen_status || "pending",
+        update.kitchen_started_at || null,
+        update.kitchen_ready_at || null,
+        update.server_id
+      );
+      changed += result.changes;
+    }
+  });
+  tx();
+
+  return changed;
 }
 
 function pendingSyncCount() {
@@ -384,6 +431,7 @@ module.exports = {
   payOrder,
   listPendingSyncOrders,
   markOrderSynced,
+  updateKitchenStatuses,
   pendingSyncCount,
   getCatalogSyncedAt,
   getDayEndReport,

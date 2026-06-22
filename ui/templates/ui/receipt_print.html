@@ -24,6 +24,7 @@
       <p>Order #{{ order.id }}</p>
       <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
       <p>{{ order.get_order_type_display }}{% if order.table_number %} · Table {{ order.table_number }}{% endif %}</p>
+      {% if salesperson_name %}<p>Served by {{ salesperson_name }}</p>{% endif %}
     </div>
 
     <hr class="divider">

@@ -227,12 +227,51 @@ h1, h3 {
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
+  transition: all 0.15s;
+}
+
+.category-tab:hover {
+  border-color: var(--color-latte);
 }
 
 .category-tab.active {
   background: var(--color-espresso);
   color: #fff;
   border-color: var(--color-espresso);
+}
+
+/* POS — large touch-friendly category badges */
+.pos-products .category-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.pos-products .category-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  white-space: normal;
+  box-shadow: var(--shadow-card);
+}
+
+.pos-products .category-tab:hover {
+  border-color: var(--color-latte);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.pos-products .category-tab.active {
+  box-shadow: 0 4px 14px rgba(44, 24, 16, 0.2);
+  transform: none;
 }
 
 .product-grid {
@@ -377,6 +416,24 @@ h1, h3 {
   border-color: var(--color-espresso);
   box-shadow: 0 0 0 2px rgba(44, 24, 16, 0.08);
 }
+
+.receipt-order-card.receipt-order-ready {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.badge-open { background: #fef3c7; color: #92400e; }
+.badge-requested { background: #e0e7ff; color: #3730a3; }
+.badge-delivered { background: #d1fae5; color: #065f46; }
 
 .receipt-order-card-top {
   display: flex;

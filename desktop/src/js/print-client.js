@@ -10,6 +10,16 @@ export function computeTaxBreakdown(inclusiveTotal, taxRate) {
   return { subtotal, tax, total, taxRate };
 }
 
+export function orderSalespersonName(order, session) {
+  return (
+    order.paid_by_name ||
+    order.created_by_name ||
+    session?.user?.display_name ||
+    session?.user?.username ||
+    ""
+  );
+}
+
 export async function printOrderSlip(session, order, { taxRate }) {
   const inclusiveTotal = order.items?.length
     ? order.items.reduce(
@@ -27,6 +37,7 @@ export async function printOrderSlip(session, order, { taxRate }) {
     branch: session.branch,
     order,
     tax,
+    salesperson: order.created_by_name || session?.user?.display_name || session?.user?.username || "",
     baseCurrency: baseCurrency
       ? { name: baseCurrency.name, code: baseCurrency.code }
       : null,
@@ -68,6 +79,7 @@ export async function printSalesReceipt(session, order, { currency, taxRate }) {
     branch: session.branch,
     order,
     tax,
+    salesperson: orderSalespersonName(order, session),
     baseCurrency: baseCurrency
       ? { name: baseCurrency.name, code: baseCurrency.code }
       : null,

@@ -16,6 +16,11 @@ urlpatterns = [
     path("pos/", views.POSView.as_view(), name="pos"),
     path("kitchen/", views.KitchenView.as_view(), name="kitchen"),
     path(
+        "pos/order/<int:pk>/print/",
+        views.OrderSlipPrintView.as_view(),
+        name="order-slip-print",
+    ),
+    path(
         "pos/receipt/<int:pk>/print/",
         views.ReceiptPrintView.as_view(),
         name="receipt-print",

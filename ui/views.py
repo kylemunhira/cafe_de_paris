@@ -17,6 +17,7 @@ from branches.models import Branch
 from inventory.models import DeliveryNote
 from orders.day_end import build_day_end_report
 from orders.models import Order, OrderStatus
+from orders.serializers import staff_display_name
 from orders.tax import get_inclusive_tax_rate, order_receipt_tax_breakdown
 from payments.models import Currency
 
@@ -191,6 +192,8 @@ class PaidOrderPrintView(LoginRequiredMixin, DetailView):
             "customer",
             "payment_currency",
             "fiscal_receipt",
+            "created_by",
+            "paid_by",
         ).prefetch_related("items__product")
         return filter_by_branch_field(queryset, self.request.user)
 
@@ -206,6 +209,36 @@ class PaidOrderPrintView(LoginRequiredMixin, DetailView):
         context["auto_print"] = self.request.GET.get("auto") == "1"
         context["fiscal"] = getattr(self.object, "fiscal_receipt", None)
         context["tax_breakdown"] = order_receipt_tax_breakdown(self.object)
+        context["salesperson_name"] = staff_display_name(
+            self.object.paid_by or self.object.created_by
+        )
+        return context
+
+
+class OrderSlipPrintView(LoginRequiredMixin, DetailView):
+    model = Order
+    template_name = "ui/order_slip_print.html"
+    context_object_name = "order"
+
+    def get_queryset(self):
+        queryset = Order.objects.select_related(
+            "branch",
+            "created_by",
+        ).prefetch_related("items__product")
+        return filter_by_branch_field(queryset, self.request.user)
+
+    def get_object(self, queryset=None):
+        order = super().get_object(queryset)
+        if order.status != OrderStatus.OPEN:
+            raise Http404("Order ticket is only available for open orders.")
+        return order
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["base_currency"] = Currency.objects.filter(is_base=True).first()
+        context["auto_print"] = self.request.GET.get("auto") == "1"
+        context["tax_breakdown"] = order_receipt_tax_breakdown(self.object)
+        context["salesperson_name"] = staff_display_name(self.object.created_by)
         return context
 
 

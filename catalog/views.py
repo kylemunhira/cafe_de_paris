@@ -9,6 +9,7 @@ from .csv_io import (
     import_ingredients_csv,
     import_products_csv,
 )
+from .constants import BAKERY_SELLABLE_CATEGORIES
 from .models import Product, ProductCategory
 from .serializers import ProductCategorySerializer, ProductSerializer
 
@@ -26,10 +27,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         category = self.request.query_params.get("category")
         exclude_category = self.request.query_params.get("exclude_category")
+        bakery_transfer = self.request.query_params.get("bakery_transfer")
         if category:
             queryset = queryset.filter(category__name=category)
         if exclude_category:
             queryset = queryset.exclude(category__name=exclude_category)
+        if bakery_transfer and bakery_transfer.lower() in ("1", "true", "yes"):
+            queryset = queryset.filter(
+                is_active=True,
+                category__name__in=BAKERY_SELLABLE_CATEGORIES,
+            )
         return queryset
 
     @action(detail=False, methods=["get"], url_path="export-csv")
