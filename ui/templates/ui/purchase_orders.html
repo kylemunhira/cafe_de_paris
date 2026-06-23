@@ -26,8 +26,8 @@
       </div>
     </div>
     <div class="form-group">
-      <label for="po-notes">Notes</label>
-      <input type="text" id="po-notes" placeholder="Optional reference or delivery instructions">
+      <label for="po-notes">Invoice / reference</label>
+      <input type="text" id="po-notes" placeholder="Supplier invoice or delivery note number">
     </div>
 
     <div class="form-group" id="po-type-wrap">
@@ -159,12 +159,13 @@ function selectedBranch() {
 
 function branchTypeLabel(branch) {
   if (branch.branch_type === "bakery") return " (Bakery)";
+  if (branch.branch_type === "stores") return " (Central Stores)";
   if (branch.branch_type === "hq") return " (HQ)";
   return "";
 }
 
-function isBakeryBranch(branch) {
-  return branch?.branch_type === "bakery";
+function isIngredientsOnlyBranch(branch) {
+  return branch?.branch_type === "bakery" || branch?.branch_type === "stores";
 }
 
 function branchesForPurchase(allBranches) {
@@ -192,7 +193,10 @@ async function fetchAllProducts(params = {}) {
 }
 
 function purchaseTypeHintText(type, branch) {
-  if (isBakeryBranch(branch)) {
+  if (branch?.branch_type === "stores") {
+    return "Central stores purchase orders use raw materials only (Ingredients category).";
+  }
+  if (isIngredientsOnlyBranch(branch)) {
     return "Bakery purchase orders use raw materials only (Ingredients category).";
   }
   if (type === "ingredients") {
@@ -203,7 +207,7 @@ function purchaseTypeHintText(type, branch) {
 
 function updatePurchaseTypeUi() {
   const branch = selectedBranch();
-  const isBakery = isBakeryBranch(branch);
+  const isBakery = isIngredientsOnlyBranch(branch);
 
   poTypeWrap.style.display = isBakery ? "none" : "";
   poTypeHint.textContent = purchaseTypeHintText(isBakery ? "ingredients" : purchaseType, branch);
@@ -218,7 +222,7 @@ function updatePurchaseTypeUi() {
 }
 
 function productsForBranch(branch, type = purchaseType) {
-  const effectiveType = isBakeryBranch(branch) ? "ingredients" : type;
+  const effectiveType = isIngredientsOnlyBranch(branch) ? "ingredients" : type;
   if (effectiveType === "ingredients") {
     return products.filter(isIngredientProduct);
   }
@@ -226,7 +230,7 @@ function productsForBranch(branch, type = purchaseType) {
 }
 
 function productSelectHtml(branch, available, type) {
-  const isBakery = isBakeryBranch(branch);
+  const isBakery = isIngredientsOnlyBranch(branch);
   const isIngredients = isBakery || type === "ingredients";
 
   if (!available.length) {
@@ -243,7 +247,7 @@ function productSelectHtml(branch, available, type) {
 function populateProductSelect() {
   const branch = selectedBranch();
   const available = productsForBranch(branch);
-  const isBakery = isBakeryBranch(branch);
+  const isBakery = isIngredientsOnlyBranch(branch);
   const isIngredients = isBakery || purchaseType === "ingredients";
 
   updatePurchaseTypeUi();
@@ -320,6 +324,7 @@ function renderOrders() {
           <th>PO #</th>
           <th>Supplier</th>
           ${branchColumn}
+          <th>Invoice / ref</th>
           <th>Products</th>
           <th>Total</th>
           <th>Status</th>
@@ -332,6 +337,7 @@ function renderOrders() {
             <td><strong>PO-${String(o.id).padStart(5, "0")}</strong></td>
             <td>${o.supplier_name}</td>
             ${branchCell(o)}
+            <td>${o.notes || "—"}</td>
             <td style="max-width: 220px;">${lineSummary(o)}</td>
             <td>${formatCurrency(o.total_amount)}</td>
             <td>${statusBadge(o.status)}</td>
@@ -387,7 +393,7 @@ addLineBtn.addEventListener("click", () => {
 
   if (!productId) {
     const branch = selectedBranch();
-    const isIngredients = isBakeryBranch(branch) || purchaseType === "ingredients";
+    const isIngredients = isIngredientsOnlyBranch(branch) || purchaseType === "ingredients";
     showToast(isIngredients ? "Select a raw material" : "Select a POS product", true);
     return;
   }
@@ -425,7 +431,7 @@ branchSelect.addEventListener("change", () => {
   const branch = selectedBranch();
   const allowedIds = new Set(
     products.filter(p => {
-      if (isBakeryBranch(branch)) return isIngredientProduct(p);
+      if (isIngredientsOnlyBranch(branch)) return isIngredientProduct(p);
       return true;
     }).map(p => p.id)
   );

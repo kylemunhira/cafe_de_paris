@@ -1,8 +1,22 @@
 {% extends "ui/base.html" %}
 {% load static %}
 
-{% block title %}Suppliers — Café de Paris{% endblock %}
-{% block page_title %}Suppliers{% endblock %}
+{% block title %}List Suppliers — Café de Paris{% endblock %}
+{% block page_title %}List Suppliers{% endblock %}
+
+{% block topbar_actions %}
+<div style="display: flex; align-items: center; gap: 0.5rem;">
+  <a href="/api/suppliers/export-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <label class="btn btn-ghost btn-sm" style="cursor: pointer;">
+    Upload CSV
+    <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
+  </label>
+  <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+    Upload Excel
+    <input type="file" id="xlsx-upload" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+  </label>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
@@ -14,11 +28,15 @@
         <input type="text" id="supplier-name" required autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="contact-person">Contact person</label>
-        <input type="text" id="contact-person" autocomplete="off">
+        <label for="supplier-vat">VAT number</label>
+        <input type="text" id="supplier-vat" autocomplete="off" placeholder="Leave blank for non-VAT suppliers">
       </div>
     </div>
     <div class="form-row">
+      <div class="form-group">
+        <label for="contact-person">Contact person</label>
+        <input type="text" id="contact-person" autocomplete="off">
+      </div>
       <div class="form-group">
         <label for="supplier-email">Email</label>
         <input type="email" id="supplier-email" autocomplete="off">
@@ -54,18 +72,53 @@
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
   </div>
 </div>
+
+<div
+  id="history-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card" style="width:min(920px, 100%); max-height:90vh; overflow:auto; padding:1rem 1.25rem 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+      <div>
+        <h3 id="history-title" style="margin:0; font-size:1.05rem;">Purchase history</h3>
+        <p id="history-meta" style="margin:0.35rem 0 0; font-size:0.85rem; color:var(--color-muted);"></p>
+      </div>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <button type="button" class="btn btn-ghost btn-sm" id="history-print-btn" style="display:none;">Print</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="history-close-btn">Close</button>
+      </div>
+    </div>
+    <div class="stat-grid" id="history-summary" style="margin-bottom:1rem; grid-template-columns: repeat(2, 1fr); display:none;">
+      <div class="card stat-card">
+        <div class="stat-label">Total purchases</div>
+        <div class="stat-value" id="history-count">—</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Total spend</div>
+        <div class="stat-value" id="history-total">—</div>
+      </div>
+    </div>
+    <div class="table-wrap" id="history-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
 
 let suppliers = [];
 let editingId = null;
+let historySupplier = null;
+
+const statementPrintUrlTemplate = "{% url 'ui:supplier-statement-print' 0 %}".replace("/0/", "/{id}/");
 
 const supplierForm = document.getElementById("supplier-form");
 const formTitle = document.getElementById("form-title");
 const nameInput = document.getElementById("supplier-name");
+const vatInput = document.getElementById("supplier-vat");
 const contactInput = document.getElementById("contact-person");
 const emailInput = document.getElementById("supplier-email");
 const phoneInput = document.getElementById("supplier-phone");
@@ -76,6 +129,17 @@ const activeInput = document.getElementById("supplier-active");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const suppliersTable = document.getElementById("suppliers-table");
+const csvUpload = document.getElementById("csv-upload");
+const xlsxUpload = document.getElementById("xlsx-upload");
+const historyModal = document.getElementById("history-modal");
+const historyTitle = document.getElementById("history-title");
+const historyMeta = document.getElementById("history-meta");
+const historySummary = document.getElementById("history-summary");
+const historyCount = document.getElementById("history-count");
+const historyTotal = document.getElementById("history-total");
+const historyTable = document.getElementById("history-table");
+const historyCloseBtn = document.getElementById("history-close-btn");
+const historyPrintBtn = document.getElementById("history-print-btn");
 
 function resetForm() {
   editingId = null;
@@ -94,6 +158,7 @@ function startEdit(supplier) {
   cancelBtn.style.display = "";
   activeField.style.display = "";
   nameInput.value = supplier.name;
+  vatInput.value = supplier.vat_number || "";
   contactInput.value = supplier.contact_person || "";
   emailInput.value = supplier.email || "";
   phoneInput.value = supplier.phone || "";
@@ -114,6 +179,7 @@ function render() {
       <thead>
         <tr>
           <th>Name</th>
+          <th>VAT</th>
           <th>Contact</th>
           <th>Phone</th>
           <th>Email</th>
@@ -125,13 +191,17 @@ function render() {
       <tbody>
         ${suppliers.map(s => `
           <tr>
-            <td><strong>${s.name}</strong></td>
+            <td><strong>${s.name}</strong>${s.notes ? `<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">${s.notes}</div>` : ""}</td>
+            <td>${s.vat_number ? s.vat_number : '<span class="badge badge-inactive">Non-VAT</span>'}</td>
             <td>${s.contact_person || "—"}</td>
             <td>${s.phone || "—"}</td>
             <td>${s.email || "—"}</td>
             <td><span class="badge ${s.is_active ? "badge-active" : "badge-inactive"}">${s.is_active ? "Active" : "Inactive"}</span></td>
             <td>${formatDate(s.created_at)}</td>
-            <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${s.id}">Edit</button></td>
+            <td style="white-space: nowrap;">
+              <button type="button" class="btn btn-ghost btn-sm history-btn" data-id="${s.id}">History</button>
+              <button class="btn btn-ghost btn-sm edit-btn" data-id="${s.id}">Edit</button>
+            </td>
           </tr>
         `).join("")}
       </tbody>
@@ -145,12 +215,101 @@ async function loadSuppliers() {
   render();
 }
 
+function closeHistoryModal() {
+  historyModal.style.display = "none";
+  historySupplier = null;
+  historyPrintBtn.style.display = "none";
+}
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function renderHistory(data) {
+  const purchases = data.purchases || [];
+  historyCount.textContent = purchases.length;
+  historyTotal.textContent = formatCurrency(data.all_time_spend ?? 0);
+  historySummary.style.display = purchases.length ? "" : "none";
+  historyPrintBtn.style.display = purchases.length ? "" : "none";
+
+  if (!purchases.length) {
+    historyTable.innerHTML = `<div class="empty-state"><p>No purchases recorded for this supplier yet</p></div>`;
+    return;
+  }
+
+  historyTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Purchase #</th>
+          <th>Invoice / ref</th>
+          <th>Branch</th>
+          <th>Products</th>
+          <th style="text-align: right;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${[...purchases].reverse().map(po => {
+          const products = (po.lines || []).map(line =>
+            `${line.product_name} × ${formatQty(line.quantity)} @ ${formatCurrency(line.unit_cost)}`
+          ).join("<br>");
+          return `
+            <tr>
+              <td>${formatDate(po.received_at || po.created_at)}</td>
+              <td>#${po.id}</td>
+              <td>${po.notes || "—"}</td>
+              <td>${po.branch_name || "—"}</td>
+              <td style="font-size: 0.85rem;">${products || "—"}</td>
+              <td style="text-align: right; font-weight: 600;">${formatCurrency(po.total_amount)}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5"><strong>Total spend</strong></td>
+          <td style="text-align: right; font-weight: 700;">${formatCurrency(data.all_time_spend ?? 0)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+async function openHistory(supplier) {
+  historySupplier = supplier;
+  historyTitle.textContent = `Purchase history — ${supplier.name}`;
+  historyMeta.textContent = [supplier.contact_person, supplier.phone, supplier.vat_number ? `VAT ${supplier.vat_number}` : ""]
+    .filter(Boolean)
+    .join(" · ") || "No contact details";
+  historyTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  historySummary.style.display = "none";
+  historyPrintBtn.style.display = "none";
+  historyModal.style.display = "flex";
+
+  try {
+    const data = await apiGet(`/suppliers/${supplier.id}/history/`);
+    renderHistory(data);
+  } catch (err) {
+    historyTable.innerHTML = `<div class="empty-state">Failed to load history: ${err.message}</div>`;
+    showToast(err.message, true);
+  }
+}
+
+function printHistory() {
+  if (!historySupplier) return;
+  const url = `${statementPrintUrlTemplate.replace("{id}", historySupplier.id)}?all=1`;
+  window.open(url, "_blank", "noopener,width=800,height=900");
+}
+
 supplierForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   submitBtn.disabled = true;
 
   const payload = {
     name: nameInput.value.trim(),
+    vat_number: vatInput.value.trim(),
     contact_person: contactInput.value.trim(),
     email: emailInput.value.trim(),
     phone: phoneInput.value.trim(),
@@ -182,11 +341,63 @@ supplierForm.addEventListener("submit", async (e) => {
 
 cancelBtn.addEventListener("click", resetForm);
 
+async function handleSupplierImport(endpoint, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const result = await apiUpload(endpoint, formData);
+    const parts = [];
+    if (result.created) parts.push(`${result.created} created`);
+    if (result.updated) parts.push(`${result.updated} updated`);
+    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    await loadSuppliers();
+  } catch (err) {
+    let message = err.message;
+    try {
+      const data = JSON.parse(err.message);
+      if (data?.errors?.length) {
+        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
+        message = `Import failed — ${preview}`;
+      }
+    } catch {
+      // use raw message
+    }
+    showToast(message, true);
+  }
+}
+
+csvUpload.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  await handleSupplierImport("/suppliers/import-csv/", file);
+});
+
+xlsxUpload.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  await handleSupplierImport("/suppliers/import-xlsx/", file);
+});
+
 suppliersTable.addEventListener("click", (e) => {
+  const historyBtn = e.target.closest(".history-btn");
+  if (historyBtn) {
+    const supplier = suppliers.find(s => String(s.id) === historyBtn.dataset.id);
+    if (supplier) openHistory(supplier);
+    return;
+  }
   const btn = e.target.closest(".edit-btn");
   if (!btn) return;
   const supplier = suppliers.find(s => String(s.id) === btn.dataset.id);
   if (supplier) startEdit(supplier);
+});
+
+historyCloseBtn.addEventListener("click", closeHistoryModal);
+historyPrintBtn.addEventListener("click", printHistory);
+historyModal.addEventListener("click", (e) => {
+  if (e.target === historyModal) closeHistoryModal();
 });
 
 loadSuppliers().catch(err => {

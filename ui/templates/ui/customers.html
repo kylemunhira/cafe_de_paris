@@ -1,0 +1,184 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}List Customer — Café de Paris{% endblock %}
+{% block page_title %}List Customer{% endblock %}
+
+{% block content %}
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add customer</h3>
+  <form id="customer-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="customer-first-name">First name</label>
+        <input type="text" id="customer-first-name" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="customer-last-name">Last name</label>
+        <input type="text" id="customer-last-name" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="customer-phone">Phone</label>
+        <input type="text" id="customer-phone" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="customer-email">Email</label>
+        <input type="email" id="customer-email" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-group" id="loyalty-field" style="display: none;">
+      <label for="customer-loyalty">Loyalty points</label>
+      <input type="number" id="customer-loyalty" min="0" step="1" value="0">
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Add customer</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div class="table-wrap" id="customers-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+let customers = [];
+let editingId = null;
+
+const customerForm = document.getElementById("customer-form");
+const formTitle = document.getElementById("form-title");
+const firstNameInput = document.getElementById("customer-first-name");
+const lastNameInput = document.getElementById("customer-last-name");
+const phoneInput = document.getElementById("customer-phone");
+const emailInput = document.getElementById("customer-email");
+const loyaltyField = document.getElementById("loyalty-field");
+const loyaltyInput = document.getElementById("customer-loyalty");
+const submitBtn = document.getElementById("submit-btn");
+const cancelBtn = document.getElementById("cancel-btn");
+const customersTable = document.getElementById("customers-table");
+
+function resetForm() {
+  editingId = null;
+  formTitle.textContent = "Add customer";
+  submitBtn.textContent = "Add customer";
+  cancelBtn.style.display = "none";
+  loyaltyField.style.display = "none";
+  customerForm.reset();
+  loyaltyInput.value = "0";
+}
+
+function startEdit(customer) {
+  editingId = customer.id;
+  formTitle.textContent = "Edit customer";
+  submitBtn.textContent = "Save changes";
+  cancelBtn.style.display = "";
+  loyaltyField.style.display = "";
+  firstNameInput.value = customer.first_name;
+  lastNameInput.value = customer.last_name || "";
+  phoneInput.value = customer.phone || "";
+  emailInput.value = customer.email || "";
+  loyaltyInput.value = customer.loyalty_points || 0;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function displayName(customer) {
+  return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
+}
+
+function render() {
+  if (!customers.length) {
+    customersTable.innerHTML = `<div class="empty-state"><p>No customers yet — add your first customer above</p></div>`;
+    return;
+  }
+
+  customersTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Account</th>
+          <th>Loyalty</th>
+          <th>Added</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${customers.map(c => `
+          <tr>
+            <td><strong>${displayName(c)}</strong></td>
+            <td>${c.phone || "—"}</td>
+            <td>${c.email || "—"}</td>
+            <td>${formatCurrency(c.account_balance || 0)}</td>
+            <td>${c.loyalty_points}</td>
+            <td>${formatDate(c.created_at)}</td>
+            <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${c.id}">Edit</button></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadCustomers() {
+  const data = await apiGet("/customers/?page_size=500");
+  customers = unwrapList(data);
+  render();
+}
+
+customerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+
+  const payload = {
+    first_name: firstNameInput.value.trim(),
+    last_name: lastNameInput.value.trim(),
+    phone: phoneInput.value.trim(),
+    email: emailInput.value.trim(),
+  };
+
+  try {
+    if (editingId) {
+      payload.loyalty_points = Number(loyaltyInput.value) || 0;
+      const updated = await apiPatch(`/customers/${editingId}/`, payload);
+      const index = customers.findIndex(c => c.id === editingId);
+      if (index >= 0) customers[index] = updated;
+      showToast("Customer updated");
+    } else {
+      payload.loyalty_points = 0;
+      const created = await apiPost("/customers/", payload);
+      customers.unshift(created);
+      showToast("Customer added");
+    }
+    resetForm();
+    render();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+cancelBtn.addEventListener("click", resetForm);
+
+customersTable.addEventListener("click", (e) => {
+  const btn = e.target.closest(".edit-btn");
+  if (!btn) return;
+  const customer = customers.find(c => String(c.id) === btn.dataset.id);
+  if (customer) startEdit(customer);
+});
+
+loadCustomers().catch(err => {
+  customersTable.innerHTML = `<div class="empty-state">Failed to load customers: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

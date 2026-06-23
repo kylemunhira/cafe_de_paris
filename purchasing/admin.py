@@ -10,9 +10,17 @@ class PurchaseOrderLineInline(admin.TabularInline):
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ("name", "contact_person", "phone", "email", "is_active", "created_at")
+    list_display = (
+        "name",
+        "vat_number",
+        "contact_person",
+        "phone",
+        "email",
+        "is_active",
+        "created_at",
+    )
     list_filter = ("is_active",)
-    search_fields = ("name", "contact_person", "email", "phone")
+    search_fields = ("name", "vat_number", "contact_person", "email", "phone")
 
 
 @admin.register(PurchaseOrder)

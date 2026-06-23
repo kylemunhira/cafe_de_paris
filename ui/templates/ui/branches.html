@@ -28,6 +28,7 @@
           <option value="branch">Branch</option>
           <option value="hq">Headquarters</option>
           <option value="bakery">Bakery</option>
+          <option value="stores">Central Stores</option>
         </select>
       </div>
     </div>
@@ -69,7 +70,7 @@
 import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
 
 const canManageBranches = {{ can_manage_branches|yesno:"true,false" }};
-const typeLabels = { hq: "Headquarters", branch: "Branch", bakery: "Bakery" };
+const typeLabels = { hq: "Headquarters", branch: "Branch", bakery: "Bakery", stores: "Central Stores" };
 
 const branchForm = document.getElementById("branch-form");
 const formTitle = document.getElementById("form-title");

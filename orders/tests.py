@@ -9,7 +9,7 @@ from accounts.models import StaffProfile
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
 from orders.day_end import build_day_end_report
-from orders.models import Expense, KitchenStatus, Order, OrderStatus
+from orders.models import Expense, FiscalApprovalStatus, KitchenStatus, Order, OrderStatus
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
 from payments.models import Currency, CurrencyRate
 
@@ -231,6 +231,20 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "Latte")
         self.assertContains(response, "US Dollar")
         self.assertContains(response, "Served by Jane Cashier")
+        self.assertNotContains(response, "Café de Paris")
+        self.assertNotContains(response, "Harare")
+        self.assertNotContains(response, "Subtotal")
+        self.assertNotContains(response, "Tax (")
+
+    def test_receipt_print_shows_branch_branding_when_fiscalized(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        response = self.client.get(f"/pos/receipt/{self.order.id}/print/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Café de Paris")
+        self.assertContains(response, "Harare")
+        self.assertContains(response, "Subtotal")
+        self.assertContains(response, "Tax (")
 
     def test_order_slip_print_for_open_order(self):
         open_order = Order.objects.create(
@@ -248,6 +262,30 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "Order ticket")
         self.assertContains(response, "Served by Jane Cashier")
         self.assertContains(response, "UNPAID")
+        self.assertNotContains(response, "Café de Paris")
+        self.assertNotContains(response, "Harare")
+        self.assertNotContains(response, "Subtotal")
+        self.assertNotContains(response, "Tax (")
+
+    def test_order_slip_print_shows_branch_branding_when_fiscalized(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        open_order = Order.objects.create(
+            branch=self.branch,
+            status=OrderStatus.OPEN,
+            created_by=self.user,
+        )
+        open_order.items.create(
+            product=Product.objects.get(name="Latte"),
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        response = self.client.get(f"/pos/order/{open_order.id}/print/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Café de Paris")
+        self.assertContains(response, "Harare")
+        self.assertContains(response, "Subtotal")
+        self.assertContains(response, "Tax (")
 
     def test_order_slip_print_not_available_for_paid_order(self):
         response = self.client.get(f"/pos/order/{self.order.id}/print/")
@@ -265,6 +303,29 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "AVO0906261")
         self.assertContains(response, "Latte")
         self.assertContains(response, "Amount paid")
+
+    def test_invoice_print_shows_proforma_for_pending_fiscal(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        self.order.fiscal_approval_status = FiscalApprovalStatus.PENDING
+        self.order.save(update_fields=["fiscal_approval_status"])
+        response = self.client.get(f"/invoices/{self.order.id}/print/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Proforma Invoice")
+        self.assertNotContains(response, "Fiscal Information")
+
+    def test_receipt_print_shows_proforma_on_thermal_for_pending_fiscal(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        self.order.fiscal_approval_status = FiscalApprovalStatus.PENDING
+        self.order.save(update_fields=["fiscal_approval_status"])
+        response = self.client.get(f"/pos/receipt/{self.order.id}/print/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Proforma Receipt")
+        self.assertContains(response, "PROFORMA")
+        self.assertContains(response, "receipt-print.css")
+        self.assertContains(response, "Proforma #AVO0906261")
+        self.assertNotContains(response, "Fiscal receipt")
 
     def test_invoice_print_not_available_for_open_order(self):
         open_order = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)

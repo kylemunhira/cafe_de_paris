@@ -28,10 +28,12 @@ class DeliveryNoteAdmin(admin.ModelAdmin):
         "id",
         "from_branch",
         "to_branch",
+        "invoice_number",
         "status",
+        "payment_status",
         "created_at",
     )
-    list_filter = ("status", "from_branch", "to_branch")
+    list_filter = ("status", "payment_status", "from_branch", "to_branch")
     inlines = [DeliveryNoteLineInline]
 
 

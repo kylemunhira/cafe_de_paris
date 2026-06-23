@@ -263,8 +263,18 @@
         {% if order.branch.location %}<p>{{ order.branch.location }}</p>{% endif %}
       </div>
       <div class="doc-meta">
+        {% if is_proforma %}
+        <h2>Proforma Invoice</h2>
+        <p style="color: #8b6914; font-size: 0.85rem; margin: 0.35rem 0 0;">Not a fiscal receipt — pending approval</p>
+        {% elif fiscal %}
         <h2>Tax Invoice</h2>
-        {% if order.receipt_number %}<p><strong>Invoice No.</strong> {{ order.receipt_number }}</p>{% endif %}
+        <p><strong>Fiscal receipt No.</strong> {{ fiscal.invoice_no }}</p>
+        {% else %}
+        <h2>Tax Invoice</h2>
+        {% endif %}
+        {% if order.receipt_number %}
+        <p><strong>{% if is_proforma or fiscal %}Proforma No.{% else %}Invoice No.{% endif %}</strong> {{ order.receipt_number }}</p>
+        {% endif %}
         <p><strong>Order</strong> #{{ order.id }}</p>
         <p><strong>Date</strong> {{ order.created_at|date:"d M Y, H:i" }}</p>
         <p><span class="status-paid">Paid</span></p>
@@ -350,7 +360,7 @@
       </div>
     </div>
 
-    {% if fiscal %}
+    {% if fiscal and not is_proforma %}
     <div class="fiscal-box">
       <h3>Fiscal Information</h3>
       <div class="fiscal-grid">

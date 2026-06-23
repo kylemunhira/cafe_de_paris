@@ -183,7 +183,8 @@ function renderFiscalQr(fiscal) {
   return `<div class="center fiscal-qr"><img src="${fiscal.qr_data_url}" alt="Fiscal QR code" width="120" height="120"></div>`;
 }
 
-function renderBrandHeader(branch) {
+function renderBrandHeader(branch, { onlyIfFiscal = false } = {}) {
+  if (onlyIfFiscal && !branch?.fiscalization_enabled) return "";
   return `
     <div class="center brand">
       <h1>Café de Paris</h1>
@@ -191,13 +192,16 @@ function renderBrandHeader(branch) {
     </div>`;
 }
 
-function renderTotalsSection(tax, baseCurrency) {
+function renderTotalsSection(tax, baseCurrency, { showTaxBreakdown = true } = {}) {
   const baseLabel = baseCurrency ? ` (${currencyCode(baseCurrency)})` : "";
-  return renderSummaryBlock([
-    [`Subtotal${baseLabel}`, money(tax?.subtotal)],
-    [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
-    [`Total${baseLabel}`, money(tax?.total)],
-  ]);
+  const rows = showTaxBreakdown
+    ? [
+        [`Subtotal${baseLabel}`, money(tax?.subtotal)],
+        [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
+        [`Total${baseLabel}`, money(tax?.total)],
+      ]
+    : [[`Total${baseLabel}`, money(tax?.total)]];
+  return renderSummaryBlock(rows);
 }
 
 function wrapDocument(title, body) {
@@ -256,7 +260,7 @@ function renderOrderSlipHtml(data) {
     `Order ${orderId}`,
     `
     <div class="receipt">
-      ${renderBrandHeader(branch)}
+      ${renderBrandHeader(branch, { onlyIfFiscal: true })}
       <div class="center meta">
         <p><strong>Order ticket</strong></p>
         <p>Order #${esc(orderId)}</p>
@@ -267,7 +271,7 @@ function renderOrderSlipHtml(data) {
       <hr class="divider">
       ${renderItemsBlock(order.items)}
       <hr class="divider">
-      ${renderTotalsSection(tax, baseCurrency)}
+      ${renderTotalsSection(tax, baseCurrency, { showTaxBreakdown: !!branch?.fiscalization_enabled })}
       <div class="center footer">
         <p>Present this ticket when paying.</p>
         <p>UNPAID</p>
@@ -299,7 +303,7 @@ function renderReceiptHtml(data) {
     `Receipt ${order.receipt_number || orderId}`,
     `
     <div class="receipt">
-      ${renderBrandHeader(branch)}
+      ${renderBrandHeader(branch, { onlyIfFiscal: true })}
       <div class="center meta">
         <p><strong>Sales Receipt</strong></p>
         ${receiptLine}
@@ -311,7 +315,7 @@ function renderReceiptHtml(data) {
       <hr class="divider">
       ${renderItemsBlock(order.items)}
       <hr class="divider">
-      ${renderTotalsSection(tax, baseCurrency)}
+      ${renderTotalsSection(tax, baseCurrency, { showTaxBreakdown: !!branch?.fiscalization_enabled })}
       ${paymentBlock}
       ${renderFiscalBlock(fiscal)}
       <div class="center footer">

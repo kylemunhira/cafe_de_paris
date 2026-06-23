@@ -5,6 +5,7 @@ from rest_framework import serializers
 from branches.models import Branch, BranchType
 from catalog.constants import BAKERY_SELLABLE_CATEGORIES, is_bakery_transfer_product
 from catalog.models import Product
+from orders.serializers import staff_display_name
 
 from .models import (
     BranchInventory,
@@ -91,7 +92,8 @@ class StockTransferCreateSerializer(serializers.ModelSerializer):
         return attrs
 
 
-BAKERY_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH, BranchType.HQ)
+BAKERY_TRANSFER_DESTINATION_TYPES = (BranchType.STORES,)
+STORES_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH, BranchType.HQ)
 
 
 class BakeryTransferCreateSerializer(serializers.ModelSerializer):
@@ -113,7 +115,7 @@ class BakeryTransferCreateSerializer(serializers.ModelSerializer):
     def validate_to_branch(self, branch):
         if branch.branch_type not in BAKERY_TRANSFER_DESTINATION_TYPES:
             raise serializers.ValidationError(
-                "Transfers must be sent to a branch or HQ."
+                "Transfers must be sent to central stores."
             )
         if not branch.is_active:
             raise serializers.ValidationError("Destination branch is not active.")
@@ -144,10 +146,13 @@ class BakeryTransferCreateSerializer(serializers.ModelSerializer):
 
 class DeliveryNoteLineSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
+    line_total = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
 
     class Meta:
         model = DeliveryNoteLine
-        fields = ["id", "product", "product_name", "quantity"]
+        fields = ["id", "product", "product_name", "quantity", "unit_price", "line_total"]
 
 
 class DeliveryNoteSerializer(serializers.ModelSerializer):
@@ -160,6 +165,14 @@ class DeliveryNoteSerializer(serializers.ModelSerializer):
     lines = DeliveryNoteLineSerializer(many=True, read_only=True)
     line_count = serializers.SerializerMethodField()
     total_quantity = serializers.SerializerMethodField()
+    total_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    paid_by_name = serializers.SerializerMethodField()
+    payment_status_display = serializers.CharField(
+        source="get_payment_status_display",
+        read_only=True,
+    )
 
     class Meta:
         model = DeliveryNote
@@ -171,13 +184,29 @@ class DeliveryNoteSerializer(serializers.ModelSerializer):
             "to_branch",
             "to_branch_name",
             "to_branch_location",
+            "invoice_number",
             "status",
+            "payment_status",
+            "payment_status_display",
+            "paid_at",
+            "paid_by",
+            "paid_by_name",
             "created_at",
             "lines",
             "line_count",
             "total_quantity",
+            "total_amount",
         ]
-        read_only_fields = ["status", "created_at"]
+        read_only_fields = [
+            "status",
+            "payment_status",
+            "paid_at",
+            "paid_by",
+            "created_at",
+        ]
+
+    def get_paid_by_name(self, obj):
+        return staff_display_name(obj.paid_by)
 
     def get_line_count(self, obj):
         return obj.lines.count()
@@ -246,6 +275,84 @@ class BakeryDeliveryNoteCreateSerializer(serializers.Serializer):
                 for line in lines_data
             ]
         )
+        return note
+
+
+class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+
+    def validate_product(self, product):
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be transferred to branches. "
+                f"Allowed categories: {', '.join(sorted(BAKERY_SELLABLE_CATEGORIES))}."
+            )
+        return product
+
+    def validate_quantity(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Quantity must be greater than zero.")
+        return value
+
+    def validate_unit_price(self, value):
+        if value is not None and value < Decimal("0"):
+            raise serializers.ValidationError("Unit price cannot be negative.")
+        return value
+
+
+class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
+    from_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.STORES)
+    )
+    to_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(
+            is_active=True,
+            branch_type__in=STORES_TRANSFER_DESTINATION_TYPES,
+        )
+    )
+    lines = StoresDeliveryNoteLineCreateSerializer(many=True)
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("Add at least one product line.")
+        product_ids = [line["product"].id for line in value]
+        if len(product_ids) != len(set(product_ids)):
+            raise serializers.ValidationError("Each product may only appear once.")
+        return value
+
+    def validate(self, attrs):
+        if attrs["from_branch"] == attrs["to_branch"]:
+            raise serializers.ValidationError(
+                {"to_branch": "Source and destination branches must differ."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        from .services import assign_transfer_invoice_number
+
+        lines_data = validated_data.pop("lines")
+        note = DeliveryNote.objects.create(**validated_data)
+        DeliveryNoteLine.objects.bulk_create(
+            [
+                DeliveryNoteLine(
+                    delivery_note=note,
+                    product=line["product"],
+                    quantity=line["quantity"],
+                    unit_price=line.get("unit_price") or line["product"].selling_price,
+                )
+                for line in lines_data
+            ]
+        )
+        assign_transfer_invoice_number(note)
         return note
 
 

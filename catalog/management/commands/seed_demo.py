@@ -26,6 +26,14 @@ class Command(BaseCommand):
                 "branch_type": BranchType.BAKERY,
             },
         )
+        stores, _ = Branch.objects.get_or_create(
+            name="Central Stores",
+            defaults={
+                "location": "Harare",
+                "branch_type": BranchType.STORES,
+                "code": "STR",
+            },
+        )
         branch, _ = Branch.objects.get_or_create(
             name="Café de Paris Avondale",
             defaults={

@@ -1,0 +1,170 @@
+<div class="receipt statement-receipt">
+  <div class="center brand">
+    <h1>Café de Paris</h1>
+    {% if branch.location %}<p class="address">{{ branch.location }}</p>{% endif %}
+  </div>
+
+  <div class="center meta">
+    <p><strong>Customer account statement</strong></p>
+    {% if single %}
+    <p>Transaction #{{ transaction.id }}</p>
+    {% elif period_from and period_to %}
+    <p>{{ period_from|date:"d M Y" }} — {{ period_to|date:"d M Y" }}</p>
+    {% else %}
+    <p>All transactions</p>
+    {% endif %}
+    <p>{{ printed_at|date:"d M Y, H:i" }}</p>
+  </div>
+
+  <hr class="divider">
+
+  <table class="summary">
+    <tr>
+      <td class="col-label">Customer</td>
+      <td class="col-amt" style="text-align: right;">{{ customer }}</td>
+    </tr>
+    {% if customer.phone %}
+    <tr>
+      <td class="col-label">Phone</td>
+      <td class="col-amt" style="text-align: right;">{{ customer.phone }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+      <td class="col-label">Branch</td>
+      <td class="col-amt" style="text-align: right;">{{ branch.name }}</td>
+    </tr>
+  </table>
+
+  {% if single %}
+  <hr class="divider">
+  <table class="summary">
+    <tr>
+      <td class="col-label">Type</td>
+      <td class="col-amt" style="text-align: right;"><strong>{{ transaction.statement_label }}</strong></td>
+    </tr>
+    <tr>
+      <td class="col-label">Date</td>
+      <td class="col-amt" style="text-align: right;">{{ transaction.created_at|date:"d M Y, H:i" }}</td>
+    </tr>
+    {% if transaction.transaction_type == "deposit" and transaction.currency %}
+    <tr>
+      <td class="col-label">Received in</td>
+      <td class="col-amt" style="text-align: right;">{{ transaction.currency.code|default:transaction.currency.name }}</td>
+    </tr>
+    {% if transaction.amount_received %}
+    <tr>
+      <td class="col-label">Amount received</td>
+      <td class="col-amt" style="text-align: right;">{% if transaction.currency.symbol %}{{ transaction.currency.symbol }}{% endif %}{{ transaction.amount_received|floatformat:2 }}</td>
+    </tr>
+    {% endif %}
+    {% endif %}
+    {% if transaction.order_id %}
+    <tr>
+      <td class="col-label">Order</td>
+      <td class="col-amt" style="text-align: right;">#{{ transaction.order_id }}</td>
+    </tr>
+    {% endif %}
+    {% if transaction.notes %}
+    <tr>
+      <td class="col-label">Notes</td>
+      <td class="col-amt" style="text-align: right;">{{ transaction.notes }}</td>
+    </tr>
+    {% endif %}
+    {% if recorded_by_name %}
+    <tr>
+      <td class="col-label">Recorded by</td>
+      <td class="col-amt" style="text-align: right;">{{ recorded_by_name }}</td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <hr class="divider">
+
+  <table class="summary grand">
+    <tr>
+      <td class="col-label">Previous balance{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+      <td class="col-amt">{{ transaction.balance_before|floatformat:2 }}</td>
+    </tr>
+    <tr>
+      <td class="col-label">{% if transaction.amount >= 0 %}Credited{% else %}Debited{% endif %}</td>
+      <td class="col-amt">{% if transaction.amount >= 0 %}+{% endif %}{{ transaction.amount|floatformat:2 }}</td>
+    </tr>
+    <tr>
+      <td class="col-label"><strong>New balance</strong></td>
+      <td class="col-amt"><strong>{{ transaction.balance_after|floatformat:2 }}</strong></td>
+    </tr>
+  </table>
+  {% else %}
+  <hr class="divider">
+  <table class="summary grand">
+    {% if opening_balance is not None %}
+    <tr>
+      <td class="col-label">Opening balance{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+      <td class="col-amt">{{ opening_balance|floatformat:2 }}</td>
+    </tr>
+    {% if total_credits %}
+    <tr>
+      <td class="col-label">Payments received</td>
+      <td class="col-amt">+{{ total_credits|floatformat:2 }}</td>
+    </tr>
+    {% endif %}
+    {% if total_debits %}
+    <tr>
+      <td class="col-label">Withdrawals</td>
+      <td class="col-amt">-{{ total_debits|floatformat:2 }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+      <td class="col-label"><strong>Closing balance</strong></td>
+      <td class="col-amt"><strong>{{ closing_balance|floatformat:2 }}</strong></td>
+    </tr>
+    {% else %}
+    <tr>
+      <td class="col-label"><strong>Current balance{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></td>
+      <td class="col-amt"><strong>{{ customer.account_balance|floatformat:2 }}</strong></td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <hr class="divider">
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th class="col-item">Date</th>
+        <th class="col-qty">Type</th>
+        <th class="col-amt">Amt</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for txn in transactions %}
+      <tr>
+        <td class="col-item">
+          <div class="item-name">{{ txn.created_at|date:"d M Y" }}</div>
+          <div class="item-detail">{{ txn.created_at|date:"H:i" }}</div>
+        </td>
+        <td class="col-qty">{{ txn.statement_label }}</td>
+        <td class="col-amt">{% if txn.amount >= 0 %}+{% endif %}{{ txn.amount|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="col-item" colspan="3">
+          <div class="item-detail">
+            Balance {{ txn.balance_after|floatformat:2 }}
+            {% if txn.order_id %} · Order #{{ txn.order_id }}{% endif %}
+            {% if txn.notes %} · {{ txn.notes }}{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="3">No transactions</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="center footer">
+    <p>Please retain for your records.</p>
+  </div>
+</div>

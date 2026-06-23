@@ -334,3 +334,44 @@ def cancel_delivery_note(note: DeliveryNote) -> DeliveryNote:
     note.status = StockTransferStatus.CANCELLED
     note.save(update_fields=["status"])
     return note
+
+
+class InvalidDeliveryNotePaymentError(Exception):
+    def __init__(self, note, detail):
+        self.note = note
+        super().__init__(detail)
+
+
+def mark_delivery_note_paid(note: DeliveryNote, user) -> DeliveryNote:
+    from django.utils import timezone
+
+    from .models import TransferInvoicePaymentStatus
+
+    if not note.invoice_number:
+        raise InvalidDeliveryNotePaymentError(
+            note,
+            "Only transfer invoices can be marked as paid.",
+        )
+    if note.payment_status == TransferInvoicePaymentStatus.PAID:
+        raise InvalidDeliveryNotePaymentError(
+            note,
+            f"Transfer invoice {note.invoice_number} is already paid.",
+        )
+    note.payment_status = TransferInvoicePaymentStatus.PAID
+    note.paid_at = timezone.now()
+    note.paid_by = user
+    note.save(update_fields=["payment_status", "paid_at", "paid_by"])
+    return note
+
+
+def assign_transfer_invoice_number(note: DeliveryNote) -> DeliveryNote:
+    """Assign an invoice number when central stores dispatches to a branch."""
+    from branches.models import BranchType
+
+    if note.from_branch.branch_type != BranchType.STORES or note.invoice_number:
+        return note
+    from_code = (note.from_branch.code or "STR").upper()
+    to_code = (note.to_branch.code or "BRN").upper()
+    note.invoice_number = f"{from_code}{to_code}{note.pk:05d}"
+    note.save(update_fields=["invoice_number"])
+    return note

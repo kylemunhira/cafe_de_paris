@@ -2,17 +2,24 @@
 {% load static %}
 
 {% block title %}Invoices — Café de Paris{% endblock %}
-{% block page_title %}Paid Invoices{% endblock %}
+{% block page_title %}Invoices{% endblock %}
 
 {% block content %}
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+    <button class="category-tab active" data-tab="pos">POS receipts</button>
+    <button class="category-tab" data-tab="transfers">Transfer invoices</button>
+    <div id="transfer-payment-filters" style="display: none; gap: 0.35rem;">
+      <button class="category-tab active" data-payment-filter="all">All</button>
+      <button class="category-tab" data-payment-filter="unpaid">Unpaid</button>
+      <button class="category-tab" data-payment-filter="paid">Paid</button>
+    </div>
     <input
       type="search"
       id="invoice-search"
       class="report-input"
-      placeholder="Search receipt #, order #, branch…"
-      style="max-width: 320px;"
+      placeholder="Search invoice #, branch…"
+      style="max-width: 320px; margin-left: auto;"
     >
   </div>
   <div class="table-wrap" id="invoices-table">
@@ -23,24 +30,47 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, unwrapList, formatCurrency, formatDate } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+const CAN_MARK_PAID = "{{ can_mark_transfer_invoice_paid|yesno:'true,false' }}" === "true";
+const CAN_APPROVE_FISCAL = "{{ can_approve_fiscal_receipt|yesno:'true,false' }}" === "true";
 
 const invoicePrintUrlTemplate = "{% url 'ui:invoice-print' 0 %}".replace("/0/", "/{id}/");
 const receiptPrintUrlTemplate = "{% url 'ui:receipt-print' 0 %}".replace("/0/", "/{id}/");
+const transferInvoicePrintUrlTemplate = "{% url 'ui:transfer-invoice-print' 0 %}".replace("/0/", "/{id}/");
 
 let paidOrders = [];
+let transferNotes = [];
+let activeTab = "pos";
+let transferPaymentFilter = "all";
 let searchQuery = "";
 const container = document.getElementById("invoices-table");
 const searchInput = document.getElementById("invoice-search");
+const transferPaymentFilters = document.getElementById("transfer-payment-filters");
 
-function matchesSearch(order) {
+function matchesPosSearch(order) {
   if (!searchQuery) return true;
   const haystack = [
     order.receipt_number,
+    order.fiscal_receipt_number,
     order.id,
     order.branch_name,
     order.payment_currency_name,
     order.order_type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function matchesTransferSearch(note) {
+  if (!searchQuery) return true;
+  const haystack = [
+    note.invoice_number,
+    note.id,
+    note.from_branch_name,
+    note.to_branch_name,
   ]
     .filter(Boolean)
     .join(" ")
@@ -56,11 +86,41 @@ function formatPaidAmount(order) {
   return `${symbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function renderInvoices() {
-  const filtered = paidOrders.filter(matchesSearch);
+function fiscalStatusBadge(order) {
+  if (!order.branch_fiscalization_enabled) return "";
+  if (order.fiscal_approval_status === "pending") {
+    return `<span class="badge badge-open">Proforma</span>`;
+  }
+  if (order.fiscal_approval_status === "approved") {
+    const fiscalNo = order.fiscal_receipt_number
+      ? `<div style="font-size: 0.8rem; margin-top: 0.15rem;"><strong>${order.fiscal_receipt_number}</strong></div>`
+      : "";
+    return `<span class="badge badge-delivered">Fiscal</span>${fiscalNo}`;
+  }
+  if (order.fiscal_approval_status === "failed") {
+    return `<span class="badge badge-cancelled">Fiscal failed</span>`;
+  }
+  return "";
+}
+
+function posInvoiceActions(order) {
+  const actions = [
+    `<a href="${invoicePrintUrlTemplate.replace("{id}", order.id)}" target="_blank" class="btn btn-accent btn-sm">${order.fiscal_approval_status === "pending" ? "A4 Proforma" : "A4 Invoice"}</a>`,
+  ];
+  if (order.fiscal_approval_status === "approved" || !order.branch_fiscalization_enabled) {
+    actions.push(`<a href="${receiptPrintUrlTemplate.replace("{id}", order.id)}" target="_blank" class="btn btn-ghost btn-sm">Receipt</a>`);
+  }
+  if (CAN_APPROVE_FISCAL && order.fiscal_approval_status === "pending") {
+    actions.push(`<button class="btn btn-primary btn-sm action-btn" data-action="approve-fiscal" data-id="${order.id}">Approve fiscal</button>`);
+  }
+  return actions.join(" ");
+}
+
+function renderPosInvoices() {
+  const filtered = paidOrders.filter(matchesPosSearch);
 
   if (!filtered.length) {
-    container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching invoices" : "No paid receipts yet"}</p></div>`;
+    container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching POS invoices" : "No paid receipts yet"}</p></div>`;
     return;
   }
 
@@ -68,13 +128,14 @@ function renderInvoices() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Receipt #</th>
+          <th>Proforma #</th>
           <th>Order</th>
           <th>Branch</th>
           <th>Type</th>
           <th>Total</th>
           <th>Amount paid</th>
           <th>Date</th>
+          <th>Fiscal</th>
           <th></th>
         </tr>
       </thead>
@@ -88,10 +149,8 @@ function renderInvoices() {
             <td>${formatCurrency(o.total_amount)}</td>
             <td>${formatPaidAmount(o)}${o.payment_currency_name ? ` <span style="color: var(--text-muted); font-size: 0.85em;">${o.payment_currency_name}</span>` : ""}</td>
             <td>${formatDate(o.created_at)}</td>
-            <td style="white-space: nowrap;">
-              <a href="${invoicePrintUrlTemplate.replace("{id}", o.id)}" target="_blank" class="btn btn-accent btn-sm">A4 Invoice</a>
-              <a href="${receiptPrintUrlTemplate.replace("{id}", o.id)}" target="_blank" class="btn btn-ghost btn-sm">Receipt</a>
-            </td>
+            <td>${fiscalStatusBadge(o) || "—"}</td>
+            <td style="white-space: nowrap;">${posInvoiceActions(o)}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -99,14 +158,139 @@ function renderInvoices() {
   `;
 }
 
+function paymentBadge(note) {
+  return statusBadge(note.payment_status || "unpaid");
+}
+
+function transferInvoiceActions(note) {
+  const actions = [
+    `<a href="${transferInvoicePrintUrlTemplate.replace("{id}", note.id)}" target="_blank" class="btn btn-accent btn-sm">A4 Invoice</a>`,
+  ];
+  if (CAN_MARK_PAID && note.payment_status !== "paid") {
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="mark-paid" data-id="${note.id}">Mark paid</button>`);
+  }
+  return actions.join(" ");
+}
+
+function renderTransferInvoices() {
+  const filtered = transferNotes
+    .filter(matchesTransferSearch)
+    .filter(n => transferPaymentFilter === "all" || n.payment_status === transferPaymentFilter);
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching transfer invoices" : "No transfer invoices yet"}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Delivery note</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Total</th>
+          <th>Delivery</th>
+          <th>Payment</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(n => `
+          <tr>
+            <td><strong>${n.invoice_number}</strong></td>
+            <td>DN-${String(n.id).padStart(5, "0")}</td>
+            <td>${n.from_branch_name}</td>
+            <td>${n.to_branch_name}</td>
+            <td>${formatCurrency(n.total_amount)}</td>
+            <td>${statusBadge(n.status)}</td>
+            <td>${paymentBadge(n)}${n.paid_at ? `<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">${formatDate(n.paid_at)}</div>` : ""}</td>
+            <td>${formatDate(n.created_at)}</td>
+            <td style="white-space: nowrap;">${transferInvoiceActions(n)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderInvoices() {
+  if (activeTab === "transfers") {
+    renderTransferInvoices();
+  } else {
+    renderPosInvoices();
+  }
+}
+
 searchInput.addEventListener("input", () => {
   searchQuery = searchInput.value.trim().toLowerCase();
   renderInvoices();
 });
 
-apiGet("/orders/?status=paid")
-  .then(data => {
-    paidOrders = unwrapList(data);
+document.querySelectorAll("[data-tab]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-tab]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeTab = tab.dataset.tab;
+    transferPaymentFilters.style.display = activeTab === "transfers" ? "flex" : "none";
+    searchInput.placeholder = activeTab === "transfers"
+      ? "Search transfer invoice #, branch…"
+      : "Search receipt #, order #, branch…";
+    renderInvoices();
+  });
+});
+
+document.querySelectorAll("[data-payment-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-payment-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    transferPaymentFilter = tab.dataset.paymentFilter;
+    renderInvoices();
+  });
+});
+
+container.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    if (action === "approve-fiscal") {
+      const updated = await apiPost(`/orders/${id}/approve-fiscal/`, {});
+      const index = paidOrders.findIndex(o => String(o.id) === id);
+      if (index >= 0) {
+        paidOrders[index] = { ...paidOrders[index], ...updated };
+      }
+      renderInvoices();
+      showToast(`Order #${id} fiscalized — fiscal receipt ready to print`);
+      window.open(receiptPrintUrlTemplate.replace("{id}", id) + "?auto=1", "_blank", "noopener");
+      return;
+    }
+
+    const updated = await apiPost(`/delivery-notes/${id}/${action}/`, {});
+    const index = transferNotes.findIndex(n => String(n.id) === id);
+    if (index >= 0) transferNotes[index] = updated;
+    renderInvoices();
+    showToast(`Transfer invoice marked as paid`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = "Mark paid";
+    btn.disabled = false;
+  }
+});
+
+Promise.all([
+  apiGet("/orders/?status=paid"),
+  apiGet("/delivery-notes/?stores_only=true&invoiced_only=true"),
+])
+  .then(([ordersData, notesData]) => {
+    paidOrders = unwrapList(ordersData);
+    transferNotes = unwrapList(notesData);
     renderInvoices();
   })
   .catch(err => {

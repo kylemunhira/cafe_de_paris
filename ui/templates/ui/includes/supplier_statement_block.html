@@ -1,0 +1,115 @@
+<div class="receipt statement-receipt">
+  <div class="center brand">
+    <h1>Café de Paris</h1>
+    {% if branch.location %}<p class="address">{{ branch.location }}</p>{% endif %}
+  </div>
+
+  <div class="center meta">
+    <p><strong>Supplier purchase statement</strong></p>
+    {% if period_from and period_to %}
+    <p>{{ period_from|date:"d M Y" }} — {{ period_to|date:"d M Y" }}</p>
+    {% else %}
+    <p>All purchases</p>
+    {% endif %}
+    <p>{{ printed_at|date:"d M Y, H:i" }}</p>
+  </div>
+
+  <hr class="divider">
+
+  <table class="summary">
+    <tr>
+      <td class="col-label">Supplier</td>
+      <td class="col-amt" style="text-align: right;">{{ supplier.name }}</td>
+    </tr>
+    {% if supplier.contact_person %}
+    <tr>
+      <td class="col-label">Contact</td>
+      <td class="col-amt" style="text-align: right;">{{ supplier.contact_person }}</td>
+    </tr>
+    {% endif %}
+    {% if supplier.phone %}
+    <tr>
+      <td class="col-label">Phone</td>
+      <td class="col-amt" style="text-align: right;">{{ supplier.phone }}</td>
+    </tr>
+    {% endif %}
+    {% if supplier.vat_number %}
+    <tr>
+      <td class="col-label">VAT number</td>
+      <td class="col-amt" style="text-align: right;">{{ supplier.vat_number }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+      <td class="col-label">Branch filter</td>
+      <td class="col-amt" style="text-align: right;">{{ branch.name }}</td>
+    </tr>
+  </table>
+
+  <hr class="divider">
+
+  <table class="summary grand">
+    {% if period_from %}
+    <tr>
+      <td class="col-label">Spend before period</td>
+      <td class="col-amt">{{ opening_spend|floatformat:2 }}</td>
+    </tr>
+    <tr>
+      <td class="col-label">Spend in period</td>
+      <td class="col-amt">{{ period_spend|floatformat:2 }}</td>
+    </tr>
+    <tr>
+      <td class="col-label"><strong>Cumulative spend</strong></td>
+      <td class="col-amt"><strong>{{ closing_spend|floatformat:2 }}</strong></td>
+    </tr>
+    {% else %}
+    <tr>
+      <td class="col-label"><strong>Total spend</strong></td>
+      <td class="col-amt"><strong>{{ all_time_spend|floatformat:2 }}</strong></td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <hr class="divider">
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th class="col-item">Date</th>
+        <th class="col-qty">Purchase #</th>
+        <th class="col-amt">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for po in purchases %}
+      <tr>
+        <td class="col-item">
+          <div class="item-name">{{ po.received_at|date:"d M Y" }}</div>
+          <div class="item-detail">{{ po.branch.name }}</div>
+        </td>
+        <td class="col-qty">
+          <div class="item-name">#{{ po.id }}</div>
+          {% if po.notes %}
+          <div class="item-detail">Inv: {{ po.notes }}</div>
+          {% endif %}
+        </td>
+        <td class="col-amt">{{ po.total_amount|floatformat:2 }}</td>
+      </tr>
+      {% for line in po.lines.all %}
+      <tr>
+        <td class="col-item" colspan="3">
+          <div class="item-detail">{{ line.product.name }} × {{ line.quantity }} @ {{ line.unit_cost|floatformat:2 }} = {{ line.line_total|floatformat:2 }}</div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% empty %}
+      <tr>
+        <td colspan="3">No purchases</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="center footer">
+    <p>Please retain for your records.</p>
+  </div>
+</div>

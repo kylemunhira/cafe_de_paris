@@ -15,6 +15,12 @@ class OrderStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+class FiscalApprovalStatus(models.TextChoices):
+    PENDING = "pending", "Pending fiscal approval"
+    APPROVED = "approved", "Fiscal receipt issued"
+    FAILED = "failed", "Fiscal submission failed"
+
+
 class KitchenStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     PREPARING = "preparing", "Preparing"
@@ -24,6 +30,11 @@ class KitchenStatus(models.TextChoices):
 class OrderType(models.TextChoices):
     DINE_IN = "dine_in", "Dine In"
     TAKEAWAY = "takeaway", "Takeaway"
+
+
+class PaymentMethod(models.TextChoices):
+    CASH = "cash", "Cash"
+    ACCOUNT = "account", "Customer account"
 
 
 class Order(models.Model):
@@ -66,6 +77,13 @@ class Order(models.Model):
         null=True,
         blank=True,
     )
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PaymentMethod.choices,
+        blank=True,
+        default="",
+        help_text="How the order was paid (cash or customer account).",
+    )
     status = models.CharField(
         max_length=20,
         choices=OrderStatus.choices,
@@ -107,6 +125,21 @@ class Order(models.Model):
         blank=True,
         related_name="orders_paid",
         help_text="POS cashier who collected payment.",
+    )
+    fiscal_approval_status = models.CharField(
+        max_length=20,
+        choices=FiscalApprovalStatus.choices,
+        blank=True,
+        default="",
+        help_text="Fiscal branches: proforma pending approval until sent to ZIMRA.",
+    )
+    fiscal_approved_at = models.DateTimeField(null=True, blank=True)
+    fiscal_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_fiscal_approved",
     )
 
     class Meta:

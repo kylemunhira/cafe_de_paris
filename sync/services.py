@@ -3,11 +3,10 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionError
-from zimra_fiscal.services import create_fiscal_receipt_for_payment
 
 from catalog.models import ProductCategory
 from catalog.serializers import ProductCategorySerializer, ProductSerializer
-from orders.models import Order, OrderItem, OrderStatus
+from orders.models import FiscalApprovalStatus, Order, OrderItem, OrderStatus
 from orders.services import ReceiptNumberError, allocate_receipt_number
 from payments.serializers import CurrencySerializer
 
@@ -88,6 +87,8 @@ def _pay_order(order, payment_data, user=None):
     order.receipt_number = receipt_number
     order.paid_at = paid_at
     order.paid_by = user
+    if order.branch.fiscalization_enabled:
+        order.fiscal_approval_status = FiscalApprovalStatus.PENDING
     order.save(
         update_fields=[
             "payment_currency",
@@ -97,14 +98,11 @@ def _pay_order(order, payment_data, user=None):
             "receipt_number",
             "paid_at",
             "paid_by",
+            "fiscal_approval_status",
         ]
     )
 
-    fiscal_receipt = None
-    if order.branch.fiscalization_enabled:
-        fiscal_receipt = create_fiscal_receipt_for_payment(order)
-
-    return fiscal_receipt
+    return None
 
 
 def _apply_payment_if_needed(order, payment, user=None):

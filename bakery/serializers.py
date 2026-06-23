@@ -2,9 +2,18 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from branches.models import Branch, BranchType
+from catalog.constants import is_bakery_transfer_product
 from catalog.models import Product
 
-from .models import Recipe
+from .models import ProductionOrder, Recipe
+from .services import (
+    InsufficientIngredientsError,
+    InvalidProductionBranchError,
+    InvalidProductionProductError,
+    NoRecipeError,
+    complete_production,
+)
 
 
 class RecipeSerializer(serializers.ModelSerializer):
@@ -70,3 +79,113 @@ class RecipeSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+
+class ProductionOrderSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionOrder
+        fields = [
+            "id",
+            "branch",
+            "branch_name",
+            "product",
+            "product_name",
+            "quantity",
+            "status",
+            "created_by",
+            "created_by_name",
+            "created_at",
+        ]
+        read_only_fields = [
+            "status",
+            "created_by",
+            "created_by_name",
+            "created_at",
+        ]
+
+    def get_created_by_name(self, obj):
+        user = obj.created_by
+        if not user:
+            return None
+        full_name = user.get_full_name().strip()
+        return full_name or user.username
+
+
+class ProductionPreviewSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.BAKERY)
+    )
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def validate_quantity(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Quantity must be greater than zero.")
+        return value
+
+    def validate_product(self, product):
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be produced."
+            )
+        return product
+
+
+class ProductionCompleteSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.BAKERY)
+    )
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def validate_quantity(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Quantity must be greater than zero.")
+        return value
+
+    def validate_product(self, product):
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be produced."
+            )
+        return product
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        created_by = request.user if request and request.user.is_authenticated else None
+        try:
+            return complete_production(
+                validated_data["branch"],
+                validated_data["product"],
+                validated_data["quantity"],
+                created_by=created_by,
+            )
+        except NoRecipeError as exc:
+            raise serializers.ValidationError({"product": str(exc)}) from exc
+        except InvalidProductionBranchError as exc:
+            raise serializers.ValidationError({"branch": str(exc)}) from exc
+        except InvalidProductionProductError as exc:
+            raise serializers.ValidationError({"product": str(exc)}) from exc
+        except InsufficientIngredientsError as exc:
+            raise serializers.ValidationError(
+                {
+                    "detail": str(exc),
+                    "shortages": [
+                        {
+                            "ingredient_id": item.ingredient.id,
+                            "ingredient_name": item.ingredient.name,
+                            "required": item.required,
+                            "available": item.available,
+                        }
+                        for item in exc.shortages
+                    ],
+                }
+            ) from exc

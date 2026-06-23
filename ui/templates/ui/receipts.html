@@ -1,0 +1,125 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Receipts — Café de Paris{% endblock %}
+{% block page_title %}Receipts{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">Fiscal receipts issued after proforma approval</p>
+    <input
+      type="search"
+      id="receipt-search"
+      class="report-input"
+      placeholder="Search fiscal receipt #, proforma #, order…"
+      style="max-width: 360px; margin-left: auto;"
+    >
+  </div>
+  <div class="table-wrap" id="receipts-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+const invoicePrintUrlTemplate = "{% url 'ui:invoice-print' 0 %}".replace("/0/", "/{id}/");
+const receiptPrintUrlTemplate = "{% url 'ui:receipt-print' 0 %}".replace("/0/", "/{id}/");
+
+let fiscalReceipts = [];
+let searchQuery = "";
+const container = document.getElementById("receipts-table");
+const searchInput = document.getElementById("receipt-search");
+
+function matchesSearch(order) {
+  if (!searchQuery) return true;
+  const haystack = [
+    order.fiscal_receipt_number,
+    order.receipt_number,
+    order.id,
+    order.branch_name,
+    order.payment_currency_name,
+    order.order_type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function formatPaidAmount(order) {
+  if (order.amount_paid == null) return "—";
+  const symbol = order.payment_currency_symbol || "";
+  const value = Number(order.amount_paid);
+  if (!Number.isFinite(value)) return "—";
+  return `${symbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function receiptActions(order) {
+  return [
+    `<a href="${invoicePrintUrlTemplate.replace("{id}", order.id)}" target="_blank" class="btn btn-accent btn-sm">A4 Invoice</a>`,
+    `<a href="${receiptPrintUrlTemplate.replace("{id}", order.id)}" target="_blank" class="btn btn-ghost btn-sm">Receipt</a>`,
+  ].join(" ");
+}
+
+function renderReceipts() {
+  const filtered = fiscalReceipts.filter(matchesSearch);
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching fiscal receipts" : "No fiscal receipts yet"}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Fiscal receipt #</th>
+          <th>Proforma #</th>
+          <th>Order</th>
+          <th>Branch</th>
+          <th>Type</th>
+          <th>Total</th>
+          <th>Amount paid</th>
+          <th>Fiscalized</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(o => `
+          <tr>
+            <td><strong>${o.fiscal_receipt_number || "—"}</strong></td>
+            <td>${o.receipt_number || "—"}</td>
+            <td>#${o.id}</td>
+            <td>${o.branch_name}</td>
+            <td>${o.order_type.replace("_", " ")}</td>
+            <td>${formatCurrency(o.total_amount)}</td>
+            <td>${formatPaidAmount(o)}${o.payment_currency_name ? ` <span style="color: var(--text-muted); font-size: 0.85em;">${o.payment_currency_name}</span>` : ""}</td>
+            <td>${o.fiscal_approved_at ? formatDate(o.fiscal_approved_at) : formatDate(o.created_at)}</td>
+            <td style="white-space: nowrap;">${receiptActions(o)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderReceipts();
+});
+
+apiGet("/orders/?status=paid&fiscal_only=1&fiscal_approval_status=approved&page_size=500")
+  .then((data) => {
+    fiscalReceipts = unwrapList(data);
+    renderReceipts();
+  })
+  .catch((err) => {
+    showToast(`Failed to load receipts: ${err.message}`, true);
+    container.innerHTML = `<div class="empty-state">Failed to load receipts: ${err.message}</div>`;
+  });
+</script>
+{% endblock %}

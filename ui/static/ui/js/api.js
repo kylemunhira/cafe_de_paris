@@ -33,8 +33,8 @@ async function parseResponse(res) {
   return data;
 }
 
-export async function apiGet(endpoint) {
-  const res = await fetch(`${API_BASE}${endpoint}`);
+export async function apiGet(endpoint, { cache = "default" } = {}) {
+  const res = await fetch(`${API_BASE}${endpoint}`, { cache });
   return parseResponse(res);
 }
 
@@ -131,6 +131,7 @@ export function statusBadge(status) {
     pending: "badge-open",
     preparing: "badge-requested",
     ready: "badge-delivered",
+    unpaid: "badge-unpaid",
   };
   return `<span class="badge ${map[status] || ""}">${status}</span>`;
 }

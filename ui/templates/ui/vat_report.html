@@ -1,0 +1,207 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}VAT Report — Café de Paris{% endblock %}
+{% block page_title %}VAT Report{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
+{% endblock %}
+
+{% block content %}
+<div class="card report-filters">
+  <div class="report-filters-grid">
+    <label>
+      <span>From</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>To</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All physical branches</option>
+      </select>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="card vat-report-card" id="vat-report">
+  <div class="vat-report-header">
+    <p class="vat-report-branch" id="report-branch-name">—</p>
+    <h2 class="vat-report-title">VAT Report</h2>
+    <p class="vat-report-period" id="report-period">—</p>
+  </div>
+
+  <div class="vat-report-section">
+    <h3>Output TAX Amount</h3>
+    <table class="vat-report-table">
+      <tbody>
+        <tr><td>1</td><td>Total Sales Including VAT</td><td id="out-total-incl">—</td></tr>
+        <tr><td>2</td><td>Total Sales Excluding VAT</td><td id="out-total-excl">—</td></tr>
+        <tr><td>3</td><td>Total Taxable Sales (Excluding VAT)</td><td id="out-taxable-excl">—</td></tr>
+        <tr><td>4</td><td>Total Non-taxable Sales</td><td id="out-non-taxable">—</td></tr>
+        <tr><td>5</td><td>VAT on Taxables Sales</td><td id="out-vat">—</td></tr>
+        <tr><td>6</td><td>Sales Returns</td><td id="out-returns">—</td></tr>
+        <tr><td>7</td><td>Discounts Given</td><td id="out-discounts">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="vat-report-section">
+    <h3>Input TAX</h3>
+    <table class="vat-report-table">
+      <tbody>
+        <tr><td>1</td><td>Total Purchases Including VAT</td><td id="in-total-incl">—</td></tr>
+        <tr><td>2</td><td>Total Purchases Excluding VAT</td><td id="in-total-excl">—</td></tr>
+        <tr><td>3</td><td>Total Raw Materials Purchases Including VAT</td><td id="in-raw-incl">—</td></tr>
+        <tr><td>4</td><td>Total Raw Materials Purchases Excluding VAT</td><td id="in-raw-excl">—</td></tr>
+        <tr><td>5</td><td>Credit Notes Excluding VAT</td><td id="in-credit-excl">—</td></tr>
+        <tr><td>6</td><td>Credit Notes VAT</td><td id="in-credit-vat">—</td></tr>
+        <tr><td>7</td><td>Credit Notes Including VAT</td><td id="in-credit-incl">—</td></tr>
+        <tr><td>8</td><td>Total Taxable Purchases (Excluding VAT)</td><td id="in-taxable-excl">—</td></tr>
+        <tr><td>9</td><td>Total Non-taxable Purchases</td><td id="in-non-taxable">—</td></tr>
+        <tr><td>10</td><td>VAT on Taxable Purchases</td><td id="in-vat">—</td></tr>
+        <tr><td>11</td><td>Purchases Returns</td><td id="in-returns">—</td></tr>
+        <tr><td>12</td><td>Discount Given</td><td id="in-discounts">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="vat-report-net">
+    <span>NET VAT</span>
+    <strong id="net-vat">—</strong>
+  </div>
+
+  <p class="vat-report-note" id="report-note"></p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const applyFilters = document.getElementById("apply-filters");
+const printReportBtn = document.getElementById("print-report-btn");
+
+const BRANCH_TYPE_PHYSICAL = "branch";
+
+function toLocalDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function defaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  return {
+    from: toLocalDateInput(start),
+    to: toLocalDateInput(today),
+  };
+}
+
+function queryString() {
+  const params = new URLSearchParams();
+  if (filterFrom.value) params.set("from", filterFrom.value);
+  if (filterTo.value) params.set("to", filterTo.value);
+  if (filterBranch.value) params.set("branch", filterBranch.value);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function formatPeriod(from, to) {
+  if (!from || !to) return "—";
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T23:59:59`);
+  return `${start.toLocaleString()} to ${end.toLocaleString()}`;
+}
+
+function setAmount(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = formatCurrency(value ?? 0);
+}
+
+function renderReport(data) {
+  document.getElementById("report-branch-name").textContent = data.filters?.branch_name || "All Branches";
+  const periodFrom = data.period?.from || filterFrom.value;
+  const periodTo = data.period?.to || filterTo.value;
+  document.getElementById("report-period").textContent = formatPeriod(periodFrom, periodTo);
+
+  const out = data.output_tax || {};
+  setAmount("out-total-incl", out.total_sales_including_vat);
+  setAmount("out-total-excl", out.total_sales_excluding_vat);
+  setAmount("out-taxable-excl", out.total_taxable_sales_excluding_vat);
+  setAmount("out-non-taxable", out.total_non_taxable_sales);
+  setAmount("out-vat", out.vat_on_taxable_sales);
+  setAmount("out-returns", out.sales_returns);
+  setAmount("out-discounts", out.discounts_given);
+
+  const inp = data.input_tax || {};
+  setAmount("in-total-incl", inp.total_purchases_including_vat);
+  setAmount("in-total-excl", inp.total_purchases_excluding_vat);
+  setAmount("in-raw-incl", inp.total_raw_materials_including_vat);
+  setAmount("in-raw-excl", inp.total_raw_materials_excluding_vat);
+  setAmount("in-credit-excl", inp.credit_notes_excluding_vat);
+  setAmount("in-credit-vat", inp.credit_notes_vat);
+  setAmount("in-credit-incl", inp.credit_notes_including_vat);
+  setAmount("in-taxable-excl", inp.total_taxable_purchases_excluding_vat);
+  setAmount("in-non-taxable", inp.total_non_taxable_purchases);
+  setAmount("in-vat", inp.vat_on_taxable_purchases);
+  setAmount("in-returns", inp.purchases_returns);
+  setAmount("in-discounts", inp.discount_given);
+
+  setAmount("net-vat", data.net_vat);
+
+  const meta = data.meta || {};
+  document.getElementById("report-note").textContent =
+    `${meta.fiscalized_sales_count ?? 0} fiscal invoices (proforma excluded) · ` +
+    `${meta.vat_purchase_order_count ?? 0} purchases from VAT-registered suppliers`;
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/?page_size=100");
+  const branches = unwrapList(data).filter(b => b.is_active && b.branch_type === BRANCH_TYPE_PHYSICAL);
+  filterBranch.innerHTML = `<option value="">All physical branches</option>` +
+    branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+}
+
+async function loadReport() {
+  if (!filterFrom.value || !filterTo.value) {
+    showToast("Select both from and to dates", true);
+    return;
+  }
+  const reportCard = document.getElementById("vat-report");
+  reportCard?.setAttribute("aria-busy", "true");
+  try {
+    const data = await apiGet(`/reports/vat/${queryString()}`, { cache: "no-store" });
+    renderReport(data);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    reportCard?.removeAttribute("aria-busy");
+  }
+}
+
+applyFilters.addEventListener("click", loadReport);
+filterFrom.addEventListener("change", loadReport);
+filterTo.addEventListener("change", loadReport);
+filterBranch.addEventListener("change", loadReport);
+printReportBtn?.addEventListener("click", () => window.print());
+
+const defaults = defaultDates();
+filterFrom.value = defaults.from;
+filterTo.value = defaults.to;
+
+loadBranches().then(loadReport).catch(err => showToast(err.message, true));
+</script>
+{% endblock %}

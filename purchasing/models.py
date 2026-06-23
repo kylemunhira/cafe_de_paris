@@ -8,7 +8,14 @@ from catalog.models import Product
 
 
 class Supplier(models.Model):
+    """Company-wide supplier master data — shared across all branches."""
+
     name = models.CharField(max_length=200)
+    vat_number = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="ZIMRA VAT registration number. Leave blank for non-VAT suppliers.",
+    )
     contact_person = models.CharField(max_length=120, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=40, blank=True)

@@ -1,0 +1,316 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Bakery Production — Café de Paris{% endblock %}
+{% block page_title %}Bakery Production{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'ui:transfers' %}" class="btn btn-ghost btn-sm">Bakery transfers</a>
+{% endblock %}
+
+{% block content %}
+<div class="stat-grid" id="production-stats" style="margin-bottom: 1.25rem;">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 0.5rem; font-size: 1.05rem;">Record production</h3>
+  <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
+    Ingredients are deducted from the bakery and finished goods are added to stock for transfers.
+  </p>
+  <form id="production-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="bakery-branch">Central bakery</label>
+        <select id="bakery-branch" required disabled>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 2;">
+        <label for="product">Finished product</label>
+        <select id="product" required>
+          <option value="">Select product…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 140px;">
+        <label for="quantity">Batch qty</label>
+        <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0" required>
+      </div>
+    </div>
+
+    <div class="table-wrap" id="recipe-wrap" style="display: none; margin-bottom: 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Ingredient</th>
+            <th>Category</th>
+            <th style="text-align: right;">Required</th>
+            <th style="text-align: right;">Available</th>
+            <th style="text-align: right;">Status</th>
+          </tr>
+        </thead>
+        <tbody id="recipe-body"></tbody>
+      </table>
+    </div>
+
+    <p id="preview-message" style="margin: 0 0 0.75rem; font-size: 0.85rem; color: var(--color-muted);"></p>
+
+    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Record production</button>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1.05rem;">Recent production</h3>
+  </div>
+  <div class="table-wrap" id="history-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+let bakeryBranches = [];
+let products = [];
+let recipesByProduct = new Map();
+let bakeryInventory = new Map();
+let preview = null;
+let history = [];
+
+const bakerySelect = document.getElementById("bakery-branch");
+const productSelect = document.getElementById("product");
+const quantityInput = document.getElementById("quantity");
+const productionForm = document.getElementById("production-form");
+const recipeWrap = document.getElementById("recipe-wrap");
+const recipeBody = document.getElementById("recipe-body");
+const previewMessage = document.getElementById("preview-message");
+const submitBtn = document.getElementById("submit-btn");
+const historyTable = document.getElementById("history-table");
+const productionStats = document.getElementById("production-stats");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function bakeryId() {
+  return bakeryBranches[0]?.id;
+}
+
+function getBakeryStock(productId) {
+  return bakeryInventory.get(Number(productId)) ?? 0;
+}
+
+function productsWithRecipes() {
+  return products.filter(p => recipesByProduct.has(p.id));
+}
+
+function renderStats() {
+  const finishedSkus = productsWithRecipes().filter(p => getBakeryStock(p.id) > 0).length;
+  const totalUnits = productsWithRecipes().reduce((sum, p) => sum + getBakeryStock(p.id), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCount = history.filter(row => row.created_at?.startsWith(today)).length;
+
+  productionStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Finished goods in stock</div>
+      <div class="value">${finishedSkus}</div>
+      <div class="sub">${formatQty(totalUnits)} units across recipes</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Batches today</div>
+      <div class="value">${todayCount}</div>
+      <div class="sub">${history.length} total recorded</div>
+    </div>
+  `;
+}
+
+function populateProductOptions() {
+  const available = productsWithRecipes();
+  if (!available.length) {
+    productSelect.innerHTML = `<option value="">No products with recipes — add recipes first</option>`;
+    productSelect.disabled = true;
+    return;
+  }
+
+  productSelect.disabled = false;
+  productSelect.innerHTML = `<option value="">Select product…</option>${available.map(p => `
+    <option value="${p.id}">${p.name} (${p.category_name})</option>
+  `).join("")}`;
+}
+
+function renderPreview() {
+  preview = null;
+  recipeWrap.style.display = "none";
+  recipeBody.innerHTML = "";
+  previewMessage.textContent = "";
+  submitBtn.disabled = true;
+
+  const productId = productSelect.value;
+  const quantity = Number(quantityInput.value);
+  const branch = bakeryId();
+
+  if (!branch || !productId || !Number.isFinite(quantity) || quantity <= 0) {
+    return;
+  }
+
+  previewMessage.textContent = "Checking ingredients…";
+  apiPost("/production-orders/preview/", {
+    branch,
+    product: Number(productId),
+    quantity: String(quantity),
+  }).then(data => {
+    preview = data;
+    recipeWrap.style.display = "block";
+    recipeBody.innerHTML = data.lines.map(line => `
+      <tr>
+        <td>${line.ingredient_name}</td>
+        <td>${line.ingredient_category}</td>
+        <td style="text-align: right;">${formatQty(line.required)}</td>
+        <td style="text-align: right;">${formatQty(line.available)}</td>
+        <td style="text-align: right;">
+          <span class="badge ${line.sufficient ? "badge-active" : "badge-inactive"}">
+            ${line.sufficient ? "OK" : "Short"}
+          </span>
+        </td>
+      </tr>
+    `).join("");
+
+    if (data.can_produce) {
+      previewMessage.textContent = `Ready to produce ${formatQty(data.quantity)} × ${data.product_name}.`;
+      submitBtn.disabled = false;
+    } else {
+      previewMessage.textContent = "Not enough ingredients at the bakery for this batch.";
+      submitBtn.disabled = true;
+    }
+  }).catch(err => {
+    previewMessage.textContent = err.message;
+    submitBtn.disabled = true;
+  });
+}
+
+function renderHistory() {
+  if (!history.length) {
+    historyTable.innerHTML = `<div class="empty-state"><p>No production recorded yet.</p></div>`;
+    return;
+  }
+
+  historyTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Product</th>
+          <th style="text-align: right;">Qty</th>
+          <th>Recorded by</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${history.map(row => `
+          <tr>
+            <td>${formatDate(row.created_at)}</td>
+            <td><strong>${row.product_name}</strong></td>
+            <td style="text-align: right;">${formatQty(row.quantity)}</td>
+            <td>${row.created_by_name || "—"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function reloadInventory() {
+  const branch = bakeryId();
+  if (!branch) return;
+  const inventoryData = await apiGet(`/inventory/?branch=${branch}`);
+  bakeryInventory = new Map(
+    unwrapList(inventoryData).map(item => [Number(item.product), Number(item.quantity)])
+  );
+  renderStats();
+}
+
+async function reloadHistory() {
+  const branch = bakeryId();
+  if (!branch) return;
+  history = unwrapList(await apiGet(`/production-orders/?branch=${branch}`));
+  renderHistory();
+  renderStats();
+}
+
+async function init() {
+  const [branchesData, productsData, recipesData] = await Promise.all([
+    apiGet("/branches/?page_size=500"),
+    apiGet("/products/?bakery_transfer=true&page_size=1000"),
+    apiGet("/recipes/?page_size=5000"),
+  ]);
+
+  bakeryBranches = unwrapList(branchesData).filter(b => b.branch_type === "bakery" && b.is_active);
+  products = unwrapList(productsData);
+
+  recipesByProduct = new Map();
+  for (const line of unwrapList(recipesData)) {
+    if (!recipesByProduct.has(line.product)) {
+      recipesByProduct.set(line.product, []);
+    }
+    recipesByProduct.get(line.product).push(line);
+  }
+
+  if (!bakeryBranches.length) {
+    productionForm.innerHTML = `<div class="empty-state"><p>No central bakery configured. Add a branch with type "Bakery".</p></div>`;
+    historyTable.innerHTML = `<div class="empty-state"><p>Cannot load production without a bakery branch.</p></div>`;
+    productionStats.innerHTML = "";
+    return;
+  }
+
+  bakerySelect.innerHTML = bakeryBranches.map(b => `
+    <option value="${b.id}" selected>${b.name}</option>
+  `).join("");
+
+  populateProductOptions();
+  await Promise.all([reloadInventory(), reloadHistory()]);
+}
+
+productSelect.addEventListener("change", renderPreview);
+quantityInput.addEventListener("input", renderPreview);
+
+productionForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!preview?.can_produce) {
+    showToast("Resolve ingredient shortages before recording production", true);
+    return;
+  }
+
+  const branch = bakeryId();
+  const productId = Number(productSelect.value);
+  const quantity = quantityInput.value;
+
+  submitBtn.disabled = true;
+
+  try {
+    const order = await apiPost("/production-orders/", {
+      branch,
+      product: productId,
+      quantity,
+    });
+    showToast(`Produced ${formatQty(order.quantity)} × ${order.product_name}`);
+    productSelect.value = "";
+    quantityInput.value = "";
+    renderPreview();
+    await Promise.all([reloadInventory(), reloadHistory()]);
+  } catch (err) {
+    showToast(err.message, true);
+    renderPreview();
+  } finally {
+    submitBtn.disabled = !preview?.can_produce;
+  }
+});
+
+init().catch(err => {
+  productionForm.innerHTML = `<div class="empty-state"><p>Failed to load production page: ${err.message}</p></div>`;
+});
+</script>
+{% endblock %}

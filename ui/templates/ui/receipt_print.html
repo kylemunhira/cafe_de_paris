@@ -4,26 +4,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Receipt #{{ order.id }} — Café de Paris</title>
+  <title>{% if is_proforma %}Proforma {{ order.receipt_number }}{% elif fiscal and not is_proforma %}Fiscal receipt {{ fiscal.invoice_no }}{% elif order.receipt_number %}Receipt #{{ order.receipt_number }}{% else %}Receipt #{{ order.id }}{% endif %}{% if order.branch.fiscalization_enabled %} — Café de Paris{% endif %}</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">Print receipt</button>
+    <button type="button" onclick="window.print()">{% if is_proforma %}Print proforma{% else %}Print receipt{% endif %}</button>
   </div>
 
   <div class="receipt">
+    {% if order.branch.fiscalization_enabled %}
     <div class="center brand">
       <h1>Café de Paris</h1>
       {% if order.branch.location %}<p class="address">{{ order.branch.location }}</p>{% endif %}
     </div>
+    {% endif %}
 
     <div class="center meta">
+      {% if is_proforma %}
+      <p class="badge">PROFORMA</p>
+      <p><strong>Proforma Receipt</strong></p>
+      <p class="proforma-note">Not a fiscal receipt — pending approval</p>
+      {% if order.receipt_number %}<p>Proforma #{{ order.receipt_number }}</p>{% endif %}
+      {% else %}
       <p><strong>Sales Receipt</strong></p>
-      {% if order.receipt_number %}<p>Receipt #{{ order.receipt_number }}</p>{% endif %}
+      {% if fiscal and not is_proforma %}
+      <p>Fiscal receipt #{{ fiscal.invoice_no }}</p>
+      {% elif order.receipt_number %}
+      <p>Receipt #{{ order.receipt_number }}</p>
+      {% endif %}
+      {% endif %}
       <p>Order #{{ order.id }}</p>
       <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
       <p>{{ order.get_order_type_display }}{% if order.table_number %} · Table {{ order.table_number }}{% endif %}</p>
+      {% if order.customer %}<p>Customer: {{ order.customer }}</p>{% endif %}
       {% if salesperson_name %}<p>Served by {{ salesperson_name }}</p>{% endif %}
     </div>
 
@@ -58,6 +72,7 @@
     <hr class="divider">
 
     <table class="summary">
+      {% if order.branch.fiscalization_enabled %}
       <tr>
         <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.subtotal|floatformat:2 }}</td>
@@ -66,6 +81,7 @@
         <td class="col-label">Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
         <td class="col-amt">{{ tax_breakdown.tax|floatformat:2 }}</td>
       </tr>
+      {% endif %}
       <tr>
         <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.total|floatformat:2 }}</td>
@@ -88,7 +104,7 @@
     </table>
     {% endif %}
 
-    {% if fiscal %}
+    {% if fiscal and not is_proforma %}
     <hr class="divider">
     <div class="center meta fiscal-meta">
       <p><strong>Fiscal receipt</strong></p>
@@ -106,13 +122,23 @@
 
     <div class="center footer">
       <p>Thank you for your visit!</p>
+      {% if is_proforma %}
+      <p class="badge">PROFORMA — NOT FISCAL</p>
       <p>PAID</p>
+      {% else %}
+      <p>PAID</p>
+      {% endif %}
     </div>
 
     {% if fiscal and fiscal.qr_url %}
     <div class="center fiscal-qr" id="fiscal-qr" aria-label="Fiscal QR code"></div>
     {% endif %}
   </div>
+
+  {% if account_transaction %}
+  <div class="page-break"></div>
+  {% include "ui/includes/customer_statement_block.html" with single=True transaction=account_transaction customer=account_transaction.customer branch=account_transaction.branch base_currency=base_currency printed_at=account_transaction.created_at recorded_by_name=salesperson_name %}
+  {% endif %}
 
   {% if fiscal and fiscal.qr_url %}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>

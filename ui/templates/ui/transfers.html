@@ -2,7 +2,11 @@
 {% load static %}
 
 {% block title %}Stock Transfers — Café de Paris{% endblock %}
-{% block page_title %}Bakery Stock Transfers{% endblock %}
+{% block page_title %}Bakery → Central Stores{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'ui:bakery-production' %}" class="btn btn-ghost btn-sm">Record production</a>
+{% endblock %}
 
 {% block content %}
 <div class="stat-grid" id="bakery-stats" style="margin-bottom: 1.25rem;">
@@ -21,9 +25,9 @@
         </select>
       </div>
       <div class="form-group">
-        <label for="to-branch">Destination (branch or HQ)</label>
+        <label for="to-branch">Destination (central stores)</label>
         <select id="to-branch" required>
-          <option value="">Select branch…</option>
+          <option value="">Select central stores…</option>
         </select>
       </div>
     </div>
@@ -246,7 +250,7 @@ function populateFormOptions() {
   `).join("");
 
   toBranchSelect.innerHTML = `
-    <option value="">Select branch…</option>
+    <option value="">Select central stores…</option>
     ${destinationBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
 
@@ -275,9 +279,7 @@ async function loadData() {
   allNotes = unwrapList(notesData);
 
   bakeryBranches = branches.filter(b => b.branch_type === "bakery" && b.is_active);
-  destinationBranches = branches.filter(
-    b => (b.branch_type === "branch" || b.branch_type === "hq") && b.is_active
-  );
+  destinationBranches = branches.filter(b => b.branch_type === "stores" && b.is_active);
 
   if (!bakeryBranches.length) {
     transferForm.innerHTML = `<div class="empty-state"><p>No central bakery configured. Add a branch with type "Bakery".</p></div>`;
@@ -338,7 +340,7 @@ transferForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   if (!toBranchSelect.value) {
-    showToast("Select a destination branch", true);
+    showToast("Select central stores as the destination", true);
     return;
   }
   if (!draftLines.length) {

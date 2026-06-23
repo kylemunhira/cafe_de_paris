@@ -203,7 +203,7 @@
     <div class="header">
       <div class="brand">
         <h1>Café de Paris</h1>
-        <p>Central Bakery — Stock Distribution</p>
+        <p>{% if note.from_branch.branch_type == "stores" %}Central Stores — Stock Distribution{% else %}Central Bakery — Stock Distribution{% endif %}</p>
       </div>
       <div class="doc-meta">
         <h2>Delivery Note</h2>
@@ -268,7 +268,7 @@
 
     <div class="signatures">
       <div>
-        <div class="signature-line">Dispatched by (Bakery)</div>
+        <div class="signature-line">Dispatched by ({% if note.from_branch.branch_type == "stores" %}Central Stores{% else %}Bakery{% endif %})</div>
       </div>
       <div>
         <div class="signature-line">Received by (Branch)</div>

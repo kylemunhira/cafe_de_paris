@@ -2,17 +2,22 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
-from orders.models import Order, OrderStatus
+from accounts.models import StaffProfile, StaffRole
+from orders.models import FiscalApprovalStatus, Order, OrderStatus
 from payments.models import Currency, CurrencyRate
 from zimra_fiscal.client import build_submit_url, resolve_device_id
 from zimra_fiscal.models import FiscalReceipt, FiscalReceiptStatus
 from zimra_fiscal.receipt import build_fiscal_receipt_payload
 from zimra_fiscal.response import apply_zimra_response, parse_zimra_response_body
-from zimra_fiscal.services import create_fiscal_receipt_for_payment
+from zimra_fiscal.services import (
+    allocate_fiscal_receipt_number,
+    create_fiscal_receipt_for_payment,
+)
 
 
 class FiscalReceiptBuilderTests(TestCase):
@@ -132,14 +137,16 @@ class FiscalReceiptBuilderTests(TestCase):
         self.assertEqual(muffin_payload["receipt"]["receiptTotal"], 8.25)
 
     @patch("zimra_fiscal.services.submit_receipt_payload")
-    def test_create_fiscal_receipt_increments_counters(self, mock_submit):
+    @patch("zimra_fiscal.services.timezone.localdate")
+    def test_create_fiscal_receipt_increments_counters(self, mock_localdate, mock_submit):
+        mock_localdate.return_value = timezone.datetime(2026, 6, 9).date()
         mock_submit.return_value = {
             "status_code": 200,
             "body": {
                 "deviceBranchName": "Cafe Avondale",
                 "deviceSerialNo": "SN-12345",
                 "fiscalDayNumber": 12,
-                "invoiceNumber": "AVO0906261",
+                "invoiceNumber": "FAVO0906261",
                 "qrString": "ABC-VERIFY",
                 "qrUrl": "https://fdms.zimra.co.zw/qr/abc",
                 "receiptCounter": 5,
@@ -150,17 +157,28 @@ class FiscalReceiptBuilderTests(TestCase):
         fiscal_receipt = create_fiscal_receipt_for_payment(self.order)
         self.assertEqual(fiscal_receipt.receipt_counter, 5)
         self.assertEqual(fiscal_receipt.receipt_global_no, 31)
-        self.assertEqual(fiscal_receipt.invoice_no, "AVO0906261")
+        self.assertEqual(fiscal_receipt.invoice_no, "FAVO0906261")
+        self.assertNotEqual(fiscal_receipt.invoice_no, self.order.receipt_number)
         self.assertEqual(
             fiscal_receipt.payload["receipt"]["invoiceNo"],
-            "AVO0906261",
+            "FAVO0906261",
         )
         self.assertIn("receipt", fiscal_receipt.payload)
         self.assertEqual(fiscal_receipt.status, FiscalReceiptStatus.ACCEPTED)
         self.assertEqual(fiscal_receipt.device_branch_name, "Cafe Avondale")
-        self.assertEqual(fiscal_receipt.fiscal_invoice_number, "AVO0906261")
+        self.assertEqual(fiscal_receipt.fiscal_invoice_number, "FAVO0906261")
         self.assertEqual(fiscal_receipt.verification_code, "A1B2-C3D4")
         mock_submit.assert_called_once()
+
+    @patch("zimra_fiscal.services.timezone.localdate")
+    def test_fiscal_receipt_number_sequence_is_independent(self, mock_localdate):
+        mock_localdate.return_value = timezone.datetime(2026, 6, 9).date()
+        first = allocate_fiscal_receipt_number(self.branch)
+        second = allocate_fiscal_receipt_number(self.branch)
+        self.assertEqual(first, "FAVO0906261")
+        self.assertEqual(second, "FAVO0906262")
+        self.assertTrue(first.startswith("F"))
+        self.assertNotEqual(first, self.order.receipt_number)
 
 
 class ZimraResponseParserTests(TestCase):
@@ -243,12 +261,22 @@ class ZimraClientTests(TestCase):
 
 class OrderPayFiscalizationTests(TestCase):
     def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
         self.client = APIClient()
         self.branch = Branch.objects.create(
             name="Fiscal Branch",
             code="FIS",
             branch_type=BranchType.BRANCH,
             fiscalization_enabled=True,
+        )
+        self.manager = User.objects.create_user(username="manager", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+            pos_access=True,
         )
         category = ProductCategory.objects.create(name="Coffee")
         product = Product.objects.create(
@@ -277,13 +305,41 @@ class OrderPayFiscalizationTests(TestCase):
             price=Decimal("4.00"),
         )
         self.order.recalculate_total()
+        self.client.force_authenticate(self.manager)
 
-    @patch("zimra_fiscal.services.submit_receipt_payload")
-    def test_pay_returns_fiscal_receipt_when_enabled(self, mock_submit):
-        mock_submit.return_value = {"status_code": 200, "body": {"ok": True}}
+    def test_pay_creates_proforma_when_fiscal_enabled(self):
         response = self.client.post(
             f"/api/orders/{self.order.id}/pay/",
             {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("fiscal_receipt", response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertEqual(
+            self.order.fiscal_approval_status,
+            FiscalApprovalStatus.PENDING,
+        )
+        self.assertFalse(FiscalReceipt.objects.filter(order=self.order).exists())
+
+    @patch("zimra_fiscal.services.submit_receipt_payload")
+    @patch("zimra_fiscal.services.timezone.localdate")
+    def test_approve_fiscal_submits_receipt(self, mock_localdate, mock_submit):
+        mock_localdate.return_value = timezone.datetime(2026, 6, 9).date()
+        mock_submit.return_value = {
+            "status_code": 200,
+            "body": {"verificationCode": "DONE-123"},
+        }
+        self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/approve-fiscal/",
+            {},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
@@ -292,33 +348,42 @@ class OrderPayFiscalizationTests(TestCase):
             response.data["fiscal_receipt"]["receipt"]["receiptType"],
             "FiscalInvoice",
         )
+        self.assertTrue(response.data["fiscal_receipt_number"].startswith("FFIS"))
+        self.assertNotEqual(
+            response.data["fiscal_receipt_number"],
+            response.data["receipt_number"],
+        )
         self.assertTrue(FiscalReceipt.objects.filter(order=self.order).exists())
         self.order.refresh_from_db()
-        fiscal_receipt = FiscalReceipt.objects.get(order=self.order)
-        self.assertEqual(fiscal_receipt.invoice_no, self.order.receipt_number)
         self.assertEqual(
-            response.data["fiscal_receipt"]["receipt"]["invoiceNo"],
-            self.order.receipt_number,
+            self.order.fiscal_approval_status,
+            FiscalApprovalStatus.APPROVED,
         )
-        self.assertIn("fiscal_zimra_response", response.data)
-        self.assertIn("fiscal_result", response.data)
-        self.assertIn("verificationCode", response.data["fiscal_result"])
         mock_submit.assert_called_once()
 
     @patch("zimra_fiscal.services.submit_receipt_payload")
-    def test_pay_rolls_back_when_zimra_submit_fails(self, mock_submit):
+    def test_approve_fiscal_keeps_proforma_when_zimra_fails(self, mock_submit):
         from zimra_fiscal.exceptions import ZimraSubmissionError
 
         mock_submit.side_effect = ZimraSubmissionError("Device offline")
-        response = self.client.post(
+        self.client.post(
             f"/api/orders/{self.order.id}/pay/",
             {"currency_id": self.usd.id},
             format="json",
         )
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/approve-fiscal/",
+            {},
+            format="json",
+        )
         self.assertEqual(response.status_code, 502)
         self.order.refresh_from_db()
-        self.assertEqual(self.order.status, OrderStatus.OPEN)
-        self.assertFalse(FiscalReceipt.objects.filter(order=self.order).exists())
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertEqual(
+            self.order.fiscal_approval_status,
+            FiscalApprovalStatus.PENDING,
+        )
 
     def test_pay_skips_fiscal_receipt_when_disabled(self):
         self.branch.fiscalization_enabled = False

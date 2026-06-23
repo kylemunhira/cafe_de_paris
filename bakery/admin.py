@@ -11,5 +11,5 @@ class RecipeAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionOrder)
 class ProductionOrderAdmin(admin.ModelAdmin):
-    list_display = ("id", "product", "quantity", "status", "created_at")
-    list_filter = ("status",)
+    list_display = ("id", "branch", "product", "quantity", "status", "created_by", "created_at")
+    list_filter = ("status", "branch")

@@ -1,5 +1,5 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static l10n %}
 
 {% block title %}Point of Sale — Café de Paris{% endblock %}
 {% block page_title %}Point of Sale{% endblock %}
@@ -11,13 +11,13 @@
 
 {% block content %}
 <div class="pos-mode-bar">
-  <div class="pos-mode-toggle" role="tablist" aria-label="POS mode">
+  <div id="pos-mode-toggle" class="pos-mode-toggle" role="tablist" aria-label="POS mode">
     <button type="button" class="pos-mode-btn active" data-mode="order" role="tab" aria-selected="true">Order</button>
     <button type="button" class="pos-mode-btn" data-mode="receipt" role="tab" aria-selected="false">Receipt</button>
   </div>
 </div>
 
-<div class="pos-layout">
+<div class="pos-layout" data-inclusive-tax-rate="{{ inclusive_tax_rate|unlocalize }}">
   <div class="pos-products">
     <div class="form-row">
       <div class="form-group">
@@ -35,6 +35,12 @@
         <label for="table-number">Table</label>
         <input type="text" id="table-number" placeholder="e.g. 5">
       </div>
+      <div class="form-group pos-order-only">
+        <label for="order-customer">Customer (optional)</label>
+        <select id="order-customer">
+          <option value="">Walk-in</option>
+        </select>
+      </div>
     </div>
 
     <div id="order-mode-panel">
@@ -48,9 +54,15 @@
           autocomplete="off"
         >
       </div>
-      <div class="category-tabs" id="category-tabs"></div>
-      <div class="product-grid" id="product-grid">
-        <div class="skeleton" style="height: 100px; grid-column: 1/-1;"></div>
+      <div class="pos-catalog-split">
+        <div class="pos-category-column">
+          <div class="category-tabs" id="category-tabs"></div>
+        </div>
+        <div class="pos-product-column">
+          <div class="product-grid" id="product-grid">
+            <div class="skeleton" style="height: 100px; grid-column: 1/-1;"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -77,10 +89,26 @@
     <div class="cart-footer">
       <div id="receipt-payment-section" style="display: none; margin-bottom: 1rem;">
         <div class="form-group">
-          <label for="payment-currency">Payment currency</label>
-          <select id="payment-currency">
-            <option value="">Loading…</option>
+          <label>Payment method</label>
+          <div id="payment-method-toggle" class="pos-mode-toggle pos-segment-toggle" role="radiogroup" aria-label="Payment method">
+            <button type="button" class="pos-mode-btn active" data-method="cash">Cash</button>
+            <button type="button" class="pos-mode-btn" data-method="account">Customer account</button>
+          </div>
+        </div>
+        <div class="form-group" id="receipt-customer-group" style="display: none;">
+          <label for="receipt-customer">Customer</label>
+          <select id="receipt-customer">
+            <option value="">Walk-in (no account)</option>
           </select>
+        </div>
+        <div id="account-balance-hint" style="display: none; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-muted);">
+          Account balance: <strong id="receipt-account-balance">—</strong>
+        </div>
+        <div class="form-group" id="payment-currency-group">
+          <label>Payment currency</label>
+          <div id="payment-currency-toggle" class="pos-mode-toggle pos-segment-toggle pos-segment-grid" role="radiogroup" aria-label="Payment currency">
+            <span class="pos-segment-placeholder">Loading…</span>
+          </div>
         </div>
         <div class="receipt-totals" id="receipt-totals"></div>
       </div>
@@ -158,11 +186,10 @@
 {% endblock %}
 
 {% block extra_js %}
-{% load l10n %}
 <script type="module">
-import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 
-const INCLUSIVE_TAX_RATE = {{ inclusive_tax_rate|unlocalize }};
+const INCLUSIVE_TAX_RATE = Number(document.querySelector(".pos-layout")?.dataset.inclusiveTaxRate ?? 0);
 
 const cart = new Map();
 let products = [];
@@ -175,12 +202,20 @@ let selectedOrder = null;
 let currencies = [];
 let baseCurrency = null;
 let selectedCurrencyId = null;
+let branches = [];
+let customers = [];
+let paymentMethod = "cash";
 let kitchenRefreshTimer = null;
 
 const branchSelect = document.getElementById("branch-select");
 const orderType = document.getElementById("order-type");
 const tableGroup = document.getElementById("table-group");
 const tableNumber = document.getElementById("table-number");
+const orderCustomerSelect = document.getElementById("order-customer");
+const receiptCustomerSelect = document.getElementById("receipt-customer");
+const accountBalanceHint = document.getElementById("account-balance-hint");
+const receiptAccountBalance = document.getElementById("receipt-account-balance");
+const paymentCurrencyGroup = document.getElementById("payment-currency-group");
 const categoryTabs = document.getElementById("category-tabs");
 const productSearchInput = document.getElementById("product-search");
 const productGrid = document.getElementById("product-grid");
@@ -193,7 +228,10 @@ const orderModePanel = document.getElementById("order-mode-panel");
 const receiptModePanel = document.getElementById("receipt-mode-panel");
 const receiptOrdersList = document.getElementById("receipt-orders-list");
 const receiptPaymentSection = document.getElementById("receipt-payment-section");
-const paymentCurrencySelect = document.getElementById("payment-currency");
+const paymentMethodToggle = document.getElementById("payment-method-toggle");
+const paymentCurrencyToggle = document.getElementById("payment-currency-toggle");
+const receiptCustomerGroup = document.getElementById("receipt-customer-group");
+const posModeToggle = document.getElementById("pos-mode-toggle");
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const dayendBtn = document.getElementById("dayend-btn");
@@ -217,17 +255,133 @@ orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
 });
 
-document.querySelectorAll(".pos-mode-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const mode = btn.dataset.mode;
-    if (mode === posMode) return;
-    setPosMode(mode);
+function syncPaymentMethodUI() {
+  const isAccount = paymentMethod === "account";
+  receiptCustomerGroup.style.display = isAccount ? "" : "none";
+  paymentCurrencyGroup.style.display = isAccount ? "none" : "";
+  if (isAccount) {
+    updateAccountBalanceHint();
+  } else {
+    accountBalanceHint.style.display = "none";
+  }
+}
+
+function setPaymentMethod(method, { force = false } = {}) {
+  if (!force && method === paymentMethod) return;
+  paymentMethod = method;
+  paymentMethodToggle.querySelectorAll(".pos-mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.method === method);
   });
+  syncPaymentMethodUI();
+  if (selectedOrder) {
+    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  }
+}
+
+paymentMethodToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn");
+  if (!btn || !paymentMethodToggle.contains(btn)) return;
+  setPaymentMethod(btn.dataset.method);
+});
+
+function setPaymentCurrency(currencyId) {
+  selectedCurrencyId = currencyId;
+  paymentCurrencyToggle.querySelectorAll(".pos-mode-btn").forEach(b => {
+    b.classList.toggle("active", Number(b.dataset.currencyId) === currencyId);
+  });
+  if (selectedOrder) {
+    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  }
+}
+
+paymentCurrencyToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn");
+  if (!btn || !paymentCurrencyToggle.contains(btn)) return;
+  setPaymentCurrency(Number(btn.dataset.currencyId) || null);
+});
+
+function customerDisplayName(customer) {
+  return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
+}
+
+function renderCustomerSelects() {
+  const options = customers.map(c => {
+    const balance = Number(c.account_balance) > 0 ? ` · ${formatCurrency(c.account_balance)}` : "";
+    return `<option value="${c.id}">${customerDisplayName(c)}${balance}</option>`;
+  }).join("");
+  orderCustomerSelect.innerHTML = `<option value="">Walk-in</option>${options}`;
+  receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
+}
+
+function getCustomerById(id) {
+  if (!id) return null;
+  return customers.find(c => c.id === Number(id)) || null;
+}
+
+function updateAccountBalanceHint() {
+  if (paymentMethod !== "account") {
+    accountBalanceHint.style.display = "none";
+    return;
+  }
+  const customerId = receiptCustomerSelect.value;
+  const customer = getCustomerById(customerId);
+  if (!customer) {
+    accountBalanceHint.style.display = "none";
+    return;
+  }
+  accountBalanceHint.style.display = "";
+  receiptAccountBalance.textContent = formatCurrency(customer.account_balance);
+}
+
+function updateCheckoutButtonState(inclusiveTotal) {
+  if (paymentMethod === "account") {
+    const customer = getCustomerById(receiptCustomerSelect.value);
+    const total = computeTaxBreakdown(inclusiveTotal).total;
+    const hasBalance = customer && Number(customer.account_balance) >= total;
+    checkoutBtn.disabled = !customer || !hasBalance;
+    return;
+  }
+  const { hasRate } = computePaymentAmounts(computeTaxBreakdown(inclusiveTotal).total);
+  checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
+}
+
+async function linkCustomerToOrder(orderId, customerId) {
+  const payload = { customer: customerId ? Number(customerId) : null };
+  return apiPatch(`/orders/${orderId}/`, payload);
+}
+
+receiptCustomerSelect.addEventListener("change", async () => {
+  updateAccountBalanceHint();
+  if (!selectedOrder) return;
+  const customerId = receiptCustomerSelect.value;
+  try {
+    const updated = await linkCustomerToOrder(selectedOrder.id, customerId);
+    selectedOrder = updated;
+    const index = openOrders.findIndex(o => o.id === updated.id);
+    if (index >= 0) openOrders[index] = updated;
+    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+posModeToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn");
+  if (!btn || !posModeToggle.contains(btn)) return;
+  const mode = btn.dataset.mode;
+  if (!mode || mode === posMode) return;
+  setPosMode(mode);
 });
 
 function setPosMode(mode) {
   posMode = mode;
-  document.querySelectorAll(".pos-mode-btn").forEach(btn => {
+  posModeToggle.querySelectorAll(".pos-mode-btn").forEach(btn => {
     const active = btn.dataset.mode === mode;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-selected", active ? "true" : "false");
@@ -337,10 +491,10 @@ function computePaymentAmounts(inclusiveTotal) {
   return { inclusiveTotal, rate, amountDue, currency, hasRate };
 }
 
-function renderPaymentCurrencySelect() {
+function renderPaymentCurrencyToggle() {
   const active = currencies.filter(c => c.is_active);
   if (!active.length) {
-    paymentCurrencySelect.innerHTML = `<option value="">No currencies configured</option>`;
+    paymentCurrencyToggle.innerHTML = `<span class="pos-segment-placeholder">No currencies configured</span>`;
     selectedCurrencyId = null;
     return;
   }
@@ -349,13 +503,14 @@ function renderPaymentCurrencySelect() {
     selectedCurrencyId = active[0].id;
   }
 
-  paymentCurrencySelect.innerHTML = active.map(c => {
+  paymentCurrencyToggle.innerHTML = active.map(c => {
     const rateLabel = c.is_base
-      ? " (base)"
+      ? ""
       : c.current_rate
-        ? ` (rate ${c.current_rate})`
-        : " (no rate)";
-    return `<option value="${c.id}"${c.id === selectedCurrencyId ? " selected" : ""}>${c.name}${rateLabel}</option>`;
+        ? ` · ${c.current_rate}`
+        : " · no rate";
+    const label = c.name;
+    return `<button type="button" class="pos-mode-btn${c.id === selectedCurrencyId ? " active" : ""}" data-currency-id="${c.id}" title="${c.name}${rateLabel}">${label}</button>`;
   }).join("");
 }
 
@@ -455,13 +610,15 @@ function renderReceiptPanel() {
     `).join("")}
   `;
 
-  renderPaymentCurrencySelect();
+  renderPaymentCurrencyToggle();
+  setPaymentMethod("cash", { force: true });
+  receiptCustomerSelect.value = selectedOrder.customer ? String(selectedOrder.customer) : "";
+  updateAccountBalanceHint();
   receiptPaymentSection.style.display = "";
   const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
   renderReceiptTotals(inclusiveTotal);
   checkoutBtn.textContent = "Collect Payment";
-  const { hasRate } = computePaymentAmounts(inclusiveTotal);
-  checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
+  updateCheckoutButtonState(inclusiveTotal);
 }
 
 function renderOpenOrdersList() {
@@ -562,8 +719,8 @@ cartItems.addEventListener("click", (e) => {
 function renderCategories() {
   const tabs = [{ id: "all", name: "All" }, ...categories];
   categoryTabs.innerHTML = tabs.map(cat => `
-    <button class="category-tab${activeCategory === String(cat.id) ? " active" : ""}" data-id="${cat.id}">
-      ${cat.name}
+    <button type="button" class="card category-tab category-card${activeCategory === String(cat.id) ? " active" : ""}" data-id="${cat.id}">
+      <div class="name">${cat.name}</div>
     </button>
   `).join("");
 }
@@ -644,16 +801,6 @@ branchSelect.addEventListener("change", () => {
   }
 });
 
-paymentCurrencySelect.addEventListener("change", () => {
-  selectedCurrencyId = Number(paymentCurrencySelect.value) || null;
-  if (selectedOrder) {
-    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
-    renderReceiptTotals(inclusiveTotal);
-    const { hasRate } = computePaymentAmounts(inclusiveTotal);
-    checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
-  }
-});
-
 checkoutBtn.addEventListener("click", async () => {
   if (posMode === "receipt") {
     await paySelectedOrder();
@@ -680,6 +827,9 @@ async function placeOrder() {
     if (orderType.value === "dine_in" && tableNumber.value.trim()) {
       payload.table_number = tableNumber.value.trim();
     }
+    if (orderCustomerSelect.value) {
+      payload.customer = Number(orderCustomerSelect.value);
+    }
 
     const order = await apiPost("/orders/", payload);
     cart.clear();
@@ -701,36 +851,70 @@ async function placeOrder() {
 }
 
 async function paySelectedOrder() {
-  if (!selectedOrder || !selectedCurrencyId) {
+  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
+
+  if (paymentMethod === "account") {
+    const customer = getCustomerById(receiptCustomerSelect.value);
+    if (!customer) {
+      showToast("Select a customer to pay from account", true);
+      return;
+    }
+    if (Number(customer.account_balance) < orderTotal) {
+      showToast(`Insufficient balance. Available: ${formatCurrency(customer.account_balance)}`, true);
+      return;
+    }
+  } else if (!selectedCurrencyId) {
     showToast("Please select a payment currency", true);
     return;
   }
 
-  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
-  const { hasRate, currency, amountDue } = computePaymentAmounts(inclusiveTotal);
-  if (!hasRate) {
-    showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
-    return;
+  let currency = null;
+  let amountDue = null;
+  if (paymentMethod === "cash") {
+    const paymentInfo = computePaymentAmounts(orderTotal);
+    currency = paymentInfo.currency;
+    amountDue = paymentInfo.amountDue;
+    if (!paymentInfo.hasRate) {
+      showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
+      return;
+    }
   }
 
   checkoutBtn.disabled = true;
   checkoutBtn.innerHTML = `<span class="loading-spinner"></span> Processing…`;
 
-  // Open now (sync with click) so popup blockers allow auto-print after payment.
   const printWindow = window.open("about:blank", "_blank");
 
   try {
-    const order = await apiPost(`/orders/${selectedOrder.id}/pay/`, {
-      currency_id: selectedCurrencyId,
-    });
-    const currencyName = order.payment_currency_name || currency?.name || "Payment";
-    const receiptLabel = order.receipt_number ? `Receipt #${order.receipt_number} · ` : "";
-    showToast(`${receiptLabel}Order #${order.id} paid in ${currencyName} — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}`);
-    const receiptUrl = `/pos/receipt/${order.id}/print/?auto=1`;
-    if (printWindow) {
-      printWindow.location.href = receiptUrl;
+    const payPayload = paymentMethod === "account"
+      ? { payment_method: "account" }
+      : { currency_id: selectedCurrencyId, payment_method: "cash" };
+    const order = await apiPost(`/orders/${selectedOrder.id}/pay/`, payPayload);
+    if (paymentMethod === "account") {
+      const customer = getCustomerById(receiptCustomerSelect.value);
+      if (customer) {
+        customer.account_balance = order.customer_account_balance;
+        const listCustomer = customers.find(c => c.id === customer.id);
+        if (listCustomer) listCustomer.account_balance = order.customer_account_balance;
+        renderCustomerSelects();
+      }
+      showToast(`Order #${order.id} paid from account — ${formatCurrency(orderTotal)}`);
     } else {
-      window.open(receiptUrl, "_blank", "noopener");
+      const currencyName = order.payment_currency_name || currency?.name || "Payment";
+      const receiptLabel = order.receipt_number ? `Proforma #${order.receipt_number} · ` : "";
+      const isProforma = order.fiscal_approval_status === "pending";
+      if (isProforma) {
+        showToast(`${receiptLabel}Proforma printed — awaiting fiscal approval`);
+      } else {
+        showToast(`${receiptLabel}Order #${order.id} paid in ${currencyName} — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}`);
+      }
+    }
+    const printUrl = `/pos/receipt/${order.id}/print/?auto=1`;
+    if (printWindow) {
+      printWindow.location.href = printUrl;
+    } else {
+      window.open(printUrl, "_blank", "noopener");
     }
     selectedOrder = null;
     await loadOpenOrders();
@@ -740,8 +924,11 @@ async function paySelectedOrder() {
     showToast(err.message, true);
   } finally {
     checkoutBtn.textContent = "Collect Payment";
-    const ready = selectedOrder && selectedCurrencyId && computePaymentAmounts(getOrderInclusiveTotal(selectedOrder)).hasRate;
-    checkoutBtn.disabled = !ready;
+    if (selectedOrder) {
+      updateCheckoutButtonState(getOrderInclusiveTotal(selectedOrder));
+    } else {
+      checkoutBtn.disabled = true;
+    }
   }
 }
 
@@ -924,18 +1111,21 @@ dayendModal?.addEventListener("keydown", (event) => {
 
 async function init() {
   try {
-    const [branches, productsData, categoriesData, currenciesData] = await Promise.all([
+    const [branchesData, productsData, categoriesData, currenciesData, customersData] = await Promise.all([
       apiGet("/branches/?page_size=500").then(data => unwrapList(data)),
       fetchAllPages("/products/"),
       fetchAllPages("/categories/"),
       apiGet("/currencies/?page_size=500"),
+      fetchAllPages("/customers/"),
     ]);
 
+    branches = branchesData;
+    customers = unwrapList(customersData);
     currencies = unwrapList(currenciesData);
     baseCurrency = currencies.find(c => c.is_base) || null;
 
     const activeBranches = branches.filter(
-      b => b.is_active && b.branch_type !== "bakery"
+      b => b.is_active && b.branch_type !== "bakery" && b.branch_type !== "stores"
     );
     products = productsData.filter(
       p => p.is_active && p.category_name !== "Ingredients"
@@ -967,6 +1157,7 @@ async function init() {
 
     renderCategories();
     renderProducts();
+    renderCustomerSelects();
     renderCart();
   } catch (err) {
     branchSelect.innerHTML = `<option value="">Failed to load</option>`;

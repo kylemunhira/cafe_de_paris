@@ -45,7 +45,11 @@ def parse_report_filters(from_date=None, to_date=None, branch_id=None):
         except (TypeError, ValueError) as exc:
             raise ValueError("branch must be a valid branch id.") from exc
 
-    if not parsed_from and not parsed_to:
+    if parsed_from and not parsed_to:
+        parsed_to = timezone.localdate()
+    elif parsed_to and not parsed_from:
+        parsed_from = parsed_to.replace(day=1)
+    elif not parsed_from and not parsed_to:
         parsed_from, parsed_to = default_date_range()
 
     return parsed_from, parsed_to, parsed_branch

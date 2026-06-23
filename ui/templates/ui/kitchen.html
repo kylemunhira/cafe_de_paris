@@ -216,7 +216,7 @@ const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 async function loadBranches() {
   const data = await apiGet("/branches/?page_size=500");
   branches = unwrapList(data).filter(
-    b => b.is_active && b.branch_type !== "bakery"
+    b => b.is_active && b.branch_type !== "bakery" && b.branch_type !== "stores"
   );
 
   if (!branches.length) {

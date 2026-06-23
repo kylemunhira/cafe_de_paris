@@ -9,7 +9,9 @@ from orders.models import Order
 from .branch_access import (
     user_can_access_bakery_transfers,
     user_can_access_grv,
+    user_can_access_kitchen,
     user_can_access_pos,
+    user_can_access_stores_transfers,
     user_can_manage_branches,
     user_can_manage_users,
     user_has_global_branch_access,
@@ -231,6 +233,10 @@ class TransferNavAccessTests(APITestCase):
             name="HQ",
             branch_type=BranchType.HQ,
         )
+        self.stores = Branch.objects.create(
+            name="Central Stores",
+            branch_type=BranchType.STORES,
+        )
 
         self.baker = User.objects.create_user(username="baker", password="pass")
         StaffProfile.objects.create(
@@ -268,10 +274,23 @@ class TransferNavAccessTests(APITestCase):
             role=StaffRole.CASHIER,
         )
 
+        self.stores_clerk = User.objects.create_user(username="stores", password="pass")
+        StaffProfile.objects.create(
+            user=self.stores_clerk,
+            branch=self.stores,
+            role=StaffRole.BRANCH_MANAGER,
+        )
+
     def test_bakery_staff_access_flags(self):
         self.assertTrue(user_can_access_bakery_transfers(self.baker))
         self.assertFalse(user_can_access_grv(self.baker))
         self.assertFalse(user_can_access_pos(self.baker))
+
+    def test_stores_staff_access_flags(self):
+        self.assertTrue(user_can_access_stores_transfers(self.stores_clerk))
+        self.assertTrue(user_can_access_grv(self.stores_clerk))
+        self.assertFalse(user_can_access_bakery_transfers(self.stores_clerk))
+        self.assertFalse(user_can_access_pos(self.stores_clerk))
 
     def test_branch_staff_access_flags(self):
         self.assertFalse(user_can_access_bakery_transfers(self.cashier))
@@ -331,6 +350,32 @@ class TransferNavAccessTests(APITestCase):
         response = self.client.get(reverse("ui:transfers"))
         self.assertEqual(response.status_code, 200)
 
+    def test_bakery_production_page_requires_bakery_access(self):
+        self.client.force_login(self.cashier)
+        response = self.client.get(reverse("ui:bakery-production"))
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.baker)
+        response = self.client.get(reverse("ui:bakery-production"))
+        self.assertEqual(response.status_code, 200)
+
+        self.client.force_login(self.hq_admin)
+        response = self.client.get(reverse("ui:bakery-production"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_stores_transfers_page_requires_stores_access(self):
+        self.client.force_login(self.cashier)
+        response = self.client.get(reverse("ui:stores-transfers"))
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.stores_clerk)
+        response = self.client.get(reverse("ui:stores-transfers"))
+        self.assertEqual(response.status_code, 200)
+
+        self.client.force_login(self.hq_admin)
+        response = self.client.get(reverse("ui:stores-transfers"))
+        self.assertEqual(response.status_code, 200)
+
     def test_grv_page_requires_branch_access(self):
         self.client.force_login(self.baker)
         response = self.client.get(reverse("ui:grv"))
@@ -341,6 +386,10 @@ class TransferNavAccessTests(APITestCase):
         self.assertEqual(response.status_code, 200)
 
         self.client.force_login(self.hq_staff)
+        response = self.client.get(reverse("ui:grv"))
+        self.assertEqual(response.status_code, 200)
+
+        self.client.force_login(self.stores_clerk)
         response = self.client.get(reverse("ui:grv"))
         self.assertEqual(response.status_code, 200)
 
@@ -551,3 +600,48 @@ class PurchaseOrderBranchAccessTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["branch"], self.branch_b.id)
+
+
+class KitchenLoginTests(APITestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            name="Main Street",
+            branch_type=BranchType.BRANCH,
+        )
+        self.bakery = Branch.objects.create(
+            name="Central Bakery",
+            branch_type=BranchType.BAKERY,
+        )
+        self.kitchen_staff = User.objects.create_user(username="cook", password="secret")
+        StaffProfile.objects.create(
+            user=self.kitchen_staff,
+            branch=self.branch,
+            role=StaffRole.STAFF,
+        )
+        self.baker = User.objects.create_user(username="baker", password="secret")
+        StaffProfile.objects.create(
+            user=self.baker,
+            branch=self.bakery,
+            role=StaffRole.BAKER,
+        )
+        self.login_url = "/api/auth/kitchen-login/"
+
+    def test_kitchen_staff_can_login(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "cook", "password": "secret"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("token", response.data)
+        self.assertEqual(response.data["branch"]["id"], self.branch.id)
+        self.assertTrue(user_can_access_kitchen(self.kitchen_staff))
+
+    def test_bakery_staff_cannot_login(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "baker", "password": "secret"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(user_can_access_kitchen(self.baker))

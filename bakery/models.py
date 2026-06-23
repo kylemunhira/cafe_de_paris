@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.db import models
 
+from branches.models import Branch
 from catalog.models import Product
 
 
@@ -33,6 +35,11 @@ class ProductionOrderStatus(models.TextChoices):
 
 
 class ProductionOrder(models.Model):
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="production_orders",
+    )
     product = models.ForeignKey(
         Product,
         on_delete=models.PROTECT,
@@ -43,6 +50,13 @@ class ProductionOrder(models.Model):
         max_length=20,
         choices=ProductionOrderStatus.choices,
         default=ProductionOrderStatus.PLANNED,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="production_orders",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

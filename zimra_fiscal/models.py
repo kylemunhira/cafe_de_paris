@@ -13,6 +13,7 @@ class BranchFiscalState(models.Model):
     receipt_counter = models.PositiveIntegerField(default=0)
     receipt_global_no = models.PositiveIntegerField(default=0)
     invoice_sequence = models.PositiveIntegerField(default=0)
+    invoice_sequence_date = models.DateField(null=True, blank=True)
 
     class Meta:
         verbose_name = "branch fiscal state"

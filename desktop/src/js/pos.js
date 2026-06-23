@@ -9,10 +9,13 @@ let categories = [];
 let currencies = [];
 let baseCurrency = null;
 let activeCategory = "all";
+let searchQuery = "";
 let posMode = "order";
 let openOrders = [];
 let selectedOrder = null;
 let selectedCurrencyId = null;
+let paymentMethod = "cash";
+let customers = [];
 let inclusiveTaxRate = 15.5;
 let stopAutoSync = null;
 let stopKitchenRefresh = null;
@@ -23,6 +26,7 @@ const syncBtn = document.getElementById("sync-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const dayendBtn = document.getElementById("dayend-btn");
 const categoryTabs = document.getElementById("category-tabs");
+const productSearchInput = document.getElementById("product-search");
 const productGrid = document.getElementById("product-grid");
 const cartItems = document.getElementById("cart-items");
 const cartTotal = document.getElementById("cart-total");
@@ -36,25 +40,132 @@ const orderModePanel = document.getElementById("order-mode-panel");
 const receiptModePanel = document.getElementById("receipt-mode-panel");
 const receiptOrdersList = document.getElementById("receipt-orders-list");
 const receiptPaymentSection = document.getElementById("receipt-payment-section");
-const paymentCurrencySelect = document.getElementById("payment-currency");
+const paymentMethodToggle = document.getElementById("payment-method-toggle");
+const paymentCurrencyToggle = document.getElementById("payment-currency-toggle");
+const paymentCurrencyGroup = document.getElementById("payment-currency-group");
+const receiptCustomerSelect = document.getElementById("receipt-customer");
+const receiptCustomerGroup = document.getElementById("receipt-customer-group");
+const accountBalanceHint = document.getElementById("account-balance-hint");
+const receiptAccountBalance = document.getElementById("receipt-account-balance");
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
+const posModeToggle = document.getElementById("pos-mode-toggle");
 
 orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
 });
 
-document.querySelectorAll(".pos-mode-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const mode = btn.dataset.mode;
-    if (mode === posMode) return;
-    setPosMode(mode);
+function syncPaymentMethodUI() {
+  const isAccount = paymentMethod === "account";
+  receiptCustomerGroup.style.display = isAccount ? "" : "none";
+  paymentCurrencyGroup.style.display = isAccount ? "none" : "";
+  if (isAccount) {
+    updateAccountBalanceHint();
+  } else {
+    accountBalanceHint.style.display = "none";
+  }
+}
+
+function setPaymentMethod(method, { force = false } = {}) {
+  if (!force && method === paymentMethod) return;
+  paymentMethod = method;
+  paymentMethodToggle.querySelectorAll(".pos-mode-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.method === method);
   });
+  syncPaymentMethodUI();
+  if (selectedOrder) {
+    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  }
+}
+
+paymentMethodToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn");
+  if (!btn || !paymentMethodToggle.contains(btn)) return;
+  setPaymentMethod(btn.dataset.method);
+});
+
+function setPaymentCurrency(currencyId) {
+  selectedCurrencyId = currencyId;
+  paymentCurrencyToggle.querySelectorAll(".pos-mode-btn").forEach((b) => {
+    b.classList.toggle("active", Number(b.dataset.currencyId) === currencyId);
+  });
+  if (selectedOrder) {
+    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  }
+}
+
+paymentCurrencyToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn");
+  if (!btn || !paymentCurrencyToggle.contains(btn)) return;
+  setPaymentCurrency(Number(btn.dataset.currencyId) || null);
+});
+
+function customerDisplayName(customer) {
+  return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
+}
+
+function renderCustomerSelect() {
+  const options = customers.map((c) => {
+    const balance = Number(c.account_balance) > 0 ? ` · ${money(c.account_balance)}` : "";
+    return `<option value="${c.id}">${customerDisplayName(c)}${balance}</option>`;
+  }).join("");
+  receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
+}
+
+function getCustomerById(id) {
+  if (!id) return null;
+  return customers.find((c) => c.id === Number(id)) || null;
+}
+
+function updateAccountBalanceHint() {
+  if (paymentMethod !== "account") {
+    accountBalanceHint.style.display = "none";
+    return;
+  }
+  const customer = getCustomerById(receiptCustomerSelect.value);
+  if (!customer) {
+    accountBalanceHint.style.display = "none";
+    return;
+  }
+  accountBalanceHint.style.display = "";
+  receiptAccountBalance.textContent = money(customer.account_balance);
+}
+
+function updateCheckoutButtonState(inclusiveTotal) {
+  if (paymentMethod === "account") {
+    const customer = getCustomerById(receiptCustomerSelect.value);
+    const total = computeTaxBreakdown(inclusiveTotal).total;
+    const hasBalance = customer && Number(customer.account_balance) >= total;
+    checkoutBtn.disabled = !customer || !hasBalance;
+    return;
+  }
+  const { hasRate } = computePaymentAmounts(computeTaxBreakdown(inclusiveTotal).total);
+  checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
+}
+
+receiptCustomerSelect.addEventListener("change", () => {
+  updateAccountBalanceHint();
+  if (!selectedOrder) return;
+  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  renderReceiptTotals(inclusiveTotal);
+  updateCheckoutButtonState(inclusiveTotal);
+});
+
+posModeToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn");
+  if (!btn || !posModeToggle.contains(btn)) return;
+  const mode = btn.dataset.mode;
+  if (!mode || mode === posMode) return;
+  setPosMode(mode);
 });
 
 function setPosMode(mode) {
   posMode = mode;
-  document.querySelectorAll(".pos-mode-btn").forEach((btn) => {
+  posModeToggle.querySelectorAll(".pos-mode-btn").forEach((btn) => {
     const active = btn.dataset.mode === mode;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-selected", active ? "true" : "false");
@@ -63,6 +174,7 @@ function setPosMode(mode) {
   receiptModePanel.style.display = mode === "receipt" ? "" : "none";
   if (mode === "receipt") {
     selectedOrder = null;
+    loadCustomers();
     loadOpenOrders();
     renderReceiptPanel();
     startReceiptKitchenRefresh();
@@ -149,23 +261,27 @@ function money(amount, currency = baseCurrency) {
   return formatCurrency(amount, currency?.symbol || "$");
 }
 
-function renderPaymentCurrencySelect() {
-  if (!currencies.length) {
-    paymentCurrencySelect.innerHTML = `<option value="">No currencies</option>`;
+function renderPaymentCurrencyToggle() {
+  const active = currencies.filter((c) => c.is_active);
+  if (!active.length) {
+    paymentCurrencyToggle.innerHTML = `<span class="pos-segment-placeholder">No currencies configured</span>`;
     selectedCurrencyId = null;
     return;
   }
-  if (!selectedCurrencyId || !currencies.some((c) => c.id === selectedCurrencyId)) {
-    selectedCurrencyId = currencies[0].id;
+
+  if (!selectedCurrencyId || !active.some((c) => c.id === selectedCurrencyId)) {
+    selectedCurrencyId = active[0].id;
   }
-  paymentCurrencySelect.innerHTML = currencies
+
+  paymentCurrencyToggle.innerHTML = active
     .map((c) => {
       const rateLabel = c.is_base
-        ? " (base)"
+        ? ""
         : c.current_rate
-          ? ` (rate ${c.current_rate})`
-          : " (no rate)";
-      return `<option value="${c.id}"${c.id === selectedCurrencyId ? " selected" : ""}>${c.name}${rateLabel}</option>`;
+          ? ` · ${c.current_rate}`
+          : " · no rate";
+      const label = c.name;
+      return `<button type="button" class="pos-mode-btn${c.id === selectedCurrencyId ? " active" : ""}" data-currency-id="${c.id}" title="${c.name}${rateLabel}">${label}</button>`;
     })
     .join("");
 }
@@ -173,12 +289,22 @@ function renderPaymentCurrencySelect() {
 function renderReceiptTotals(inclusiveTotal) {
   const { subtotal, tax, total } = computeTaxBreakdown(inclusiveTotal);
   const { rate, amountDue, currency, hasRate } = computePaymentAmounts(total);
+  const rateRow =
+    currency && !currency.is_base && hasRate
+      ? `<div class="receipt-total-row"><span>Exchange rate</span><span>${rate}</span></div>`
+      : "";
+  const missingRate =
+    currency && !currency.is_base && !hasRate
+      ? `<div class="receipt-total-row" style="color: #b45309;"><span>No rate set</span><span>Add under Rates</span></div>`
+      : "";
+
   receiptTotals.innerHTML = `
-    <div class="receipt-total-row"><span>Subtotal</span><span>${money(subtotal)}</span></div>
+    <div class="receipt-total-row"><span>Subtotal${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(subtotal)}</span></div>
     <div class="receipt-total-row"><span>Tax (${inclusiveTaxRate}%)</span><span>${money(tax)}</span></div>
-    <div class="receipt-total-row"><span>Total</span><span>${money(total)}</span></div>
-    ${currency && !currency.is_base && hasRate ? `<div class="receipt-total-row"><span>Rate</span><span>${rate}</span></div>` : ""}
-    <div class="receipt-total-row receipt-total-due"><span>Amount due</span><span>${hasRate ? money(amountDue, currency) : "—"}</span></div>
+    <div class="receipt-total-row"><span>Total${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>
+    ${rateRow}
+    ${missingRate}
+    <div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? money(amountDue, currency) : "—"}</span></div>
   `;
   cartTotal.textContent = hasRate ? money(amountDue, currency) : money(total);
   cartTotalLabel.textContent = hasRate && currency && !currency.is_base ? "Amount due" : "Total";
@@ -192,7 +318,7 @@ function renderCart() {
   cartTotalLabel.textContent = "Total";
 
   if (cart.size === 0) {
-    cartItems.innerHTML = `<div class="empty-state"><p>Tap products to add items</p></div>`;
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p></div>`;
     cartTotal.textContent = money(0);
     checkoutBtn.disabled = true;
     clearBtn.disabled = true;
@@ -209,7 +335,7 @@ function renderCart() {
       </div>
       <div class="qty-control">
         <button class="qty-btn" data-action="dec" data-id="${item.id}">−</button>
-        <span>${item.quantity}</span>
+        <span style="min-width: 1.5rem; text-align: center; font-weight: 600;">${item.quantity}</span>
         <button class="qty-btn" data-action="inc" data-id="${item.id}">+</button>
       </div>
     </div>`
@@ -222,12 +348,15 @@ function renderCart() {
 }
 
 function renderReceiptPanel() {
-  panelTitle.textContent = selectedOrder ? `Order` : "Receipt";
+  panelTitle.textContent = selectedOrder
+    ? `Order ${selectedOrder.receipt_number || selectedOrder.client_id.slice(0, 8)}`
+    : "Receipt";
   clearBtn.style.display = "none";
 
   if (!selectedOrder) {
-    cartItems.innerHTML = `<div class="empty-state"><p>Select an open order</p></div>`;
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to view details</p></div>`;
     cartTotal.textContent = money(0);
+    cartTotalLabel.textContent = "Total";
     receiptPaymentSection.style.display = "none";
     checkoutBtn.textContent = "Collect Payment";
     checkoutBtn.disabled = true;
@@ -253,19 +382,21 @@ function renderReceiptPanel() {
           <div class="name">${item.product_name}</div>
           <div class="line-total">${money(item.price)} × ${item.quantity}</div>
         </div>
-        <div class="line-total">${money(item.price * item.quantity)}</div>
+        <div class="line-total" style="font-weight: 600;">${money(item.price * item.quantity)}</div>
       </div>`
       )
       .join("")}
   `;
 
-  renderPaymentCurrencySelect();
+  renderPaymentCurrencyToggle();
+  setPaymentMethod("cash", { force: true });
+  receiptCustomerSelect.value = "";
+  updateAccountBalanceHint();
   receiptPaymentSection.style.display = "";
   const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
   renderReceiptTotals(inclusiveTotal);
   checkoutBtn.textContent = "Collect Payment";
-  const { hasRate } = computePaymentAmounts(inclusiveTotal);
-  checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
+  updateCheckoutButtonState(inclusiveTotal);
 }
 
 function renderOpenOrdersList() {
@@ -307,20 +438,35 @@ function renderCategories() {
   const tabs = [{ id: "all", name: "All" }, ...categories];
   categoryTabs.innerHTML = tabs
     .map(
-      (cat) =>
-        `<button class="category-tab${activeCategory === String(cat.id) ? " active" : ""}" data-id="${cat.id}">${cat.name}</button>`
+      (cat) => `
+    <button type="button" class="card category-tab category-card${activeCategory === String(cat.id) ? " active" : ""}" data-id="${cat.id}">
+      <div class="name">${cat.name}</div>
+    </button>`
     )
     .join("");
 }
 
+function matchesProductSearch(product) {
+  if (!searchQuery) return true;
+  const haystack = [product.name, product.category_name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
 function renderProducts() {
-  const filtered =
+  let filtered =
     activeCategory === "all"
       ? products
       : products.filter((p) => p.category === Number(activeCategory));
+  filtered = filtered.filter(matchesProductSearch);
 
   if (!filtered.length) {
-    productGrid.innerHTML = `<div class="empty-state wide"><p>No products in this category</p></div>`;
+    const message = searchQuery
+      ? "No matching products"
+      : "No products in this category";
+    productGrid.innerHTML = `<div class="empty-state wide"><p>${message}</p></div>`;
     return;
   }
 
@@ -377,7 +523,14 @@ categoryTabs.addEventListener("click", (e) => {
   const tab = e.target.closest(".category-tab");
   if (!tab) return;
   activeCategory = tab.dataset.id;
+  productSearchInput.value = "";
+  searchQuery = "";
   renderCategories();
+  renderProducts();
+});
+
+productSearchInput.addEventListener("input", () => {
+  searchQuery = productSearchInput.value.trim().toLowerCase();
   renderProducts();
 });
 
@@ -410,15 +563,6 @@ receiptOrdersList.addEventListener("click", (e) => {
 clearBtn.addEventListener("click", () => {
   cart.clear();
   renderCart();
-});
-
-paymentCurrencySelect.addEventListener("change", () => {
-  selectedCurrencyId = Number(paymentCurrencySelect.value) || null;
-  if (selectedOrder) {
-    renderReceiptTotals(getOrderInclusiveTotal(selectedOrder));
-    const { hasRate } = computePaymentAmounts(getOrderInclusiveTotal(selectedOrder));
-    checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
-  }
 });
 
 checkoutBtn.addEventListener("click", async () => {
@@ -500,11 +644,23 @@ async function placeOrder() {
 }
 
 async function paySelectedOrder() {
-  if (!selectedOrder || !selectedCurrencyId) return;
+  if (!selectedOrder) return;
   const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
-  const { hasRate, currency, amountDue, rate } = computePaymentAmounts(inclusiveTotal);
+  const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
+
+  if (paymentMethod === "account") {
+    showToast("Customer account payment is not available on desktop POS yet", true);
+    return;
+  }
+
+  if (!selectedCurrencyId) {
+    showToast("Please select a payment currency", true);
+    return;
+  }
+
+  const { hasRate, currency, amountDue, rate } = computePaymentAmounts(orderTotal);
   if (!hasRate) {
-    showToast(`No exchange rate for ${currency?.name || "currency"}`, true);
+    showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
     return;
   }
 
@@ -540,6 +696,28 @@ async function paySelectedOrder() {
     showToast(err.message, true);
   } finally {
     checkoutBtn.disabled = !selectedOrder;
+  }
+}
+
+async function loadCustomers() {
+  if (!session?.serverUrl || !session?.token || !isBrowserOnline()) {
+    customers = [];
+    renderCustomerSelect();
+    return;
+  }
+
+  try {
+    const base = session.serverUrl.replace(/\/$/, "");
+    const res = await fetch(`${base}/api/customers/?page_size=500`, {
+      headers: { Authorization: `Token ${session.token}` },
+    });
+    if (!res.ok) throw new Error("Could not load customers");
+    const data = await res.json();
+    customers = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+    renderCustomerSelect();
+  } catch {
+    customers = [];
+    renderCustomerSelect();
   }
 }
 

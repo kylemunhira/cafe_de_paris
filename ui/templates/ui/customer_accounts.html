@@ -1,0 +1,374 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Customer Accounts — Café de Paris{% endblock %}
+{% block page_title %}Customer Accounts{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <div class="form-group">
+    <label for="customer-search">Customer</label>
+    <input type="search" id="customer-search" placeholder="Search by name or phone…" autocomplete="off">
+  </div>
+  <div id="customer-picker" class="customer-picker-list" style="margin-top: 0.75rem;"></div>
+</div>
+
+<div id="account-panel" style="display: none;">
+  <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+      <div>
+        <h3 id="selected-customer-name" style="margin: 0; font-size: 1.1rem;"></h3>
+        <p id="selected-customer-meta" style="margin: 0.35rem 0 0; color: var(--color-muted); font-size: 0.85rem;"></p>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 0.8rem; color: var(--color-muted);">Account balance</div>
+        <div id="account-balance" style="font-size: 1.5rem; font-weight: 700; color: var(--color-primary);">—</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="print-full-statement-btn" style="margin-top: 0.5rem;">Print statement</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card report-filters" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
+    <div class="report-filters-grid">
+      <label>
+        <span>From</span>
+        <input type="date" id="statement-from" class="report-input">
+      </label>
+      <label>
+        <span>To</span>
+        <input type="date" id="statement-to" class="report-input">
+      </label>
+      <div class="report-filters-actions">
+        <button type="button" id="apply-statement-filters" class="btn btn-primary btn-sm">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-grid" id="statement-summary" style="margin-bottom: 1.25rem; display: none;">
+    <div class="card stat-card">
+      <div class="stat-label">Opening balance</div>
+      <div class="stat-value" id="summary-opening">—</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Payments received</div>
+      <div class="stat-value text-success" id="summary-credits">—</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Withdrawals</div>
+      <div class="stat-value text-danger" id="summary-debits">—</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Closing balance</div>
+      <div class="stat-value" id="summary-closing">—</div>
+    </div>
+  </div>
+
+  <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+    <h3 style="margin: 0 0 1rem; font-size: 1rem;">Record deposit</h3>
+    <form id="deposit-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="deposit-currency">Payment currency</label>
+          <select id="deposit-currency"><option value="">Loading…</option></select>
+        </div>
+        <div class="form-group">
+          <label for="deposit-amount">Amount received</label>
+          <input type="number" id="deposit-amount" step="0.01" min="0.01" placeholder="0.00" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="deposit-notes">Notes (optional)</label>
+        <input type="text" id="deposit-notes" maxlength="200" placeholder="e.g. Cash top-up">
+      </div>
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary" id="deposit-btn">Record deposit</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="padding: 0;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+      <h3 style="margin: 0; font-size: 1rem;">Transaction history</h3>
+    </div>
+    <div class="table-wrap" id="transactions-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+</div>
+
+<div id="empty-state" class="empty-state" style="margin-top: 2rem;">
+  <p>Search and select a customer to view their account or record a deposit.</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+
+let customers = [];
+let currencies = [];
+let depositBranchId = null;
+let selectedCustomer = null;
+let searchQuery = "";
+
+const customerSearch = document.getElementById("customer-search");
+const customerPicker = document.getElementById("customer-picker");
+const accountPanel = document.getElementById("account-panel");
+const emptyState = document.getElementById("empty-state");
+const selectedCustomerName = document.getElementById("selected-customer-name");
+const selectedCustomerMeta = document.getElementById("selected-customer-meta");
+const accountBalance = document.getElementById("account-balance");
+const depositForm = document.getElementById("deposit-form");
+const depositCurrency = document.getElementById("deposit-currency");
+const depositAmount = document.getElementById("deposit-amount");
+const depositNotes = document.getElementById("deposit-notes");
+const depositBtn = document.getElementById("deposit-btn");
+const transactionsTable = document.getElementById("transactions-table");
+const printFullStatementBtn = document.getElementById("print-full-statement-btn");
+const statementFrom = document.getElementById("statement-from");
+const statementTo = document.getElementById("statement-to");
+const applyStatementFilters = document.getElementById("apply-statement-filters");
+const statementSummary = document.getElementById("statement-summary");
+const summaryOpening = document.getElementById("summary-opening");
+const summaryCredits = document.getElementById("summary-credits");
+const summaryDebits = document.getElementById("summary-debits");
+const summaryClosing = document.getElementById("summary-closing");
+
+const statementPrintUrlTemplate = "{% url 'ui:customer-statement-print' 0 %}".replace("/0/", "/{id}/");
+const fullStatementPrintUrlTemplate = "{% url 'ui:customer-full-statement-print' 0 %}".replace("/0/", "/{id}/");
+
+function defaultStatementDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  return {
+    from: start.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10),
+  };
+}
+
+function statementQueryParams() {
+  const params = new URLSearchParams();
+  if (statementFrom?.value) params.set("from", statementFrom.value);
+  if (statementTo?.value) params.set("to", statementTo.value);
+  return params;
+}
+
+function openStatementPrint(transactionId, { auto = false } = {}) {
+  const params = new URLSearchParams();
+  if (auto) params.set("auto", "1");
+  const query = params.toString();
+  const url = `${statementPrintUrlTemplate.replace("{id}", transactionId)}${query ? `?${query}` : ""}`;
+  window.open(url, "_blank", "noopener");
+}
+
+function openFullStatementPrint({ auto = false } = {}) {
+  if (!selectedCustomer) return;
+  const params = statementQueryParams();
+  if (auto) params.set("auto", "1");
+  const query = params.toString();
+  const url = `${fullStatementPrintUrlTemplate.replace("{id}", selectedCustomer.id)}${query ? `?${query}` : ""}`;
+  window.open(url, "_blank", "noopener");
+}
+
+function displayName(customer) {
+  return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
+}
+
+function filteredCustomers() {
+  if (!searchQuery) return customers.slice(0, 20);
+  const q = searchQuery.toLowerCase();
+  return customers.filter(c => {
+    const haystack = [displayName(c), c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(q);
+  }).slice(0, 20);
+}
+
+function renderCustomerPicker() {
+  const list = filteredCustomers();
+  if (!searchQuery) {
+    customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">Type to search ${customers.length} customers</p>`;
+    return;
+  }
+  if (!list.length) {
+    customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">No matching customers</p>`;
+    return;
+  }
+  customerPicker.innerHTML = list.map(c => `
+    <button type="button" class="customer-picker-item${selectedCustomer?.id === c.id ? " selected" : ""}" data-id="${c.id}">
+      <strong>${displayName(c)}</strong>
+      <span>${c.phone || "—"} · Balance ${formatCurrency(c.account_balance)}</span>
+    </button>
+  `).join("");
+}
+
+async function selectCustomer(customer) {
+  selectedCustomer = customer;
+  emptyState.style.display = "none";
+  accountPanel.style.display = "";
+  selectedCustomerName.textContent = displayName(customer);
+  selectedCustomerMeta.textContent = [customer.phone, customer.email].filter(Boolean).join(" · ") || "No contact details";
+  accountBalance.textContent = formatCurrency(customer.account_balance);
+  renderCustomerPicker();
+  await loadTransactions();
+}
+
+async function loadTransactions() {
+  if (!selectedCustomer) return;
+  transactionsTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    const params = statementQueryParams();
+    const query = params.toString();
+    const data = await apiGet(`/customers/${selectedCustomer.id}/statement/${query ? `?${query}` : ""}`);
+    selectedCustomer.account_balance = data.current_balance;
+    accountBalance.textContent = formatCurrency(data.current_balance);
+
+    summaryOpening.textContent = formatCurrency(data.opening_balance);
+    summaryCredits.textContent = `+${formatCurrency(data.total_credits)}`;
+    summaryDebits.textContent = data.total_debits > 0 ? `-${formatCurrency(data.total_debits)}` : formatCurrency(0);
+    summaryClosing.textContent = formatCurrency(data.closing_balance);
+    statementSummary.style.display = "";
+
+    const txns = data.transactions || [];
+    if (!txns.length) {
+      transactionsTable.innerHTML = `<div class="empty-state"><p>No transactions yet</p></div>`;
+      return;
+    }
+    transactionsTable.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Amount</th>
+            <th>Balance</th>
+            <th>Details</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${[...txns].reverse().map(t => {
+            const amountClass = Number(t.amount) >= 0 ? "text-success" : "text-danger";
+            const amountLabel = Number(t.amount) >= 0 ? `+${formatCurrency(t.amount)}` : formatCurrency(t.amount);
+            const details = t.transaction_type === "deposit"
+              ? `${t.currency_name || ""} ${t.amount_received != null ? formatCurrency(t.amount_received) : ""}${t.notes ? ` · ${t.notes}` : ""}`
+              : (t.order_id ? `Order #${t.order_id}` : (t.notes || "—"));
+            return `
+              <tr>
+                <td>${formatDate(t.created_at)}</td>
+                <td>${t.statement_label || t.transaction_type_display}</td>
+                <td class="${amountClass}" style="font-weight: 600;">${amountLabel}</td>
+                <td>${formatCurrency(t.balance_after)}</td>
+                <td>${details}</td>
+                <td><button type="button" class="btn btn-ghost btn-sm" data-print-txn="${t.id}">Print</button></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    transactionsTable.innerHTML = `<div class="empty-state">Failed to load transactions: ${err.message}</div>`;
+  }
+}
+
+customerSearch.addEventListener("input", () => {
+  searchQuery = customerSearch.value.trim().toLowerCase();
+  renderCustomerPicker();
+});
+
+customerPicker.addEventListener("click", (e) => {
+  const btn = e.target.closest(".customer-picker-item");
+  if (!btn) return;
+  const customer = customers.find(c => c.id === Number(btn.dataset.id));
+  if (customer) selectCustomer(customer);
+});
+
+transactionsTable.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-print-txn]");
+  if (!btn) return;
+  openStatementPrint(btn.dataset.printTxn);
+});
+
+printFullStatementBtn?.addEventListener("click", () => openFullStatementPrint());
+applyStatementFilters?.addEventListener("click", () => loadTransactions());
+statementFrom?.addEventListener("change", () => loadTransactions());
+statementTo?.addEventListener("change", () => loadTransactions());
+
+depositForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!selectedCustomer) return;
+  if (!depositBranchId) {
+    showToast("No branch assigned for recording deposits", true);
+    return;
+  }
+  const amount = Number(depositAmount.value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    showToast("Enter a valid amount", true);
+    return;
+  }
+  if (!depositCurrency.value) {
+    showToast("Select a currency", true);
+    return;
+  }
+
+  depositBtn.disabled = true;
+  try {
+    const result = await apiPost(`/customers/${selectedCustomer.id}/deposit/`, {
+      branch: depositBranchId,
+      currency_id: Number(depositCurrency.value),
+      amount: amount.toFixed(2),
+      notes: depositNotes.value.trim(),
+    });
+    selectedCustomer.account_balance = result.account_balance;
+    accountBalance.textContent = formatCurrency(result.account_balance);
+    const index = customers.findIndex(c => c.id === selectedCustomer.id);
+    if (index >= 0) customers[index].account_balance = result.account_balance;
+    depositAmount.value = "";
+    depositNotes.value = "";
+    showToast("Deposit recorded");
+    if (result.transaction?.id) {
+      openStatementPrint(result.transaction.id, { auto: true });
+    }
+    await loadTransactions();
+    renderCustomerPicker();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    depositBtn.disabled = false;
+  }
+});
+
+const preferredBranchId = "{{ staff_branch_id|default:'' }}";
+
+async function init() {
+  const defaults = defaultStatementDates();
+  if (statementFrom) statementFrom.value = defaults.from;
+  if (statementTo) statementTo.value = defaults.to;
+
+  try {
+    const [customerData, currencyData] = await Promise.all([
+      fetchAllPages("/customers/"),
+      apiGet("/currencies/?page_size=100"),
+    ]);
+    customers = unwrapList(customerData);
+    currencies = unwrapList(currencyData).filter(c => c.is_active);
+
+    if (preferredBranchId) {
+      depositBranchId = Number(preferredBranchId);
+    }
+
+    depositCurrency.innerHTML = currencies.map(c => {
+      const label = c.code || c.name;
+      const symbol = c.symbol ? ` (${c.symbol})` : "";
+      return `<option value="${c.id}">${label}${symbol}</option>`;
+    }).join("");
+
+    renderCustomerPicker();
+  } catch (err) {
+    showToast(`Failed to load: ${err.message}`, true);
+  }
+}
+
+init();
+</script>
+{% endblock %}

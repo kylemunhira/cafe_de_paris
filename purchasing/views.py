@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from accounts.branch_access import (
     filter_by_branch_field,
     user_can_approve_purchase_orders,
@@ -23,6 +24,12 @@ from .services import (
     cancel_purchase_order,
     receive_purchase_order,
     submit_purchase_order,
+)
+from .statement import build_supplier_statement_report
+from .supplier_import import (
+    export_suppliers_csv,
+    import_suppliers_csv,
+    import_suppliers_xlsx,
 )
 
 
@@ -62,6 +69,102 @@ class SupplierViewSet(viewsets.ModelViewSet):
             return Response(SupplierSerializer(supplier).data)
         supplier.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["get"], url_path="export-csv")
+    def export_csv(self, request):
+        self._require_supplier_manager()
+        response = HttpResponse(export_suppliers_csv(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="suppliers.csv"'
+        return response
+
+    @action(detail=False, methods=["post"], url_path="import-csv")
+    def import_csv(self, request):
+        self._require_supplier_manager()
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "No file uploaded. Use form field name 'file'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not upload.name.lower().endswith(".csv"):
+            return Response(
+                {"detail": "Only .csv files are supported."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = import_suppliers_csv(upload)
+        if result["errors"]:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="import-xlsx")
+    def import_xlsx(self, request):
+        self._require_supplier_manager()
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "No file uploaded. Use form field name 'file'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not upload.name.lower().endswith((".xlsx", ".xlsm")):
+            return Response(
+                {"detail": "Only .xlsx workbooks are supported."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = import_suppliers_xlsx(upload)
+        if result["errors"]:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result, status=status.HTTP_200_OK)
+
+    def _can_view_supplier_purchases(self):
+        return user_can_create_purchase_orders(
+            self.request.user
+        ) or user_can_manage_suppliers(self.request.user)
+
+    @action(detail=True, methods=["get"])
+    def statement(self, request, pk=None):
+        if not self._can_view_supplier_purchases():
+            raise PermissionDenied("You do not have permission to view supplier purchases.")
+
+        supplier = self.get_object()
+        try:
+            all_time = request.query_params.get("all") == "1"
+            data = build_supplier_statement_report(
+                supplier,
+                from_date=request.query_params.get("from"),
+                to_date=request.query_params.get("to"),
+                branch_id=request.query_params.get("branch"),
+                all_time=all_time,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        purchases = data.pop("purchases")
+        data["purchases"] = PurchaseOrderSerializer(purchases, many=True).data
+        data["supplier"] = SupplierSerializer(supplier).data
+        return Response(data)
+
+    @action(detail=True, methods=["get"])
+    def history(self, request, pk=None):
+        """All-time purchase history for a supplier."""
+        if not self._can_view_supplier_purchases():
+            raise PermissionDenied("You do not have permission to view supplier purchases.")
+
+        supplier = self.get_object()
+        try:
+            data = build_supplier_statement_report(
+                supplier,
+                branch_id=request.query_params.get("branch"),
+                all_time=True,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        purchases = data.pop("purchases")
+        data["purchases"] = PurchaseOrderSerializer(purchases, many=True).data
+        data["supplier"] = SupplierSerializer(supplier).data
+        return Response(data)
 
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):

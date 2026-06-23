@@ -36,6 +36,11 @@ class StockTransferStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+class TransferInvoicePaymentStatus(models.TextChoices):
+    UNPAID = "unpaid", "Unpaid"
+    PAID = "paid", "Paid"
+
+
 class StockTransfer(models.Model):
     from_branch = models.ForeignKey(
         Branch,
@@ -78,10 +83,36 @@ class DeliveryNote(models.Model):
         on_delete=models.PROTECT,
         related_name="incoming_delivery_notes",
     )
+    invoice_number = models.CharField(
+        max_length=32,
+        blank=True,
+        unique=True,
+        null=True,
+        help_text="Transfer invoice number for central stores dispatches.",
+    )
     status = models.CharField(
         max_length=20,
         choices=StockTransferStatus.choices,
         default=StockTransferStatus.REQUESTED,
+    )
+    payment_status = models.CharField(
+        max_length=10,
+        choices=TransferInvoicePaymentStatus.choices,
+        default=TransferInvoicePaymentStatus.UNPAID,
+        help_text="Payment status for central stores transfer invoices.",
+    )
+    paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the receiving branch settled this transfer invoice.",
+    )
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transfer_invoices_marked_paid",
+        help_text="Staff who recorded payment for this transfer invoice.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -92,8 +123,21 @@ class DeliveryNote(models.Model):
         return f"Delivery note #{self.pk} {self.from_branch} -> {self.to_branch}"
 
     @property
+    def is_transfer_invoice(self):
+        return bool(self.invoice_number)
+
+    @property
     def total_quantity(self):
         return sum(line.quantity for line in self.lines.all())
+
+    @property
+    def total_amount(self):
+        from decimal import Decimal
+
+        return sum(
+            (line.unit_price or Decimal("0")) * line.quantity
+            for line in self.lines.all()
+        )
 
 
 class DeliveryNoteLine(models.Model):
@@ -108,6 +152,13 @@ class DeliveryNoteLine(models.Model):
         related_name="delivery_note_lines",
     )
     quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Unit price on transfer invoices from central stores.",
+    )
 
     class Meta:
         unique_together = ("delivery_note", "product")
@@ -115,6 +166,14 @@ class DeliveryNoteLine(models.Model):
 
     def __str__(self):
         return f"{self.product} x {self.quantity}"
+
+    @property
+    def line_total(self):
+        from decimal import Decimal
+
+        if self.unit_price is None:
+            return Decimal("0")
+        return self.unit_price * self.quantity
 
 
 class StockTakeType(models.TextChoices):

@@ -1,0 +1,32 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supplier statement — {{ supplier }}</title>
+  <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print statement</button>
+  </div>
+
+  {% include "ui/includes/supplier_statement_block.html" with supplier=supplier branch=branch purchases=purchases opening_spend=opening_spend period_spend=period_spend closing_spend=closing_spend all_time_spend=all_time_spend period_from=period_from period_to=period_to printed_at=printed_at %}
+
+  {% if auto_print %}
+  <script>
+    const returnUrl = "{{ return_url|escapejs }}";
+    window.addEventListener("load", () => window.print());
+    window.addEventListener("afterprint", () => {
+      window.close();
+      if (returnUrl) {
+        setTimeout(() => {
+          if (!window.closed) window.location.replace(returnUrl);
+        }, 150);
+      }
+    });
+  </script>
+  {% endif %}
+</body>
+</html>

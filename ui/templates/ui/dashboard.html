@@ -4,107 +4,589 @@
 {% block title %}Dashboard — Café de Paris{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block topbar_actions %}
+<a href="#" id="export-csv" class="btn btn-ghost btn-sm">Export Sales CSV</a>
+{% endblock %}
+
 {% block content %}
-<div class="stat-grid" id="stats">
+<div class="card report-filters">
+  <div class="report-filters-grid">
+    <label>
+      <span>From</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>To</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="report-stats">
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
 </div>
 
-<div class="card" style="padding: 0;">
-  <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center;">
-    <h3 style="margin: 0; font-size: 1.1rem;">Recent Orders</h3>
-    <a href="{% url 'ui:pos' %}" class="btn btn-accent btn-sm">New Sale</a>
+<div class="report-section-header">
+  <h2>Profit</h2>
+  <p id="profit-note" class="report-section-note"></p>
+</div>
+
+<div class="stat-grid" id="profit-stats">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="report-section-header">
+  <h2>Charts</h2>
+  <p class="report-section-note">Visual breakdown of sales and profit for the selected period.</p>
+</div>
+
+<div class="report-grid">
+  <div class="card report-panel chart-panel">
+    <div class="report-panel-header"><h3>Sales by Branch</h3></div>
+    <div class="chart-wrap"><canvas id="chart-by-branch"></canvas></div>
   </div>
-  <div class="table-wrap" id="recent-orders">
-    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+
+  <div class="card report-panel chart-panel">
+    <div class="report-panel-header"><h3>Revenue by Category</h3></div>
+    <div class="chart-wrap"><canvas id="chart-by-category"></canvas></div>
+  </div>
+
+  <div class="card report-panel chart-panel">
+    <div class="report-panel-header"><h3>Top Products</h3></div>
+    <div class="chart-wrap"><canvas id="chart-top-products"></canvas></div>
+  </div>
+
+  <div class="card report-panel chart-panel">
+    <div class="report-panel-header"><h3>Profit Breakdown</h3></div>
+    <div class="chart-wrap"><canvas id="chart-profit"></canvas></div>
+  </div>
+</div>
+
+<div class="report-section-header">
+  <h2>Details</h2>
+</div>
+
+<div class="report-grid">
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Sales by Branch</h3></div>
+    <div class="table-wrap" id="by-branch-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Sales by Category</h3></div>
+    <div class="table-wrap" id="by-category-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Top Products</h3></div>
+    <div class="table-wrap" id="top-products-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>Gross Profit by Product</h3></div>
+    <div class="table-wrap" id="profit-by-product-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header">
+      <h3>Low Stock</h3>
+      <span class="report-panel-note" id="low-stock-note"></span>
+    </div>
+    <div class="table-wrap" id="low-stock-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, unwrapList, formatCurrency, formatDate, statusBadge } from "{% static 'ui/js/api.js' %}";
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 
-async function loadDashboard() {
-  const [ordersData, branchesData, productsData] = await Promise.all([
-    apiGet("/orders/"),
-    apiGet("/branches/"),
-    apiGet("/products/"),
-  ]);
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const exportCsv = document.getElementById("export-csv");
 
-  const orders = unwrapList(ordersData);
-  const branches = unwrapList(branchesData);
-  const products = unwrapList(productsData).filter(p => p.is_active);
+const CHART_COLORS = [
+  "#2c1810", "#c4a77d", "#d4a054", "#8b6914", "#a67b5b",
+  "#6b5c52", "#e8d5b7", "#5c4033", "#b8956a", "#3d2817",
+];
 
-  const today = new Date().toDateString();
-  const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === today);
-  const openOrders = orders.filter(o => o.status === "open");
-  const paidToday = todayOrders.filter(o => o.status === "paid");
-  const revenueToday = paidToday.reduce((sum, o) => sum + Number(o.total_amount), 0);
+const chartInstances = {};
 
-  document.getElementById("stats").innerHTML = `
-    <div class="card stat-card">
-      <div class="label">Today's Revenue</div>
-      <div class="value">${formatCurrency(revenueToday)}</div>
-      <div class="sub">${paidToday.length} paid order${paidToday.length !== 1 ? "s" : ""}</div>
-    </div>
-    <div class="card stat-card">
-      <div class="label">Open Orders</div>
-      <div class="value">${openOrders.length}</div>
-      <div class="sub">Awaiting payment</div>
-    </div>
-    <div class="card stat-card">
-      <div class="label">Active Branches</div>
-      <div class="value">${branches.filter(b => b.is_active).length}</div>
-      <div class="sub">${branches.length} total</div>
-    </div>
-    <div class="card stat-card">
-      <div class="label">Products</div>
-      <div class="value">${products.length}</div>
-      <div class="sub">On menu</div>
-    </div>
-  `;
+function chartFont() {
+  return { family: '"DM Sans", system-ui, sans-serif', size: 12 };
+}
 
-  const recent = orders.slice(0, 8);
-  const container = document.getElementById("recent-orders");
+function destroyChart(id) {
+  if (chartInstances[id]) {
+    chartInstances[id].destroy();
+    delete chartInstances[id];
+  }
+}
 
-  if (!recent.length) {
-    container.innerHTML = `<div class="empty-state"><p>No orders yet. Create your first sale from the POS.</p></div>`;
+function showChartEmpty(canvasId, message) {
+  destroyChart(canvasId);
+  const canvas = document.getElementById(canvasId);
+  const wrap = canvas.parentElement;
+  wrap.querySelector(".chart-empty")?.remove();
+  const empty = document.createElement("div");
+  empty.className = "chart-empty";
+  empty.textContent = message;
+  canvas.style.display = "none";
+  wrap.appendChild(empty);
+}
+
+function hideChartEmpty(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  canvas.style.display = "";
+  canvas.parentElement.querySelector(".chart-empty")?.remove();
+}
+
+function currencyTooltipLabel(context) {
+  const label = context.label || context.dataset.label || "";
+  const value = context.parsed?.y ?? context.parsed ?? context.raw;
+  return `${label}: ${formatCurrency(value)}`;
+}
+
+function renderBarChart(canvasId, labels, values, emptyMessage) {
+  if (!labels.length) {
+    showChartEmpty(canvasId, emptyMessage);
+    return;
+  }
+  hideChartEmpty(canvasId);
+  destroyChart(canvasId);
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  chartInstances[canvasId] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Revenue",
+        data: values,
+        backgroundColor: CHART_COLORS.slice(0, labels.length),
+        borderRadius: 6,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: currencyTooltipLabel },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: chartFont(), color: "#6b5c52", maxRotation: 45 },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "rgba(44, 24, 16, 0.06)" },
+          ticks: {
+            font: chartFont(),
+            color: "#6b5c52",
+            callback: value => formatCurrency(value),
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderHorizontalBarChart(canvasId, labels, values, emptyMessage) {
+  if (!labels.length) {
+    showChartEmpty(canvasId, emptyMessage);
+    return;
+  }
+  hideChartEmpty(canvasId);
+  destroyChart(canvasId);
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  chartInstances[canvasId] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Revenue",
+        data: values,
+        backgroundColor: CHART_COLORS.slice(0, labels.length),
+        borderRadius: 6,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: currencyTooltipLabel },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { color: "rgba(44, 24, 16, 0.06)" },
+          ticks: {
+            font: chartFont(),
+            color: "#6b5c52",
+            callback: value => formatCurrency(value),
+          },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { font: chartFont(), color: "#6b5c52" },
+        },
+      },
+    },
+  });
+}
+
+function renderPieChart(canvasId, labels, values, emptyMessage) {
+  if (!labels.length || values.every(v => Number(v) === 0)) {
+    showChartEmpty(canvasId, emptyMessage);
+    return;
+  }
+  hideChartEmpty(canvasId);
+  destroyChart(canvasId);
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  chartInstances[canvasId] = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: CHART_COLORS.slice(0, labels.length),
+        borderWidth: 2,
+        borderColor: "#ffffff",
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: { font: chartFont(), color: "#2c1810", padding: 14 },
+        },
+        tooltip: {
+          callbacks: {
+            label(context) {
+              const total = context.dataset.data.reduce((sum, n) => sum + Number(n), 0);
+              const pct = total ? ((Number(context.raw) / total) * 100).toFixed(1) : 0;
+              return `${context.label}: ${formatCurrency(context.raw)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderSalesCharts(report) {
+  renderBarChart(
+    "chart-by-branch",
+    report.by_branch.map(row => row.branch_name),
+    report.by_branch.map(row => Number(row.revenue)),
+    "No paid orders for this period",
+  );
+
+  renderPieChart(
+    "chart-by-category",
+    report.by_category.map(row => row.category),
+    report.by_category.map(row => Number(row.revenue)),
+    "No category sales for this period",
+  );
+
+  const top = report.top_products.slice(0, 8);
+  renderHorizontalBarChart(
+    "chart-top-products",
+    top.map(row => row.product_name),
+    top.map(row => Number(row.revenue)),
+    "No product sales for this period",
+  );
+}
+
+function renderProfitChart(summary) {
+  const labels = ["Cost of Sales", "Operating Expenses", "Net Profit"];
+  const values = [
+    Number(summary.total_cogs),
+    Number(summary.operating_expenses),
+    Number(summary.net_profit),
+  ];
+
+  if (values.every(v => Number(v) === 0)) {
+    showChartEmpty("chart-profit", "No profit data for this period");
+    return;
+  }
+
+  hideChartEmpty("chart-profit");
+  destroyChart("chart-profit");
+  const ctx = document.getElementById("chart-profit").getContext("2d");
+  chartInstances["chart-profit"] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Amount",
+        data: values,
+        backgroundColor: ["#6b5c52", "#d4a054", "#2c1810"],
+        borderRadius: 6,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: currencyTooltipLabel },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: chartFont(), color: "#6b5c52" },
+        },
+        y: {
+          grid: { color: "rgba(44, 24, 16, 0.06)" },
+          ticks: {
+            font: chartFont(),
+            color: "#6b5c52",
+            callback: value => formatCurrency(value),
+          },
+        },
+      },
+    },
+  });
+}
+
+function setDefaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  filterTo.value = today.toISOString().slice(0, 10);
+  filterFrom.value = start.toISOString().slice(0, 10);
+}
+
+function queryString() {
+  const params = new URLSearchParams();
+  if (filterFrom.value) params.set("from", filterFrom.value);
+  if (filterTo.value) params.set("to", filterTo.value);
+  if (filterBranch.value) params.set("branch", filterBranch.value);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function renderTable(containerId, columns, rows, emptyMessage) {
+  const container = document.getElementById(containerId);
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state"><p>${emptyMessage}</p></div>`;
     return;
   }
 
   container.innerHTML = `
     <table class="data-table">
       <thead>
-        <tr>
-          <th>Order</th>
-          <th>Branch</th>
-          <th>Type</th>
-          <th>Total</th>
-          <th>Status</th>
-          <th>Date</th>
-        </tr>
+        <tr>${columns.map(col => `<th>${col.label}</th>`).join("")}</tr>
       </thead>
       <tbody>
-        ${recent.map(o => `
-          <tr>
-            <td><strong>#${o.id}</strong></td>
-            <td>${o.branch_name}</td>
-            <td>${o.order_type.replace("_", " ")}</td>
-            <td>${formatCurrency(o.total_amount)}</td>
-            <td>${statusBadge(o.status)}</td>
-            <td>${formatDate(o.created_at)}</td>
-          </tr>
+        ${rows.map(row => `
+          <tr>${columns.map(col => `<td>${col.render(row)}</td>`).join("")}</tr>
         `).join("")}
       </tbody>
     </table>
   `;
 }
 
-loadDashboard().catch(err => {
-  document.getElementById("stats").innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Failed to load dashboard: ${err.message}</div>`;
+async function loadBranches() {
+  const data = await apiGet("/branches/");
+  const branches = unwrapList(data);
+  filterBranch.innerHTML = `
+    <option value="">All branches</option>
+    ${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
+  `;
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined) return "—";
+  return `${Number(value).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+async function loadProfitReport() {
+  const report = await apiGet(`/reports/profit/${queryString()}`);
+  const summary = report.summary;
+
+  document.getElementById("profit-stats").innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Cost of Sales</div>
+      <div class="value">${formatCurrency(summary.total_cogs)}</div>
+      <div class="sub">From recipe ingredient costs</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Gross Profit</div>
+      <div class="value">${formatCurrency(summary.gross_profit)}</div>
+      <div class="sub">${formatPercent(summary.gross_profit_percent)} margin</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Operating Expenses</div>
+      <div class="value">${formatCurrency(summary.operating_expenses)}</div>
+      <div class="sub">Recorded petty cash &amp; expenses</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Net Profit</div>
+      <div class="value">${formatCurrency(summary.net_profit)}</div>
+      <div class="sub">Gross profit less expenses</div>
+    </div>
+  `;
+
+  const profitNote = document.getElementById("profit-note");
+  if (summary.products_without_recipe > 0) {
+    profitNote.textContent =
+      `${summary.products_without_recipe} sold product(s) have no recipe — ` +
+      `${formatCurrency(summary.revenue_without_recipe)} revenue excluded from cost of sales.`;
+  } else {
+    profitNote.textContent = "Cost of sales is calculated from recipe ingredient costs.";
+  }
+
+  renderTable(
+    "profit-by-product-table",
+    [
+      { label: "Product", render: row => row.product_name },
+      { label: "Qty Sold", render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+      { label: "COGS", render: row => row.unit_cost === null ? "—" : formatCurrency(row.cogs) },
+      { label: "Gross Profit", render: row => formatCurrency(row.gross_profit) },
+      { label: "GP%", render: row => formatPercent(row.gp_percent) },
+    ],
+    report.by_product,
+    "No paid sales for this period",
+  );
+
+  renderProfitChart(summary);
+}
+
+async function loadReport() {
+  const report = await apiGet(`/reports/summary/${queryString()}`);
+  const summary = report.summary;
+
+  document.getElementById("report-stats").innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Total Revenue</div>
+      <div class="value">${formatCurrency(summary.total_revenue)}</div>
+      <div class="sub">${report.period.from} to ${report.period.to}</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Paid Orders</div>
+      <div class="value">${summary.order_count}</div>
+      <div class="sub">In selected period</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Avg Order Value</div>
+      <div class="value">${formatCurrency(summary.avg_order_value)}</div>
+      <div class="sub">Per paid order</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Tax Collected</div>
+      <div class="value">${formatCurrency(summary.tax_collected)}</div>
+      <div class="sub">Based on inclusive tax in paid sales</div>
+    </div>
+  `;
+
+  renderTable(
+    "by-branch-table",
+    [
+      { label: "Branch", render: row => row.branch_name },
+      { label: "Orders", render: row => row.orders },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+    ],
+    report.by_branch,
+    "No paid orders for this period",
+  );
+
+  renderTable(
+    "by-category-table",
+    [
+      { label: "Category", render: row => row.category },
+      { label: "Qty Sold", render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+    ],
+    report.by_category,
+    "No category sales for this period",
+  );
+
+  renderTable(
+    "top-products-table",
+    [
+      { label: "Product", render: row => row.product_name },
+      { label: "Qty Sold", render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      { label: "Revenue", render: row => formatCurrency(row.revenue) },
+    ],
+    report.top_products,
+    "No product sales for this period",
+  );
+
+  document.getElementById("low-stock-note").textContent =
+    `≤ ${Number(report.low_stock_threshold).toLocaleString("en-US", { maximumFractionDigits: 2 })} units`;
+
+  renderTable(
+    "low-stock-table",
+    [
+      { label: "Product", render: row => row.product_name },
+      { label: "Category", render: row => row.category },
+      { label: "Remaining", render: row => Number(row.remaining_qty).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+    ],
+    report.low_stock,
+    "All products are above the low-stock threshold",
+  );
+
+  renderSalesCharts(report);
+}
+
+document.getElementById("apply-filters").addEventListener("click", () => {
+  Promise.all([loadReport(), loadProfitReport()]).catch(err => showToast(err.message, true));
+});
+
+exportCsv.addEventListener("click", (e) => {
+  e.preventDefault();
+  window.location.href = `/api/reports/export-csv/${queryString()}`;
+});
+
+setDefaultDates();
+Promise.all([loadBranches(), loadReport(), loadProfitReport()]).catch(err => {
+  showToast(`Failed to load dashboard: ${err.message}`, true);
 });
 </script>
 {% endblock %}

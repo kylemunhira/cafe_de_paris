@@ -3,6 +3,7 @@ from accounts.branch_access import (
     filter_by_branch_participation,
     get_staff_branch_id,
     user_can_access_bakery_transfers,
+    user_can_access_stores_transfers,
     user_can_approve_delivery,
     user_can_manage_outgoing_delivery,
     user_can_receive_delivery,
@@ -25,6 +26,8 @@ from .serializers import (
     BranchInventorySerializer,
     DeliveryNoteSerializer,
     InventoryAdjustSerializer,
+    STORES_TRANSFER_DESTINATION_TYPES,
+    StoresDeliveryNoteCreateSerializer,
     StockTakeCreateSerializer,
     StockTakeLinesUpdateSerializer,
     StockTakeSerializer,
@@ -49,6 +52,8 @@ from .services import (
     deliver_transfer,
     dispatch_delivery_note,
     dispatch_transfer,
+    InvalidDeliveryNotePaymentError,
+    mark_delivery_note_paid,
 )
 
 
@@ -194,6 +199,7 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
     queryset = DeliveryNote.objects.select_related(
         "from_branch",
         "to_branch",
+        "paid_by",
     ).prefetch_related("lines__product").all()
     serializer_class = DeliveryNoteSerializer
     http_method_names = ["get", "post", "head", "options"]
@@ -203,6 +209,9 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         status_filter = self.request.query_params.get("status")
         branch_id = self.request.query_params.get("branch")
         bakery_only = self.request.query_params.get("bakery_only")
+        stores_only = self.request.query_params.get("stores_only")
+        invoiced_only = self.request.query_params.get("invoiced_only")
+        payment_status = self.request.query_params.get("payment_status")
         incoming = self.request.query_params.get("incoming")
 
         if status_filter:
@@ -224,7 +233,33 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
                 from_branch__branch_type=BranchType.BAKERY,
                 to_branch__branch_type__in=BAKERY_TRANSFER_DESTINATION_TYPES,
             )
+        if stores_only and stores_only.lower() in ("1", "true", "yes"):
+            queryset = queryset.filter(
+                from_branch__branch_type=BranchType.STORES,
+                to_branch__branch_type__in=STORES_TRANSFER_DESTINATION_TYPES,
+            )
+        if invoiced_only and invoiced_only.lower() in ("1", "true", "yes"):
+            queryset = queryset.exclude(invoice_number__isnull=True).exclude(
+                invoice_number=""
+            )
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
         return queryset
+
+    @action(detail=False, methods=["post"], url_path="from-stores")
+    def create_from_stores(self, request):
+        if not user_can_access_stores_transfers(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can create delivery notes."
+            )
+        serializer = StoresDeliveryNoteCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save()
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(
+            DeliveryNoteSerializer(note).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=False, methods=["post"], url_path="from-bakery")
     def create_from_bakery(self, request):
@@ -246,13 +281,23 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
     ):
         note = self.get_object()
         if approval and not user_can_approve_delivery(request.user, note):
-            raise PermissionDenied(
-                "Only the receiving branch or central bakery can approve this delivery."
-            )
+            from_branch_type = note.from_branch.branch_type
+            if from_branch_type == BranchType.BAKERY:
+                detail = "Only central bakery or the receiving branch can approve this delivery."
+            elif from_branch_type == BranchType.STORES:
+                detail = "Only central stores or the receiving branch can approve this delivery."
+            else:
+                detail = "Only the sending or receiving branch can approve this delivery."
+            raise PermissionDenied(detail)
         if outgoing and not user_can_manage_outgoing_delivery(request.user, note):
-            raise PermissionDenied(
-                "Only central bakery staff or HQ admins can manage outgoing deliveries."
-            )
+            from_branch_type = note.from_branch.branch_type
+            if from_branch_type == BranchType.BAKERY:
+                detail = "Only central bakery staff or HQ admins can manage outgoing deliveries."
+            elif from_branch_type == BranchType.STORES:
+                detail = "Only central stores staff or HQ admins can manage outgoing deliveries."
+            else:
+                detail = "Only the sending branch can manage outgoing deliveries."
+            raise PermissionDenied(detail)
         if receiving and not user_can_receive_delivery(request.user, note):
             raise PermissionDenied(
                 "Only the receiving branch can confirm receipt of this delivery."
@@ -296,6 +341,20 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         return self._run_transition(
             request, pk, cancel_delivery_note, outgoing=True
         )
+
+    @action(detail=True, methods=["post"], url_path="mark-paid")
+    def mark_paid(self, request, pk=None):
+        if not user_can_access_stores_transfers(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can record transfer invoice payment."
+            )
+        note = self.get_object()
+        try:
+            note = mark_delivery_note_paid(note, request.user)
+        except InvalidDeliveryNotePaymentError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(DeliveryNoteSerializer(note).data)
 
 
 class StockTakeViewSet(viewsets.ModelViewSet):

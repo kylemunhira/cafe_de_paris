@@ -6,7 +6,7 @@ from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .models import Expense, Order, OrderItem, OrderStatus, OrderType
+from .models import Expense, Order, OrderItem, OrderStatus, OrderType, PaymentMethod
 from .tax import line_amount, split_inclusive_total
 
 ORDER_TYPE_LABELS = dict(OrderType.choices)
@@ -68,7 +68,8 @@ def build_day_end_report(
     ]
 
     payments = list(
-        orders_qs.values(
+        orders_qs.exclude(payment_method=PaymentMethod.ACCOUNT)
+        .values(
             "payment_currency__id",
             "payment_currency__code",
             "payment_currency__name",
@@ -77,6 +78,32 @@ def build_day_end_report(
         .annotate(order_count=Count("id"), total_paid=Coalesce(Sum("amount_paid"), Decimal("0")))
         .order_by("payment_currency__name")
     )
+
+    from customers.models import CustomerAccountTransaction, CustomerAccountTransactionType
+
+    deposit_rows = list(
+        CustomerAccountTransaction.objects.filter(
+            branch=branch,
+            transaction_type=CustomerAccountTransactionType.DEPOSIT,
+            created_at__gte=start,
+            created_at__lt=end,
+        )
+        .values(
+            "currency__id",
+            "currency__code",
+            "currency__name",
+            "currency__symbol",
+        )
+        .annotate(total_received=Coalesce(Sum("amount_received"), Decimal("0")))
+        .order_by("currency__name")
+    )
+    deposits_by_currency = {
+        row["currency__id"]: row["total_received"] or Decimal("0") for row in deposit_rows
+    }
+
+    account_payments_total = orders_qs.filter(
+        payment_method=PaymentMethod.ACCOUNT
+    ).aggregate(total=Coalesce(Sum("total_amount"), Decimal("0")))["total"]
 
     product_totals = defaultdict(
         lambda: {"product__name": "", "quantity": Decimal("0"), "revenue": Decimal("0")}
@@ -122,12 +149,38 @@ def build_day_end_report(
     expenses_total = sum(expenses_by_currency.values(), Decimal("0"))
 
     counted_by_currency = counted_by_currency or {}
+    currency_meta = {}
+    for payment in payments:
+        currency_id = payment.get("payment_currency__id")
+        if currency_id is not None:
+            currency_meta[currency_id] = {
+                "payment_currency__id": currency_id,
+                "payment_currency__code": payment.get("payment_currency__code"),
+                "payment_currency__name": payment.get("payment_currency__name"),
+                "payment_currency__symbol": payment.get("payment_currency__symbol"),
+            }
+    for row in deposit_rows:
+        currency_id = row.get("currency__id")
+        if currency_id is not None and currency_id not in currency_meta:
+            currency_meta[currency_id] = {
+                "payment_currency__id": currency_id,
+                "payment_currency__code": row.get("currency__code"),
+                "payment_currency__name": row.get("currency__name"),
+                "payment_currency__symbol": row.get("currency__symbol"),
+            }
+
     cashup_rows = []
     variance_total = Decimal("0")
     has_counted_entries = False
-    for payment in payments:
-        currency_id = payment.get("payment_currency__id")
-        expected = payment.get("total_paid") or Decimal("0")
+    payment_by_currency = {
+        payment.get("payment_currency__id"): payment for payment in payments
+    }
+
+    for currency_id in sorted(currency_meta.keys()):
+        payment = payment_by_currency.get(currency_id, {})
+        sales_total = payment.get("total_paid") or Decimal("0")
+        deposits_total = deposits_by_currency.get(currency_id, Decimal("0"))
+        expected = sales_total + deposits_total
         expenses_for_currency = expenses_by_currency.get(currency_id, Decimal("0"))
         net_expected = expected - expenses_for_currency
         counted = _decimal_or_none(counted_by_currency.get(currency_id))
@@ -138,7 +191,10 @@ def build_day_end_report(
             has_counted_entries = True
         cashup_rows.append(
             {
-                **payment,
+                **currency_meta[currency_id],
+                "order_count": payment.get("order_count", 0),
+                "total_paid": sales_total,
+                "deposits_total": deposits_total,
                 "expected_total": expected,
                 "expenses_total": expenses_for_currency,
                 "net_expected_total": net_expected,
@@ -154,6 +210,7 @@ def build_day_end_report(
         "tax_breakdown": tax_breakdown,
         "order_types": order_types,
         "payments": payments,
+        "account_payments_total": account_payments_total,
         "cashup_rows": cashup_rows,
         "has_counted_entries": has_counted_entries,
         "variance_total": variance_total,

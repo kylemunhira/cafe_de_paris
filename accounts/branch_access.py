@@ -141,20 +141,31 @@ def user_can_access_bakery_transfers(user):
     return get_staff_branch_type(user) == BranchType.BAKERY
 
 
+def user_can_access_stores_transfers(user):
+    """Central stores staff, HQ admins, and designated global users."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    return get_staff_branch_type(user) == BranchType.STORES
+
+
 def user_can_access_grv(user):
-    """Branch/HQ staff receive goods via GRV; global users use bakery transfers."""
+    """Branch/HQ/stores staff receive goods via GRV; global users use transfer pages."""
     if not user or not user.is_authenticated:
         return False
     if user_has_global_branch_access(user):
         return False
     branch_type = get_staff_branch_type(user)
-    return branch_type in (BranchType.BRANCH, BranchType.HQ)
+    return branch_type in (BranchType.BRANCH, BranchType.HQ, BranchType.STORES)
 
 
 def user_can_manage_outgoing_delivery(user, note):
-    if not user_can_access_bakery_transfers(user):
-        return False
-    return note.from_branch.branch_type == BranchType.BAKERY
+    if note.from_branch.branch_type == BranchType.BAKERY:
+        return user_can_access_bakery_transfers(user)
+    if note.from_branch.branch_type == BranchType.STORES:
+        return user_can_access_stores_transfers(user)
+    return False
 
 
 def user_can_receive_delivery(user, note):
@@ -165,7 +176,7 @@ def user_can_receive_delivery(user, note):
 
 
 def user_can_approve_delivery(user, note):
-    """Bakery staff approve outgoing notes; receiving branch approves on GRV."""
+    """Sending branch approves outgoing notes; receiving branch approves on GRV."""
     return user_can_manage_outgoing_delivery(user, note) or user_can_receive_delivery(
         user, note
     )
@@ -192,6 +203,37 @@ def user_can_create_purchase_orders(user):
 def user_can_approve_purchase_orders(user):
     """HQ admins approve submitted purchase orders."""
     return user_has_global_branch_access(user)
+
+
+def user_can_approve_fiscal_receipt(user):
+    """Branch managers and HQ admins approve proforma invoices for fiscalization."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.BRANCH_MANAGER
+
+
+def user_can_access_fiscal_receipts(user):
+    """Receipts nav: fiscal branches, or HQ/global users when any branch is fiscal."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        from branches.models import Branch
+
+        return Branch.objects.filter(
+            is_active=True,
+            fiscalization_enabled=True,
+        ).exists()
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.branch.fiscalization_enabled
 
 
 def user_can_receive_purchase_order(user, purchase_order):

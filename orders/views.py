@@ -1,4 +1,8 @@
-from accounts.branch_access import filter_by_branch_field, user_can_access_pos
+from accounts.branch_access import (
+    filter_by_branch_field,
+    user_can_access_pos,
+    user_can_approve_fiscal_receipt,
+)
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -7,15 +11,22 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionError
 from zimra_fiscal.response import fiscal_receipt_summary
-from zimra_fiscal.services import create_fiscal_receipt_for_payment
+from zimra_fiscal.services import approve_fiscal_receipt_for_order
 
-from .models import Expense, Order, OrderStatus
+from customers.services import (
+    CustomerAccountError,
+    InsufficientAccountBalance,
+    pay_order_from_account,
+)
+
+from .models import Expense, FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
 from .serializers import (
     ExpenseCreateSerializer,
     ExpenseSerializer,
     OrderCreateSerializer,
     OrderPaySerializer,
     OrderSerializer,
+    OrderUpdateSerializer,
 )
 from .services import (
     InvalidKitchenStateError,
@@ -29,11 +40,13 @@ from .services import (
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.select_related(
         "branch",
+        "customer",
         "payment_currency",
         "created_by",
         "paid_by",
     ).prefetch_related(
-        "items__product"
+        "items__product",
+        "fiscal_receipt",
     ).all()
     serializer_class = OrderSerializer
 
@@ -41,17 +54,30 @@ class OrderViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         status_filter = self.request.query_params.get("status")
         kitchen_status = self.request.query_params.get("kitchen_status")
+        fiscal_approval_status = self.request.query_params.get("fiscal_approval_status")
+        fiscal_only = self.request.query_params.get("fiscal_only")
         branch = self.request.query_params.get("branch")
         if status_filter:
             qs = qs.filter(status=status_filter)
         if kitchen_status:
             qs = qs.filter(kitchen_status=kitchen_status)
+        if fiscal_approval_status:
+            qs = qs.filter(fiscal_approval_status=fiscal_approval_status)
+        if fiscal_only in ("1", "true", "yes"):
+            qs = qs.filter(branch__fiscalization_enabled=True)
         return filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
 
     def get_serializer_class(self):
         if self.action == "create":
             return OrderCreateSerializer
+        if self.action in ("update", "partial_update"):
+            return OrderUpdateSerializer
         return OrderSerializer
+
+    def partial_update(self, request, *args, **kwargs):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to update orders.")
+        return super().partial_update(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -78,6 +104,25 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         serializer = OrderPaySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        payment_method = serializer.validated_data.get("payment_method", PaymentMethod.CASH)
+
+        if payment_method == PaymentMethod.ACCOUNT:
+            try:
+                with transaction.atomic():
+                    order = (
+                        Order.objects.select_for_update()
+                        .select_related("branch")
+                        .get(pk=order.pk)
+                    )
+                    pay_order_from_account(order=order, recorded_by=request.user)
+            except InsufficientAccountBalance as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except CustomerAccountError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            order.refresh_from_db()
+            return Response(OrderSerializer(order).data)
+
         currency = serializer.validated_data["payment_currency"]
 
         rate = currency.get_current_rate()
@@ -107,32 +152,27 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.payment_currency = currency
             order.exchange_rate = rate
             order.amount_paid = currency.convert_from_base(order.total_amount)
+            order.payment_method = PaymentMethod.CASH
             order.status = OrderStatus.PAID
             order.receipt_number = receipt_number
             order.paid_at = timezone.now()
             order.paid_by = request.user
+            fiscal_receipt = None
+            if order.branch.fiscalization_enabled:
+                order.fiscal_approval_status = FiscalApprovalStatus.PENDING
             order.save(
                 update_fields=[
                     "payment_currency",
                     "exchange_rate",
                     "amount_paid",
+                    "payment_method",
                     "status",
                     "receipt_number",
                     "paid_at",
                     "paid_by",
+                    "fiscal_approval_status",
                 ]
             )
-
-            fiscal_receipt = None
-            if order.branch.fiscalization_enabled:
-                try:
-                    fiscal_receipt = create_fiscal_receipt_for_payment(order)
-                except (ZimraConfigurationError, ZimraSubmissionError) as exc:
-                    transaction.set_rollback(True)
-                    return Response(
-                        {"detail": str(exc)},
-                        status=status.HTTP_502_BAD_GATEWAY,
-                    )
 
         response_data = OrderSerializer(order).data
         if fiscal_receipt:
@@ -140,6 +180,55 @@ class OrderViewSet(viewsets.ModelViewSet):
             response_data["fiscal_result"] = fiscal_receipt_summary(fiscal_receipt)
             if fiscal_receipt.zimra_response is not None:
                 response_data["fiscal_zimra_response"] = fiscal_receipt.zimra_response
+        return Response(response_data)
+
+    @action(detail=True, methods=["post"], url_path="approve-fiscal")
+    def approve_fiscal(self, request, pk=None):
+        if not user_can_approve_fiscal_receipt(request.user):
+            raise PermissionDenied(
+                "Branch manager or HQ admin access is required to approve fiscal receipts."
+            )
+
+        order = self.get_object()
+        if order.status != OrderStatus.PAID:
+            return Response(
+                {"detail": "Only paid orders can be fiscalized."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not order.branch.fiscalization_enabled:
+            return Response(
+                {"detail": "This branch is not configured for fiscalization."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if order.fiscal_approval_status != FiscalApprovalStatus.PENDING:
+            return Response(
+                {"detail": "This order is not awaiting fiscal approval."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                order = (
+                    Order.objects.select_for_update()
+                    .select_related("branch")
+                    .get(pk=order.pk)
+                )
+                fiscal_receipt = approve_fiscal_receipt_for_order(
+                    order,
+                    approved_by=request.user,
+                )
+        except (ZimraConfigurationError, ZimraSubmissionError) as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        order.refresh_from_db()
+        response_data = OrderSerializer(order).data
+        response_data["fiscal_receipt"] = fiscal_receipt.payload
+        response_data["fiscal_result"] = fiscal_receipt_summary(fiscal_receipt)
+        if fiscal_receipt.zimra_response is not None:
+            response_data["fiscal_zimra_response"] = fiscal_receipt.zimra_response
         return Response(response_data)
 
     def _run_kitchen_action(self, request, pk, handler):

@@ -5,7 +5,9 @@ from rest_framework import serializers
 from catalog.models import Product
 from payments.models import Currency
 
-from .models import Expense, Order, OrderItem
+from customers.models import Customer
+
+from .models import Expense, FiscalApprovalStatus, Order, OrderItem, OrderStatus, PaymentMethod
 
 
 def staff_display_name(user):
@@ -51,6 +53,14 @@ class OrderSerializer(serializers.ModelSerializer):
     )
     created_by_name = serializers.SerializerMethodField()
     paid_by_name = serializers.SerializerMethodField()
+    fiscal_approved_by_name = serializers.SerializerMethodField()
+    fiscal_receipt_number = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_account_balance = serializers.SerializerMethodField()
+    branch_fiscalization_enabled = serializers.BooleanField(
+        source="branch.fiscalization_enabled",
+        read_only=True,
+    )
 
     class Meta:
         model = Order
@@ -58,7 +68,10 @@ class OrderSerializer(serializers.ModelSerializer):
             "id",
             "branch",
             "branch_name",
+            "branch_fiscalization_enabled",
             "customer",
+            "customer_name",
+            "customer_account_balance",
             "order_type",
             "table_number",
             "total_amount",
@@ -67,12 +80,18 @@ class OrderSerializer(serializers.ModelSerializer):
             "payment_currency_symbol",
             "exchange_rate",
             "amount_paid",
+            "payment_method",
             "status",
             "kitchen_status",
             "kitchen_status_display",
             "kitchen_started_at",
             "kitchen_ready_at",
             "receipt_number",
+            "fiscal_receipt_number",
+            "fiscal_approval_status",
+            "fiscal_approved_at",
+            "fiscal_approved_by",
+            "fiscal_approved_by_name",
             "created_by",
             "created_by_name",
             "paid_by",
@@ -88,12 +107,65 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_paid_by_name(self, obj):
         return staff_display_name(obj.paid_by)
 
+    def get_fiscal_approved_by_name(self, obj):
+        return staff_display_name(obj.fiscal_approved_by)
+
+    def get_fiscal_receipt_number(self, obj):
+        fiscal_receipt = getattr(obj, "fiscal_receipt", None)
+        if fiscal_receipt is None:
+            return None
+        return fiscal_receipt.invoice_no
+
+    def get_customer_name(self, obj):
+        if not obj.customer_id:
+            return None
+        return str(obj.customer)
+
+    def get_customer_account_balance(self, obj):
+        if not obj.customer_id:
+            return None
+        return obj.customer.account_balance
+
 
 class OrderPaySerializer(serializers.Serializer):
     currency_id = serializers.PrimaryKeyRelatedField(
         queryset=Currency.objects.filter(is_active=True),
         source="payment_currency",
+        required=False,
+        allow_null=True,
     )
+    payment_method = serializers.ChoiceField(
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.CASH,
+    )
+
+    def validate(self, attrs):
+        payment_method = attrs.get("payment_method", PaymentMethod.CASH)
+        if payment_method == PaymentMethod.ACCOUNT:
+            return attrs
+        if not attrs.get("payment_currency"):
+            raise serializers.ValidationError(
+                {"currency_id": "This field is required for cash payments."}
+            )
+        return attrs
+
+
+class OrderUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ["customer"]
+
+    def validate_customer(self, customer):
+        if customer is None:
+            return customer
+        if not Customer.objects.filter(pk=customer.pk).exists():
+            raise serializers.ValidationError("Customer not found.")
+        return customer
+
+    def validate(self, attrs):
+        if self.instance.status != OrderStatus.OPEN:
+            raise serializers.ValidationError("Only open orders can be updated.")
+        return attrs
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):

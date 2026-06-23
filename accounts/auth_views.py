@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.branch_access import user_can_access_pos
+from accounts.branch_access import user_can_access_kitchen, user_can_access_pos
 from accounts.models import StaffProfile, StaffRole
 from branches.serializers import BranchSerializer
 
@@ -73,5 +73,62 @@ class DesktopLoginView(APIView):
                 },
                 "branch": BranchSerializer(profile.branch).data,
                 "server_url": server_url or None,
+            }
+        )
+
+
+class KitchenLoginView(APIView):
+    """Token login for the kitchen Android display (kitchen staff only)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+
+        if not username or not password:
+            return Response(
+                {"detail": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            return Response(
+                {"detail": "Invalid username or password."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if not user.is_active:
+            return Response(
+                {"detail": "This account is disabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not user_can_access_kitchen(user):
+            return Response(
+                {"detail": "Kitchen access is not allowed for this account."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            profile = user.staff_profile
+        except StaffProfile.DoesNotExist:
+            return Response(
+                {"detail": "Staff profile required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        token, _ = Token.objects.get_or_create(user=user)
+        display_name = user.get_full_name() or user.username
+
+        return Response(
+            {
+                "token": token.key,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "display_name": display_name,
+                    "role": profile.role,
+                },
+                "branch": BranchSerializer(profile.branch).data,
             }
         )

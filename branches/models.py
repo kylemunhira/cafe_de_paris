@@ -5,6 +5,7 @@ class BranchType(models.TextChoices):
     HQ = "hq", "Headquarters"
     BRANCH = "branch", "Branch"
     BAKERY = "bakery", "Bakery"
+    STORES = "stores", "Central Stores"
 
 
 class Branch(models.Model):

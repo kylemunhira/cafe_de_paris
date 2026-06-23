@@ -20,13 +20,18 @@ def _validate_purchase_lines_for_branch(branch, lines):
     for index, line in enumerate(lines):
         product = line["product"]
         is_ingredient = product.category.name == INGREDIENTS_CATEGORY
-        if branch.branch_type == BranchType.BAKERY and not is_ingredient:
+        if branch.branch_type in (BranchType.BAKERY, BranchType.STORES) and not is_ingredient:
+            branch_label = (
+                "Central stores"
+                if branch.branch_type == BranchType.STORES
+                else "Bakery"
+            )
             errors.append(
                 {
                     "lines": {
                         index: {
                             "product": (
-                                "Bakery purchase orders can only include raw materials "
+                                f"{branch_label} purchase orders can only include raw materials "
                                 f"({INGREDIENTS_CATEGORY} category)."
                             )
                         }
@@ -47,6 +52,7 @@ class SupplierSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "vat_number",
             "contact_person",
             "email",
             "phone",
