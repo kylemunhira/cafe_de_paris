@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from accounts.auth_views import DesktopLoginView, KitchenLoginView
 from accounts.views import StaffUserViewSet
-from branches.views import BranchViewSet
+from branches.views import BranchViewSet, DiningTableViewSet
 from catalog.views import ProductCategoryViewSet, ProductViewSet
 from inventory.views import (
     BranchInventoryViewSet,
@@ -19,6 +19,8 @@ from payments.views import CurrencyRateViewSet, CurrencyViewSet
 from reports.views import (
     ReportCustomerBalancesView,
     ReportExportCsvView,
+    ReportIngredientStockView,
+    ReportIngredientUsageView,
     ReportProfitView,
     ReportSummaryView,
     ReportSupplierSpendView,
@@ -29,6 +31,7 @@ from sync.views import SyncPingView, SyncPullView, SyncPushView
 router = DefaultRouter()
 router.register("users", StaffUserViewSet, basename="staffuser")
 router.register("branches", BranchViewSet)
+router.register("dining-tables", DiningTableViewSet, basename="dining-table")
 router.register("categories", ProductCategoryViewSet)
 router.register("products", ProductViewSet)
 router.register("orders", OrderViewSet)
@@ -60,6 +63,16 @@ urlpatterns = [
         name="report-customer-balances",
     ),
     path("reports/vat/", ReportVATView.as_view(), name="report-vat"),
+    path(
+        "reports/ingredient-stock/",
+        ReportIngredientStockView.as_view(),
+        name="report-ingredient-stock",
+    ),
+    path(
+        "reports/ingredient-usage/",
+        ReportIngredientUsageView.as_view(),
+        name="report-ingredient-usage",
+    ),
     path(
         "reports/supplier-spend/",
         ReportSupplierSpendView.as_view(),

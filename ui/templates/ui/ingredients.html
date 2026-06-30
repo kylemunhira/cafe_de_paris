@@ -66,6 +66,11 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
 const INGREDIENTS_CATEGORY = "Ingredients";
 
@@ -88,6 +93,14 @@ const cancelBtn = document.getElementById("cancel-btn");
 const ingredientsTable = document.getElementById("ingredients-table");
 const csvUpload = document.getElementById("csv-upload");
 const branchSelect = document.getElementById("branch-select");
+const sortState = createSortState("name", "asc");
+
+const INGREDIENT_SORT = {
+  name: (item) => item.name || "",
+  selling_price: (item) => Number(item.selling_price),
+  branch_qty: (item) => Number(item.branch_qty),
+  is_active: (item) => item.is_active ? 1 : 0,
+};
 
 function formatQty(value) {
   const qty = Number(value);
@@ -155,19 +168,21 @@ function render() {
     return;
   }
 
+  const sorted = sortItems(ingredients, sortState, INGREDIENT_SORT);
+
   ingredientsTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Unit cost</th>
-          <th>Stock at ${branch.name}</th>
-          <th>Status</th>
-          <th></th>
+          ${sortTh("Name", "name", sortState)}
+          ${sortTh("Unit cost", "selling_price", sortState)}
+          ${sortTh(`Stock at ${branch.name}`, "branch_qty", sortState)}
+          ${sortTh("Status", "is_active", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${ingredients.map(item => `
+        ${sorted.map(item => `
           <tr>
             <td><strong>${item.name}</strong></td>
             <td>${formatCurrency(item.selling_price)}</td>
@@ -213,22 +228,18 @@ async function reload() {
 
 async function loadBranches() {
   const data = await apiGet("/branches/?page_size=500");
-  branches = unwrapList(data).filter(b => b.is_active);
+  branches = branchesForUser(
+    unwrapList(data).filter(b => b.is_active),
+    staffBranchId,
+    canFilterAnyBranch,
+  );
 
-  if (!branches.length) {
-    branchSelect.innerHTML = `<option value="">No branches available</option>`;
-    branchSelect.disabled = true;
-    selectedBranchId = null;
-    render();
-    return;
-  }
+  setupBranchSelect(branchSelect, branches, {
+    canSelectAny: canFilterAnyBranch,
+    emptyLabel: "No branches available",
+  });
 
-  branchSelect.innerHTML = branches.length === 1
-    ? branches.map(b => `<option value="${b.id}" selected>${b.name}</option>`).join("")
-    : `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}`;
-
-  branchSelect.disabled = branches.length === 1;
-  selectedBranchId = branches.length === 1 ? branches[0].id : null;
+  selectedBranchId = branches.length === 1 ? branches[0].id : (branchSelect.value ? Number(branchSelect.value) : null);
   updateQtyLabel();
   await reload();
 }
@@ -312,6 +323,8 @@ ingredientsTable.addEventListener("click", (e) => {
   const item = ingredients.find(i => String(i.id) === btn.dataset.edit);
   if (item) startEdit(item);
 });
+
+bindTableSort(ingredientsTable, sortState, render);
 
 csvUpload.addEventListener("change", async (e) => {
   const file = e.target.files[0];

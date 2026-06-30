@@ -31,6 +31,12 @@
       </div>
     </div>
     <div class="form-group">
+      <label for="expense-supplier">Supplier</label>
+      <select id="expense-supplier">
+        <option value="">None (optional)</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label for="expense-description">Description</label>
       <input type="text" id="expense-description" maxlength="200" placeholder="e.g. Milk delivery, petty cash" required>
     </div>
@@ -48,12 +54,14 @@
       <span>To</span>
       <input type="date" id="filter-to" class="report-input">
     </label>
+    {% if can_filter_any_branch %}
     <label>
       <span>Branch</span>
       <select id="filter-branch" class="report-input">
         <option value="">All branches</option>
       </select>
     </label>
+    {% endif %}
     <div class="report-filters-actions">
       <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
     </div>
@@ -71,7 +79,7 @@
       type="search"
       id="expense-search"
       class="report-input"
-      placeholder="Search description, branch, recorded by…"
+      placeholder="Search description, supplier, branch, recorded by…"
       style="max-width: 360px;"
     >
   </div>
@@ -84,11 +92,15 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { branchesForUser, effectiveBranchParam, setupBranchFilter, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 
 const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 
 let branches = [];
 let currencies = [];
+let suppliers = [];
 let allExpenses = [];
 let searchQuery = "";
 
@@ -96,6 +108,7 @@ const expenseForm = document.getElementById("expense-form");
 const expenseBranch = document.getElementById("expense-branch");
 const expenseDate = document.getElementById("expense-date");
 const expenseCurrency = document.getElementById("expense-currency");
+const expenseSupplier = document.getElementById("expense-supplier");
 const expenseAmount = document.getElementById("expense-amount");
 const expenseDescription = document.getElementById("expense-description");
 const expenseSubmitBtn = document.getElementById("expense-submit-btn");
@@ -106,6 +119,17 @@ const applyFiltersBtn = document.getElementById("apply-filters");
 const expenseStats = document.getElementById("expense-stats");
 const expensesTable = document.getElementById("expenses-table");
 const searchInput = document.getElementById("expense-search");
+const sortState = createSortState("created_at", "desc");
+
+const EXPENSE_SORT = {
+  expense_date: (e) => e.expense_date || "",
+  branch_name: (e) => e.branch_name || "",
+  supplier_name: (e) => e.supplier_name || "",
+  description: (e) => e.description || "",
+  amount: (e) => Number(e.amount),
+  recorded_by_name: (e) => e.recorded_by_name || "",
+  created_at: (e) => e.created_at || "",
+};
 
 function getTodayISO() {
   const now = new Date();
@@ -134,6 +158,7 @@ function matchesSearch(expense) {
   if (!searchQuery) return true;
   const haystack = [
     expense.description,
+    expense.supplier_name,
     expense.branch_name,
     expense.currency_code,
     expense.currency_name,
@@ -173,7 +198,7 @@ function renderStats() {
 }
 
 function renderExpenses() {
-  const filtered = allExpenses.filter(matchesSearch);
+  const filtered = sortItems(allExpenses.filter(matchesSearch), sortState, EXPENSE_SORT);
 
   if (!filtered.length) {
     expensesTable.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching expenses" : "No expenses in this period"}</p></div>`;
@@ -184,12 +209,13 @@ function renderExpenses() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Branch</th>
-          <th>Description</th>
-          <th style="text-align: right;">Amount</th>
-          <th>Recorded by</th>
-          <th>Logged</th>
+          ${sortTh("Date", "expense_date", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Supplier", "supplier_name", sortState)}
+          ${sortTh("Description", "description", sortState)}
+          ${sortTh("Amount", "amount", sortState, { align: "right" })}
+          ${sortTh("Recorded by", "recorded_by_name", sortState)}
+          ${sortTh("Logged", "created_at", sortState)}
         </tr>
       </thead>
       <tbody>
@@ -197,6 +223,7 @@ function renderExpenses() {
           <tr>
             <td>${expense.expense_date}</td>
             <td>${expense.branch_name}</td>
+            <td>${expense.supplier_name || "—"}</td>
             <td>${expense.description}</td>
             <td style="text-align: right; white-space: nowrap;">
               ${formatAmount(expense)}
@@ -212,15 +239,10 @@ function renderExpenses() {
 }
 
 function populateBranchSelects() {
-  const options = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
-  expenseBranch.innerHTML = `<option value="">Select branch…</option>${options}`;
-  filterBranch.innerHTML = `<option value="">All branches</option>${options}`;
-
-  if (STAFF_BRANCH_ID) {
-    expenseBranch.value = String(STAFF_BRANCH_ID);
-    filterBranch.value = String(STAFF_BRANCH_ID);
-  } else if (branches.length === 1) {
-    expenseBranch.value = String(branches[0].id);
+  const visibleBranches = branchesForUser(branches, STAFF_BRANCH_ID, canFilterAnyBranch);
+  setupBranchSelect(expenseBranch, visibleBranches, { canSelectAny: canFilterAnyBranch });
+  if (filterBranch) {
+    setupBranchFilter(filterBranch, branches, { canSelectAny: canFilterAnyBranch, staffBranchId: STAFF_BRANCH_ID });
   }
 }
 
@@ -236,11 +258,19 @@ function populateCurrencySelect() {
   else if (active.length) expenseCurrency.value = String(active[0].id);
 }
 
+function populateSupplierSelect() {
+  const active = suppliers.filter(s => s.is_active);
+  expenseSupplier.innerHTML = active.length
+    ? `<option value="">None (optional)</option>${active.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
+    : `<option value="">None (optional)</option>`;
+}
+
 function listParams() {
   const params = {};
   if (filterFrom.value) params.from = filterFrom.value;
   if (filterTo.value) params.to = filterTo.value;
-  if (filterBranch.value) params.branch = filterBranch.value;
+  const branch = effectiveBranchParam(canFilterAnyBranch, STAFF_BRANCH_ID, filterBranch?.value);
+  if (branch) params.branch = branch;
   return params;
 }
 
@@ -277,16 +307,19 @@ expenseForm.addEventListener("submit", async (event) => {
 
   expenseSubmitBtn.disabled = true;
   try {
-    await apiPost("/expenses/", {
+    const payload = {
       branch: Number(branchId),
       expense_date: expenseDate.value || getTodayISO(),
       amount: amount.toFixed(2),
       currency: Number(expenseCurrency.value),
       description,
-    });
+    };
+    if (expenseSupplier.value) payload.supplier = Number(expenseSupplier.value);
+    await apiPost("/expenses/", payload);
     showToast("Expense recorded");
     expenseDescription.value = "";
     expenseAmount.value = "";
+    expenseSupplier.value = "";
     await loadExpenses();
   } catch (err) {
     showToast(err.message, true);
@@ -301,17 +334,22 @@ searchInput.addEventListener("input", () => {
   renderExpenses();
 });
 
+bindTableSort(expensesTable, sortState, renderExpenses);
+
 setDefaultDates();
 
 Promise.all([
   apiGet("/branches/"),
   apiGet("/currencies/"),
+  apiGet("/suppliers/?active_only=true&page_size=500"),
 ])
-  .then(([branchData, currencyData]) => {
+  .then(([branchData, currencyData, supplierData]) => {
     branches = unwrapList(branchData);
     currencies = unwrapList(currencyData);
+    suppliers = unwrapList(supplierData);
     populateBranchSelects();
     populateCurrencySelect();
+    populateSupplierSelect();
     return loadExpenses();
   })
   .catch(err => {

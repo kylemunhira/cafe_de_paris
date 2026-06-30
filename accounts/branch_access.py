@@ -102,8 +102,30 @@ def user_can_manage_branches(user):
     return user.username.casefold() in GLOBAL_ACCESS_USERNAMES
 
 
+def user_is_branch_manager(user):
+    """Branch manager — operational console without HQ dashboard or stores transfers."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.BRANCH_MANAGER
+
+
+def user_can_access_dashboard(user):
+    """HQ and global users only — not cashiers, GRV staff, or branch managers."""
+    if not user_can_access_management_console(user):
+        return False
+    return not user_is_branch_manager(user)
+
+
 def user_can_manage_users(user):
     """Only HQ admins and designated global users may manage staff accounts."""
+    if user_is_branch_manager(user):
+        return False
     return user_has_global_branch_access(user)
 
 
@@ -145,14 +167,56 @@ def user_can_access_stores_transfers(user):
     """Central stores staff, HQ admins, and designated global users."""
     if not user or not user.is_authenticated:
         return False
+    if user_is_branch_manager(user) or user_is_grv_staff(user):
+        return False
     if user_has_global_branch_access(user):
         return True
     return get_staff_branch_type(user) == BranchType.STORES
 
 
+def user_is_cashier(user):
+    """Branch cashier — limited web console (POS and fiscal documents only)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.CASHIER
+
+
+def user_is_grv_staff(user):
+    """Branch/HQ/stores staff role — limited web console (GRV only)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.STAFF
+
+
+def user_can_access_management_console(user):
+    """Full management console — not cashiers or GRV-only staff."""
+    if not user or not user.is_authenticated:
+        return False
+    return not user_is_cashier(user) and not user_is_grv_staff(user)
+
+
+def user_can_access_cashier_invoices(user):
+    """Cashiers on fiscal branches may view proforma invoices."""
+    return user_is_cashier(user) and user_can_access_fiscal_receipts(user)
+
+
 def user_can_access_grv(user):
     """Branch/HQ/stores staff receive goods via GRV; global users use transfer pages."""
     if not user or not user.is_authenticated:
+        return False
+    if user_is_cashier(user):
         return False
     if user_has_global_branch_access(user):
         return False
@@ -200,6 +264,11 @@ def user_can_create_purchase_orders(user):
     return profile.role == StaffRole.BRANCH_MANAGER
 
 
+def user_can_manage_dining_tables(user):
+    """HQ admins and branch managers configure POS dining tables."""
+    return user_can_create_purchase_orders(user)
+
+
 def user_can_approve_purchase_orders(user):
     """HQ admins approve submitted purchase orders."""
     return user_has_global_branch_access(user)
@@ -216,6 +285,21 @@ def user_can_approve_fiscal_receipt(user):
     except StaffProfile.DoesNotExist:
         return False
     return profile.role == StaffRole.BRANCH_MANAGER
+
+
+def user_can_manage_fiscal_day(user):
+    """POS staff on a fiscal branch may check status and open/close the fiscal day."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    if not user_can_access_pos(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.branch.fiscalization_enabled
 
 
 def user_can_access_fiscal_receipts(user):

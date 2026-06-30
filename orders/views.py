@@ -257,6 +257,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     queryset = Expense.objects.select_related(
         "branch",
         "currency",
+        "supplier",
         "recorded_by",
     ).all()
     serializer_class = ExpenseSerializer

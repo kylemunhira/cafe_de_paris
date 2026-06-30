@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from accounts.models import StaffProfile
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
+from inventory.models import StockTake, StockTakeStatus, StockTakeType
 from orders.day_end import build_day_end_report
 from orders.models import Expense, FiscalApprovalStatus, KitchenStatus, Order, OrderStatus
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
@@ -390,6 +391,14 @@ class DayEndReportTests(TestCase):
         )
         return order
 
+    def _complete_daily_stock_take(self, count_date=None):
+        StockTake.objects.create(
+            branch=self.branch,
+            stock_take_type=StockTakeType.DAILY,
+            count_date=count_date or self.today,
+            status=StockTakeStatus.COMPLETED,
+        )
+
     def test_build_day_end_report_aggregates_sales(self):
         self._create_paid_order(product=self.latte, quantity=Decimal("2"))
         self._create_paid_order(product=self.espresso, quantity=Decimal("1"), order_type="dine_in")
@@ -437,6 +446,7 @@ class DayEndReportTests(TestCase):
 
     def test_day_end_print_view(self):
         self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+        self._complete_daily_stock_take()
 
         response = self.client.get(f"/pos/day-end/print/?branch={self.branch.id}")
         self.assertEqual(response.status_code, 200)
@@ -444,6 +454,14 @@ class DayEndReportTests(TestCase):
         self.assertContains(response, "Latte")
         self.assertContains(response, "Orders")
         self.assertContains(response, "Highland")
+
+    def test_day_end_print_blocked_without_daily_stock_take(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+
+        response = self.client.get(f"/pos/day-end/print/?branch={self.branch.id}")
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Completed daily stock take required", status_code=403)
+        self.assertContains(response, "post variances", status_code=403)
 
 
 class ExpenseApiTests(TestCase):
@@ -486,7 +504,29 @@ class ExpenseApiTests(TestCase):
         self.assertEqual(Expense.objects.count(), 1)
         expense = Expense.objects.get()
         self.assertEqual(expense.description, "Petty cash — sugar")
+        self.assertIsNone(expense.supplier)
         self.assertEqual(expense.recorded_by, self.user)
+
+    def test_create_expense_with_supplier(self):
+        from purchasing.models import Supplier
+
+        supplier = Supplier.objects.create(name="Dairy Co")
+        response = self.client.post(
+            "/api/expenses/",
+            {
+                "branch": self.branch.id,
+                "expense_date": "2026-06-17",
+                "amount": "25.00",
+                "currency": self.usd.id,
+                "description": "Milk delivery",
+                "supplier": supplier.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        expense = Expense.objects.get()
+        self.assertEqual(expense.supplier, supplier)
+        self.assertEqual(response.data["supplier_name"], "Dairy Co")
 
     def test_list_expenses_filtered_by_date(self):
         Expense.objects.create(
@@ -558,4 +598,3 @@ class ExpensesPageTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get("/expenses/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Record expense")

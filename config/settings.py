@@ -150,6 +150,11 @@ ZIMRA_FISCAL_BASE_URL = os.getenv(
 )
 ZIMRA_DEFAULT_DEVICE_ID = os.getenv("ZIMRA_DEFAULT_DEVICE_ID", "30541")
 ZIMRA_SUBMIT_TIMEOUT = int(os.getenv("ZIMRA_SUBMIT_TIMEOUT", "30"))
+ZIMRA_GET_STATUS_ACTION = os.getenv("ZIMRA_GET_STATUS_ACTION", "getstatus")
+ZIMRA_GET_STATUS_FALLBACKS = os.getenv("ZIMRA_GET_STATUS_FALLBACKS", "")
+ZIMRA_OPEN_DAY_ACTION = os.getenv("ZIMRA_OPEN_DAY_ACTION", "openday")
+ZIMRA_OPEN_DAY_FALLBACKS = os.getenv("ZIMRA_OPEN_DAY_FALLBACKS", "")
+ZIMRA_CLOSE_DAY_ACTION = os.getenv("ZIMRA_CLOSE_DAY_ACTION", "close_day")
 
 # Prices are tax-inclusive; receipt subtotal = total / (1 + rate/100).
 INCLUSIVE_TAX_RATE = Decimal(os.getenv("INCLUSIVE_TAX_RATE", "15.5"))

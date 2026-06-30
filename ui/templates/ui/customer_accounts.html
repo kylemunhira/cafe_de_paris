@@ -8,7 +8,7 @@
 <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
   <div class="form-group">
     <label for="customer-search">Customer</label>
-    <input type="search" id="customer-search" placeholder="Search by name or phone…" autocomplete="off">
+    <input type="search" id="customer-search" placeholder="Filter by name or phone…" autocomplete="off">
   </div>
   <div id="customer-picker" class="customer-picker-list" style="margin-top: 0.75rem;"></div>
 </div>
@@ -97,19 +97,30 @@
 </div>
 
 <div id="empty-state" class="empty-state" style="margin-top: 2rem;">
-  <p>Search and select a customer to view their account or record a deposit.</p>
+  <p>Select a customer to view their account or record a deposit.</p>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let customers = [];
 let currencies = [];
 let depositBranchId = null;
 let selectedCustomer = null;
 let searchQuery = "";
+let cachedTransactions = [];
+const txnSortState = createSortState("created_at", "desc");
+
+const TXN_SORT = {
+  created_at: (t) => t.created_at || "",
+  type: (t) => t.statement_label || t.transaction_type_display || "",
+  amount: (t) => Number(t.amount),
+  balance_after: (t) => Number(t.balance_after),
+  details: (t) => t.notes || t.order_id || "",
+};
 
 const customerSearch = document.getElementById("customer-search");
 const customerPicker = document.getElementById("customer-picker");
@@ -175,22 +186,19 @@ function displayName(customer) {
 }
 
 function filteredCustomers() {
-  if (!searchQuery) return customers.slice(0, 20);
+  if (!searchQuery) return customers;
   const q = searchQuery.toLowerCase();
   return customers.filter(c => {
     const haystack = [displayName(c), c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(q);
-  }).slice(0, 20);
+  });
 }
 
 function renderCustomerPicker() {
   const list = filteredCustomers();
-  if (!searchQuery) {
-    customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">Type to search ${customers.length} customers</p>`;
-    return;
-  }
   if (!list.length) {
-    customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">No matching customers</p>`;
+    const message = searchQuery ? "No matching customers" : "No customers yet";
+    customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">${message}</p>`;
     return;
   }
   customerPicker.innerHTML = list.map(c => `
@@ -228,47 +236,54 @@ async function loadTransactions() {
     summaryClosing.textContent = formatCurrency(data.closing_balance);
     statementSummary.style.display = "";
 
-    const txns = data.transactions || [];
-    if (!txns.length) {
-      transactionsTable.innerHTML = `<div class="empty-state"><p>No transactions yet</p></div>`;
-      return;
-    }
-    transactionsTable.innerHTML = `
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Amount</th>
-            <th>Balance</th>
-            <th>Details</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${[...txns].reverse().map(t => {
-            const amountClass = Number(t.amount) >= 0 ? "text-success" : "text-danger";
-            const amountLabel = Number(t.amount) >= 0 ? `+${formatCurrency(t.amount)}` : formatCurrency(t.amount);
-            const details = t.transaction_type === "deposit"
-              ? `${t.currency_name || ""} ${t.amount_received != null ? formatCurrency(t.amount_received) : ""}${t.notes ? ` · ${t.notes}` : ""}`
-              : (t.order_id ? `Order #${t.order_id}` : (t.notes || "—"));
-            return `
-              <tr>
-                <td>${formatDate(t.created_at)}</td>
-                <td>${t.statement_label || t.transaction_type_display}</td>
-                <td class="${amountClass}" style="font-weight: 600;">${amountLabel}</td>
-                <td>${formatCurrency(t.balance_after)}</td>
-                <td>${details}</td>
-                <td><button type="button" class="btn btn-ghost btn-sm" data-print-txn="${t.id}">Print</button></td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-    `;
+    cachedTransactions = data.transactions || [];
+    renderTransactions();
   } catch (err) {
     transactionsTable.innerHTML = `<div class="empty-state">Failed to load transactions: ${err.message}</div>`;
   }
+}
+
+function renderTransactions() {
+  if (!cachedTransactions.length) {
+    transactionsTable.innerHTML = `<div class="empty-state"><p>No transactions yet</p></div>`;
+    return;
+  }
+
+  const sorted = sortItems(cachedTransactions, txnSortState, TXN_SORT);
+
+  transactionsTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Date", "created_at", txnSortState)}
+          ${sortTh("Type", "type", txnSortState)}
+          ${sortTh("Amount", "amount", txnSortState)}
+          ${sortTh("Balance", "balance_after", txnSortState)}
+          ${sortTh("Details", "details", txnSortState)}
+          ${actionTh()}
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(t => {
+          const amountClass = Number(t.amount) >= 0 ? "text-success" : "text-danger";
+          const amountLabel = Number(t.amount) >= 0 ? `+${formatCurrency(t.amount)}` : formatCurrency(t.amount);
+          const details = t.transaction_type === "deposit"
+            ? `${t.currency_name || ""} ${t.amount_received != null ? formatCurrency(t.amount_received) : ""}${t.notes ? ` · ${t.notes}` : ""}`
+            : (t.order_id ? `Order #${t.order_id}` : (t.notes || "—"));
+          return `
+            <tr>
+              <td>${formatDate(t.created_at)}</td>
+              <td>${t.statement_label || t.transaction_type_display}</td>
+              <td class="${amountClass}" style="font-weight: 600;">${amountLabel}</td>
+              <td>${formatCurrency(t.balance_after)}</td>
+              <td>${details}</td>
+              <td><button type="button" class="btn btn-ghost btn-sm" data-print-txn="${t.id}">Print</button></td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 customerSearch.addEventListener("input", () => {
@@ -288,6 +303,8 @@ transactionsTable.addEventListener("click", (e) => {
   if (!btn) return;
   openStatementPrint(btn.dataset.printTxn);
 });
+
+bindTableSort(transactionsTable, txnSortState, renderTransactions);
 
 printFullStatementBtn?.addEventListener("click", () => openFullStatementPrint());
 applyStatementFilters?.addEventListener("click", () => loadTransactions());

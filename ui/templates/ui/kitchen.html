@@ -127,6 +127,10 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 
 let branches = [];
 let orders = [];
@@ -211,36 +215,20 @@ async function loadOrders() {
   }
 }
 
-const preferredBranchId = "{{ staff_branch_id|default:'' }}";
-
 async function loadBranches() {
   const data = await apiGet("/branches/?page_size=500");
-  branches = unwrapList(data).filter(
-    b => b.is_active && b.branch_type !== "bakery" && b.branch_type !== "stores"
+  branches = branchesForUser(
+    unwrapList(data).filter(
+      b => b.is_active && b.branch_type !== "bakery" && b.branch_type !== "stores"
+    ),
+    preferredBranchId,
+    canFilterAnyBranch,
   );
 
-  if (!branches.length) {
-    branchSelect.innerHTML = `<option value="">No branches available</option>`;
-    branchSelect.disabled = true;
-    await loadOrders();
-    return;
-  }
-
-  const preferred = preferredBranchId
-    && branches.some(b => String(b.id) === preferredBranchId)
-    ? preferredBranchId
-    : "";
-
-  if (branches.length === 1) {
-    branchSelect.innerHTML = branches.map(
-      b => `<option value="${b.id}" selected>${b.name}</option>`
-    ).join("");
-    branchSelect.disabled = true;
-  } else {
-    branchSelect.innerHTML = `<option value="">Select branch…</option>${branches.map(
-      b => `<option value="${b.id}"${String(b.id) === preferred ? " selected" : ""}>${b.name}</option>`
-    ).join("")}`;
-  }
+  setupBranchSelect(branchSelect, branches, {
+    canSelectAny: canFilterAnyBranch,
+    emptyLabel: "No branches available",
+  });
 
   await loadOrders();
 }

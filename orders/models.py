@@ -223,6 +223,13 @@ class Expense(models.Model):
         related_name="expenses",
     )
     description = models.CharField(max_length=200)
+    supplier = models.ForeignKey(
+        "purchasing.Supplier",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expenses",
+    )
     recorded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -38,6 +38,7 @@ export async function pullCatalog(session) {
     categories: data.categories,
     products: data.products,
     currencies: data.currencies,
+    dining_tables: data.dining_tables || [],
   });
   if (data.inclusive_tax_rate != null) {
     await window.pos.setSetting("inclusive_tax_rate", data.inclusive_tax_rate);

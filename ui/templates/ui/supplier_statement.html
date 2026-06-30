@@ -66,6 +66,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const staffBranchId = {{ staff_branch_id|default:"null" }};
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
@@ -85,6 +86,14 @@ const summaryGeneratedAt = document.getElementById("summary-generated-at");
 const statementPrintUrlTemplate = "{% url 'ui:supplier-statement-print' 0 %}".replace("/0/", "/{id}/");
 
 let summaryData = null;
+const sortState = createSortState("period_spend", "desc");
+
+const SUPPLIER_REPORT_SORT = {
+  name: (s) => s.name || "",
+  phone: (s) => s.phone || "",
+  vat_number: (s) => s.vat_number || "",
+  period_spend: (s) => Number(s.period_spend),
+};
 
 function defaultDates() {
   const today = new Date();
@@ -135,19 +144,21 @@ function renderSummary(data) {
     return;
   }
 
+  const sorted = sortItems(suppliers, sortState, SUPPLIER_REPORT_SORT);
+
   summaryTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Supplier</th>
-          <th>Phone</th>
-          <th>VAT</th>
-          <th style="text-align: right;">Spend in period</th>
-          <th></th>
+          ${sortTh("Supplier", "name", sortState)}
+          ${sortTh("Phone", "phone", sortState)}
+          ${sortTh("VAT", "vat_number", sortState)}
+          ${sortTh("Spend in period", "period_spend", sortState, { align: "right" })}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${suppliers.map(s => `
+        ${sorted.map(s => `
           <tr>
             <td><strong>${s.name}</strong></td>
             <td>${s.phone || "—"}</td>
@@ -205,6 +216,10 @@ summaryTable.addEventListener("click", (e) => {
   openStatementPopup(btn.dataset.supplierId);
 });
 printSummaryBtn?.addEventListener("click", () => window.print());
+
+bindTableSort(summaryTable, sortState, () => {
+  if (summaryData) renderSummary(summaryData);
+});
 
 const defaults = defaultDates();
 if (filterFrom) filterFrom.value = defaults.from;

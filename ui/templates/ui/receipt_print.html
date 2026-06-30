@@ -7,7 +7,11 @@
   <title>{% if is_proforma %}Proforma {{ order.receipt_number }}{% elif fiscal and not is_proforma %}Fiscal receipt {{ fiscal.invoice_no }}{% elif order.receipt_number %}Receipt #{{ order.receipt_number }}{% else %}Receipt #{{ order.id }}{% endif %}{% if order.branch.fiscalization_enabled %} — Café de Paris{% endif %}</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
-<body>
+<body
+  data-pos-url="{% url 'ui:pos' %}"
+  {% if auto_print %}data-auto-print="true"{% endif %}
+  {% if fiscal and fiscal.qr_url %}data-fiscal-qr-url="{{ fiscal.qr_url|escapejs }}"{% endif %}
+>
   <div class="toolbar">
     <button type="button" onclick="window.print()">{% if is_proforma %}Print proforma{% else %}Print receipt{% endif %}</button>
   </div>
@@ -142,49 +146,45 @@
 
   {% if fiscal and fiscal.qr_url %}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  {% endif %}
+  {% if fiscal and fiscal.qr_url or auto_print %}
   <script>
-    const fiscalQrUrl = "{{ fiscal.qr_url|escapejs }}";
-    const posUrl = "{% url 'ui:pos' %}";
-    const autoPrint = {{ auto_print|yesno:"true,false" }};
+    (function () {
+      const body = document.body;
+      const posUrl = body.dataset.posUrl;
+      const autoPrint = body.dataset.autoPrint === "true";
+      const fiscalQrUrl = body.dataset.fiscalQrUrl || "";
 
-    function renderFiscalQr() {
-      const el = document.getElementById("fiscal-qr");
-      if (!el || !fiscalQrUrl) return;
-      new QRCode(el, {
-        text: fiscalQrUrl,
-        width: 120,
-        height: 120,
-        correctLevel: QRCode.CorrectLevel.M,
-      });
-    }
+      function renderFiscalQr() {
+        if (!fiscalQrUrl || typeof QRCode === "undefined") return;
+        const el = document.getElementById("fiscal-qr");
+        if (!el) return;
+        new QRCode(el, {
+          text: fiscalQrUrl,
+          width: 120,
+          height: 120,
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      }
 
-    window.addEventListener("load", () => {
-      renderFiscalQr();
-      if (!autoPrint) return;
-      requestAnimationFrame(() => {
-        window.print();
-      });
-    });
-
-    if (autoPrint) {
-      window.addEventListener("afterprint", () => {
+      function redirectToPos() {
         window.close();
         setTimeout(() => {
-          if (!window.closed) window.location.replace(posUrl);
+          if (!window.closed && posUrl) window.location.replace(posUrl);
         }, 150);
+      }
+
+      window.addEventListener("load", () => {
+        renderFiscalQr();
+        if (autoPrint) {
+          requestAnimationFrame(() => window.print());
+        }
       });
-    }
-  </script>
-  {% elif auto_print %}
-  <script>
-    const posUrl = "{% url 'ui:pos' %}";
-    window.addEventListener("load", () => window.print());
-    window.addEventListener("afterprint", () => {
-      window.close();
-      setTimeout(() => {
-        if (!window.closed) window.location.replace(posUrl);
-      }, 150);
-    });
+
+      if (autoPrint) {
+        window.addEventListener("afterprint", redirectToPos);
+      }
+    })();
   </script>
   {% endif %}
 </body>

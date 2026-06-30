@@ -8,13 +8,20 @@ from orders.models import Order
 
 from .branch_access import (
     user_can_access_bakery_transfers,
+    user_can_access_cashier_invoices,
+    user_can_access_dashboard,
+    user_can_access_fiscal_receipts,
     user_can_access_grv,
     user_can_access_kitchen,
+    user_can_access_management_console,
     user_can_access_pos,
     user_can_access_stores_transfers,
     user_can_manage_branches,
     user_can_manage_users,
     user_has_global_branch_access,
+    user_is_cashier,
+    user_is_branch_manager,
+    user_is_grv_staff,
 )
 from .models import StaffProfile, StaffRole
 
@@ -278,6 +285,15 @@ class TransferNavAccessTests(APITestCase):
         StaffProfile.objects.create(
             user=self.stores_clerk,
             branch=self.stores,
+            role=StaffRole.STAFF,
+        )
+
+        self.branch_manager = User.objects.create_user(
+            username="manager", password="pass"
+        )
+        StaffProfile.objects.create(
+            user=self.branch_manager,
+            branch=self.stores,
             role=StaffRole.BRANCH_MANAGER,
         )
 
@@ -287,20 +303,28 @@ class TransferNavAccessTests(APITestCase):
         self.assertFalse(user_can_access_pos(self.baker))
 
     def test_stores_staff_access_flags(self):
-        self.assertTrue(user_can_access_stores_transfers(self.stores_clerk))
+        self.assertFalse(user_can_access_stores_transfers(self.stores_clerk))
         self.assertTrue(user_can_access_grv(self.stores_clerk))
         self.assertFalse(user_can_access_bakery_transfers(self.stores_clerk))
         self.assertFalse(user_can_access_pos(self.stores_clerk))
+        self.assertFalse(user_can_access_stores_transfers(self.branch_manager))
+        self.assertTrue(user_is_branch_manager(self.branch_manager))
+        self.assertFalse(user_can_access_dashboard(self.branch_manager))
+        self.assertFalse(user_can_manage_users(self.branch_manager))
 
     def test_branch_staff_access_flags(self):
         self.assertFalse(user_can_access_bakery_transfers(self.cashier))
-        self.assertTrue(user_can_access_grv(self.cashier))
+        self.assertFalse(user_can_access_grv(self.cashier))
         self.assertTrue(user_can_access_pos(self.cashier))
+        self.assertTrue(user_is_cashier(self.cashier))
+        self.assertFalse(user_can_access_management_console(self.cashier))
 
     def test_hq_staff_access_flags(self):
         self.assertFalse(user_can_access_bakery_transfers(self.hq_staff))
         self.assertTrue(user_can_access_grv(self.hq_staff))
         self.assertFalse(user_can_access_pos(self.hq_staff))
+        self.assertTrue(user_is_grv_staff(self.hq_staff))
+        self.assertFalse(user_can_access_management_console(self.hq_staff))
 
     def test_pos_access_can_be_granted_independently_of_branch(self):
         hq_cashier = User.objects.create_user(username="hqcashier", password="pass")
@@ -370,7 +394,7 @@ class TransferNavAccessTests(APITestCase):
 
         self.client.force_login(self.stores_clerk)
         response = self.client.get(reverse("ui:stores-transfers"))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
 
         self.client.force_login(self.hq_admin)
         response = self.client.get(reverse("ui:stores-transfers"))
@@ -383,7 +407,7 @@ class TransferNavAccessTests(APITestCase):
 
         self.client.force_login(self.cashier)
         response = self.client.get(reverse("ui:grv"))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
 
         self.client.force_login(self.hq_staff)
         response = self.client.get(reverse("ui:grv"))
@@ -645,3 +669,166 @@ class KitchenLoginTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(user_can_access_kitchen(self.baker))
+
+
+class CashierConsoleAccessTests(APITestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+            fiscalization_enabled=True,
+        )
+        self.non_fiscal_branch = Branch.objects.create(
+            name="Borrowdale",
+            branch_type=BranchType.BRANCH,
+            fiscalization_enabled=False,
+        )
+
+        self.cashier = User.objects.create_user(username="cashier", password="pass")
+        StaffProfile.objects.create(
+            user=self.cashier,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+
+        self.non_fiscal_cashier = User.objects.create_user(
+            username="cashier2", password="pass"
+        )
+        StaffProfile.objects.create(
+            user=self.non_fiscal_cashier,
+            branch=self.non_fiscal_branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+
+        self.manager = User.objects.create_user(username="manager", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+            pos_access=True,
+        )
+
+    def test_cashier_redirected_from_dashboard_to_pos(self):
+        self.client.force_login(self.cashier)
+        response = self.client.get(reverse("ui:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("ui:pos"))
+
+    def test_cashier_can_access_pos_only_pages(self):
+        self.client.force_login(self.cashier)
+        self.assertEqual(self.client.get(reverse("ui:pos")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:orders")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:products")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:expenses")).status_code, 403)
+
+    def test_fiscal_cashier_can_access_invoices_and_receipts(self):
+        self.assertTrue(user_can_access_cashier_invoices(self.cashier))
+        self.client.force_login(self.cashier)
+        self.assertEqual(self.client.get(reverse("ui:invoices")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:receipts")).status_code, 200)
+
+    def test_non_fiscal_cashier_cannot_access_invoices_or_receipts(self):
+        self.assertFalse(user_can_access_cashier_invoices(self.non_fiscal_cashier))
+        self.assertFalse(user_can_access_fiscal_receipts(self.non_fiscal_cashier))
+        self.client.force_login(self.non_fiscal_cashier)
+        self.assertEqual(self.client.get(reverse("ui:invoices")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:receipts")).status_code, 403)
+
+    def test_branch_manager_retains_operational_console_access(self):
+        self.assertFalse(user_is_cashier(self.manager))
+        self.assertTrue(user_can_access_management_console(self.manager))
+        self.assertFalse(user_can_access_dashboard(self.manager))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse("ui:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get(reverse("ui:orders")).status_code, 200)
+
+
+class GrvStaffConsoleAccessTests(APITestCase):
+    def setUp(self):
+        self.hq = Branch.objects.create(
+            name="HQ",
+            branch_type=BranchType.HQ,
+        )
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+        )
+
+        self.grv_staff = User.objects.create_user(username="hqstaff", password="pass")
+        StaffProfile.objects.create(
+            user=self.grv_staff,
+            branch=self.hq,
+            role=StaffRole.STAFF,
+        )
+
+        self.manager = User.objects.create_user(username="manager", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+        )
+
+    def test_grv_staff_redirected_from_dashboard_to_grv(self):
+        self.client.force_login(self.grv_staff)
+        response = self.client.get(reverse("ui:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("ui:grv"))
+
+    def test_grv_staff_can_access_grv_only(self):
+        self.client.force_login(self.grv_staff)
+        self.assertEqual(self.client.get(reverse("ui:grv")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:kitchen")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:orders")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:pos")).status_code, 403)
+
+    def test_branch_manager_retains_operational_console_access(self):
+        self.assertFalse(user_is_grv_staff(self.manager))
+        self.assertTrue(user_can_access_management_console(self.manager))
+        self.assertFalse(user_can_access_dashboard(self.manager))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse("ui:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get(reverse("ui:grv")).status_code, 200)
+
+
+class BranchManagerConsoleAccessTests(APITestCase):
+    def setUp(self):
+        self.stores = Branch.objects.create(
+            name="Central Stores",
+            branch_type=BranchType.STORES,
+        )
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+        )
+
+        self.manager = User.objects.create_user(username="manager", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+            pos_access=True,
+        )
+
+        self.hq_admin = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=self.hq_admin,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+        )
+
+    def test_branch_manager_cannot_access_dashboard_users_or_stores_transfers(self):
+        self.client.force_login(self.manager)
+        self.assertEqual(self.client.get(reverse("ui:dashboard")).status_code, 302)
+        self.assertEqual(self.client.get(reverse("ui:users")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:stores-transfers")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:pos")).status_code, 200)
+
+    def test_hq_admin_keeps_dashboard_users_and_stores_transfers(self):
+        self.client.force_login(self.hq_admin)
+        self.assertEqual(self.client.get(reverse("ui:dashboard")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:users")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:stores-transfers")).status_code, 200)

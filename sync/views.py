@@ -67,6 +67,7 @@ class SyncPullView(DesktopSyncPermissionMixin, APIView):
                 "branch": BranchSerializer(branch).data,
                 "categories": catalog["categories"],
                 "products": catalog["products"],
+                "dining_tables": catalog["dining_tables"],
                 "currencies": get_currencies_payload(),
                 "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
                 "synced_at": timezone.now().isoformat(),

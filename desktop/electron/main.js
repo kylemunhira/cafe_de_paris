@@ -108,6 +108,7 @@ ipcMain.handle("catalog:list", () => ({
   categories: db.listCategories(),
   products: db.listProducts(),
   currencies: db.listCurrencies(),
+  diningTables: db.listDiningTables(),
   catalogSyncedAt: db.getCatalogSyncedAt(),
 }));
 

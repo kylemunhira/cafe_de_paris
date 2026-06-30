@@ -25,8 +25,8 @@
     </div>
   </div>
   <p style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
-    <strong>Daily</strong> — ingredients and food items (excludes assets).
-    <strong>Monthly</strong> — all products including assets.
+    <strong>Daily</strong> — branch ingredients only (POS menu items are made per order, not counted).
+    <strong>Monthly</strong> — ingredients plus fixed assets.
   </p>
 </div>
 
@@ -43,11 +43,18 @@
       <p id="active-count-meta" style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
     </div>
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <a href="#" class="btn btn-ghost btn-sm" id="download-csv-btn" style="display: none;" download>Download CSV</a>
+      <label class="btn btn-ghost btn-sm" id="upload-csv-label" style="cursor: pointer; display: none;">
+        Import CSV
+        <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
+      </label>
+      <button type="button" class="btn btn-ghost btn-sm" id="close-count-btn" style="display: none;">Close</button>
       <button type="button" class="btn btn-ghost btn-sm" id="save-lines-btn">Save progress</button>
       <button type="button" class="btn btn-ghost btn-sm" id="cancel-count-btn">Cancel</button>
       <button type="button" class="btn btn-primary btn-sm" id="complete-count-btn">Complete &amp; post variances</button>
     </div>
   </div>
+  <div id="completed-line-filters" class="stock-take-line-filters" style="display: none;"></div>
   <div class="table-wrap" id="count-lines-table"></div>
 </div>
 
@@ -67,12 +74,29 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
 let branches = [];
 let allStockTakes = [];
 let activeStockTake = null;
 let activeFilter = "all";
+let completedLineFilter = "all";
+const sortState = createSortState("created_at", "desc");
+
+const STOCK_TAKE_SORT = {
+  id: (st) => Number(st.id),
+  stock_take_type: (st) => st.stock_take_type_display || "",
+  branch_name: (st) => st.branch_name || "",
+  count_date: (st) => st.count_date || "",
+  line_count: (st) => Number(st.line_count ?? st.lines?.length ?? 0),
+  variance_count: (st) => Number(st.variance_count ?? 0),
+  status: (st) => st.status || "",
+  created_at: (st) => st.created_at || "",
+};
 
 const branchSelect = document.getElementById("branch-select");
 const countDateInput = document.getElementById("count-date");
@@ -82,6 +106,11 @@ const activeCountPanel = document.getElementById("active-count-panel");
 const activeCountTitle = document.getElementById("active-count-title");
 const activeCountMeta = document.getElementById("active-count-meta");
 const countLinesTable = document.getElementById("count-lines-table");
+const downloadCsvBtn = document.getElementById("download-csv-btn");
+const uploadCsvLabel = document.getElementById("upload-csv-label");
+const csvUpload = document.getElementById("csv-upload");
+const closeCountBtn = document.getElementById("close-count-btn");
+const completedLineFilters = document.getElementById("completed-line-filters");
 
 countDateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -90,8 +119,32 @@ function formatQty(value) {
   return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "—";
 }
 
+function lineVariance(line) {
+  if (line.variance !== null && line.variance !== undefined && line.variance !== "") {
+    return Number(line.variance);
+  }
+  if (line.counted_quantity === null || line.counted_quantity === undefined || line.counted_quantity === "") {
+    return null;
+  }
+  return Number(line.counted_quantity) - Number(line.system_quantity);
+}
+
+function formatVariance(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  const qty = Number(value);
+  if (!Number.isFinite(qty)) return "—";
+  const formatted = qty.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return qty > 0 ? `+${formatted}` : formatted;
+}
+
 function selectedBranchId() {
   return branchSelect.value ? Number(branchSelect.value) : null;
+}
+
+function branchesForStockTake(allBranches) {
+  if (canFilterAnyBranch) return allBranches;
+  if (!staffBranchId) return [];
+  return allBranches.filter(b => String(b.id) === staffBranchId);
 }
 
 function filterStockTakes() {
@@ -130,7 +183,7 @@ function renderStats() {
 }
 
 function renderStockTakes() {
-  const filtered = filterStockTakes();
+  const filtered = sortItems(filterStockTakes(), sortState, STOCK_TAKE_SORT);
 
   if (!filtered.length) {
     stockTakesTable.innerHTML = `<div class="empty-state"><p>No stock takes found for this filter.</p></div>`;
@@ -141,15 +194,15 @@ function renderStockTakes() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Type</th>
-          <th>Branch</th>
-          <th>Count date</th>
-          <th>Lines</th>
-          <th>Variances</th>
-          <th>Status</th>
-          <th>Created</th>
-          <th></th>
+          ${sortTh("ID", "id", sortState)}
+          ${sortTh("Type", "stock_take_type", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Count date", "count_date", sortState)}
+          ${sortTh("Lines", "line_count", sortState)}
+          ${sortTh("Variances", "variance_count", sortState)}
+          ${sortTh("Status", "status", sortState)}
+          ${sortTh("Created", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -166,7 +219,9 @@ function renderStockTakes() {
             <td>
               ${st.status === "draft"
                 ? `<button class="btn btn-ghost btn-sm open-count-btn" data-id="${st.id}">Continue</button>`
-                : ""}
+                : st.status === "completed"
+                  ? `<button class="btn btn-ghost btn-sm open-count-btn" data-id="${st.id}">View details</button>`
+                  : ""}
             </td>
           </tr>
         `).join("")}
@@ -185,20 +240,76 @@ function varianceClass(variance) {
 function renderActiveCount() {
   if (!activeStockTake) {
     activeCountPanel.style.display = "none";
+    downloadCsvBtn.style.display = "none";
+    uploadCsvLabel.style.display = "none";
+    closeCountBtn.style.display = "none";
+    completedLineFilters.style.display = "none";
     return;
   }
 
   activeCountPanel.style.display = "block";
-  activeCountTitle.textContent = `${activeStockTake.stock_take_type_display} stock take #${activeStockTake.id}`;
-  activeCountMeta.textContent = `${activeStockTake.branch_name} · ${activeStockTake.count_date} · ${activeStockTake.lines.length} products`;
   const isCompleted = activeStockTake.status === "completed";
+  const lines = activeStockTake.lines || [];
+  const varianceLines = lines.filter(line => {
+    const variance = lineVariance(line);
+    return variance !== null && variance !== 0;
+  });
+
+  activeCountTitle.textContent = isCompleted
+    ? `Completed ${activeStockTake.stock_take_type_display.toLowerCase()} stock take #${activeStockTake.id}`
+    : `${activeStockTake.stock_take_type_display} stock take #${activeStockTake.id}`;
+
+  const metaParts = [
+    activeStockTake.branch_name,
+    activeStockTake.count_date,
+    `${lines.length} ingredients`,
+  ];
+  if (isCompleted) {
+    metaParts.push(`${varianceLines.length} variance${varianceLines.length === 1 ? "" : "s"} posted`);
+    if (activeStockTake.completed_at) {
+      metaParts.push(`completed ${formatDate(activeStockTake.completed_at)}`);
+    }
+  }
+  activeCountMeta.textContent = metaParts.join(" · ");
+
+  downloadCsvBtn.href = isCompleted
+    ? `/api/stock-takes/${activeStockTake.id}/export-report-csv/`
+    : `/api/stock-takes/${activeStockTake.id}/export-csv/`;
+  downloadCsvBtn.textContent = isCompleted ? "Download report" : "Download CSV";
+  downloadCsvBtn.style.display = "";
+  uploadCsvLabel.style.display = activeStockTake.status === "draft" ? "" : "none";
+  closeCountBtn.style.display = isCompleted ? "" : "none";
   document.getElementById("save-lines-btn").style.display = isCompleted ? "none" : "";
   document.getElementById("cancel-count-btn").style.display = isCompleted ? "none" : "";
   document.getElementById("complete-count-btn").style.display = isCompleted ? "none" : "";
 
-  const lines = activeStockTake.lines || [];
   if (!lines.length) {
-    countLinesTable.innerHTML = `<div class="empty-state"><p>No products to count.</p></div>`;
+    completedLineFilters.style.display = "none";
+    countLinesTable.innerHTML = `<div class="empty-state"><p>No ingredients to count.</p></div>`;
+    return;
+  }
+
+  if (isCompleted) {
+    completedLineFilters.style.display = "flex";
+    completedLineFilters.innerHTML = `
+      <button class="category-tab${completedLineFilter === "all" ? " active" : ""}" data-line-filter="all">
+        All lines (${lines.length})
+      </button>
+      <button class="category-tab${completedLineFilter === "variances" ? " active" : ""}" data-line-filter="variances">
+        Variances only (${varianceLines.length})
+      </button>
+    `;
+  } else {
+    completedLineFilters.style.display = "none";
+    completedLineFilters.innerHTML = "";
+  }
+
+  const visibleLines = isCompleted && completedLineFilter === "variances"
+    ? varianceLines
+    : lines;
+
+  if (!visibleLines.length) {
+    countLinesTable.innerHTML = `<div class="empty-state"><p>No variances were posted for this stock take.</p></div>`;
     return;
   }
 
@@ -207,22 +318,25 @@ function renderActiveCount() {
       <thead>
         <tr>
           <th>Category</th>
-          <th>Product</th>
-          <th style="text-align: right; min-width: 120px;">Counted qty</th>
-          ${isCompleted ? `<th style="text-align: right;">System qty</th>` : ""}
+          <th>Ingredient</th>
+          ${isCompleted ? `<th style="text-align: right;">System (before)</th>` : ""}
+          <th style="text-align: right; min-width: 120px;">${isCompleted ? "Counted" : "Counted qty"}</th>
           ${isCompleted ? `<th style="text-align: right;">Variance</th>` : ""}
-          <th>Notes</th>
+          ${isCompleted ? "" : "<th>Notes</th>"}
         </tr>
       </thead>
       <tbody>
-        ${lines.map(line => {
-          const variance = line.counted_quantity !== null && line.counted_quantity !== undefined
-            ? Number(line.counted_quantity) - Number(line.system_quantity)
-            : null;
+        ${visibleLines.map(line => {
+          const variance = lineVariance(line);
+          const hasVariance = variance !== null && variance !== 0;
           return `
-            <tr data-line-id="${line.id}">
+            <tr data-line-id="${line.id}" class="${isCompleted && hasVariance ? "variance-row" : ""}">
               <td>${line.category_name}</td>
               <td>${line.product_name}</td>
+              ${isCompleted
+                ? `<td style="text-align: right;">${formatQty(line.system_quantity)}</td>`
+                : ""
+              }
               <td style="text-align: right;">
                 ${isCompleted
                   ? formatQty(line.counted_quantity)
@@ -231,22 +345,18 @@ function renderActiveCount() {
                 }
               </td>
               ${isCompleted
-                ? `<td style="text-align: right;">${formatQty(line.system_quantity)}</td>`
-                : ""
-              }
-              ${isCompleted
                 ? `<td style="text-align: right;" class="variance-cell ${varianceClass(variance)}">
-                    ${variance === null ? "—" : formatQty(variance)}
+                    ${formatVariance(variance)}
                   </td>`
                 : ""
               }
-              <td>
-                ${isCompleted
-                  ? (line.notes || "—")
-                  : `<input type="text" class="notes-input report-input" data-line-id="${line.id}"
-                      value="${line.notes || ""}" placeholder="Optional">`
-                }
-              </td>
+              ${isCompleted
+                ? ""
+                : `<td>
+                    <input type="text" class="notes-input report-input" data-line-id="${line.id}"
+                      value="${line.notes || ""}" placeholder="Optional">
+                  </td>`
+              }
             </tr>
           `;
         }).join("")}
@@ -285,6 +395,14 @@ async function loadStockTakes() {
 
 async function openStockTake(id) {
   activeStockTake = await apiGet(`/stock-takes/${id}/`);
+  completedLineFilter = "all";
+  renderActiveCount();
+  activeCountPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeActiveCount() {
+  activeStockTake = null;
+  completedLineFilter = "all";
   renderActiveCount();
 }
 
@@ -314,21 +432,24 @@ async function startStockTake(stockTakeType) {
 }
 
 async function saveLines() {
-  if (!activeStockTake) return;
+  if (!activeStockTake) return false;
   const lines = collectLineUpdates();
   try {
     activeStockTake = await apiPatch(`/stock-takes/${activeStockTake.id}/lines/`, { lines });
     showToast("Count saved.", "success");
     renderActiveCount();
     await loadStockTakes();
+    return true;
   } catch (err) {
     showToast(err.message, "error");
+    return false;
   }
 }
 
 async function completeCount() {
   if (!activeStockTake) return;
-  await saveLines();
+  const saved = await saveLines();
+  if (!saved) return;
   if (!confirm("Complete this stock take and post inventory variances?")) return;
   try {
     activeStockTake = await apiPost(`/stock-takes/${activeStockTake.id}/complete/`, {});
@@ -354,14 +475,50 @@ async function cancelCount() {
   }
 }
 
-async function init() {
-  branches = unwrapList(await apiGet("/branches/"));
-  branchSelect.innerHTML = branches.length > 1
-    ? `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}`
-    : branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+async function importCsv(file) {
+  if (!activeStockTake || activeStockTake.status !== "draft") return;
 
-  if (branches.length === 1) {
-    branchSelect.value = String(branches[0].id);
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const result = await apiUpload(`/stock-takes/${activeStockTake.id}/import-csv/`, formData);
+    activeStockTake = result.stock_take ?? activeStockTake;
+    showToast(`Import complete: ${result.updated} line(s) updated.`, "success");
+    renderActiveCount();
+    await loadStockTakes();
+  } catch (err) {
+    let message = err.message;
+    try {
+      const data = JSON.parse(err.message);
+      if (data?.errors?.length) {
+        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
+        message = `Import failed — ${preview}`;
+      }
+    } catch {
+      // use raw message
+    }
+    showToast(message, "error");
+  }
+}
+
+async function init() {
+  const branchesData = await apiGet("/branches/?page_size=500");
+  branches = branchesForStockTake(
+    unwrapList(branchesData).filter(b => b.is_active)
+  );
+
+  if (!branches.length) {
+    branchSelect.innerHTML = `<option value="">No branch assigned</option>`;
+    branchSelect.disabled = true;
+  } else if (branches.length === 1 || !canFilterAnyBranch) {
+    branchSelect.innerHTML = branches
+      .map(b => `<option value="${b.id}" selected>${b.name}</option>`)
+      .join("");
+    branchSelect.disabled = true;
+  } else {
+    branchSelect.innerHTML = `<option value="">Select branch…</option>${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}`;
+    branchSelect.disabled = false;
   }
 
   await loadStockTakes();
@@ -372,6 +529,18 @@ document.getElementById("start-monthly-btn").addEventListener("click", () => sta
 document.getElementById("save-lines-btn").addEventListener("click", saveLines);
 document.getElementById("complete-count-btn").addEventListener("click", completeCount);
 document.getElementById("cancel-count-btn").addEventListener("click", cancelCount);
+closeCountBtn.addEventListener("click", closeActiveCount);
+completedLineFilters.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-line-filter]");
+  if (!tab) return;
+  completedLineFilter = tab.dataset.lineFilter;
+  renderActiveCount();
+});
+csvUpload.addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (file) await importCsv(file);
+});
 branchSelect.addEventListener("change", () => {
   activeStockTake = null;
   renderActiveCount();
@@ -393,6 +562,8 @@ stockTakesTable.addEventListener("click", async (event) => {
   await openStockTake(btn.dataset.id);
 });
 
+bindTableSort(stockTakesTable, sortState, renderStockTakes);
+
 countLinesTable.addEventListener("input", (event) => {
   if (!event.target.classList.contains("counted-input")) return;
   const row = event.target.closest("tr");
@@ -403,7 +574,8 @@ countLinesTable.addEventListener("input", (event) => {
   const counted = value === "" ? null : Number(value);
   const variance = counted === null ? null : counted - Number(line.system_quantity);
   const varianceCell = row.querySelector(".variance-cell");
-  varianceCell.textContent = variance === null ? "—" : formatQty(variance);
+  if (!varianceCell) return;
+  varianceCell.textContent = formatVariance(variance);
   varianceCell.className = `variance-cell ${varianceClass(variance)}`;
 });
 

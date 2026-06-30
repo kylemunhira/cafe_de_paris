@@ -31,6 +31,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const CAN_MARK_PAID = "{{ can_mark_transfer_invoice_paid|yesno:'true,false' }}" === "true";
 const CAN_APPROVE_FISCAL = "{{ can_approve_fiscal_receipt|yesno:'true,false' }}" === "true";
@@ -47,6 +48,29 @@ let searchQuery = "";
 const container = document.getElementById("invoices-table");
 const searchInput = document.getElementById("invoice-search");
 const transferPaymentFilters = document.getElementById("transfer-payment-filters");
+const posSortState = createSortState("created_at", "desc");
+const transferSortState = createSortState("created_at", "desc");
+
+const POS_SORT = {
+  receipt_number: (o) => o.receipt_number || "",
+  id: (o) => Number(o.id),
+  branch_name: (o) => o.branch_name || "",
+  order_type: (o) => o.order_type || "",
+  total_amount: (o) => Number(o.total_amount),
+  amount_paid: (o) => Number(o.amount_paid),
+  created_at: (o) => o.created_at || "",
+};
+
+const TRANSFER_SORT = {
+  invoice_number: (n) => n.invoice_number || "",
+  id: (n) => Number(n.id),
+  from_branch_name: (n) => n.from_branch_name || "",
+  to_branch_name: (n) => n.to_branch_name || "",
+  total_amount: (n) => Number(n.total_amount),
+  status: (n) => n.status || "",
+  payment_status: (n) => n.payment_status || "",
+  created_at: (n) => n.created_at || "",
+};
 
 function matchesPosSearch(order) {
   if (!searchQuery) return true;
@@ -117,7 +141,7 @@ function posInvoiceActions(order) {
 }
 
 function renderPosInvoices() {
-  const filtered = paidOrders.filter(matchesPosSearch);
+  const filtered = sortItems(paidOrders.filter(matchesPosSearch), posSortState, POS_SORT);
 
   if (!filtered.length) {
     container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching POS invoices" : "No paid receipts yet"}</p></div>`;
@@ -128,15 +152,15 @@ function renderPosInvoices() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Proforma #</th>
-          <th>Order</th>
-          <th>Branch</th>
-          <th>Type</th>
-          <th>Total</th>
-          <th>Amount paid</th>
-          <th>Date</th>
-          <th>Fiscal</th>
-          <th></th>
+          ${sortTh("Proforma #", "receipt_number", posSortState)}
+          ${sortTh("Order", "id", posSortState)}
+          ${sortTh("Branch", "branch_name", posSortState)}
+          ${sortTh("Type", "order_type", posSortState)}
+          ${sortTh("Total", "total_amount", posSortState)}
+          ${sortTh("Amount paid", "amount_paid", posSortState)}
+          ${sortTh("Date", "created_at", posSortState)}
+          <th scope="col">Fiscal</th>
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -173,9 +197,13 @@ function transferInvoiceActions(note) {
 }
 
 function renderTransferInvoices() {
-  const filtered = transferNotes
-    .filter(matchesTransferSearch)
-    .filter(n => transferPaymentFilter === "all" || n.payment_status === transferPaymentFilter);
+  const filtered = sortItems(
+    transferNotes
+      .filter(matchesTransferSearch)
+      .filter(n => transferPaymentFilter === "all" || n.payment_status === transferPaymentFilter),
+    transferSortState,
+    TRANSFER_SORT
+  );
 
   if (!filtered.length) {
     container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching transfer invoices" : "No transfer invoices yet"}</p></div>`;
@@ -186,15 +214,15 @@ function renderTransferInvoices() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Invoice #</th>
-          <th>Delivery note</th>
-          <th>From</th>
-          <th>To</th>
-          <th>Total</th>
-          <th>Delivery</th>
-          <th>Payment</th>
-          <th>Date</th>
-          <th></th>
+          ${sortTh("Invoice #", "invoice_number", transferSortState)}
+          ${sortTh("Delivery note", "id", transferSortState)}
+          ${sortTh("From", "from_branch_name", transferSortState)}
+          ${sortTh("To", "to_branch_name", transferSortState)}
+          ${sortTh("Total", "total_amount", transferSortState)}
+          ${sortTh("Delivery", "status", transferSortState)}
+          ${sortTh("Payment", "payment_status", transferSortState)}
+          ${sortTh("Date", "created_at", transferSortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -250,6 +278,8 @@ document.querySelectorAll("[data-payment-filter]").forEach(tab => {
     renderInvoices();
   });
 });
+
+bindTableSort(container, () => (activeTab === "transfers" ? transferSortState : posSortState), renderInvoices);
 
 container.addEventListener("click", async (e) => {
   const btn = e.target.closest(".action-btn");

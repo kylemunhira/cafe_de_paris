@@ -49,12 +49,23 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const rateForm = document.getElementById("rate-form");
 const submitBtn = document.getElementById("submit-btn");
 const rateCurrencySelect = document.getElementById("rate-currency");
 const ratesTable = document.getElementById("rates-table");
 const rateDateInput = document.getElementById("rate-date");
+let allRates = [];
+const sortState = createSortState("created_at", "desc");
+
+const RATE_SORT = {
+  currency_name: (r) => r.currency_name || "",
+  rate: (r) => Number(r.rate),
+  effective_from: (r) => r.effective_from || "",
+  is_active: (r) => r.is_active ? 1 : 0,
+  created_at: (r) => r.created_at || "",
+};
 
 rateDateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -66,24 +77,27 @@ function formatRate(value) {
 }
 
 function renderRates(rates) {
-  if (!rates.length) {
+  allRates = rates;
+  if (!allRates.length) {
     ratesTable.innerHTML = `<div class="empty-state"><p>No exchange rates yet</p></div>`;
     return;
   }
+
+  const sorted = sortItems(allRates, sortState, RATE_SORT);
 
   ratesTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Currency</th>
-          <th>Rate</th>
-          <th>Effective from</th>
-          <th>Status</th>
-          <th>Added</th>
+          ${sortTh("Currency", "currency_name", sortState)}
+          ${sortTh("Rate", "rate", sortState)}
+          ${sortTh("Effective from", "effective_from", sortState)}
+          ${sortTh("Status", "is_active", sortState)}
+          ${sortTh("Added", "created_at", sortState)}
         </tr>
       </thead>
       <tbody>
-        ${rates.map(r => `
+        ${sorted.map(r => `
           <tr>
             <td><strong>${r.currency_name}</strong>${r.currency_code ? ` (${r.currency_code})` : ""}</td>
             <td>${formatRate(r.rate)}</td>
@@ -148,6 +162,8 @@ rateForm.addEventListener("submit", async (e) => {
     submitBtn.textContent = "Add rate";
   }
 });
+
+bindTableSort(ratesTable, sortState, () => renderRates(allRates));
 
 loadAll().catch(err => {
   ratesTable.innerHTML = `<div class="empty-state">Failed to load rates: ${err.message}</div>`;

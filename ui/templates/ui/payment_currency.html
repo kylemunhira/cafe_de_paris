@@ -48,10 +48,22 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const currencyForm = document.getElementById("currency-form");
 const currencySubmit = document.getElementById("currency-submit");
 const currenciesTable = document.getElementById("currencies-table");
+let allCurrencies = [];
+const sortState = createSortState("name", "asc");
+
+const CURRENCY_SORT = {
+  name: (c) => c.name || "",
+  code: (c) => c.code || "",
+  symbol: (c) => c.symbol || "",
+  is_base: (c) => c.is_base ? 1 : 0,
+  current_rate: (c) => Number(c.current_rate),
+  is_active: (c) => c.is_active ? 1 : 0,
+};
 
 function formatRate(value) {
   const rate = Number(value);
@@ -61,25 +73,28 @@ function formatRate(value) {
 }
 
 function renderCurrencies(currencies) {
-  if (!currencies.length) {
+  allCurrencies = currencies;
+  if (!allCurrencies.length) {
     currenciesTable.innerHTML = `<div class="empty-state"><p>No currencies yet</p></div>`;
     return;
   }
+
+  const sorted = sortItems(allCurrencies, sortState, CURRENCY_SORT);
 
   currenciesTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Code</th>
-          <th>Symbol</th>
-          <th>Base</th>
-          <th>Current rate</th>
-          <th>Status</th>
+          ${sortTh("Name", "name", sortState)}
+          ${sortTh("Code", "code", sortState)}
+          ${sortTh("Symbol", "symbol", sortState)}
+          ${sortTh("Base", "is_base", sortState)}
+          ${sortTh("Current rate", "current_rate", sortState)}
+          ${sortTh("Status", "is_active", sortState)}
         </tr>
       </thead>
       <tbody>
-        ${currencies.map(c => `
+        ${sorted.map(c => `
           <tr>
             <td><strong>${c.name}</strong></td>
             <td>${c.code || "—"}</td>
@@ -148,6 +163,8 @@ currencyForm.addEventListener("submit", async (e) => {
     currencySubmit.textContent = "Add currency";
   }
 });
+
+bindTableSort(currenciesTable, sortState, () => renderCurrencies(allCurrencies));
 
 loadCurrencies().catch(err => {
   currenciesTable.innerHTML = `<div class="empty-state">Failed to load: ${err.message}</div>`;

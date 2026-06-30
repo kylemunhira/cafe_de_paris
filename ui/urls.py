@@ -8,7 +8,7 @@ app_name = "ui"
 urlpatterns = [
     path(
         "login/",
-        auth_views.LoginView.as_view(template_name="ui/login.html"),
+        views.StaffLoginView.as_view(),
         name="login",
     ),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
@@ -75,6 +75,16 @@ urlpatterns = [
     path("users/", views.UsersView.as_view(), name="users"),
     path("reports/", views.ReportsView.as_view(), name="reports"),
     path("reports/vat/", views.VATReportView.as_view(), name="vat-report"),
+    path(
+        "reports/ingredients/",
+        views.IngredientReportView.as_view(),
+        name="ingredient-report",
+    ),
+    path(
+        "reports/ingredient-usage/",
+        views.IngredientUsageReportView.as_view(),
+        name="ingredient-usage-report",
+    ),
     path(
         "reports/suppliers/",
         views.SupplierStatementView.as_view(),

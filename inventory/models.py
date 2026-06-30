@@ -157,7 +157,7 @@ class DeliveryNoteLine(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text="Unit price on transfer invoices from central stores.",
+        help_text="Unit cost on transfer invoices from central stores.",
     )
 
     class Meta:

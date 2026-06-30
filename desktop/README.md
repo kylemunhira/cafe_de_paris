@@ -17,6 +17,7 @@ Standalone Electron app for **cashiers only**. Works offline with a local SQLite
 | **Place order** | Order ticket (UNPAID) — items, total, table/type |
 | **Collect payment** | Sales receipt (PAID) — tax breakdown, amount paid |
 | **Day end** | Daily sales summary — totals, payments by currency, items sold |
+| **Fiscal day** | Open/close ZIMRA fiscal day and check status (branch managers, fiscal branches, online) |
 
 Open **Settings** in the POS top bar to choose a receipt printer, or leave **System default** to use the Windows default. Use **Print test page** to verify the connection. Layout is 80mm thermal-style. Works fully offline; receipt numbers update after sync when the server assigns the official number.
 

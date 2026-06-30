@@ -32,11 +32,12 @@ class ExpenseAdmin(admin.ModelAdmin):
     list_display = (
         "expense_date",
         "branch",
+        "supplier",
         "description",
         "amount",
         "currency",
         "recorded_by",
         "created_at",
     )
-    list_filter = ("branch", "expense_date", "currency")
-    search_fields = ("description",)
+    list_filter = ("branch", "expense_date", "currency", "supplier")
+    search_fields = ("description", "supplier__name")

@@ -51,7 +51,7 @@
           <tr>
             <th>Product</th>
             <th style="text-align: right;">Qty</th>
-            <th style="text-align: right;">Unit price</th>
+            <th style="text-align: right;">Unit cost</th>
             <th style="text-align: right;">Line total</th>
             <th style="text-align: right;">Available</th>
             <th></th>
@@ -85,6 +85,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, formatCurrency, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
@@ -97,6 +98,19 @@ let destinationBranches = [];
 let products = [];
 let draftLines = [];
 let activeFilter = "all";
+const sortState = createSortState("created_at", "desc");
+
+const NOTE_SORT = {
+  id: (n) => Number(n.id),
+  invoice_number: (n) => n.invoice_number || "",
+  products: (n) => formatLineSummary(n),
+  line_count: (n) => Number(n.line_count ?? n.lines?.length ?? 0),
+  total_amount: (n) => Number(n.total_amount),
+  to_branch_name: (n) => n.to_branch_name || "",
+  status: (n) => n.status || "",
+  payment_status: (n) => n.payment_status || "",
+  created_at: (n) => n.created_at || "",
+};
 
 const fromBranchSelect = document.getElementById("from-branch");
 const toBranchSelect = document.getElementById("to-branch");
@@ -129,9 +143,11 @@ function getProductName(productId) {
   return getProduct(productId)?.name || `Product ${productId}`;
 }
 
-function getProductPrice(productId) {
+function getProductUnitCost(productId) {
   const product = getProduct(productId);
-  return product ? Number(product.selling_price) : 0;
+  if (!product) return 0;
+  const cost = product.unit_cost;
+  return cost != null ? Number(cost) : 0;
 }
 
 function updateStockHint() {
@@ -140,8 +156,12 @@ function updateStockHint() {
     stockHint.textContent = "";
     return;
   }
-  const price = getProductPrice(productId);
-  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))} · Unit price: ${formatCurrency(price)}`;
+  const product = getProduct(productId);
+  const cost = getProductUnitCost(productId);
+  const costLabel = product?.unit_cost != null
+    ? formatCurrency(cost)
+    : "no recipe cost";
+  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))} · Unit cost: ${costLabel}`;
 }
 
 function draftLineTotal(line) {
@@ -234,10 +254,38 @@ function formatLineSummary(note) {
   return preview.join(", ") + extra;
 }
 
+function formatReceiptSummary(note) {
+  if (!note.lines?.length) return "";
+  return note.lines
+    .map(l => `${l.product_name} (${formatQty(l.quantity)})`)
+    .join(", ");
+}
+
+function transferActionToast(action, updated) {
+  const noteRef = `DN-${String(updated.id).padStart(5, "0")}`;
+  if (action === "dispatch") {
+    return `${noteRef} dispatched from Central Stores. Awaiting receipt at ${updated.to_branch_name}.`;
+  }
+  if (action === "deliver") {
+    const summary = formatReceiptSummary(updated);
+    return summary
+      ? `Stock added at ${updated.to_branch_name}: ${summary}`
+      : `Stock added at ${updated.to_branch_name} (${noteRef})`;
+  }
+  const actionLabels = {
+    approve: "approved",
+    cancel: "cancelled",
+    "mark-paid": "marked as paid",
+  };
+  return `Delivery note ${noteRef} ${actionLabels[action] || action}`;
+}
+
 function renderNotes() {
-  const filtered = activeFilter === "all"
-    ? allNotes
-    : allNotes.filter(n => n.status === activeFilter);
+  const filtered = sortItems(
+    activeFilter === "all" ? allNotes : allNotes.filter(n => n.status === activeFilter),
+    sortState,
+    NOTE_SORT,
+  );
 
   if (!filtered.length) {
     transfersTable.innerHTML = `<div class="empty-state"><p>No delivery notes found</p></div>`;
@@ -248,16 +296,16 @@ function renderNotes() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Note</th>
-          <th>Invoice</th>
-          <th>Products</th>
-          <th>Items</th>
-          <th>Total</th>
-          <th>To</th>
-          <th>Delivery</th>
-          <th>Payment</th>
-          <th>Date</th>
-          <th></th>
+          ${sortTh("Note", "id", sortState)}
+          ${sortTh("Invoice", "invoice_number", sortState)}
+          ${sortTh("Products", "products", sortState)}
+          ${sortTh("Items", "line_count", sortState)}
+          ${sortTh("Total", "total_amount", sortState)}
+          ${sortTh("To", "to_branch_name", sortState)}
+          ${sortTh("Delivery", "status", sortState)}
+          ${sortTh("Payment", "payment_status", sortState)}
+          ${sortTh("Date", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -359,11 +407,16 @@ addLineBtn.addEventListener("click", () => {
     return;
   }
 
+  if (!getProduct(productId)?.unit_cost) {
+    showToast("This product has no recipe cost configured", true);
+    return;
+  }
+
   draftLines.push({
     product: Number(productId),
     product_name: getProductName(productId),
     quantity: String(quantity),
-    unit_price: String(getProductPrice(productId)),
+    unit_price: String(getProductUnitCost(productId)),
   });
 
   productSelect.value = "";
@@ -397,7 +450,6 @@ transferForm.addEventListener("submit", async (e) => {
     lines: draftLines.map(line => ({
       product: line.product,
       quantity: line.quantity,
-      unit_price: line.unit_price,
     })),
   };
 
@@ -443,13 +495,17 @@ transfersTable.addEventListener("click", async (e) => {
     const index = allNotes.findIndex(n => String(n.id) === id);
     if (index >= 0) allNotes[index] = updated;
 
-    if (action === "dispatch" || action === "deliver") {
+    if (action === "dispatch") {
       await refreshStoresInventory();
     }
 
     renderNotes();
     renderStoresStats();
-    showToast(`Delivery note #${id} ${actionLabels[action] || action}`);
+    showToast(
+      action === "dispatch" || action === "deliver"
+        ? transferActionToast(action, updated)
+        : `Delivery note #${id} ${actionLabels[action] || action}`
+    );
   } catch (err) {
     showToast(err.message, true);
     const labels = { "mark-paid": "Mark paid" };
@@ -466,6 +522,8 @@ document.querySelectorAll("[data-filter]").forEach(tab => {
     renderNotes();
   });
 });
+
+bindTableSort(transfersTable, sortState, renderNotes);
 
 loadData().catch(err => {
   transfersTable.innerHTML = `<div class="empty-state">Failed to load delivery notes: ${err.message}</div>`;

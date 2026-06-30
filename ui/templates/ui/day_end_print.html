@@ -89,7 +89,9 @@
     <table class="summary">
       {% for row in report.expenses %}
       <tr>
-        <td class="col-label">{{ row.description }}</td>
+        <td class="col-label">
+          {{ row.description }}{% if row.supplier__name %} — {{ row.supplier__name }}{% endif %}
+        </td>
         <td class="col-amt">
           {% if row.currency__symbol %}{{ row.currency__symbol }}{% endif %}{{ row.amount|floatformat:2 }}
         </td>

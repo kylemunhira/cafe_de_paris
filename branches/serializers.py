@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Branch
+from .models import Branch, DiningTable
 
 
 class BranchSerializer(serializers.ModelSerializer):
@@ -28,3 +28,18 @@ class BranchSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+
+class DiningTableSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DiningTable
+        fields = ["id", "branch", "name", "sort_order", "is_active"]
+        read_only_fields = ["id"]
+
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Table name is required.")
+        if len(name) > 20:
+            raise serializers.ValidationError("Table name must be 20 characters or fewer.")
+        return name

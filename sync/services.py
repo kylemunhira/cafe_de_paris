@@ -6,6 +6,9 @@ from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionErro
 
 from catalog.models import ProductCategory
 from catalog.serializers import ProductCategorySerializer, ProductSerializer
+from branches.dining_tables import ensure_default_dining_tables
+from branches.models import DiningTable
+from branches.serializers import DiningTableSerializer
 from orders.models import FiscalApprovalStatus, Order, OrderItem, OrderStatus
 from orders.services import ReceiptNumberError, allocate_receipt_number
 from payments.serializers import CurrencySerializer
@@ -15,6 +18,7 @@ from .models import SyncedClientOrder
 
 def get_branch_catalog_payload(branch):
     """Products and categories a cashier POS needs for the assigned branch."""
+    ensure_default_dining_tables(branch)
     products = (
         ProductSerializer.Meta.model.objects.filter(
             is_active=True,
@@ -30,6 +34,10 @@ def get_branch_catalog_payload(branch):
     return {
         "categories": ProductCategorySerializer(categories, many=True).data,
         "products": ProductSerializer(products, many=True).data,
+        "dining_tables": DiningTableSerializer(
+            DiningTable.objects.filter(branch=branch, is_active=True),
+            many=True,
+        ).data,
     }
 
 

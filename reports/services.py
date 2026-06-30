@@ -1,6 +1,5 @@
 import csv
 import io
-from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -8,7 +7,7 @@ from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from bakery.models import Recipe
+from bakery.costing import product_unit_costs
 from catalog.models import Product
 from orders.models import Expense, Order, OrderItem, OrderStatus
 from orders.tax import get_inclusive_tax_rate, split_inclusive_total
@@ -258,16 +257,6 @@ def _quantize_percent(numerator, denominator):
     return (numerator / denominator * Decimal("100")).quantize(Decimal("0.01"))
 
 
-def _product_unit_costs():
-    costs = defaultdict(Decimal)
-    recipes = Recipe.objects.select_related("ingredient")
-    for recipe in recipes:
-        costs[recipe.product_id] += (
-            recipe.quantity_required * recipe.ingredient.selling_price
-        )
-    return {product_id: cost.quantize(Decimal("0.01")) for product_id, cost in costs.items()}
-
-
 def _period_expenses(from_date, to_date, branch_id):
     expenses = Expense.objects.all()
     if from_date:
@@ -282,7 +271,7 @@ def _period_expenses(from_date, to_date, branch_id):
 def build_profit_report(from_date=None, to_date=None, branch_id=None):
     from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
     paid_items = list(_paid_order_items(from_date, to_date, branch_id))
-    unit_costs = _product_unit_costs()
+    unit_costs = product_unit_costs()
 
     product_buckets = {}
     total_revenue = Decimal("0")

@@ -1,8 +1,10 @@
 from decimal import Decimal
 
+from accounts.branch_access import effective_branch_id
 from rest_framework import serializers
 
 from branches.models import Branch, BranchType
+from bakery.costing import product_unit_cost
 from catalog.constants import BAKERY_SELLABLE_CATEGORIES, is_bakery_transfer_product
 from catalog.models import Product
 from orders.serializers import staff_display_name
@@ -283,12 +285,6 @@ class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
         queryset=Product.objects.filter(is_active=True)
     )
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
-    unit_price = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        required=False,
-        allow_null=True,
-    )
 
     def validate_product(self, product):
         if not is_bakery_transfer_product(product):
@@ -296,16 +292,16 @@ class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
                 "Only finished bakery products can be transferred to branches. "
                 f"Allowed categories: {', '.join(sorted(BAKERY_SELLABLE_CATEGORIES))}."
             )
+        unit_cost = product_unit_cost(product)
+        if unit_cost is None:
+            raise serializers.ValidationError(
+                f"No recipe cost configured for {product.name}."
+            )
         return product
 
     def validate_quantity(self, value):
         if value <= Decimal("0"):
             raise serializers.ValidationError("Quantity must be greater than zero.")
-        return value
-
-    def validate_unit_price(self, value):
-        if value is not None and value < Decimal("0"):
-            raise serializers.ValidationError("Unit price cannot be negative.")
         return value
 
 
@@ -347,7 +343,7 @@ class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
                     delivery_note=note,
                     product=line["product"],
                     quantity=line["quantity"],
-                    unit_price=line.get("unit_price") or line["product"].selling_price,
+                    unit_price=product_unit_cost(line["product"]),
                 )
                 for line in lines_data
             ]
@@ -385,7 +381,7 @@ class StockTakeLineSerializer(serializers.ModelSerializer):
 class StockTakeLineUpdateSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     counted_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False
+        max_digits=12, decimal_places=2, required=False, allow_null=True
     )
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
@@ -443,6 +439,20 @@ class StockTakeCreateSerializer(serializers.Serializer):
     stock_take_type = serializers.ChoiceField(choices=StockTakeType.choices)
     count_date = serializers.DateField()
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_branch(self, branch):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return branch
+        try:
+            allowed_branch_id = effective_branch_id(request.user)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if allowed_branch_id is not None and branch.id != allowed_branch_id:
+            raise serializers.ValidationError(
+                "You can only create stock takes for your assigned branch."
+            )
+        return branch
 
     def create(self, validated_data):
         notes = validated_data.pop("notes", "")

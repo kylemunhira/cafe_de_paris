@@ -25,6 +25,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const invoicePrintUrlTemplate = "{% url 'ui:invoice-print' 0 %}".replace("/0/", "/{id}/");
 const receiptPrintUrlTemplate = "{% url 'ui:receipt-print' 0 %}".replace("/0/", "/{id}/");
@@ -33,6 +34,18 @@ let fiscalReceipts = [];
 let searchQuery = "";
 const container = document.getElementById("receipts-table");
 const searchInput = document.getElementById("receipt-search");
+const sortState = createSortState("fiscal_approved_at", "desc");
+
+const RECEIPT_SORT = {
+  fiscal_receipt_number: (o) => o.fiscal_receipt_number || "",
+  receipt_number: (o) => o.receipt_number || "",
+  id: (o) => Number(o.id),
+  branch_name: (o) => o.branch_name || "",
+  order_type: (o) => o.order_type || "",
+  total_amount: (o) => Number(o.total_amount),
+  amount_paid: (o) => Number(o.amount_paid),
+  fiscal_approved_at: (o) => o.fiscal_approved_at || o.created_at || "",
+};
 
 function matchesSearch(order) {
   if (!searchQuery) return true;
@@ -66,7 +79,7 @@ function receiptActions(order) {
 }
 
 function renderReceipts() {
-  const filtered = fiscalReceipts.filter(matchesSearch);
+  const filtered = sortItems(fiscalReceipts.filter(matchesSearch), sortState, RECEIPT_SORT);
 
   if (!filtered.length) {
     container.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching fiscal receipts" : "No fiscal receipts yet"}</p></div>`;
@@ -77,15 +90,15 @@ function renderReceipts() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Fiscal receipt #</th>
-          <th>Proforma #</th>
-          <th>Order</th>
-          <th>Branch</th>
-          <th>Type</th>
-          <th>Total</th>
-          <th>Amount paid</th>
-          <th>Fiscalized</th>
-          <th></th>
+          ${sortTh("Fiscal receipt #", "fiscal_receipt_number", sortState)}
+          ${sortTh("Proforma #", "receipt_number", sortState)}
+          ${sortTh("Order", "id", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Type", "order_type", sortState)}
+          ${sortTh("Total", "total_amount", sortState)}
+          ${sortTh("Amount paid", "amount_paid", sortState)}
+          ${sortTh("Fiscalized", "fiscal_approved_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -106,6 +119,8 @@ function renderReceipts() {
     </table>
   `;
 }
+
+bindTableSort(container, sortState, renderReceipts);
 
 searchInput.addEventListener("input", () => {
   searchQuery = searchInput.value.trim().toLowerCase();

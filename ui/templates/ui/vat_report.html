@@ -19,12 +19,14 @@
       <span>To</span>
       <input type="date" id="filter-to" class="report-input">
     </label>
+    {% if can_filter_any_branch %}
     <label>
       <span>Branch</span>
       <select id="filter-branch" class="report-input">
         <option value="">All physical branches</option>
       </select>
     </label>
+    {% endif %}
     <div class="report-filters-actions">
       <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
     </div>
@@ -85,6 +87,10 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { branchesForUser, effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch-select.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const staffBranchId = {{ staff_branch_id|default:"null" }};
 
 const filterFrom = document.getElementById("filter-from");
 const filterTo = document.getElementById("filter-to");
@@ -114,7 +120,8 @@ function queryString() {
   const params = new URLSearchParams();
   if (filterFrom.value) params.set("from", filterFrom.value);
   if (filterTo.value) params.set("to", filterTo.value);
-  if (filterBranch.value) params.set("branch", filterBranch.value);
+  const branch = effectiveBranchParam(canFilterAnyBranch, staffBranchId, filterBranch?.value);
+  if (branch) params.set("branch", branch);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -169,10 +176,17 @@ function renderReport(data) {
 }
 
 async function loadBranches() {
+  if (!canFilterAnyBranch || !filterBranch) return;
   const data = await apiGet("/branches/?page_size=100");
-  const branches = unwrapList(data).filter(b => b.is_active && b.branch_type === BRANCH_TYPE_PHYSICAL);
-  filterBranch.innerHTML = `<option value="">All physical branches</option>` +
-    branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+  const branches = branchesForUser(
+    unwrapList(data).filter(b => b.is_active && b.branch_type === BRANCH_TYPE_PHYSICAL),
+    staffBranchId,
+    true,
+  );
+  setupBranchFilter(filterBranch, branches, {
+    canSelectAny: true,
+    allLabel: "All physical branches",
+  });
 }
 
 async function loadReport() {
@@ -195,7 +209,7 @@ async function loadReport() {
 applyFilters.addEventListener("click", loadReport);
 filterFrom.addEventListener("change", loadReport);
 filterTo.addEventListener("change", loadReport);
-filterBranch.addEventListener("change", loadReport);
+filterBranch?.addEventListener("change", loadReport);
 printReportBtn?.addEventListener("click", () => window.print());
 
 const defaults = defaultDates();

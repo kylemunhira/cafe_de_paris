@@ -38,3 +38,26 @@ class Branch(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_branch_type_display()})"
+
+
+class DiningTable(models.Model):
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.CASCADE,
+        related_name="dining_tables",
+    )
+    name = models.CharField(max_length=20)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "name"],
+                name="uniq_dining_table_per_branch",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.branch.name})"

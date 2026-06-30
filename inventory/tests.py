@@ -5,6 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.models import StaffProfile, StaffRole
+from bakery.models import Recipe
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
 from inventory.models import (
@@ -423,12 +424,9 @@ class DeliveryNoteTests(TestCase):
         )
         note_id = create_response.data["id"]
 
-        self.client.post(f"/api/delivery-notes/{note_id}/approve/")
-        self.client.post(f"/api/delivery-notes/{note_id}/dispatch/")
-
-        self.client.force_authenticate(user=self.stores_clerk)
-        deliver_response = self.client.post(f"/api/delivery-notes/{note_id}/deliver/")
-        self.assertEqual(deliver_response.status_code, 200)
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
 
         croissant_bakery = BranchInventory.objects.get(
             branch=self.bakery,
@@ -573,10 +571,21 @@ class StoresTransferTests(TestCase):
             role=StaffRole.CASHIER,
         )
         pastries = ProductCategory.objects.create(name="Breads & pastries")
+        ingredients = ProductCategory.objects.create(name="Ingredients")
         self.croissant = Product.objects.create(
             name="Croissant",
             category=pastries,
             selling_price=Decimal("2.75"),
+        )
+        flour = Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        Recipe.objects.create(
+            product=self.croissant,
+            ingredient=flour,
+            quantity_required=Decimal("1.50"),
         )
         BranchInventory.objects.create(
             branch=self.stores,
@@ -597,8 +606,8 @@ class StoresTransferTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
         self.assertTrue(response.data["invoice_number"])
-        self.assertEqual(response.data["lines"][0]["unit_price"], "2.75")
-        self.assertEqual(response.data["total_amount"], "16.50")
+        self.assertEqual(response.data["lines"][0]["unit_price"], "1.50")
+        self.assertEqual(response.data["total_amount"], "9.00")
 
     def test_stores_to_branch_workflow_updates_inventory(self):
         self.client.force_authenticate(user=self.stores_clerk)

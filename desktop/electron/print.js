@@ -165,9 +165,6 @@ function renderFiscalBlock(fiscal) {
       ? `<p>Receipt #${esc(fiscal.receipt_counter)} / ${esc(fiscal.receipt_global_no)}</p>`
       : "",
     fiscal.verification_code ? `<p>Verification: ${esc(fiscal.verification_code)}</p>` : "",
-    fiscal.qr_string && !fiscal.qr_url
-      ? `<p style="margin-top: 0.5rem; font-size: 10px; word-break: break-all;">${esc(fiscal.qr_string)}</p>`
-      : "",
   ].join("");
 
   return `
@@ -179,8 +176,24 @@ function renderFiscalBlock(fiscal) {
 }
 
 function renderFiscalQr(fiscal) {
-  if (!fiscal?.qr_data_url) return "";
-  return `<div class="center fiscal-qr"><img src="${fiscal.qr_data_url}" alt="Fiscal QR code" width="120" height="120"></div>`;
+  const qrString = fiscal?.qr_string || fiscal?.qrString;
+  if (!qrString) return "";
+  const text = JSON.stringify(qrString);
+  return `
+    <div class="center fiscal-qr" id="fiscal-qr" aria-label="Fiscal QR code"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+    <script>
+      (function () {
+        const el = document.getElementById("fiscal-qr");
+        if (!el) return;
+        new QRCode(el, {
+          text: ${text},
+          width: 120,
+          height: 120,
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      })();
+    <\/script>`;
 }
 
 function renderBrandHeader(branch, { onlyIfFiscal = false } = {}) {

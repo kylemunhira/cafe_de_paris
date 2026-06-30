@@ -28,6 +28,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
 
@@ -36,6 +37,17 @@ const INCOMING_STATUSES = ["requested", "approved", "dispatched"];
 let activeFilter = "incoming";
 const grvTable = document.getElementById("grv-table");
 const grvStats = document.getElementById("grv-stats");
+const sortState = createSortState("created_at", "desc");
+
+const GRV_SORT = {
+  id: (n) => Number(n.id),
+  products: (n) => formatLineSummary(n),
+  items: (n) => n.line_count || n.lines?.length || 0,
+  total_quantity: (n) => Number(n.total_quantity),
+  from_branch_name: (n) => n.from_branch_name || "",
+  status: (n) => n.status || "",
+  created_at: (n) => n.created_at || "",
+};
 
 function formatQty(value) {
   const qty = Number(value);
@@ -47,6 +59,13 @@ function formatLineSummary(note) {
   const preview = note.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
   const extra = note.lines.length > 2 ? ` +${note.lines.length - 2} more` : "";
   return preview.join(", ") + extra;
+}
+
+function formatReceiptSummary(note) {
+  if (!note.lines?.length) return "";
+  return note.lines
+    .map(l => `${l.product_name} (${formatQty(l.quantity)})`)
+    .join(", ");
 }
 
 function noteActions(note) {
@@ -97,7 +116,7 @@ function filterNotes() {
 }
 
 function renderNotes() {
-  const filtered = filterNotes();
+  const filtered = sortItems(filterNotes(), sortState, GRV_SORT);
 
   if (!filtered.length) {
     const messages = {
@@ -115,14 +134,14 @@ function renderNotes() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>GRV</th>
-          <th>Products</th>
-          <th>Items</th>
-          <th>Total qty</th>
-          <th>From</th>
-          <th>Status</th>
-          <th>Date</th>
-          <th></th>
+          ${sortTh("GRV", "id", sortState)}
+          ${sortTh("Products", "products", sortState)}
+          ${sortTh("Items", "items", sortState)}
+          ${sortTh("Total qty", "total_quantity", sortState)}
+          ${sortTh("From", "from_branch_name", sortState)}
+          ${sortTh("Status", "status", sortState)}
+          ${sortTh("Date", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -150,6 +169,8 @@ async function loadData() {
   renderNotes();
 }
 
+bindTableSort(grvTable, sortState, renderNotes);
+
 grvTable.addEventListener("click", async (e) => {
   const btn = e.target.closest(".action-btn");
   if (!btn) return;
@@ -165,8 +186,16 @@ grvTable.addEventListener("click", async (e) => {
 
     renderNotes();
     renderStats();
-    const label = action === "approve" ? "approved" : "received";
-    showToast(`GRV-${String(id).padStart(5, "0")} ${label}`);
+    if (action === "deliver") {
+      const summary = formatReceiptSummary(updated);
+      showToast(
+        summary
+          ? `Stock added at ${updated.to_branch_name}: ${summary}`
+          : `GRV-${String(id).padStart(5, "0")} received`
+      );
+    } else {
+      showToast(`GRV-${String(id).padStart(5, "0")} ${action === "approve" ? "approved" : "updated"}`);
+    }
   } catch (err) {
     showToast(err.message, true);
     btn.textContent = action === "approve" ? "Approve" : "Confirm receipt";

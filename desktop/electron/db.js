@@ -45,6 +45,13 @@ function initDb() {
       current_rate TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS dining_tables (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1
+    );
+
     CREATE TABLE IF NOT EXISTS orders (
       client_id TEXT PRIMARY KEY,
       server_id INTEGER,
@@ -122,11 +129,12 @@ function getSession() {
   };
 }
 
-function replaceCatalog({ categories, products, currencies }) {
+function replaceCatalog({ categories, products, currencies, dining_tables: diningTables = [] }) {
   const tx = db.transaction(() => {
     db.prepare("DELETE FROM categories").run();
     db.prepare("DELETE FROM products").run();
     db.prepare("DELETE FROM currencies").run();
+    db.prepare("DELETE FROM dining_tables").run();
 
     const insertCategory = db.prepare(
       "INSERT INTO categories (id, name, is_asset) VALUES (?, ?, ?)"
@@ -164,6 +172,18 @@ function replaceCatalog({ categories, products, currencies }) {
       );
     }
 
+    const insertDiningTable = db.prepare(
+      "INSERT INTO dining_tables (id, name, sort_order, is_active) VALUES (?, ?, ?, ?)"
+    );
+    for (const table of diningTables) {
+      insertDiningTable.run(
+        table.id,
+        table.name,
+        Number(table.sort_order) || 0,
+        table.is_active === false ? 0 : 1
+      );
+    }
+
     setSetting("catalog_synced_at", new Date().toISOString());
   });
   tx();
@@ -190,6 +210,18 @@ function listCurrencies() {
     .map((row) => ({
       ...row,
       is_base: Boolean(row.is_base),
+      is_active: Boolean(row.is_active),
+    }));
+}
+
+function listDiningTables() {
+  return db
+    .prepare(
+      "SELECT id, name, sort_order, is_active FROM dining_tables WHERE is_active = 1 ORDER BY sort_order, name"
+    )
+    .all()
+    .map((row) => ({
+      ...row,
       is_active: Boolean(row.is_active),
     }));
 }
@@ -425,6 +457,7 @@ module.exports = {
   listCategories,
   listProducts,
   listCurrencies,
+  listDiningTables,
   createOrder,
   getOrder,
   listOpenOrders,

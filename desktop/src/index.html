@@ -16,6 +16,7 @@
     </div>
     <div class="pos-topbar-actions">
       <span id="sync-status" class="sync-badge">Offline</span>
+      <button type="button" class="btn btn-ghost" id="fiscal-day-btn" hidden>Fiscal day</button>
       <button type="button" class="btn btn-ghost" id="dayend-btn">Day end</button>
       <button type="button" class="btn btn-ghost" id="settings-btn">Settings</button>
       <button type="button" class="btn btn-ghost" id="sync-btn">Sync now</button>
@@ -42,8 +43,11 @@
             </select>
           </div>
           <div class="form-group" id="table-group" style="display: none;">
-            <label for="table-number">Table</label>
-            <input type="text" id="table-number" placeholder="e.g. 5">
+            <label for="table-select-btn">Table</label>
+            <button type="button" id="table-select-btn" class="table-select-trigger">
+              <span id="table-select-label">Choose table…</span>
+            </button>
+            <input type="hidden" id="table-number" value="">
           </div>
         </div>
 
@@ -128,6 +132,87 @@
       </div>
     </div>
   </main>
+
+  <div id="table-picker-modal" class="modal-overlay" hidden>
+    <div class="modal card table-picker-card" role="dialog" aria-labelledby="table-picker-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="table-picker-title">Select table</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="table-picker-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div id="table-picker-view">
+          <p class="settings-hint" style="margin-bottom:0.75rem;">
+            Tap a table to select it. Highlighted tables have open dine-in orders.
+          </p>
+          <div id="table-picker-grid" class="dining-table-grid"></div>
+        </div>
+        <div id="table-manage-view" hidden>
+          <p class="settings-hint" style="margin-bottom:0.75rem;">
+            Rename or remove tables. Requires an online connection.
+          </p>
+          <div id="table-manage-list" class="table-manage-list"></div>
+          <div class="table-manage-add">
+            <input type="text" id="table-add-name" class="report-input" maxlength="20" placeholder="New table name (e.g. T12)">
+            <button type="button" class="btn btn-primary btn-sm" id="table-add-btn">Add table</button>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost" id="table-manage-toggle-btn" hidden>Manage tables</button>
+          <button type="button" class="btn btn-ghost" id="table-picker-cancel-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="fiscal-day-modal" class="modal-overlay" hidden>
+    <div class="modal card" role="dialog" aria-labelledby="fiscal-day-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="fiscal-day-title">Fiscal day</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="fiscal-day-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+          <p id="fiscal-day-branch" style="margin:0; font-size:0.85rem; color:var(--color-muted);"></p>
+          <span id="fiscal-day-status-badge"></span>
+        </div>
+        <div class="form-row" style="margin-bottom:0.75rem;">
+          <div class="form-group" style="margin:0;">
+            <label>Fiscal day #</label>
+            <p id="fiscal-day-number" style="margin:0.25rem 0 0; font-weight:600;">—</p>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Last receipt global #</label>
+            <p id="fiscal-day-global-no" style="margin:0.25rem 0 0; font-weight:600;">—</p>
+          </div>
+        </div>
+        <p id="fiscal-day-error" class="login-error" hidden></p>
+        <p class="settings-hint" style="margin-bottom:1rem;">
+          Open the fiscal day before approving receipts. Close it at end of trading. Requires an online connection.
+        </p>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost" id="fiscal-day-refresh-btn">Refresh</button>
+          <button type="button" class="btn btn-primary" id="fiscal-day-open-btn">Open day</button>
+          <button type="button" class="btn btn-accent" id="fiscal-day-close-day-btn">Close day</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stock-take-required-modal" class="modal-overlay" hidden>
+    <div class="modal card" role="dialog" aria-labelledby="stock-take-required-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="stock-take-required-title">Completed daily stock take required</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="stock-take-required-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p id="stock-take-required-message" class="settings-hint" style="margin-bottom:1rem;"></p>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost" id="stock-take-required-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="stock-take-required-open-btn">Open stock take</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="settings-modal" class="modal-overlay" hidden>
     <div class="modal card" role="dialog" aria-labelledby="settings-title" aria-modal="true">

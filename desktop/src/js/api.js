@@ -40,6 +40,66 @@ export async function fetchOpenOrders(serverUrl, token, branchId) {
   return parseResponse(res);
 }
 
+async function authedRequest(session, path, { method = "GET", body } = {}) {
+  if (!session?.serverUrl || !session?.token) {
+    throw new Error("Sign in and connect to the server first.");
+  }
+  const base = session.serverUrl.replace(/\/$/, "");
+  const res = await fetch(`${base}/api${path}`, {
+    method,
+    headers: {
+      Authorization: `Token ${session.token}`,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return parseResponse(res);
+}
+
+export function fetchFiscalDayStatus(session, branchId) {
+  return authedRequest(session, `/branches/${branchId}/fiscal-day/status/`);
+}
+
+export function openFiscalDay(session, branchId) {
+  return authedRequest(session, `/branches/${branchId}/fiscal-day/open/`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export function closeFiscalDay(session, branchId) {
+  return authedRequest(session, `/branches/${branchId}/fiscal-day/close/`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export function fetchStockTakeDayEndCheck(session, branchId, date) {
+  const query = new URLSearchParams({
+    branch: String(branchId),
+    date: date || new Date().toISOString().slice(0, 10),
+  });
+  return authedRequest(session, `/stock-takes/day-end-check/?${query.toString()}`);
+}
+
+export function fetchDiningTables(session, branchId) {
+  return authedRequest(
+    session,
+    `/dining-tables/?branch=${branchId}&active_only=true&page_size=500`
+  );
+}
+
+export function createDiningTable(session, payload) {
+  return authedRequest(session, "/dining-tables/", { method: "POST", body: payload });
+}
+
+export function updateDiningTable(session, tableId, payload) {
+  return authedRequest(session, `/dining-tables/${tableId}/`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
 async function parseResponse(res) {
   const text = await res.text();
   let data;

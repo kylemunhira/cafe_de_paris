@@ -372,7 +372,7 @@
           {% if fiscal.receipt_counter %}<p><strong>Receipt:</strong> #{{ fiscal.receipt_counter }} / {{ fiscal.receipt_global_no }}</p>{% endif %}
           {% if fiscal.verification_code %}<p><strong>Verification:</strong> {{ fiscal.verification_code }}</p>{% endif %}
         </div>
-        {% if fiscal.qr_url %}
+        {% if fiscal.qr_string %}
         <div class="fiscal-qr" id="fiscal-qr" aria-label="Fiscal QR code"></div>
         {% endif %}
       </div>
@@ -384,14 +384,14 @@
     </div>
   </div>
 
-  {% if fiscal and fiscal.qr_url %}
+  {% if fiscal and fiscal.qr_string %}
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
     window.addEventListener("load", () => {
       const el = document.getElementById("fiscal-qr");
       if (!el) return;
       new QRCode(el, {
-        text: "{{ fiscal.qr_url|escapejs }}",
+        text: "{{ fiscal.qr_string|escapejs }}",
         width: 120,
         height: 120,
         correctLevel: QRCode.CorrectLevel.M,

@@ -1,4 +1,5 @@
 from accounts.branch_access import (
+    effective_branch_id,
     filter_by_branch_field,
     filter_by_branch_participation,
     get_staff_branch_id,
@@ -11,13 +12,20 @@ from accounts.branch_access import (
 from decimal import Decimal, InvalidOperation
 
 from django.db.models import Q
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from .models import BranchInventory, DeliveryNote, StockTake, StockTransfer
-from branches.models import BranchType
+from .csv_io import (
+    export_stock_take_csv,
+    export_stock_take_report_csv,
+    import_stock_take_csv,
+)
+from .models import BranchInventory, DeliveryNote, StockTake, StockTakeStatus, StockTransfer
+from branches.models import Branch, BranchType
 
 from .serializers import (
     BAKERY_TRANSFER_DESTINATION_TYPES,
@@ -52,8 +60,12 @@ from .services import (
     deliver_transfer,
     dispatch_delivery_note,
     dispatch_transfer,
+    daily_stock_take_completed,
+    daily_stock_take_day_end_status,
+    day_end_stock_take_message,
     InvalidDeliveryNotePaymentError,
     mark_delivery_note_paid,
+    sync_stock_take_lines,
 )
 
 
@@ -387,6 +399,13 @@ class StockTakeViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_filter)
         return queryset
 
+    def retrieve(self, request, *args, **kwargs):
+        stock_take = self.get_object()
+        if stock_take.status == StockTakeStatus.DRAFT:
+            sync_stock_take_lines(stock_take)
+            stock_take = self.get_queryset().get(pk=stock_take.pk)
+        return Response(StockTakeSerializer(stock_take).data)
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -441,3 +460,113 @@ class StockTakeViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         return self._run_transition(request, pk, cancel_stock_take)
+
+    @action(detail=False, methods=["get"], url_path="day-end-check")
+    def day_end_check(self, request):
+        branch_param = request.query_params.get("branch")
+        try:
+            branch_id = effective_branch_id(request.user, branch_param)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if branch_id is None:
+            if not branch_param:
+                return Response(
+                    {"detail": "Branch is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                branch_id = int(branch_param)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Invalid branch."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        branch = Branch.objects.filter(pk=branch_id, is_active=True).first()
+        if not branch:
+            return Response(
+                {"detail": "Branch not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        report_date = request.query_params.get("date") or timezone.localdate().isoformat()
+        status_info = daily_stock_take_day_end_status(branch, report_date)
+        detail = day_end_stock_take_message(
+            branch,
+            report_date,
+            completed=status_info["completed"],
+            draft_in_progress=status_info["draft_in_progress"],
+        )
+
+        return Response(
+            {
+                "branch": branch.id,
+                "branch_name": branch.name,
+                "count_date": report_date,
+                "completed": status_info["completed"],
+                "draft_in_progress": status_info["draft_in_progress"],
+                "detail": detail,
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="export-csv")
+    def export_csv(self, request, pk=None):
+        stock_take = self.get_object()
+        filename = (
+            f"stock-take-{stock_take.id}-"
+            f"{stock_take.stock_take_type}-{stock_take.count_date}.csv"
+        )
+        response = HttpResponse(
+            export_stock_take_csv(stock_take),
+            content_type="text/csv; charset=utf-8",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="export-report-csv")
+    def export_report_csv(self, request, pk=None):
+        stock_take = self.get_object()
+        if stock_take.status != StockTakeStatus.COMPLETED:
+            return Response(
+                {"detail": "Report export is only available for completed stock takes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        filename = (
+            f"stock-take-report-{stock_take.id}-"
+            f"{stock_take.stock_take_type}-{stock_take.count_date}.csv"
+        )
+        response = HttpResponse(
+            export_stock_take_report_csv(stock_take),
+            content_type="text/csv; charset=utf-8",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=["post"], url_path="import-csv")
+    def import_csv(self, request, pk=None):
+        stock_take = self.get_object()
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "No file uploaded. Use form field name 'file'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not upload.name.lower().endswith(".csv"):
+            return Response(
+                {"detail": "Only .csv files are supported."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = import_stock_take_csv(stock_take, upload)
+        except InvalidStockTakeStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if result["errors"]:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        stock_take = self.get_queryset().get(pk=stock_take.pk)
+        return Response(
+            {**result, "stock_take": StockTakeSerializer(stock_take).data},
+            status=status.HTTP_200_OK,
+        )

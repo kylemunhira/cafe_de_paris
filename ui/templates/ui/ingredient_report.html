@@ -1,0 +1,218 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Ingredient Stock — Café de Paris{% endblock %}
+{% block page_title %}Ingredient Stock Report{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
+{% endblock %}
+
+{% block content %}
+<div class="card report-filters">
+  <div class="report-filters-grid">
+    {% if can_filter_any_branch %}
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    {% endif %}
+    <label style="grid-column: span 2;">
+      <span>Search ingredient</span>
+      <input type="search" id="filter-search" class="report-input" placeholder="Name…" autocomplete="off">
+    </label>
+    <label class="report-checkbox-label">
+      <input type="checkbox" id="filter-active-only" checked>
+      <span>Active ingredients only</span>
+    </label>
+    <label class="report-checkbox-label">
+      <input type="checkbox" id="filter-low-stock">
+      <span>Low stock only</span>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="report-summary">
+  <div class="card stat-card">
+    <div class="stat-label">Ingredients</div>
+    <div class="stat-value" id="summary-ingredients">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Branches</div>
+    <div class="stat-value" id="summary-branches">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Lines with stock</div>
+    <div class="stat-value" id="summary-with-stock">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Total stock value</div>
+    <div class="stat-value" id="summary-total-value">—</div>
+  </div>
+</div>
+
+<div class="card report-panel" id="report-table-card" style="padding: 0;">
+  <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">Stock by branch</h3>
+    <p class="report-panel-note" id="report-generated-at" style="margin: 0.35rem 0 0;"></p>
+  </div>
+  <div class="table-wrap" id="report-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const staffBranchId = {{ staff_branch_id|default:"null" }};
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+
+const filterBranch = document.getElementById("filter-branch");
+const filterSearch = document.getElementById("filter-search");
+const filterActiveOnly = document.getElementById("filter-active-only");
+const filterLowStock = document.getElementById("filter-low-stock");
+const applyFilters = document.getElementById("apply-filters");
+const printReportBtn = document.getElementById("print-report-btn");
+const summaryIngredients = document.getElementById("summary-ingredients");
+const summaryBranches = document.getElementById("summary-branches");
+const summaryWithStock = document.getElementById("summary-with-stock");
+const summaryTotalValue = document.getElementById("summary-total-value");
+const reportTable = document.getElementById("report-table");
+const reportGeneratedAt = document.getElementById("report-generated-at");
+
+let reportData = null;
+const sortState = createSortState("ingredient_name", "asc");
+
+const REPORT_SORT = {
+  ingredient_name: (r) => r.ingredient_name || "",
+  branch_name: (r) => r.branch_name || "",
+  unit_cost: (r) => Number(r.unit_cost),
+  quantity: (r) => Number(r.quantity),
+  stock_value: (r) => Number(r.stock_value),
+  is_active: (r) => r.is_active ? 1 : 0,
+};
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function reportParams() {
+  const params = new URLSearchParams();
+  if (canFilterAnyBranch && filterBranch?.value) {
+    params.set("branch", filterBranch.value);
+  }
+  const search = filterSearch.value.trim();
+  if (search) params.set("search", search);
+  if (!filterActiveOnly.checked) params.set("active_only", "0");
+  if (filterLowStock.checked) params.set("low_stock_only", "1");
+  return params;
+}
+
+function renderReport(data) {
+  reportData = data;
+  const summary = data.summary || {};
+  summaryIngredients.textContent = summary.ingredient_count ?? 0;
+  summaryBranches.textContent = summary.branch_count ?? 0;
+  summaryWithStock.textContent = summary.rows_with_stock ?? 0;
+  summaryTotalValue.textContent = formatCurrency(summary.total_stock_value ?? 0);
+
+  const filters = data.filters || {};
+  const branchLabel = filters.branch_id ? "" : "all branches, ";
+  reportGeneratedAt.textContent = `As at ${new Date().toLocaleString()} — ${branchLabel}${summary.row_count ?? 0} lines`;
+
+  const rows = data.rows || [];
+  if (!rows.length) {
+    reportTable.innerHTML = `<div class="empty-state"><p>No ingredients match your filters</p></div>`;
+    return;
+  }
+
+  const showBranchColumn = (summary.branch_count ?? 0) > 1;
+  const sorted = sortItems(rows, sortState, REPORT_SORT);
+
+  reportTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Ingredient", "ingredient_name", sortState)}
+          ${showBranchColumn ? sortTh("Branch", "branch_name", sortState) : ""}
+          ${sortTh("Unit cost", "unit_cost", sortState, { align: "right" })}
+          ${sortTh("Stock qty", "quantity", sortState, { align: "right" })}
+          ${sortTh("Stock value", "stock_value", sortState, { align: "right" })}
+          ${sortTh("Status", "is_active", sortState)}
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(row => `
+          <tr>
+            <td><strong>${row.ingredient_name}</strong></td>
+            ${showBranchColumn ? `<td>${row.branch_name}</td>` : ""}
+            <td style="text-align: right;">${formatCurrency(row.unit_cost)}</td>
+            <td style="text-align: right;">${formatQty(row.quantity)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatCurrency(row.stock_value)}</td>
+            <td><span class="badge ${row.is_active ? "badge-active" : "badge-inactive"}">${row.is_active ? "Active" : "Inactive"}</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="${showBranchColumn ? 4 : 3}"><strong>Total stock value</strong></td>
+          <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_stock_value ?? 0)}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+async function loadReport() {
+  reportTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    const params = reportParams();
+    const query = params.toString();
+    const data = await apiGet(`/reports/ingredient-stock/${query ? `?${query}` : ""}`);
+    renderReport(data);
+  } catch (err) {
+    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+    showToast(err.message, true);
+  }
+}
+
+async function loadBranches() {
+  if (!canFilterAnyBranch || !filterBranch) return;
+  const data = await apiGet("/branches/?page_size=500");
+  const branches = unwrapList(data).filter(b => b.is_active);
+  filterBranch.innerHTML = `<option value="">All branches</option>` +
+    branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+}
+
+applyFilters.addEventListener("click", loadReport);
+filterSearch.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    loadReport();
+  }
+});
+filterActiveOnly.addEventListener("change", loadReport);
+filterLowStock.addEventListener("change", loadReport);
+printReportBtn?.addEventListener("click", () => window.print());
+
+bindTableSort(reportTable, sortState, () => {
+  if (reportData) renderReport(reportData);
+});
+
+loadBranches()
+  .then(loadReport)
+  .catch(err => {
+    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+  });
+</script>
+{% endblock %}

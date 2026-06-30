@@ -73,6 +73,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const userForm = document.getElementById("user-form");
 const formTitle = document.getElementById("form-title");
@@ -90,6 +91,17 @@ const usersTable = document.getElementById("users-table");
 let users = [];
 let branches = [];
 let editingUserId = null;
+const sortState = createSortState("date_joined", "desc");
+
+const USER_SORT = {
+  username: (u) => u.username || "",
+  email: (u) => u.email || "",
+  branch_name: (u) => u.branch_name || "",
+  role: (u) => u.role_display || "",
+  pos_access: (u) => u.pos_access ? 1 : 0,
+  is_active: (u) => u.is_active ? 1 : 0,
+  date_joined: (u) => u.date_joined || "",
+};
 
 function updatePosAccessDefault() {
   if (editingUserId) return;
@@ -141,22 +153,24 @@ function renderUsers() {
     return;
   }
 
+  const sorted = sortItems(users, sortState, USER_SORT);
+
   usersTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Username</th>
-          <th>Email</th>
-          <th>Branch</th>
-          <th>Role</th>
-          <th>POS</th>
-          <th>Status</th>
-          <th>Joined</th>
-          <th></th>
+          ${sortTh("Username", "username", sortState)}
+          ${sortTh("Email", "email", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Role", "role", sortState)}
+          ${sortTh("POS", "pos_access", sortState)}
+          ${sortTh("Status", "is_active", sortState)}
+          ${sortTh("Joined", "date_joined", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${users.map(user => `
+        ${sorted.map(user => `
           <tr>
             <td><strong>${user.username}</strong></td>
             <td>${user.email || "—"}</td>
@@ -287,6 +301,8 @@ usersTable.addEventListener("click", (e) => {
   const user = users.find(u => String(u.id) === btn.dataset.id);
   if (user) startEdit(user);
 });
+
+bindTableSort(usersTable, sortState, renderUsers);
 
 Promise.all([loadBranches(), loadRoles(), loadUsers()]).catch(err => {
   usersTable.innerHTML = `<div class="empty-state">Failed to load users: ${err.message}</div>`;

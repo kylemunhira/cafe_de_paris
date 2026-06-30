@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.branch_access import user_can_access_kitchen, user_can_access_pos
+from accounts.branch_access import user_can_access_kitchen, user_can_access_pos, user_can_manage_dining_tables, user_can_manage_fiscal_day
 from accounts.models import StaffProfile, StaffRole
 from branches.serializers import BranchSerializer
 
@@ -70,6 +70,8 @@ class DesktopLoginView(APIView):
                     "username": user.username,
                     "display_name": display_name,
                     "role": profile.role,
+                    "can_manage_fiscal_day": user_can_manage_fiscal_day(user),
+                    "can_manage_dining_tables": user_can_manage_dining_tables(user),
                 },
                 "branch": BranchSerializer(profile.branch).data,
                 "server_url": server_url or None,

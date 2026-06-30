@@ -199,6 +199,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     currency_code = serializers.CharField(source="currency.code", read_only=True)
     currency_name = serializers.CharField(source="currency.name", read_only=True)
     currency_symbol = serializers.CharField(source="currency.symbol", read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
     recorded_by_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -214,6 +215,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "currency_name",
             "currency_symbol",
             "description",
+            "supplier",
+            "supplier_name",
             "recorded_by",
             "recorded_by_name",
             "created_at",
@@ -229,7 +232,14 @@ class ExpenseSerializer(serializers.ModelSerializer):
 class ExpenseCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
-        fields = ["branch", "expense_date", "amount", "currency", "description"]
+        fields = [
+            "branch",
+            "expense_date",
+            "amount",
+            "currency",
+            "description",
+            "supplier",
+        ]
 
     def validate_amount(self, value):
         if value <= Decimal("0"):
@@ -257,6 +267,11 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
                 "You can only record expenses for your assigned branch."
             )
         return branch
+
+    def validate_supplier(self, supplier):
+        if supplier is not None and not supplier.is_active:
+            raise serializers.ValidationError("Supplier is inactive.")
+        return supplier
 
     def create(self, validated_data):
         request = self.context.get("request")

@@ -5,6 +5,9 @@
 {% block page_title %}Point of Sale{% endblock %}
 
 {% block topbar_actions %}
+{% if can_manage_fiscal_day %}
+<button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-btn" style="display: none;">Fiscal day</button>
+{% endif %}
 <button type="button" class="btn btn-ghost btn-sm" id="expense-btn">Add expense</button>
 <button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">Day end</button>
 {% endblock %}
@@ -32,8 +35,11 @@
         </select>
       </div>
       <div class="form-group pos-order-only" id="table-group" style="display: none;">
-        <label for="table-number">Table</label>
-        <input type="text" id="table-number" placeholder="e.g. 5">
+        <label for="table-select-btn">Table</label>
+        <button type="button" id="table-select-btn" class="table-select-trigger">
+          <span id="table-select-label">Choose table…</span>
+        </button>
+        <input type="hidden" id="table-number" value="">
       </div>
       <div class="form-group pos-order-only">
         <label for="order-customer">Customer (optional)</label>
@@ -140,6 +146,12 @@
       <input type="date" id="expense-date">
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="expense-supplier">Supplier</label>
+      <select id="expense-supplier">
+        <option value="">None (optional)</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem;">
       <label for="expense-description">Description</label>
       <input type="text" id="expense-description" maxlength="200" placeholder="e.g. Milk delivery, petty cash">
     </div>
@@ -183,11 +195,101 @@
     </div>
   </div>
 </div>
+
+<div
+  id="stock-take-required-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card" style="width:min(480px, 100%); padding:1rem 1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <h3 style="margin:0; font-size:1.05rem;">Completed daily stock take required</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="stock-take-required-close-btn">Close</button>
+    </div>
+    <p id="stock-take-required-message" style="margin:0 0 1rem; font-size:0.9rem; line-height:1.5; color:var(--color-muted);"></p>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost" id="stock-take-required-cancel-btn">Cancel</button>
+      <a href="{% url 'ui:stock-take' %}" class="btn btn-primary" id="stock-take-required-go-btn">Go to stock take</a>
+    </div>
+  </div>
+</div>
+
+<div
+  id="table-picker-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card table-picker-card" style="width:min(920px, 100%); max-height:92vh; overflow:auto; padding:1rem 1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <h3 id="table-picker-title" style="margin:0; font-size:1.05rem;">Select table</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="table-picker-close-btn">Close</button>
+    </div>
+    <div id="table-picker-view">
+      <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
+        Tap a table to select it. Highlighted tables have open dine-in orders.
+      </p>
+      <div id="table-picker-grid" class="dining-table-grid"></div>
+    </div>
+    <div id="table-manage-view" style="display:none;">
+      <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
+        Rename or remove tables. Changes apply to this branch only.
+      </p>
+      <div id="table-manage-list" class="table-manage-list"></div>
+      <div class="table-manage-add">
+        <input type="text" id="table-add-name" class="report-input" maxlength="20" placeholder="New table name (e.g. T12)">
+        <button type="button" class="btn btn-primary btn-sm" id="table-add-btn">Add table</button>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:space-between; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+      {% if can_manage_dining_tables %}
+      <button type="button" class="btn btn-ghost" id="table-manage-toggle-btn">Manage tables</button>
+      {% endif %}
+      <button type="button" class="btn btn-ghost" id="table-picker-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div
+  id="fiscal-day-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card" style="width:min(480px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <h3 style="margin:0; font-size:1.05rem;">Fiscal day</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-close-btn">Close</button>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <p id="fiscal-day-branch" style="margin:0; font-size:0.85rem; color:var(--color-muted);"></p>
+      <span id="fiscal-day-status-badge"></span>
+    </div>
+    <div class="form-row" style="margin:0 0 0.75rem;">
+      <div class="form-group" style="margin:0;">
+        <label>Fiscal day #</label>
+        <p id="fiscal-day-number" style="margin:0.25rem 0 0; font-weight:600;">—</p>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Last receipt global #</label>
+        <p id="fiscal-day-global-no" style="margin:0.25rem 0 0; font-weight:600;">—</p>
+      </div>
+    </div>
+    <p id="fiscal-day-error" style="display:none; margin:0 0 0.75rem; font-size:0.82rem; color:#b42318;"></p>
+    <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
+      Open the fiscal day before approving receipts. Close it at end of trading.
+    </p>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost" id="fiscal-day-refresh-btn">Refresh</button>
+      <button type="button" class="btn btn-primary" id="fiscal-day-open-btn">Open day</button>
+      <button type="button" class="btn btn-accent" id="fiscal-day-close-day-btn">Close day</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 
 const INCLUSIVE_TAX_RATE = Number(document.querySelector(".pos-layout")?.dataset.inclusiveTaxRate ?? 0);
 
@@ -200,17 +302,33 @@ let posMode = "order";
 let openOrders = [];
 let selectedOrder = null;
 let currencies = [];
+let suppliers = [];
 let baseCurrency = null;
 let selectedCurrencyId = null;
 let branches = [];
 let customers = [];
 let paymentMethod = "cash";
 let kitchenRefreshTimer = null;
+let diningTables = [];
+let tablePickerManageMode = false;
 
 const branchSelect = document.getElementById("branch-select");
 const orderType = document.getElementById("order-type");
 const tableGroup = document.getElementById("table-group");
 const tableNumber = document.getElementById("table-number");
+const tableSelectBtn = document.getElementById("table-select-btn");
+const tableSelectLabel = document.getElementById("table-select-label");
+const tablePickerModal = document.getElementById("table-picker-modal");
+const tablePickerTitle = document.getElementById("table-picker-title");
+const tablePickerView = document.getElementById("table-picker-view");
+const tableManageView = document.getElementById("table-manage-view");
+const tablePickerGrid = document.getElementById("table-picker-grid");
+const tableManageList = document.getElementById("table-manage-list");
+const tableAddNameInput = document.getElementById("table-add-name");
+const tableAddBtn = document.getElementById("table-add-btn");
+const tableManageToggleBtn = document.getElementById("table-manage-toggle-btn");
+const tablePickerCloseBtn = document.getElementById("table-picker-close-btn");
+const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
 const orderCustomerSelect = document.getElementById("order-customer");
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const accountBalanceHint = document.getElementById("account-balance-hint");
@@ -241,6 +359,7 @@ const expenseCloseBtn = document.getElementById("expense-close-btn");
 const expenseCancelBtn = document.getElementById("expense-cancel-btn");
 const expenseSaveBtn = document.getElementById("expense-save-btn");
 const expenseDateInput = document.getElementById("expense-date");
+const expenseSupplierSelect = document.getElementById("expense-supplier");
 const expenseDescriptionInput = document.getElementById("expense-description");
 const expenseCurrencySelect = document.getElementById("expense-currency");
 const expenseAmountInput = document.getElementById("expense-amount");
@@ -250,9 +369,356 @@ const dayendCancelBtn = document.getElementById("dayend-cancel-btn");
 const dayendPrintBtn = document.getElementById("dayend-print-btn");
 const dayendDateInput = document.getElementById("dayend-date");
 const dayendCurrencyFields = document.getElementById("dayend-currency-fields");
+const stockTakeRequiredModal = document.getElementById("stock-take-required-modal");
+const stockTakeRequiredMessage = document.getElementById("stock-take-required-message");
+const stockTakeRequiredCloseBtn = document.getElementById("stock-take-required-close-btn");
+const stockTakeRequiredCancelBtn = document.getElementById("stock-take-required-cancel-btn");
+
+const canManageFiscalDay = {{ can_manage_fiscal_day|yesno:"true,false" }};
+const canManageDiningTables = {{ can_manage_dining_tables|yesno:"true,false" }};
+const fiscalDayBtn = document.getElementById("fiscal-day-btn");
+const fiscalDayModal = document.getElementById("fiscal-day-modal");
+const fiscalDayCloseBtn = document.getElementById("fiscal-day-close-btn");
+const fiscalDayRefreshBtn = document.getElementById("fiscal-day-refresh-btn");
+const fiscalDayOpenBtn = document.getElementById("fiscal-day-open-btn");
+const fiscalDayCloseDayBtn = document.getElementById("fiscal-day-close-day-btn");
+const fiscalDayBranchLabel = document.getElementById("fiscal-day-branch");
+const fiscalDayStatusBadge = document.getElementById("fiscal-day-status-badge");
+const fiscalDayNumberEl = document.getElementById("fiscal-day-number");
+const fiscalDayGlobalNoEl = document.getElementById("fiscal-day-global-no");
+const fiscalDayErrorEl = document.getElementById("fiscal-day-error");
+
+let fiscalDayStatus = null;
+
+const FISCAL_STATUS_LABELS = {
+  FiscalDayClosed: "Closed",
+  FiscalDayOpened: "Open",
+  FiscalDayCloseFailed: "Close failed",
+  FiscalDayCloseInitiated: "Closing…",
+};
+
+function selectedBranch() {
+  const branchId = Number(branchSelect.value);
+  if (!branchId) return null;
+  return branches.find(b => b.id === branchId) || null;
+}
+
+function fiscalStatusBadgeHtml(status) {
+  const label = FISCAL_STATUS_LABELS[status] || status || "Unknown";
+  const cls = status === "FiscalDayOpened"
+    ? "badge-active"
+    : status === "FiscalDayCloseFailed"
+      ? "badge-inactive"
+      : "badge-open";
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function updateFiscalDayButtonVisibility() {
+  if (!fiscalDayBtn || !canManageFiscalDay) return;
+  const branch = selectedBranch();
+  fiscalDayBtn.style.display = branch?.fiscalization_enabled ? "" : "none";
+}
+
+function renderFiscalDayModal(status = null, error = "") {
+  const branch = selectedBranch();
+  if (fiscalDayBranchLabel) {
+    fiscalDayBranchLabel.textContent = branch
+      ? `${branch.name}${branch.zimra_device_id ? ` · Device ${branch.zimra_device_id}` : ""}`
+      : "";
+  }
+
+  if (fiscalDayErrorEl) {
+    fiscalDayErrorEl.style.display = error ? "" : "none";
+    fiscalDayErrorEl.textContent = error || "";
+  }
+
+  if (fiscalDayStatusBadge) {
+    fiscalDayStatusBadge.innerHTML = error
+      ? `<span class="badge badge-inactive">Error</span>`
+      : fiscalStatusBadgeHtml(status?.fiscal_day_status);
+  }
+  if (fiscalDayNumberEl) {
+    fiscalDayNumberEl.textContent = status?.fiscal_day_number ?? "—";
+  }
+  if (fiscalDayGlobalNoEl) {
+    fiscalDayGlobalNoEl.textContent = status?.last_receipt_global_no ?? "—";
+  }
+  if (fiscalDayOpenBtn) fiscalDayOpenBtn.disabled = Boolean(error) || !status?.can_open_day;
+  if (fiscalDayCloseDayBtn) fiscalDayCloseDayBtn.disabled = Boolean(error) || !status?.can_close_day;
+  if (fiscalDayRefreshBtn) fiscalDayRefreshBtn.disabled = false;
+}
+
+function closeFiscalDayModal() {
+  if (fiscalDayModal) fiscalDayModal.style.display = "none";
+}
+
+async function refreshFiscalDayStatus() {
+  const branch = selectedBranch();
+  if (!branch?.fiscalization_enabled) return;
+
+  if (fiscalDayRefreshBtn) fiscalDayRefreshBtn.disabled = true;
+  if (fiscalDayOpenBtn) fiscalDayOpenBtn.disabled = true;
+  if (fiscalDayCloseDayBtn) fiscalDayCloseDayBtn.disabled = true;
+
+  try {
+    fiscalDayStatus = await apiGet(`/branches/${branch.id}/fiscal-day/status/`);
+    renderFiscalDayModal(fiscalDayStatus);
+  } catch (err) {
+    fiscalDayStatus = null;
+    renderFiscalDayModal(null, err.message);
+    showToast(err.message, true);
+  }
+}
+
+async function runFiscalDayAction(action) {
+  const branch = selectedBranch();
+  if (!branch?.fiscalization_enabled) return;
+
+  if (fiscalDayRefreshBtn) fiscalDayRefreshBtn.disabled = true;
+  if (fiscalDayOpenBtn) fiscalDayOpenBtn.disabled = true;
+  if (fiscalDayCloseDayBtn) fiscalDayCloseDayBtn.disabled = true;
+
+  try {
+    fiscalDayStatus = await apiPost(`/branches/${branch.id}/fiscal-day/${action}/`, {});
+    renderFiscalDayModal(fiscalDayStatus);
+    showToast(action === "open" ? "Fiscal day opened" : "Fiscal day close requested");
+    if (action === "close") {
+      setTimeout(() => refreshFiscalDayStatus().catch(() => {}), 2500);
+    }
+  } catch (err) {
+    showToast(err.message, true);
+    await refreshFiscalDayStatus();
+  }
+}
+
+function openFiscalDayModal() {
+  const branch = selectedBranch();
+  if (!branch?.fiscalization_enabled) {
+    showToast("Select a fiscal branch first", true);
+    return;
+  }
+  if (fiscalDayModal) fiscalDayModal.style.display = "flex";
+  renderFiscalDayModal(fiscalDayStatus);
+  refreshFiscalDayStatus();
+}
+
+if (canManageFiscalDay && fiscalDayBtn) {
+  fiscalDayBtn.addEventListener("click", openFiscalDayModal);
+  fiscalDayCloseBtn?.addEventListener("click", closeFiscalDayModal);
+  fiscalDayRefreshBtn?.addEventListener("click", () => refreshFiscalDayStatus());
+  fiscalDayOpenBtn?.addEventListener("click", () => runFiscalDayAction("open"));
+  fiscalDayCloseDayBtn?.addEventListener("click", () => runFiscalDayAction("close"));
+  fiscalDayModal?.addEventListener("click", (event) => {
+    if (event.target === fiscalDayModal) closeFiscalDayModal();
+  });
+  fiscalDayModal?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeFiscalDayModal();
+  });
+}
 
 orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
+  if (orderType.value !== "dine_in") {
+    setSelectedTable("");
+  }
+});
+
+function setSelectedTable(name) {
+  const value = (name || "").trim();
+  tableNumber.value = value;
+  tableSelectLabel.textContent = value || "Choose table…";
+  tableSelectBtn.classList.toggle("has-value", Boolean(value));
+}
+
+function occupiedTableNames() {
+  const names = new Set();
+  for (const order of openOrders) {
+    if (order.order_type === "dine_in" && order.table_number) {
+      names.add(order.table_number);
+    }
+  }
+  return names;
+}
+
+async function loadDiningTables() {
+  if (!branchSelect.value) {
+    diningTables = [];
+    return;
+  }
+  try {
+    const data = await apiGet(
+      `/dining-tables/?branch=${encodeURIComponent(branchSelect.value)}&active_only=true&page_size=500`
+    );
+    diningTables = unwrapList(data).filter(table => table.is_active);
+  } catch (err) {
+    diningTables = [];
+    showToast(`Failed to load tables: ${err.message}`, true);
+  }
+}
+
+function renderTablePickerGrid() {
+  if (!diningTables.length) {
+    const hint = canManageDiningTables
+      ? "No tables configured. Use Manage tables to add one."
+      : "No tables configured. Ask a branch manager to set up tables.";
+    tablePickerGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><p style="margin:0;">${hint}</p></div>`;
+    return;
+  }
+
+  const occupied = occupiedTableNames();
+  const selected = tableNumber.value;
+  tablePickerGrid.innerHTML = diningTables.map(table => {
+    const classes = ["card", "category-tab", "category-card"];
+    if (occupied.has(table.name)) classes.push("occupied");
+    if (table.name === selected) classes.push("active");
+    const statusLabel = occupied.has(table.name) ? "In use" : "Available";
+    return `
+      <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}">
+        <div class="name">${table.name}</div>
+        <div class="table-status">${statusLabel}</div>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderTableManageList() {
+  if (!diningTables.length) {
+    tableManageList.innerHTML = `<div class="empty-state"><p style="margin:0;">No tables yet.</p></div>`;
+    return;
+  }
+
+  tableManageList.innerHTML = diningTables.map(table => `
+    <div class="table-manage-row" data-table-id="${table.id}">
+      <input type="text" class="report-input table-manage-name" value="${table.name}" maxlength="20">
+      <button type="button" class="btn btn-ghost btn-sm table-manage-save">Save</button>
+      <button type="button" class="btn btn-ghost btn-sm table-manage-delete">Remove</button>
+    </div>
+  `).join("");
+}
+
+function setTablePickerManageMode(enabled) {
+  tablePickerManageMode = enabled;
+  tablePickerView.style.display = enabled ? "none" : "";
+  tableManageView.style.display = enabled ? "" : "none";
+  tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
+  tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+  if (enabled) {
+    renderTableManageList();
+  } else {
+    renderTablePickerGrid();
+  }
+}
+
+function closeTablePickerModal() {
+  tablePickerModal.style.display = "none";
+  setTablePickerManageMode(false);
+  tableAddNameInput.value = "";
+}
+
+async function openTablePickerModal() {
+  if (!branchSelect.value) {
+    showToast("Select a branch first", true);
+    return;
+  }
+  await Promise.all([loadDiningTables(), loadOpenOrders()]);
+  setTablePickerManageMode(false);
+  tablePickerModal.style.display = "flex";
+  renderTablePickerGrid();
+}
+
+tableSelectBtn.addEventListener("click", openTablePickerModal);
+
+tablePickerGrid.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-table-name]");
+  if (!btn) return;
+  setSelectedTable(btn.dataset.tableName);
+  closeTablePickerModal();
+});
+
+tableManageToggleBtn?.addEventListener("click", () => {
+  if (!canManageDiningTables) return;
+  setTablePickerManageMode(!tablePickerManageMode);
+});
+
+if (canManageDiningTables) {
+  tableManageList.addEventListener("click", async (event) => {
+    const row = event.target.closest(".table-manage-row");
+    if (!row) return;
+    const tableId = Number(row.dataset.tableId);
+    const table = diningTables.find(item => item.id === tableId);
+    if (!table) return;
+
+    if (event.target.closest(".table-manage-save")) {
+      const nameInput = row.querySelector(".table-manage-name");
+      const name = (nameInput?.value || "").trim();
+      if (!name) {
+        showToast("Table name is required", true);
+        return;
+      }
+      try {
+        await apiPatch(`/dining-tables/${tableId}/`, { name });
+        showToast("Table updated");
+        await loadDiningTables();
+        if (tableNumber.value === table.name && name !== table.name) {
+          setSelectedTable(name);
+        }
+        renderTableManageList();
+        renderTablePickerGrid();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+      return;
+    }
+
+    if (event.target.closest(".table-manage-delete")) {
+      if (!window.confirm(`Remove table "${table.name}"?`)) return;
+      try {
+        await apiPatch(`/dining-tables/${tableId}/`, { is_active: false });
+        showToast("Table removed");
+        if (tableNumber.value === table.name) {
+          setSelectedTable("");
+        }
+        await loadDiningTables();
+        renderTableManageList();
+        renderTablePickerGrid();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+  });
+
+  tableAddBtn.addEventListener("click", async () => {
+    const name = (tableAddNameInput.value || "").trim();
+    if (!name) {
+      showToast("Enter a table name", true);
+      return;
+    }
+    try {
+      const maxSort = diningTables.reduce((max, table) => Math.max(max, table.sort_order || 0), -1);
+      await apiPost("/dining-tables/", {
+        branch: Number(branchSelect.value),
+        name,
+        sort_order: maxSort + 1,
+        is_active: true,
+      });
+      tableAddNameInput.value = "";
+      showToast("Table added");
+      await loadDiningTables();
+      renderTableManageList();
+      renderTablePickerGrid();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  });
+}
+
+tablePickerCloseBtn?.addEventListener("click", closeTablePickerModal);
+tablePickerCancelBtn?.addEventListener("click", closeTablePickerModal);
+tablePickerModal?.addEventListener("click", (event) => {
+  if (event.target === tablePickerModal) closeTablePickerModal();
+});
+tablePickerModal?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeTablePickerModal();
 });
 
 function syncPaymentMethodUI() {
@@ -793,6 +1259,10 @@ clearBtn.addEventListener("click", () => {
 });
 
 branchSelect.addEventListener("change", () => {
+  updateFiscalDayButtonVisibility();
+  fiscalDayStatus = null;
+  setSelectedTable("");
+  loadDiningTables().catch(() => {});
   if (posMode === "order") {
     renderCart();
   } else {
@@ -833,6 +1303,9 @@ async function placeOrder() {
 
     const order = await apiPost("/orders/", payload);
     cart.clear();
+    if (orderType.value === "dine_in") {
+      setSelectedTable("");
+    }
     renderCart();
     showToast(`Order #${order.id} placed — ${formatCurrency(order.total_amount)}`);
     const printWindow = window.open("about:blank", "_blank");
@@ -932,12 +1405,12 @@ async function paySelectedOrder() {
   }
 }
 
-dayendBtn?.addEventListener("click", () => {
+dayendBtn?.addEventListener("click", async () => {
   if (!branchSelect.value) {
     showToast("Select a branch first", true);
     return;
   }
-  openDayEndModal();
+  await openDayEndModal(getTodayISO());
 });
 
 expenseBtn?.addEventListener("click", () => {
@@ -954,9 +1427,14 @@ function closeExpenseModal() {
 
 function openExpenseModal() {
   const activeCurrencies = currencies.filter(c => c.is_active);
+  const activeSuppliers = suppliers.filter(s => s.is_active);
   expenseDateInput.value = getTodayISO();
   expenseDescriptionInput.value = "";
   expenseAmountInput.value = "";
+  expenseSupplierSelect.value = "";
+  expenseSupplierSelect.innerHTML = activeSuppliers.length
+    ? `<option value="">None (optional)</option>${activeSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
+    : `<option value="">None (optional)</option>`;
   expenseCurrencySelect.innerHTML = activeCurrencies.map(currency => {
     const label = currency.code || currency.name || `Currency ${currency.id}`;
     const symbol = currency.symbol ? ` (${currency.symbol})` : "";
@@ -1000,13 +1478,15 @@ async function saveExpense() {
 
   expenseSaveBtn.disabled = true;
   try {
-    await apiPost("/expenses/", {
+    const payload = {
       branch: Number(branchSelect.value),
       expense_date: expenseDate,
       amount: amount.toFixed(2),
       currency: Number(currencyId),
       description,
-    });
+    };
+    if (expenseSupplierSelect.value) payload.supplier = Number(expenseSupplierSelect.value);
+    await apiPost("/expenses/", payload);
     showToast("Expense recorded");
     closeExpenseModal();
   } catch (err) {
@@ -1034,13 +1514,46 @@ function getTodayISO() {
   return `${y}-${m}-${d}`;
 }
 
+function closeStockTakeRequiredModal() {
+  stockTakeRequiredModal.style.display = "none";
+}
+
+function openStockTakeRequiredModal(message) {
+  stockTakeRequiredMessage.textContent = message;
+  stockTakeRequiredModal.style.display = "flex";
+}
+
+async function ensureDailyStockTakeForDayEnd(reportDate) {
+  const date = (reportDate || "").trim() || getTodayISO();
+  try {
+    const result = await apiGet(
+      `/stock-takes/day-end-check/?branch=${encodeURIComponent(branchSelect.value)}&date=${encodeURIComponent(date)}`
+    );
+    if (result.completed) return true;
+    openStockTakeRequiredModal(
+      result.detail || `Complete and post variances on the daily stock take for ${date} before running day end.`
+    );
+    return false;
+  } catch (err) {
+    showToast(err.message, true);
+    return false;
+  }
+}
+
 function closeDayEndModal() {
   dayendModal.style.display = "none";
 }
 
-function openDayEndModal() {
+async function openDayEndModal(reportDate) {
+  const date = (reportDate || "").trim() || getTodayISO();
+  const allowed = await ensureDailyStockTakeForDayEnd(date);
+  if (!allowed) {
+    closeDayEndModal();
+    return false;
+  }
+
   const activeCurrencies = currencies.filter(c => c.is_active);
-  dayendDateInput.value = getTodayISO();
+  dayendDateInput.value = date;
   dayendCurrencyFields.innerHTML = activeCurrencies.map(currency => {
     const label = currency.code || currency.name || `Currency ${currency.id}`;
     const symbol = currency.symbol ? ` (${currency.symbol})` : "";
@@ -1060,6 +1573,7 @@ function openDayEndModal() {
   }).join("");
   dayendModal.style.display = "flex";
   dayendDateInput.focus();
+  return true;
 }
 
 function buildDayEndQuery() {
@@ -1089,19 +1603,36 @@ function printDayEndReport() {
     showToast(error, true);
     return;
   }
-  const printWindow = window.open("about:blank", "_blank");
-  const url = `/pos/day-end/print/?${params.toString()}`;
-  if (printWindow) {
-    printWindow.location.href = url;
-  } else {
-    window.open(url, "_blank", "noopener");
-  }
-  closeDayEndModal();
+  ensureDailyStockTakeForDayEnd(params.get("date")).then((allowed) => {
+    if (!allowed) {
+      closeDayEndModal();
+      return;
+    }
+    const printWindow = window.open("about:blank", "_blank");
+    const url = `/pos/day-end/print/?${params.toString()}`;
+    if (printWindow) {
+      printWindow.location.href = url;
+    } else {
+      window.open(url, "_blank", "noopener");
+    }
+    closeDayEndModal();
+  });
 }
 
 dayendCloseBtn?.addEventListener("click", closeDayEndModal);
 dayendCancelBtn?.addEventListener("click", closeDayEndModal);
 dayendPrintBtn?.addEventListener("click", printDayEndReport);
+dayendDateInput?.addEventListener("change", async () => {
+  if (dayendModal.style.display === "none") return;
+  const date = (dayendDateInput.value || "").trim() || getTodayISO();
+  const allowed = await ensureDailyStockTakeForDayEnd(date);
+  if (!allowed) closeDayEndModal();
+});
+stockTakeRequiredCloseBtn?.addEventListener("click", closeStockTakeRequiredModal);
+stockTakeRequiredCancelBtn?.addEventListener("click", closeStockTakeRequiredModal);
+stockTakeRequiredModal?.addEventListener("click", (event) => {
+  if (event.target === stockTakeRequiredModal) closeStockTakeRequiredModal();
+});
 dayendModal?.addEventListener("click", (event) => {
   if (event.target === dayendModal) closeDayEndModal();
 });
@@ -1111,21 +1642,27 @@ dayendModal?.addEventListener("keydown", (event) => {
 
 async function init() {
   try {
-    const [branchesData, productsData, categoriesData, currenciesData, customersData] = await Promise.all([
+    const [branchesData, productsData, categoriesData, currenciesData, customersData, suppliersData] = await Promise.all([
       apiGet("/branches/?page_size=500").then(data => unwrapList(data)),
       fetchAllPages("/products/"),
       fetchAllPages("/categories/"),
       apiGet("/currencies/?page_size=500"),
       fetchAllPages("/customers/"),
+      apiGet("/suppliers/?active_only=true&page_size=500"),
     ]);
 
     branches = branchesData;
     customers = unwrapList(customersData);
     currencies = unwrapList(currenciesData);
+    suppliers = unwrapList(suppliersData);
     baseCurrency = currencies.find(c => c.is_base) || null;
 
-    const activeBranches = branches.filter(
-      b => b.is_active && b.branch_type !== "bakery" && b.branch_type !== "stores"
+    const activeBranches = branchesForUser(
+      branches.filter(
+        b => b.is_active && b.branch_type !== "bakery" && b.branch_type !== "stores"
+      ),
+      preferredBranchId,
+      canFilterAnyBranch,
     );
     products = productsData.filter(
       p => p.is_active && p.category_name !== "Ingredients"
@@ -1134,39 +1671,23 @@ async function init() {
       products.some(p => p.category === c.id)
     );
 
-    if (!activeBranches.length) {
-      branchSelect.innerHTML = `<option value="">No branches available</option>`;
-      branchSelect.disabled = true;
-    } else {
-      const preferred = preferredBranchId
-        && activeBranches.some(b => String(b.id) === preferredBranchId)
-        ? preferredBranchId
-        : "";
-
-      if (activeBranches.length === 1) {
-        branchSelect.innerHTML = activeBranches.map(
-          b => `<option value="${b.id}" selected>${b.name}</option>`
-        ).join("");
-        branchSelect.disabled = true;
-      } else {
-        branchSelect.innerHTML = activeBranches.map(
-          b => `<option value="${b.id}"${String(b.id) === preferred ? " selected" : ""}>${b.name}</option>`
-        ).join("");
-      }
-    }
+    setupBranchSelect(branchSelect, activeBranches, {
+      canSelectAny: canFilterAnyBranch,
+      emptyLabel: "No branches available",
+    });
 
     renderCategories();
     renderProducts();
     renderCustomerSelects();
     renderCart();
+    updateFiscalDayButtonVisibility();
+    await loadDiningTables();
   } catch (err) {
     branchSelect.innerHTML = `<option value="">Failed to load</option>`;
     productGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>Could not load POS data. Refresh the page or check your connection.</p></div>`;
     throw err;
   }
 }
-
-const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 
 init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
 

@@ -108,10 +108,33 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let suppliers = [];
 let editingId = null;
 let historySupplier = null;
+let historyData = null;
+const sortState = createSortState("created_at", "desc");
+const historySortState = createSortState("date", "desc");
+
+const SUPPLIER_SORT = {
+  name: (s) => s.name || "",
+  vat_number: (s) => s.vat_number || "",
+  contact_person: (s) => s.contact_person || "",
+  phone: (s) => s.phone || "",
+  email: (s) => s.email || "",
+  is_active: (s) => s.is_active ? 1 : 0,
+  created_at: (s) => s.created_at || "",
+};
+
+const HISTORY_SORT = {
+  date: (po) => po.received_at || po.created_at || "",
+  id: (po) => Number(po.id),
+  notes: (po) => po.notes || "",
+  branch_name: (po) => po.branch_name || "",
+  products: (po) => (po.lines || []).map(l => l.product_name).join(", "),
+  total_amount: (po) => Number(po.total_amount),
+};
 
 const statementPrintUrlTemplate = "{% url 'ui:supplier-statement-print' 0 %}".replace("/0/", "/{id}/");
 
@@ -174,22 +197,24 @@ function render() {
     return;
   }
 
+  const sorted = sortItems(suppliers, sortState, SUPPLIER_SORT);
+
   suppliersTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>VAT</th>
-          <th>Contact</th>
-          <th>Phone</th>
-          <th>Email</th>
-          <th>Status</th>
-          <th>Added</th>
-          <th></th>
+          ${sortTh("Name", "name", sortState)}
+          ${sortTh("VAT", "vat_number", sortState)}
+          ${sortTh("Contact", "contact_person", sortState)}
+          ${sortTh("Phone", "phone", sortState)}
+          ${sortTh("Email", "email", sortState)}
+          ${sortTh("Status", "is_active", sortState)}
+          ${sortTh("Added", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${suppliers.map(s => `
+        ${sorted.map(s => `
           <tr>
             <td><strong>${s.name}</strong>${s.notes ? `<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">${s.notes}</div>` : ""}</td>
             <td>${s.vat_number ? s.vat_number : '<span class="badge badge-inactive">Non-VAT</span>'}</td>
@@ -227,6 +252,7 @@ function formatQty(value) {
 }
 
 function renderHistory(data) {
+  historyData = data;
   const purchases = data.purchases || [];
   historyCount.textContent = purchases.length;
   historyTotal.textContent = formatCurrency(data.all_time_spend ?? 0);
@@ -238,20 +264,22 @@ function renderHistory(data) {
     return;
   }
 
+  const sorted = sortItems(purchases, historySortState, HISTORY_SORT);
+
   historyTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Purchase #</th>
-          <th>Invoice / ref</th>
-          <th>Branch</th>
-          <th>Products</th>
-          <th style="text-align: right;">Total</th>
+          ${sortTh("Date", "date", historySortState)}
+          ${sortTh("Purchase #", "id", historySortState)}
+          ${sortTh("Invoice / ref", "notes", historySortState)}
+          ${sortTh("Branch", "branch_name", historySortState)}
+          ${sortTh("Products", "products", historySortState)}
+          ${sortTh("Total", "total_amount", historySortState, { align: "right" })}
         </tr>
       </thead>
       <tbody>
-        ${[...purchases].reverse().map(po => {
+        ${sorted.map(po => {
           const products = (po.lines || []).map(line =>
             `${line.product_name} × ${formatQty(line.quantity)} @ ${formatCurrency(line.unit_cost)}`
           ).join("<br>");
@@ -398,6 +426,11 @@ historyCloseBtn.addEventListener("click", closeHistoryModal);
 historyPrintBtn.addEventListener("click", printHistory);
 historyModal.addEventListener("click", (e) => {
   if (e.target === historyModal) closeHistoryModal();
+});
+
+bindTableSort(suppliersTable, sortState, render);
+bindTableSort(historyTable, historySortState, () => {
+  if (historyData) renderHistory(historyData);
 });
 
 loadSuppliers().catch(err => {

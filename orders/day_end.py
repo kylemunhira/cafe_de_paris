@@ -130,7 +130,7 @@ def build_day_end_report(
 
     expense_rows = list(
         Expense.objects.filter(branch=branch, expense_date=report_date)
-        .select_related("currency")
+        .select_related("currency", "supplier")
         .order_by("created_at")
         .values(
             "description",
@@ -139,6 +139,7 @@ def build_day_end_report(
             "currency__code",
             "currency__name",
             "currency__symbol",
+            "supplier__name",
         )
     )
     expenses_by_currency = defaultdict(lambda: Decimal("0"))

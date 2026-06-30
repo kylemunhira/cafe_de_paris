@@ -33,6 +33,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let allOrders = [];
 let activeFilter = "all";
@@ -40,6 +41,18 @@ let searchQuery = "";
 let currencies = [];
 const container = document.getElementById("orders-table");
 const searchInput = document.getElementById("order-search");
+const sortState = createSortState("created_at", "desc");
+
+const ORDER_SORT = {
+  id: (o) => Number(o.id),
+  branch_name: (o) => o.branch_name || "",
+  order_type: (o) => o.order_type || "",
+  items: (o) => o.items?.length || 0,
+  total_amount: (o) => Number(o.total_amount),
+  payment_currency_name: (o) => o.payment_currency_name || "",
+  status: (o) => o.status || "",
+  created_at: (o) => o.created_at || "",
+};
 
 function matchesSearch(order) {
   if (!searchQuery) return true;
@@ -68,6 +81,8 @@ function renderOrders() {
     : allOrders.filter(o => o.status === activeFilter);
   filtered = filtered.filter(matchesSearch);
 
+  filtered = sortItems(filtered, sortState, ORDER_SORT);
+
   if (!filtered.length) {
     const message = searchQuery || activeFilter !== "all"
       ? "No matching orders"
@@ -80,15 +95,15 @@ function renderOrders() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Order</th>
-          <th>Branch</th>
-          <th>Type</th>
-          <th>Items</th>
-          <th>Total</th>
-          <th>Currency</th>
-          <th>Status</th>
-          <th>Date</th>
-          <th></th>
+          ${sortTh("Order", "id", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Type", "order_type", sortState)}
+          ${sortTh("Items", "items", sortState)}
+          ${sortTh("Total", "total_amount", sortState)}
+          ${sortTh("Currency", "payment_currency_name", sortState)}
+          ${sortTh("Status", "status", sortState)}
+          ${sortTh("Date", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -111,6 +126,8 @@ function renderOrders() {
     </table>
   `;
 }
+
+bindTableSort(container, sortState, renderOrders);
 
 container.addEventListener("click", async (e) => {
   const btn = e.target.closest(".pay-btn");

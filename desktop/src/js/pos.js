@@ -1,4 +1,16 @@
-import { formatCurrency, formatDate, kitchenStatusBadge, showToast } from "./api.js";
+import {
+  closeFiscalDay,
+  createDiningTable,
+  fetchDiningTables,
+  fetchFiscalDayStatus,
+  fetchStockTakeDayEndCheck,
+  formatCurrency,
+  formatDate,
+  kitchenStatusBadge,
+  openFiscalDay,
+  showToast,
+  updateDiningTable,
+} from "./api.js";
 import { printDayEndReport, printOrderSlip, printSalesReceipt } from "./print-client.js";
 import { isBrowserOnline, runFullSync, runFullSyncIfOnline, startAutoSync, startKitchenRefresh } from "./sync.js";
 
@@ -19,12 +31,38 @@ let customers = [];
 let inclusiveTaxRate = 15.5;
 let stopAutoSync = null;
 let stopKitchenRefresh = null;
+let fiscalDayStatus = null;
+let diningTables = [];
+let tablePickerManageMode = false;
+
+const FISCAL_STATUS_LABELS = {
+  FiscalDayClosed: "Closed",
+  FiscalDayOpened: "Open",
+  FiscalDayCloseFailed: "Close failed",
+  FiscalDayCloseInitiated: "Closing…",
+};
 
 const branchLabel = document.getElementById("branch-label");
 const syncStatus = document.getElementById("sync-status");
 const syncBtn = document.getElementById("sync-btn");
 const logoutBtn = document.getElementById("logout-btn");
+const fiscalDayBtn = document.getElementById("fiscal-day-btn");
 const dayendBtn = document.getElementById("dayend-btn");
+const fiscalDayModal = document.getElementById("fiscal-day-modal");
+const fiscalDayCloseBtn = document.getElementById("fiscal-day-close-btn");
+const fiscalDayRefreshBtn = document.getElementById("fiscal-day-refresh-btn");
+const fiscalDayOpenBtn = document.getElementById("fiscal-day-open-btn");
+const fiscalDayCloseDayBtn = document.getElementById("fiscal-day-close-day-btn");
+const fiscalDayBranchLabel = document.getElementById("fiscal-day-branch");
+const fiscalDayStatusBadge = document.getElementById("fiscal-day-status-badge");
+const fiscalDayNumberEl = document.getElementById("fiscal-day-number");
+const fiscalDayGlobalNoEl = document.getElementById("fiscal-day-global-no");
+const fiscalDayErrorEl = document.getElementById("fiscal-day-error");
+const stockTakeRequiredModal = document.getElementById("stock-take-required-modal");
+const stockTakeRequiredMessage = document.getElementById("stock-take-required-message");
+const stockTakeRequiredCloseBtn = document.getElementById("stock-take-required-close-btn");
+const stockTakeRequiredCancelBtn = document.getElementById("stock-take-required-cancel-btn");
+const stockTakeRequiredOpenBtn = document.getElementById("stock-take-required-open-btn");
 const categoryTabs = document.getElementById("category-tabs");
 const productSearchInput = document.getElementById("product-search");
 const productGrid = document.getElementById("product-grid");
@@ -36,6 +74,19 @@ const panelTitle = document.getElementById("panel-title");
 const orderType = document.getElementById("order-type");
 const tableGroup = document.getElementById("table-group");
 const tableNumber = document.getElementById("table-number");
+const tableSelectBtn = document.getElementById("table-select-btn");
+const tableSelectLabel = document.getElementById("table-select-label");
+const tablePickerModal = document.getElementById("table-picker-modal");
+const tablePickerTitle = document.getElementById("table-picker-title");
+const tablePickerView = document.getElementById("table-picker-view");
+const tableManageView = document.getElementById("table-manage-view");
+const tablePickerGrid = document.getElementById("table-picker-grid");
+const tableManageList = document.getElementById("table-manage-list");
+const tableAddNameInput = document.getElementById("table-add-name");
+const tableAddBtn = document.getElementById("table-add-btn");
+const tableManageToggleBtn = document.getElementById("table-manage-toggle-btn");
+const tablePickerCloseBtn = document.getElementById("table-picker-close-btn");
+const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
 const orderModePanel = document.getElementById("order-mode-panel");
 const receiptModePanel = document.getElementById("receipt-mode-panel");
 const receiptOrdersList = document.getElementById("receipt-orders-list");
@@ -51,8 +102,365 @@ const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const posModeToggle = document.getElementById("pos-mode-toggle");
 
+function closeStockTakeRequiredModal() {
+  stockTakeRequiredModal.hidden = true;
+}
+
+function openStockTakeRequiredModal(message) {
+  stockTakeRequiredMessage.textContent = message;
+  stockTakeRequiredModal.hidden = false;
+}
+
+async function ensureDailyStockTakeForDayEnd(reportDate) {
+  if (!session?.branch?.id) {
+    showToast("Branch is not configured for this session.", true);
+    return false;
+  }
+  const date = reportDate || new Date().toISOString().slice(0, 10);
+  try {
+    const result = await fetchStockTakeDayEndCheck(session, session.branch.id, date);
+    if (result.completed) return true;
+    openStockTakeRequiredModal(
+      result.detail || `Complete and post variances on the daily stock take for ${date} before running day end.`
+    );
+    return false;
+  } catch (err) {
+    showToast(err.message, true);
+    return false;
+  }
+}
+
+function canManageFiscalDay() {
+  if (session?.user?.can_manage_fiscal_day != null) {
+    return Boolean(session.user.can_manage_fiscal_day);
+  }
+  return Boolean(session?.branch?.fiscalization_enabled);
+}
+
+function canManageDiningTables() {
+  if (session?.user?.can_manage_dining_tables != null) {
+    return Boolean(session.user.can_manage_dining_tables);
+  }
+  return session?.user?.role === "branch_manager";
+}
+
+function fiscalStatusBadgeHtml(status) {
+  const label = FISCAL_STATUS_LABELS[status] || status || "Unknown";
+  const cls = status === "FiscalDayOpened"
+    ? "badge-active"
+    : status === "FiscalDayCloseFailed"
+      ? "badge-inactive"
+      : "badge-open";
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function updateFiscalDayButtonVisibility() {
+  if (!fiscalDayBtn) return;
+  const show = canManageFiscalDay() && session?.branch?.fiscalization_enabled;
+  fiscalDayBtn.hidden = !show;
+}
+
+function updateTableManageVisibility() {
+  if (tableManageToggleBtn) {
+    tableManageToggleBtn.hidden = !canManageDiningTables();
+  }
+}
+
+function renderFiscalDayModal(status = null, error = "") {
+  const branch = session?.branch;
+  if (fiscalDayBranchLabel) {
+    fiscalDayBranchLabel.textContent = branch
+      ? `${branch.name}${branch.zimra_device_id ? ` · Device ${branch.zimra_device_id}` : ""}`
+      : "";
+  }
+  if (fiscalDayErrorEl) {
+    fiscalDayErrorEl.hidden = !error;
+    fiscalDayErrorEl.textContent = error || "";
+  }
+  if (fiscalDayStatusBadge) {
+    fiscalDayStatusBadge.innerHTML = error
+      ? `<span class="badge badge-inactive">Error</span>`
+      : fiscalStatusBadgeHtml(status?.fiscal_day_status);
+  }
+  if (fiscalDayNumberEl) {
+    fiscalDayNumberEl.textContent = status?.fiscal_day_number ?? "—";
+  }
+  if (fiscalDayGlobalNoEl) {
+    fiscalDayGlobalNoEl.textContent = status?.last_receipt_global_no ?? "—";
+  }
+  if (fiscalDayOpenBtn) fiscalDayOpenBtn.disabled = Boolean(error) || !status?.can_open_day;
+  if (fiscalDayCloseDayBtn) fiscalDayCloseDayBtn.disabled = Boolean(error) || !status?.can_close_day;
+  if (fiscalDayRefreshBtn) fiscalDayRefreshBtn.disabled = false;
+}
+
+function closeFiscalDayModal() {
+  if (fiscalDayModal) fiscalDayModal.hidden = true;
+}
+
+async function refreshFiscalDayStatus() {
+  if (!session?.branch?.id || !session.branch.fiscalization_enabled) return;
+  if (!isBrowserOnline()) {
+    renderFiscalDayModal(null, "Fiscal day requires an online connection.");
+    return;
+  }
+
+  if (fiscalDayRefreshBtn) fiscalDayRefreshBtn.disabled = true;
+  if (fiscalDayOpenBtn) fiscalDayOpenBtn.disabled = true;
+  if (fiscalDayCloseDayBtn) fiscalDayCloseDayBtn.disabled = true;
+
+  try {
+    fiscalDayStatus = await fetchFiscalDayStatus(session, session.branch.id);
+    renderFiscalDayModal(fiscalDayStatus);
+  } catch (err) {
+    fiscalDayStatus = null;
+    renderFiscalDayModal(null, err.message);
+    showToast(err.message, true);
+  }
+}
+
+async function runFiscalDayAction(action) {
+  if (!session?.branch?.id || !session.branch.fiscalization_enabled) return;
+  if (!isBrowserOnline()) {
+    showToast("Fiscal day requires an online connection.", true);
+    return;
+  }
+
+  if (fiscalDayRefreshBtn) fiscalDayRefreshBtn.disabled = true;
+  if (fiscalDayOpenBtn) fiscalDayOpenBtn.disabled = true;
+  if (fiscalDayCloseDayBtn) fiscalDayCloseDayBtn.disabled = true;
+
+  try {
+    const request = action === "open" ? openFiscalDay : closeFiscalDay;
+    fiscalDayStatus = await request(session, session.branch.id);
+    renderFiscalDayModal(fiscalDayStatus);
+    showToast(action === "open" ? "Fiscal day opened" : "Fiscal day close requested");
+    if (action === "close") {
+      setTimeout(() => refreshFiscalDayStatus().catch(() => {}), 2500);
+    }
+  } catch (err) {
+    showToast(err.message, true);
+    await refreshFiscalDayStatus();
+  }
+}
+
+function openFiscalDayModal() {
+  if (!session?.branch?.fiscalization_enabled) {
+    showToast("This branch is not configured for fiscalization.", true);
+    return;
+  }
+  if (!isBrowserOnline()) {
+    showToast("Fiscal day requires an online connection.", true);
+    return;
+  }
+  if (fiscalDayModal) fiscalDayModal.hidden = false;
+  renderFiscalDayModal(fiscalDayStatus);
+  refreshFiscalDayStatus();
+}
+
 orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
+  if (orderType.value !== "dine_in") {
+    setSelectedTable("");
+  }
+});
+
+function setSelectedTable(name) {
+  const value = (name || "").trim();
+  tableNumber.value = value;
+  tableSelectLabel.textContent = value || "Choose table…";
+  tableSelectBtn.classList.toggle("has-value", Boolean(value));
+}
+
+function occupiedTableNames() {
+  const names = new Set();
+  for (const order of openOrders) {
+    if (order.order_type === "dine_in" && order.table_number) {
+      names.add(order.table_number);
+    }
+  }
+  return names;
+}
+
+async function loadDiningTables() {
+  const local = await window.pos.getCatalog();
+  diningTables = (local.diningTables || []).filter((table) => table.is_active);
+  if (session?.branch?.id && isBrowserOnline()) {
+    try {
+      const data = await fetchDiningTables(session, session.branch.id);
+      const remote = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+      diningTables = remote.filter((table) => table.is_active);
+    } catch {
+      // keep cached tables when offline or request fails
+    }
+  }
+}
+
+function renderTablePickerGrid() {
+  if (!diningTables.length) {
+    const hint = canManageDiningTables()
+      ? "No tables configured. Sync online or use Manage tables."
+      : "No tables configured. Ask a branch manager to set up tables.";
+    tablePickerGrid.innerHTML = `<div class="empty-state wide"><p>${hint}</p></div>`;
+    return;
+  }
+
+  const occupied = occupiedTableNames();
+  const selected = tableNumber.value;
+  tablePickerGrid.innerHTML = diningTables
+    .map((table) => {
+      const classes = ["card", "category-tab", "category-card"];
+      if (occupied.has(table.name)) classes.push("occupied");
+      if (table.name === selected) classes.push("active");
+      const statusLabel = occupied.has(table.name) ? "In use" : "Available";
+      return `
+        <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}">
+          <div class="name">${table.name}</div>
+          <div class="table-status">${statusLabel}</div>
+        </button>`;
+    })
+    .join("");
+}
+
+function renderTableManageList() {
+  if (!diningTables.length) {
+    tableManageList.innerHTML = `<div class="empty-state"><p>No tables yet.</p></div>`;
+    return;
+  }
+
+  tableManageList.innerHTML = diningTables
+    .map(
+      (table) => `
+    <div class="table-manage-row" data-table-id="${table.id}">
+      <input type="text" class="report-input table-manage-name" value="${table.name}" maxlength="20">
+      <button type="button" class="btn btn-ghost btn-sm table-manage-save">Save</button>
+      <button type="button" class="btn btn-ghost btn-sm table-manage-delete">Remove</button>
+    </div>`
+    )
+    .join("");
+}
+
+function setTablePickerManageMode(enabled) {
+  tablePickerManageMode = enabled;
+  tablePickerView.hidden = enabled;
+  tableManageView.hidden = !enabled;
+  tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
+  tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+  if (enabled) renderTableManageList();
+  else renderTablePickerGrid();
+}
+
+function closeTablePickerModal() {
+  tablePickerModal.hidden = true;
+  setTablePickerManageMode(false);
+  tableAddNameInput.value = "";
+}
+
+async function openTablePickerModal() {
+  await loadOpenOrders();
+  await loadDiningTables();
+  setTablePickerManageMode(false);
+  tablePickerModal.hidden = false;
+  renderTablePickerGrid();
+}
+
+tableSelectBtn.addEventListener("click", openTablePickerModal);
+
+tablePickerGrid.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-table-name]");
+  if (!btn) return;
+  setSelectedTable(btn.dataset.tableName);
+  closeTablePickerModal();
+});
+
+tableManageToggleBtn?.addEventListener("click", () => {
+  if (!canManageDiningTables()) return;
+  setTablePickerManageMode(!tablePickerManageMode);
+});
+
+if (tableManageList) {
+  tableManageList.addEventListener("click", async (event) => {
+    if (!canManageDiningTables()) return;
+    if (!isBrowserOnline()) {
+      showToast("Managing tables requires an online connection.", true);
+      return;
+    }
+  const row = event.target.closest(".table-manage-row");
+  if (!row) return;
+  const tableId = Number(row.dataset.tableId);
+  const table = diningTables.find((item) => item.id === tableId);
+  if (!table) return;
+
+  if (event.target.closest(".table-manage-save")) {
+    const name = (row.querySelector(".table-manage-name")?.value || "").trim();
+    if (!name) {
+      showToast("Table name is required", true);
+      return;
+    }
+    try {
+      await updateDiningTable(session, tableId, { name });
+      showToast("Table updated");
+      await runFullSyncIfOnline(session, { silent: true });
+      await loadDiningTables();
+      if (tableNumber.value === table.name && name !== table.name) setSelectedTable(name);
+      renderTableManageList();
+      renderTablePickerGrid();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+
+  if (event.target.closest(".table-manage-delete")) {
+    if (!window.confirm(`Remove table "${table.name}"?`)) return;
+    try {
+      await updateDiningTable(session, tableId, { is_active: false });
+      showToast("Table removed");
+      if (tableNumber.value === table.name) setSelectedTable("");
+      await runFullSyncIfOnline(session, { silent: true });
+      await loadDiningTables();
+      renderTableManageList();
+      renderTablePickerGrid();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+  });
+}
+
+tableAddBtn?.addEventListener("click", async () => {
+  if (!canManageDiningTables()) return;
+  if (!isBrowserOnline()) {
+    showToast("Managing tables requires an online connection.", true);
+    return;
+  }
+  const name = (tableAddNameInput.value || "").trim();
+  if (!name) {
+    showToast("Enter a table name", true);
+    return;
+  }
+  try {
+    const maxSort = diningTables.reduce((max, table) => Math.max(max, table.sort_order || 0), -1);
+    await createDiningTable(session, {
+      branch: session.branch.id,
+      name,
+      sort_order: maxSort + 1,
+      is_active: true,
+    });
+    tableAddNameInput.value = "";
+    showToast("Table added");
+    await runFullSyncIfOnline(session, { silent: true });
+    await loadDiningTables();
+    renderTableManageList();
+    renderTablePickerGrid();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+tablePickerCloseBtn?.addEventListener("click", closeTablePickerModal);
+tablePickerCancelBtn?.addEventListener("click", closeTablePickerModal);
+tablePickerModal?.addEventListener("click", (event) => {
+  if (event.target === tablePickerModal) closeTablePickerModal();
 });
 
 function syncPaymentMethodUI() {
@@ -587,6 +995,8 @@ syncBtn.addEventListener("click", async () => {
 dayendBtn.addEventListener("click", async () => {
   dayendBtn.disabled = true;
   try {
+    const allowed = await ensureDailyStockTakeForDayEnd();
+    if (!allowed) return;
     const report = await window.pos.getDayEndReport();
     await printDayEndReport(session, report, { taxRate: inclusiveTaxRate });
     const label = report.orderCount === 1 ? "1 order" : `${report.orderCount} orders`;
@@ -596,6 +1006,32 @@ dayendBtn.addEventListener("click", async () => {
   } finally {
     dayendBtn.disabled = false;
   }
+});
+
+stockTakeRequiredCloseBtn?.addEventListener("click", closeStockTakeRequiredModal);
+stockTakeRequiredCancelBtn?.addEventListener("click", closeStockTakeRequiredModal);
+stockTakeRequiredOpenBtn?.addEventListener("click", async () => {
+  const base = session?.serverUrl?.replace(/\/$/, "");
+  if (!base) {
+    showToast("Server URL is not configured.", true);
+    return;
+  }
+  await window.pos.openExternal(`${base}/stock-take/`);
+  closeStockTakeRequiredModal();
+});
+stockTakeRequiredModal?.addEventListener("click", (event) => {
+  if (event.target === stockTakeRequiredModal) closeStockTakeRequiredModal();
+});
+
+if (fiscalDayBtn) {
+  fiscalDayBtn.addEventListener("click", openFiscalDayModal);
+}
+fiscalDayCloseBtn?.addEventListener("click", closeFiscalDayModal);
+fiscalDayRefreshBtn?.addEventListener("click", () => refreshFiscalDayStatus());
+fiscalDayOpenBtn?.addEventListener("click", () => runFiscalDayAction("open"));
+fiscalDayCloseDayBtn?.addEventListener("click", () => runFiscalDayAction("close"));
+fiscalDayModal?.addEventListener("click", (event) => {
+  if (event.target === fiscalDayModal) closeFiscalDayModal();
 });
 
 logoutBtn.addEventListener("click", async () => {
@@ -622,6 +1058,9 @@ async function placeOrder() {
       })),
     });
     cart.clear();
+    if (orderType.value === "dine_in") {
+      setSelectedTable("");
+    }
     renderCart();
     await updateSyncBadge();
     showToast(`Order placed — ${money(order.total_amount)}`);
@@ -726,6 +1165,7 @@ async function loadCatalog() {
   products = data.products;
   categories = data.categories;
   currencies = data.currencies;
+  diningTables = (data.diningTables || []).filter((table) => table.is_active);
   baseCurrency = currencies.find((c) => c.is_base) || currencies[0] || null;
   const storedRate = await window.pos.getSetting("inclusive_tax_rate");
   if (storedRate) inclusiveTaxRate = Number(storedRate);
@@ -742,8 +1182,11 @@ async function init() {
 
   branchLabel.textContent = session.branch?.name || "Branch";
   inclusiveTaxRate = Number(session.inclusiveTaxRate || inclusiveTaxRate);
+  updateFiscalDayButtonVisibility();
+  updateTableManageVisibility();
 
   await loadCatalog();
+  await loadDiningTables();
   renderCart();
   await updateSyncBadge();
   window.addEventListener("offline", updateSyncBadge);

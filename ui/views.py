@@ -3,6 +3,7 @@ from accounts.branch_access import (
     filter_by_branch_field,
     filter_by_branch_participation,
     user_can_access_bakery_transfers,
+    user_can_access_cashier_invoices,
     user_can_access_fiscal_receipts,
     user_can_access_grv,
     user_can_access_kitchen,
@@ -10,9 +11,15 @@ from accounts.branch_access import (
     user_can_access_stores_transfers,
     user_can_create_purchase_orders,
     user_can_manage_users,
+    user_is_branch_manager,
+    user_is_cashier,
+    user_is_grv_staff,
 )
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.http import Http404
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import DetailView, TemplateView
 
@@ -20,6 +27,7 @@ from branches.models import Branch
 from customers.models import Customer, CustomerAccountTransaction
 from customers.statement import build_customer_statement_report
 from inventory.models import DeliveryNote
+from inventory.services import daily_stock_take_day_end_status, day_end_stock_take_message
 from orders.day_end import build_day_end_report
 from orders.models import FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
 from orders.serializers import staff_display_name
@@ -29,42 +37,133 @@ from purchasing.statement import build_supplier_statement_report
 from payments.models import Currency
 
 
-class BaseUIView(LoginRequiredMixin, TemplateView):
+class CashierRestrictedAccessMixin(UserPassesTestMixin):
+    """Cashiers and GRV-only staff may only open explicitly allowed views."""
+
+    allow_cashier = False
+    allow_grv_staff = False
+
+    def test_func(self):
+        user = self.request.user
+        if user_is_cashier(user):
+            if not self.allow_cashier:
+                return False
+            return self.cashier_access_allowed(user)
+        if user_is_grv_staff(user):
+            if not self.allow_grv_staff:
+                return False
+            return self.grv_staff_access_allowed(user)
+        return self.access_allowed(user)
+
+    def cashier_access_allowed(self, user):
+        return True
+
+    def grv_staff_access_allowed(self, user):
+        return True
+
+    def access_allowed(self, user):
+        return True
+
+
+def default_console_url(user):
+    if user_is_cashier(user):
+        return reverse("ui:pos")
+    if user_is_grv_staff(user):
+        return reverse("ui:grv")
+    if user_is_branch_manager(user):
+        if user_can_access_pos(user):
+            return reverse("ui:pos")
+        return reverse("ui:orders")
+    return reverse("ui:dashboard")
+
+
+class BaseUIView(LoginRequiredMixin, CashierRestrictedAccessMixin, TemplateView):
     active_nav = ""
 
     def get_context_data(self, **kwargs):
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_has_global_branch_access,
+        )
+
         context = super().get_context_data(**kwargs)
         context["active_nav"] = self.active_nav
+        if self.request.user.is_authenticated:
+            context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+            context["can_filter_any_branch"] = user_has_global_branch_access(
+                self.request.user
+            )
+        else:
+            context["staff_branch_id"] = None
+            context["can_filter_any_branch"] = False
         return context
+
+
+class StaffLoginView(auth_views.LoginView):
+    template_name = "ui/login.html"
+
+    def get_success_url(self):
+        from accounts.branch_access import user_can_access_dashboard
+
+        if self.request.user.is_authenticated and not user_can_access_dashboard(
+            self.request.user
+        ):
+            return default_console_url(self.request.user)
+        return super().get_success_url()
 
 
 class DashboardView(BaseUIView):
     template_name = "ui/dashboard.html"
     active_nav = "dashboard"
 
+    def dispatch(self, request, *args, **kwargs):
+        from accounts.branch_access import user_can_access_dashboard
 
-class POSView(UserPassesTestMixin, BaseUIView):
+        if request.user.is_authenticated and not user_can_access_dashboard(
+            request.user
+        ):
+            return redirect(default_console_url(request.user))
+        return super().dispatch(request, *args, **kwargs)
+
+    def access_allowed(self, user):
+        from accounts.branch_access import user_can_access_dashboard
+
+        return user_can_access_dashboard(user)
+
+
+class POSView(BaseUIView):
     template_name = "ui/pos.html"
     active_nav = "pos"
+    allow_cashier = True
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_context_data(self, **kwargs):
-        from accounts.branch_access import get_staff_branch_id
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_can_manage_dining_tables,
+            user_can_manage_fiscal_day,
+        )
 
         context = super().get_context_data(**kwargs)
         context["inclusive_tax_rate"] = get_inclusive_tax_rate()
         context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        context["can_manage_fiscal_day"] = user_can_manage_fiscal_day(
+            self.request.user
+        )
+        context["can_manage_dining_tables"] = user_can_manage_dining_tables(
+            self.request.user
+        )
         return context
 
 
-class KitchenView(UserPassesTestMixin, BaseUIView):
+class KitchenView(BaseUIView):
     template_name = "ui/kitchen.html"
     active_nav = "kitchen"
 
-    def test_func(self):
-        return user_can_access_kitchen(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_kitchen(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import get_staff_branch_id
@@ -94,36 +193,46 @@ class BranchesView(BaseUIView):
     active_nav = "branches"
 
 
-class UsersView(UserPassesTestMixin, BaseUIView):
+class UsersView(BaseUIView):
     template_name = "ui/users.html"
     active_nav = "users"
 
-    def test_func(self):
-        return user_can_manage_users(self.request.user)
+    def access_allowed(self, user):
+        return user_can_manage_users(user)
 
 
-class ReportsView(UserPassesTestMixin, BaseUIView):
+class ReportsView(BaseUIView):
     template_name = "ui/reports.html"
     active_nav = "reports"
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
 
-class VATReportView(UserPassesTestMixin, BaseUIView):
+class VATReportView(BaseUIView):
     template_name = "ui/vat_report.html"
     active_nav = "vat_report"
 
-    def test_func(self):
-        return user_can_access_fiscal_receipts(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
 
 
-class SupplierStatementView(UserPassesTestMixin, BaseUIView):
+class IngredientReportView(BaseUIView):
+    template_name = "ui/ingredient_report.html"
+    active_nav = "ingredient_report"
+
+
+class IngredientUsageReportView(BaseUIView):
+    template_name = "ui/ingredient_usage_report.html"
+    active_nav = "ingredient_usage_report"
+
+
+class SupplierStatementView(BaseUIView):
     template_name = "ui/supplier_statement.html"
     active_nav = "supplier_statement"
 
-    def test_func(self):
-        return user_can_create_purchase_orders(self.request.user)
+    def access_allowed(self, user):
+        return user_can_create_purchase_orders(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import (
@@ -147,36 +256,40 @@ class PaymentCurrencyView(BaseUIView):
     active_nav = "payment_currency"
 
 
-class TransfersView(UserPassesTestMixin, BaseUIView):
+class TransfersView(BaseUIView):
     template_name = "ui/transfers.html"
     active_nav = "transfers"
 
-    def test_func(self):
-        return user_can_access_bakery_transfers(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_bakery_transfers(user)
 
 
-class BakeryProductionView(UserPassesTestMixin, BaseUIView):
+class BakeryProductionView(BaseUIView):
     template_name = "ui/bakery_production.html"
     active_nav = "bakery_production"
 
-    def test_func(self):
-        return user_can_access_bakery_transfers(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_bakery_transfers(user)
 
 
-class StoresTransfersView(UserPassesTestMixin, BaseUIView):
+class StoresTransfersView(BaseUIView):
     template_name = "ui/stores_transfers.html"
     active_nav = "stores_transfers"
 
-    def test_func(self):
-        return user_can_access_stores_transfers(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_stores_transfers(user)
 
 
-class GrvView(UserPassesTestMixin, BaseUIView):
+class GrvView(BaseUIView):
     template_name = "ui/grv.html"
     active_nav = "grv"
+    allow_grv_staff = True
 
-    def test_func(self):
-        return user_can_access_grv(self.request.user)
+    def grv_staff_access_allowed(self, user):
+        return user_can_access_grv(user)
+
+    def access_allowed(self, user):
+        return user_can_access_grv(user)
 
 
 class RecipesView(BaseUIView):
@@ -188,21 +301,34 @@ class StockTakeView(BaseUIView):
     template_name = "ui/stock_take.html"
     active_nav = "stock_take"
 
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_has_global_branch_access,
+        )
 
-class CustomersView(UserPassesTestMixin, BaseUIView):
+        context = super().get_context_data(**kwargs)
+        context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        context["can_filter_any_branch"] = user_has_global_branch_access(
+            self.request.user
+        )
+        return context
+
+
+class CustomersView(BaseUIView):
     template_name = "ui/customers.html"
     active_nav = "customers"
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
 
-class CustomerAccountsView(UserPassesTestMixin, BaseUIView):
+class CustomerAccountsView(BaseUIView):
     template_name = "ui/customer_accounts.html"
     active_nav = "customer_accounts"
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import get_staff_branch_id
@@ -212,13 +338,15 @@ class CustomerAccountsView(UserPassesTestMixin, BaseUIView):
         return context
 
 
-class CustomerAccountTransactionPrintView(UserPassesTestMixin, LoginRequiredMixin, DetailView):
+class CustomerAccountTransactionPrintView(
+    CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView
+):
     model = CustomerAccountTransaction
     template_name = "ui/customer_statement_print.html"
     context_object_name = "transaction"
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_queryset(self):
         return CustomerAccountTransaction.objects.select_related(
@@ -243,13 +371,15 @@ class CustomerAccountTransactionPrintView(UserPassesTestMixin, LoginRequiredMixi
         return context
 
 
-class CustomerFullStatementPrintView(UserPassesTestMixin, LoginRequiredMixin, DetailView):
+class CustomerFullStatementPrintView(
+    CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView
+):
     model = Customer
     template_name = "ui/customer_statement_print.html"
     context_object_name = "customer"
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import get_staff_branch_id
@@ -298,17 +428,19 @@ class CustomerFullStatementPrintView(UserPassesTestMixin, LoginRequiredMixin, De
         return context
 
 
-class SupplierStatementPrintView(UserPassesTestMixin, LoginRequiredMixin, DetailView):
+class SupplierStatementPrintView(
+    CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView
+):
     model = Supplier
     template_name = "ui/supplier_statement_print.html"
     context_object_name = "supplier"
 
-    def test_func(self):
+    def access_allowed(self, user):
         from accounts.branch_access import user_can_manage_suppliers
 
         return user_can_create_purchase_orders(
-            self.request.user
-        ) or user_can_manage_suppliers(self.request.user)
+            user
+        ) or user_can_manage_suppliers(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import get_staff_branch_id
@@ -355,24 +487,24 @@ class SupplierStatementPrintView(UserPassesTestMixin, LoginRequiredMixin, Detail
         return context
 
 
-class SuppliersView(UserPassesTestMixin, BaseUIView):
+class SuppliersView(BaseUIView):
     template_name = "ui/suppliers.html"
     active_nav = "suppliers"
 
-    def test_func(self):
+    def access_allowed(self, user):
         from accounts.branch_access import user_can_manage_suppliers
 
-        return user_can_manage_suppliers(self.request.user)
+        return user_can_manage_suppliers(user)
 
 
-class PurchaseOrdersView(UserPassesTestMixin, BaseUIView):
+class PurchaseOrdersView(BaseUIView):
     template_name = "ui/purchase_orders.html"
     active_nav = "purchase_orders"
 
-    def test_func(self):
+    def access_allowed(self, user):
         from accounts.branch_access import user_can_create_purchase_orders
 
-        return user_can_create_purchase_orders(self.request.user)
+        return user_can_create_purchase_orders(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import (
@@ -388,10 +520,14 @@ class PurchaseOrdersView(UserPassesTestMixin, BaseUIView):
         return context
 
 
-class DeliveryNotePrintView(LoginRequiredMixin, DetailView):
+class DeliveryNotePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView):
     model = DeliveryNote
     template_name = "ui/delivery_note_print.html"
     context_object_name = "note"
+    allow_grv_staff = True
+
+    def grv_staff_access_allowed(self, user):
+        return user_can_access_grv(user)
 
     def get_queryset(self):
         queryset = DeliveryNote.objects.select_related(
@@ -401,7 +537,7 @@ class DeliveryNotePrintView(LoginRequiredMixin, DetailView):
         return filter_by_branch_participation(queryset, self.request.user)
 
 
-class TransferInvoicePrintView(LoginRequiredMixin, DetailView):
+class TransferInvoicePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView):
     model = DeliveryNote
     template_name = "ui/transfer_invoice_print.html"
     context_object_name = "note"
@@ -428,9 +564,10 @@ class TransferInvoicePrintView(LoginRequiredMixin, DetailView):
         return context
 
 
-class PaidOrderPrintView(LoginRequiredMixin, DetailView):
+class PaidOrderPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView):
     model = Order
     context_object_name = "order"
+    allow_cashier = True
 
     def get_queryset(self):
         queryset = Order.objects.select_related(
@@ -470,10 +607,11 @@ class PaidOrderPrintView(LoginRequiredMixin, DetailView):
         return context
 
 
-class OrderSlipPrintView(LoginRequiredMixin, DetailView):
+class OrderSlipPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView):
     model = Order
     template_name = "ui/order_slip_print.html"
     context_object_name = "order"
+    allow_cashier = True
 
     def get_queryset(self):
         queryset = Order.objects.select_related(
@@ -502,11 +640,12 @@ class ReceiptPrintView(PaidOrderPrintView):
     template_name = "ui/receipt_print.html"
 
 
-class DayEndPrintView(UserPassesTestMixin, LoginRequiredMixin, TemplateView):
+class DayEndPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, TemplateView):
     template_name = "ui/day_end_print.html"
+    allow_cashier = True
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_branch(self):
         requested = self.request.GET.get("branch")
@@ -527,6 +666,29 @@ class DayEndPrintView(UserPassesTestMixin, LoginRequiredMixin, TemplateView):
         if not branch:
             raise Http404("Branch not found.")
         return branch
+
+    def get(self, request, *args, **kwargs):
+        branch = self.get_branch()
+        report_date = request.GET.get("date") or timezone.localdate().isoformat()
+        status_info = daily_stock_take_day_end_status(branch, report_date)
+        if not status_info["completed"]:
+            return render(
+                request,
+                "ui/day_end_blocked.html",
+                {
+                    "branch": branch,
+                    "count_date": report_date,
+                    "draft_in_progress": status_info["draft_in_progress"],
+                    "message": day_end_stock_take_message(
+                        branch,
+                        report_date,
+                        completed=False,
+                        draft_in_progress=status_info["draft_in_progress"],
+                    ),
+                },
+                status=403,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -556,10 +718,17 @@ class DayEndPrintView(UserPassesTestMixin, LoginRequiredMixin, TemplateView):
 class InvoicePrintView(PaidOrderPrintView):
     template_name = "ui/invoice_print.html"
 
+    def cashier_access_allowed(self, user):
+        return user_can_access_cashier_invoices(user)
+
 
 class InvoicesView(BaseUIView):
     template_name = "ui/invoices.html"
     active_nav = "invoices"
+    allow_cashier = True
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_cashier_invoices(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import user_can_approve_fiscal_receipt
@@ -571,20 +740,24 @@ class InvoicesView(BaseUIView):
         return context
 
 
-class ReceiptsView(UserPassesTestMixin, BaseUIView):
+class ReceiptsView(BaseUIView):
     template_name = "ui/receipts.html"
     active_nav = "receipts"
+    allow_cashier = True
 
-    def test_func(self):
-        return user_can_access_fiscal_receipts(self.request.user)
+    def cashier_access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
+
+    def access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
 
 
-class ExpensesView(UserPassesTestMixin, BaseUIView):
+class ExpensesView(BaseUIView):
     template_name = "ui/expenses.html"
     active_nav = "expenses"
 
-    def test_func(self):
-        return user_can_access_pos(self.request.user)
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import get_staff_branch_id

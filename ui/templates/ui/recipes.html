@@ -2,49 +2,90 @@
 {% load static %}
 
 {% block title %}Recipes — Café de Paris{% endblock %}
-{% block page_title %}Recipes (BOM){% endblock %}
+{% block page_title %}Recipes{% endblock %}
 
 {% block content %}
-<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Add ingredient to recipe</h3>
-  <form id="recipe-form">
-    <div class="form-row">
-      <div class="form-group">
-        <label for="output-product">Finished product</label>
-        <select id="output-product" required>
-          <option value="">Select product…</option>
-        </select>
+<div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <div class="form-row" style="align-items: end;">
+    <div class="form-group" style="flex: 1; min-width: 220px;">
+      <label for="product-search">Find product</label>
+      <input type="search" id="product-search" placeholder="Search by name or category…" autocomplete="off">
+    </div>
+    <div class="form-group" style="flex: 1; min-width: 280px;">
+      <label for="product-select">Product to edit</label>
+      <select id="product-select">
+        <option value="">Select a product…</option>
+      </select>
+    </div>
+  </div>
+  <div class="category-tabs" id="category-tabs" style="margin-top: 1rem;"></div>
+  <p id="recipe-summary" style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
+</div>
+
+<div id="recipe-editor" class="card" style="padding: 0; display: none;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+    <div>
+      <h3 id="editor-title" style="margin: 0; font-size: 1.05rem;">Recipe</h3>
+      <p id="editor-meta" style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
+      <div style="display: flex; align-items: flex-end; gap: 1.25rem; flex-wrap: wrap; margin-top: 0.65rem;">
+        <div>
+          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Recipe cost</div>
+          <div id="editor-cost" style="font-weight: 600; font-size: 1rem;">—</div>
+        </div>
+        <div class="form-group" style="margin: 0;">
+          <label for="selling-price-input" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;">Selling price</label>
+          <input type="number" id="selling-price-input" class="report-input" min="0" step="0.01" style="width: 120px;" disabled>
+        </div>
       </div>
-      <div class="form-group">
-        <label for="ingredient">Ingredient</label>
-        <select id="ingredient" required>
+    </div>
+    <span id="editor-badge" class="badge badge-active"></span>
+  </div>
+  <div class="table-wrap" id="recipe-lines-table"></div>
+  <div style="padding: 1rem 1.5rem; border-top: 1px solid rgba(44,24,16,0.06); background: rgba(44,24,16,0.02);">
+    <h4 style="margin: 0 0 0.75rem; font-size: 0.9rem; font-weight: 600;">Add ingredient</h4>
+    <form id="add-line-form" class="form-row" style="align-items: end; margin: 0;">
+      <div class="form-group" style="flex: 1; min-width: 200px;">
+        <label for="add-ingredient">Ingredient</label>
+        <select id="add-ingredient" required>
           <option value="">Select ingredient…</option>
         </select>
       </div>
-      <div class="form-group" style="flex: 0 0 140px;">
-        <label for="quantity">Qty required</label>
-        <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0" required>
+      <div class="form-group" style="flex: 0 0 120px;">
+        <label for="add-quantity">Qty</label>
+        <input type="number" id="add-quantity" min="0.01" step="0.01" placeholder="0" required>
       </div>
-      <div class="form-group" style="flex: 0 0 auto; align-self: end;">
-        <button type="submit" class="btn btn-primary">Add line</button>
+      <div class="form-group" style="flex: 0 0 auto;">
+        <button type="submit" class="btn btn-primary">Add</button>
       </div>
-    </div>
-  </form>
+    </form>
+  </div>
 </div>
 
-<div class="category-tabs" id="category-tabs" style="margin-bottom: 0.75rem;"></div>
-<p id="recipe-summary" style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);"></p>
-<div class="category-tabs" id="product-tabs" style="margin-bottom: 1.25rem;"></div>
+<div id="recipe-empty" class="card" style="padding: 2.5rem; text-align: center; display: none;">
+  <p style="margin: 0; color: var(--color-muted);">Select a product above to view or edit its recipe.</p>
+</div>
 
-<div id="recipe-list">
-  <div class="skeleton" style="height: 120px; margin-bottom: 1rem;"></div>
-  <div class="skeleton" style="height: 120px;"></div>
+<div id="recipe-browser" class="card" style="padding: 0; margin-bottom: 1.25rem; display: none;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 0.95rem;">Products with recipes</h3>
+    <p style="margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--color-muted);">Click a product to edit its ingredients.</p>
+  </div>
+  <div id="recipe-browser-list"></div>
+</div>
+
+<div id="no-recipe-products" class="card" style="padding: 0; margin-top: 1.25rem; display: none;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 0.95rem;">Products without a recipe</h3>
+    <p style="margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--color-muted);">Click a product to start building its bill of materials.</p>
+  </div>
+  <div id="no-recipe-list" style="padding: 0.75rem 1rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiDelete, fetchAllPages, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiPost, apiPatch, apiDelete, fetchAllPages, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const KITCHEN_CATEGORY_NAMES = new Set([
   "Breakfast", "Mains", "Sandwiches", "Burgers", "Salads", "Seafood",
@@ -52,25 +93,41 @@ const KITCHEN_CATEGORY_NAMES = new Set([
 const BAKERY_CATEGORY_NAMES = new Set([
   "Breads & pastries", "Cakes & desserts", "Savory",
 ]);
+const INGREDIENT_CATEGORIES = new Set(["Ingredients", "Components"]);
 
 let products = [];
 let recipes = [];
 let activeCategory = "all";
-let activeProduct = "all";
+let selectedProductId = null;
+const lineSortState = createSortState("ingredient_name", "asc");
 
-const recipeForm = document.getElementById("recipe-form");
-const outputSelect = document.getElementById("output-product");
-const ingredientSelect = document.getElementById("ingredient");
-const quantityInput = document.getElementById("quantity");
+const RECIPE_LINE_SORT = {
+  ingredient_name: (line) => line.ingredient_name || "",
+  ingredient_category: (line) => line.ingredient_category || "",
+  quantity_required: (line) => Number(line.quantity_required),
+  ingredient_unit_cost: (line) => Number(line.ingredient_unit_cost),
+  line_cost: (line) => Number(line.line_cost),
+};
+
+const productSearch = document.getElementById("product-search");
+const productSelect = document.getElementById("product-select");
 const categoryTabs = document.getElementById("category-tabs");
 const recipeSummary = document.getElementById("recipe-summary");
-const productTabs = document.getElementById("product-tabs");
-const recipeList = document.getElementById("recipe-list");
-
-function formatQty(value) {
-  const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
-}
+const recipeEditor = document.getElementById("recipe-editor");
+const recipeEmpty = document.getElementById("recipe-empty");
+const editorTitle = document.getElementById("editor-title");
+const editorMeta = document.getElementById("editor-meta");
+const editorCost = document.getElementById("editor-cost");
+const sellingPriceInput = document.getElementById("selling-price-input");
+const editorBadge = document.getElementById("editor-badge");
+const recipeLinesTable = document.getElementById("recipe-lines-table");
+const addLineForm = document.getElementById("add-line-form");
+const addIngredientSelect = document.getElementById("add-ingredient");
+const addQuantityInput = document.getElementById("add-quantity");
+const noRecipeProducts = document.getElementById("no-recipe-products");
+const noRecipeList = document.getElementById("no-recipe-list");
+const recipeBrowser = document.getElementById("recipe-browser");
+const recipeBrowserList = document.getElementById("recipe-browser-list");
 
 function formatMoney(value) {
   const amount = Number(value);
@@ -83,10 +140,6 @@ function outputProducts() {
   return products.filter(p => p.category_name !== "Ingredients" && p.is_active);
 }
 
-function ingredientProducts() {
-  return products.filter(p => p.category_name === "Ingredients" && p.is_active);
-}
-
 function matchesCategoryFilter(categoryName) {
   if (activeCategory === "all") return true;
   if (activeCategory === "kitchen") return KITCHEN_CATEGORY_NAMES.has(categoryName);
@@ -94,15 +147,41 @@ function matchesCategoryFilter(categoryName) {
   return categoryName === activeCategory;
 }
 
+function filteredOutputProducts() {
+  const query = productSearch.value.trim().toLowerCase();
+  return outputProducts()
+    .filter(p => matchesCategoryFilter(p.category_name))
+    .filter(p => {
+      if (!query) return true;
+      return (
+        p.name.toLowerCase().includes(query) ||
+        (p.category_name || "").toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function recipesForProduct(productId) {
+  return recipes.filter(r => Number(r.product) === Number(productId));
+}
+
+function productsWithRecipes() {
+  return new Set(recipes.map(r => Number(r.product)));
+}
+
 function recipesByProduct() {
   const grouped = new Map();
   for (const line of recipes) {
-    if (!matchesCategoryFilter(line.product_category)) continue;
+    const product = products.find(p => Number(p.id) === Number(line.product));
+    if (!product || product.category_name === "Ingredients") continue;
+    if (!matchesCategoryFilter(product.category_name)) continue;
+
     if (!grouped.has(line.product)) {
       grouped.set(line.product, {
         productId: line.product,
         productName: line.product_name,
         productCategory: line.product_category,
+        sellingPrice: product.selling_price ?? 0,
         lines: [],
         totalCost: 0,
       });
@@ -114,8 +193,51 @@ function recipesByProduct() {
   return [...grouped.values()].sort((a, b) => a.productName.localeCompare(b.productName));
 }
 
-function renderCategoryTabs(groups) {
-  const categoryNames = [...new Set(groups.map(g => g.productCategory))].sort();
+function availableIngredients(productId) {
+  const usedIds = new Set(recipesForProduct(productId).map(r => r.ingredient));
+  return products
+    .filter(p =>
+      p.is_active &&
+      Number(p.id) !== Number(productId) &&
+      INGREDIENT_CATEGORIES.has(p.category_name) &&
+      !usedIds.has(p.id)
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function selectedProduct() {
+  return products.find(p => Number(p.id) === Number(selectedProductId)) || null;
+}
+
+function populateProductSelect() {
+  const options = filteredOutputProducts();
+  const current = selectedProductId;
+
+  productSelect.innerHTML = `<option value="">Select a product…</option>` +
+    options.map(p => `<option value="${p.id}">${p.name} (${p.category_name})</option>`).join("");
+
+  if (current && options.some(p => Number(p.id) === Number(current))) {
+    productSelect.value = String(current);
+  } else if (current && !options.some(p => Number(p.id) === Number(current))) {
+    const product = selectedProduct();
+    if (product) {
+      productSelect.innerHTML += `<option value="${product.id}" selected>${product.name} (${product.category_name})</option>`;
+    }
+  }
+}
+
+function populateAddIngredientSelect() {
+  if (!selectedProductId) {
+    addIngredientSelect.innerHTML = `<option value="">Select ingredient…</option>`;
+    return;
+  }
+  const options = availableIngredients(selectedProductId);
+  addIngredientSelect.innerHTML = `<option value="">Select ingredient…</option>` +
+    options.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+}
+
+function renderCategoryTabs() {
+  const categoryNames = [...new Set(outputProducts().map(p => p.category_name))].sort();
   const tabs = [
     { id: "all", label: "All" },
     { id: "kitchen", label: "Kitchen" },
@@ -124,109 +246,171 @@ function renderCategoryTabs(groups) {
   ];
 
   categoryTabs.innerHTML = tabs.map(tab => `
-    <button class="category-tab${activeCategory === tab.id ? " active" : ""}" data-category="${tab.id}">
+    <button type="button" class="category-tab${activeCategory === tab.id ? " active" : ""}" data-category="${tab.id}">
       ${tab.label}
     </button>
   `).join("");
 }
 
-function populateSelects() {
-  const outputs = outputProducts();
-  const ingredients = ingredientProducts();
+function renderSummary() {
+  const withRecipes = productsWithRecipes();
+  const outputs = outputProducts().filter(p => matchesCategoryFilter(p.category_name));
+  const missing = outputs.filter(p => !withRecipes.has(Number(p.id)));
+  const withCount = outputs.filter(p => withRecipes.has(Number(p.id))).length;
+  const lineCount = recipes.filter(r => {
+    const product = products.find(p => Number(p.id) === Number(r.product));
+    return product && matchesCategoryFilter(product.category_name);
+  }).length;
 
-  outputSelect.innerHTML = `<option value="">Select product…</option>` +
-    outputs.map(p => `<option value="${p.id}">${p.name} (${p.category_name})</option>`).join("");
-
-  ingredientSelect.innerHTML = `<option value="">Select ingredient…</option>` +
-    ingredients.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+  recipeSummary.textContent = outputs.length
+    ? `${outputs.length} products · ${withCount} with recipes · ${lineCount} ingredient lines · ${missing.length} without recipes`
+    : "No finished products found.";
 }
 
-function renderTabs(groups) {
-  const tabs = [{ id: "all", label: "All products" }, ...groups.map(g => ({
-    id: String(g.productId),
-    label: g.productName,
-  }))];
-
-  productTabs.innerHTML = tabs.map(tab => `
-    <button class="category-tab${activeProduct === tab.id ? " active" : ""}" data-product="${tab.id}">
-      ${tab.label}
-    </button>
-  `).join("");
-}
-
-function renderRecipes() {
+function renderRecipeBrowser() {
   const groups = recipesByProduct();
-  renderCategoryTabs(groups);
-  renderTabs(groups);
-
-  const lineCount = groups.reduce((sum, group) => sum + group.lines.length, 0);
-  recipeSummary.textContent = groups.length
-    ? `${groups.length} recipe${groups.length === 1 ? "" : "s"}, ${lineCount} ingredient line${lineCount === 1 ? "" : "s"}`
-    : "";
-
-  const filtered = activeProduct === "all"
-    ? groups
-    : groups.filter(g => String(g.productId) === activeProduct);
+  const query = productSearch.value.trim().toLowerCase();
+  const filtered = query
+    ? groups.filter(g =>
+        g.productName.toLowerCase().includes(query) ||
+        g.productCategory.toLowerCase().includes(query)
+      )
+    : groups;
 
   if (!filtered.length) {
-    recipeList.innerHTML = `
-      <div class="empty-state card" style="padding: 2.5rem; text-align: center;">
-        <p style="margin: 0; color: var(--color-muted);">No recipe lines yet. Add ingredients above to define a bill of materials.</p>
+    recipeBrowser.style.display = "none";
+    return;
+  }
+
+  recipeBrowser.style.display = "";
+  recipeBrowserList.innerHTML = filtered.map(group => `
+    <div class="recipe-browser-item" style="padding: 0.85rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <div>
+        <button type="button" class="btn btn-ghost btn-sm pick-product-btn" data-id="${group.productId}" style="font-weight: 600; padding-left: 0;">
+          ${group.productName}
+        </button>
+        <span style="font-size: 0.85rem; color: var(--color-muted);">${group.productCategory}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem;">
+        <span style="color: var(--color-muted);">${group.lines.length} ingredient${group.lines.length === 1 ? "" : "s"}</span>
+        <span style="font-weight: 600;">Cost ${formatMoney(group.totalCost)}</span>
+        <span style="font-weight: 600;">Sell ${formatMoney(group.sellingPrice)}</span>
+        <button type="button" class="btn btn-ghost btn-sm pick-product-btn" data-id="${group.productId}">Edit</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderNoRecipeProducts() {
+  const withRecipes = productsWithRecipes();
+  const missing = filteredOutputProducts().filter(p => !withRecipes.has(Number(p.id)));
+
+  if (!missing.length) {
+    noRecipeProducts.style.display = "none";
+    return;
+  }
+
+  noRecipeProducts.style.display = "";
+  noRecipeList.innerHTML = missing.slice(0, 40).map(p => `
+    <button type="button" class="btn btn-ghost btn-sm pick-product-btn" data-id="${p.id}">
+      ${p.name}
+    </button>
+  `).join("") + (missing.length > 40 ? `<span style="font-size:0.85rem;color:var(--color-muted);align-self:center;">+${missing.length - 40} more — use search</span>` : "");
+}
+
+function renderEditor() {
+  const product = selectedProduct();
+
+  if (!product) {
+    recipeEditor.style.display = "none";
+    recipeEmpty.style.display = "";
+    sellingPriceInput.disabled = true;
+    sellingPriceInput.value = "";
+    populateAddIngredientSelect();
+    return;
+  }
+
+  recipeEditor.style.display = "";
+  recipeEmpty.style.display = "none";
+
+  const lines = recipesForProduct(product.id);
+  const totalCost = lines.reduce((sum, line) => sum + Number(line.line_cost || 0), 0);
+
+  editorTitle.textContent = product.name;
+  editorMeta.textContent = product.category_name;
+  editorCost.textContent = formatMoney(totalCost);
+  sellingPriceInput.disabled = false;
+  sellingPriceInput.value = Number(product.selling_price).toFixed(2);
+  editorBadge.textContent = `${lines.length} ingredient${lines.length === 1 ? "" : "s"}`;
+
+  populateAddIngredientSelect();
+
+  if (!lines.length) {
+    recipeLinesTable.innerHTML = `
+      <div class="empty-state" style="padding: 2rem;">
+        <p style="margin: 0; color: var(--color-muted);">No ingredients yet. Add the first line below.</p>
       </div>`;
     return;
   }
 
-  recipeList.innerHTML = filtered.map(group => `
-    <div class="card" style="padding: 0; margin-bottom: 1rem; overflow: hidden;">
-      <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;">
-        <div>
-          <h3 style="margin: 0; font-size: 1rem;">${group.productName}</h3>
-          <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
-            ${group.productCategory} • Cost ${formatMoney(group.totalCost)}
-          </p>
-        </div>
-        <span class="badge badge-active">${group.lines.length} ingredient${group.lines.length === 1 ? "" : "s"}</span>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Ingredient</th>
-              <th>Category</th>
-              <th style="text-align: right;">Qty required</th>
-              <th style="text-align: right;">Unit cost</th>
-              <th style="text-align: right;">Line cost</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${group.lines.map(line => `
-              <tr data-id="${line.id}">
-                <td>${line.ingredient_name}</td>
-                <td style="color: var(--color-muted); font-size: 0.9rem;">${line.ingredient_category}</td>
-                <td style="text-align: right;">
-                  <input
-                    type="number"
-                    class="qty-input"
-                    data-id="${line.id}"
-                    value="${line.quantity_required}"
-                    min="0.01"
-                    step="0.01"
-                    style="width: 90px; text-align: right; padding: 0.35rem 0.5rem; border: 1px solid rgba(44,24,16,0.12); border-radius: 6px;"
-                  >
-                </td>
-                <td style="text-align: right;">${formatMoney(line.ingredient_unit_cost)}</td>
-                <td style="text-align: right; font-weight: 600;">${formatMoney(line.line_cost)}</td>
-                <td style="text-align: right;">
-                  <button type="button" class="btn btn-ghost btn-sm delete-btn" data-id="${line.id}">Remove</button>
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `).join("");
+  recipeLinesTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Ingredient", "ingredient_name", lineSortState)}
+          ${sortTh("Category", "ingredient_category", lineSortState)}
+          ${sortTh("Qty required", "quantity_required", lineSortState, { align: "right" })}
+          ${sortTh("Unit cost", "ingredient_unit_cost", lineSortState, { align: "right" })}
+          ${sortTh("Line cost", "line_cost", lineSortState, { align: "right" })}
+          ${actionTh()}
+        </tr>
+      </thead>
+      <tbody>
+        ${sortItems(lines, lineSortState, RECIPE_LINE_SORT).map(line => `
+          <tr data-id="${line.id}">
+            <td>${line.ingredient_name}</td>
+            <td style="color: var(--color-muted); font-size: 0.9rem;">${line.ingredient_category}</td>
+            <td style="text-align: right;">
+              <input
+                type="number"
+                class="qty-input report-input"
+                data-id="${line.id}"
+                value="${line.quantity_required}"
+                min="0.01"
+                step="0.01"
+                style="width: 90px; text-align: right;"
+              >
+            </td>
+            <td style="text-align: right;">${formatMoney(line.ingredient_unit_cost)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatMoney(line.line_cost)}</td>
+            <td style="text-align: right;">
+              <button type="button" class="btn btn-ghost btn-sm delete-btn" data-id="${line.id}">Remove</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderAll() {
+  renderCategoryTabs();
+  populateProductSelect();
+  renderSummary();
+  renderRecipeBrowser();
+  renderNoRecipeProducts();
+  renderEditor();
+}
+
+function selectProduct(productId) {
+  selectedProductId = productId ? Number(productId) : null;
+  if (selectedProductId) {
+    productSelect.value = String(selectedProductId);
+  }
+  renderAll();
+  if (selectedProductId) {
+    recipeEditor.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 async function loadData() {
@@ -234,61 +418,78 @@ async function loadData() {
     fetchAllPages("/products/"),
     fetchAllPages("/recipes/"),
   ]);
-  populateSelects();
-  renderRecipes();
+  recipeEmpty.style.display = "";
+  renderAll();
 }
 
-recipeForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    const created = await apiPost("/recipes/", {
-      product: Number(outputSelect.value),
-      ingredient: Number(ingredientSelect.value),
-      quantity_required: quantityInput.value,
-    });
-    recipes.push(created);
-    quantityInput.value = "";
-    ingredientSelect.value = "";
-    renderRecipes();
-    showToast("Recipe line added");
-  } catch (err) {
-    showToast(err.message, true);
-  }
+productSearch.addEventListener("input", () => {
+  populateProductSelect();
+  renderRecipeBrowser();
+  renderNoRecipeProducts();
+});
+
+productSelect.addEventListener("change", () => {
+  selectProduct(productSelect.value || null);
 });
 
 categoryTabs.addEventListener("click", (e) => {
   const tab = e.target.closest(".category-tab");
   if (!tab) return;
   activeCategory = tab.dataset.category;
-  activeProduct = "all";
-  renderRecipes();
+  renderAll();
 });
 
-productTabs.addEventListener("click", (e) => {
-  const tab = e.target.closest(".category-tab");
-  if (!tab) return;
-  activeProduct = tab.dataset.product;
-  renderRecipes();
+noRecipeList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pick-product-btn");
+  if (!btn) return;
+  productSearch.value = "";
+  selectProduct(btn.dataset.id);
 });
 
-recipeList.addEventListener("click", async (e) => {
-  const deleteBtn = e.target.closest(".delete-btn");
-  if (deleteBtn) {
-    const id = deleteBtn.dataset.id;
-    if (!confirm("Remove this ingredient from the recipe?")) return;
-    try {
-      await apiDelete(`/recipes/${id}/`);
-      recipes = recipes.filter(r => String(r.id) !== String(id));
-      renderRecipes();
-      showToast("Recipe line removed");
-    } catch (err) {
-      showToast(err.message, true);
-    }
+recipeBrowserList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pick-product-btn");
+  if (!btn) return;
+  selectProduct(btn.dataset.id);
+});
+
+addLineForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!selectedProductId) {
+    showToast("Select a product first.", true);
     return;
+  }
+  try {
+    const created = await apiPost("/recipes/", {
+      product: selectedProductId,
+      ingredient: Number(addIngredientSelect.value),
+      quantity_required: addQuantityInput.value,
+    });
+    recipes.push(created);
+    addIngredientSelect.value = "";
+    addQuantityInput.value = "";
+    renderAll();
+    showToast("Ingredient added.");
+  } catch (err) {
+    showToast(err.message, true);
   }
 });
 
-recipeList.addEventListener("change", async (e) => {
+recipeLinesTable.addEventListener("click", async (e) => {
+  const deleteBtn = e.target.closest(".delete-btn");
+  if (!deleteBtn) return;
+  const id = deleteBtn.dataset.id;
+  if (!confirm("Remove this ingredient from the recipe?")) return;
+  try {
+    await apiDelete(`/recipes/${id}/`);
+    recipes = recipes.filter(r => String(r.id) !== String(id));
+    renderAll();
+    showToast("Ingredient removed.");
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+recipeLinesTable.addEventListener("change", async (e) => {
   const input = e.target.closest(".qty-input");
   if (!input) return;
 
@@ -300,15 +501,53 @@ recipeList.addEventListener("change", async (e) => {
     });
     const index = recipes.findIndex(r => String(r.id) === String(id));
     if (index >= 0) recipes[index] = updated;
-    showToast("Quantity updated");
+    renderEditor();
+    renderRecipeBrowser();
+    renderSummary();
+    showToast("Quantity updated.");
   } catch (err) {
     if (previous !== undefined) input.value = previous;
     showToast(err.message, true);
   }
 });
 
-loadData().catch(err => {
-  recipeList.innerHTML = `<div class="empty-state card" style="padding: 2rem;"><p>${err.message}</p></div>`;
+sellingPriceInput.addEventListener("change", async () => {
+  const product = selectedProduct();
+  if (!product) return;
+
+  const previous = product.selling_price;
+  const value = Number(sellingPriceInput.value);
+  if (!Number.isFinite(value) || value < 0) {
+    sellingPriceInput.value = Number(previous).toFixed(2);
+    showToast("Enter a valid selling price.", true);
+    return;
+  }
+
+  try {
+    const updated = await apiPatch(`/products/${product.id}/`, {
+      selling_price: value.toFixed(2),
+    });
+    const index = products.findIndex(p => Number(p.id) === Number(product.id));
+    if (index >= 0) products[index] = updated;
+    sellingPriceInput.value = Number(updated.selling_price).toFixed(2);
+    renderRecipeBrowser();
+    showToast("Selling price updated.");
+  } catch (err) {
+    sellingPriceInput.value = Number(previous).toFixed(2);
+    showToast(err.message, true);
+  }
 });
+
+bindTableSort(recipeLinesTable, lineSortState, renderEditor);
+
+const preselectedProduct = new URLSearchParams(window.location.search).get("product");
+loadData()
+  .then(() => {
+    if (preselectedProduct) selectProduct(preselectedProduct);
+  })
+  .catch(err => {
+    recipeEmpty.innerHTML = `<p style="margin:0;color:var(--color-muted);">${err.message}</p>`;
+    recipeEmpty.style.display = "";
+  });
 </script>
 {% endblock %}

@@ -16,7 +16,7 @@
 
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1rem;">Add product</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add product</h3>
   <form id="product-form">
     <div class="form-row">
       <div class="form-group">
@@ -40,7 +40,7 @@
         <input type="number" id="product-tax" name="tax_rate" min="0" max="100" step="0.01" placeholder="15.5">
       </div>
       <div class="form-group">
-        <label for="product-qty">Initial qty</label>
+        <label for="product-qty" id="product-qty-label">Initial qty</label>
         <input type="number" id="product-qty" name="remaining_qty" min="0" step="0.01" value="0">
       </div>
     </div>
@@ -50,21 +50,31 @@
         Active product
       </label>
     </div>
-    <div style="display: flex; justify-content: flex-end;">
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="product-cancel" style="display: none;">Cancel</button>
       <button type="submit" class="btn btn-primary" id="product-submit">Add product</button>
     </div>
   </form>
 </div>
 
-<div style="margin-bottom: 1rem;">
+<div class="products-toolbar">
   <input
     type="search"
     id="product-search"
     class="report-input"
     placeholder="Search products…"
-    style="max-width: 360px;"
     autocomplete="off"
   >
+  <div class="pos-mode-toggle" id="product-view-toggle" role="radiogroup" aria-label="Product view">
+    <button type="button" class="pos-mode-btn active" data-view="grid" aria-pressed="true" title="Card view">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      Cards
+    </button>
+    <button type="button" class="pos-mode-btn" data-view="list" aria-pressed="false" title="List view">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="2" width="14" height="2" rx="0.5"/><rect x="1" y="7" width="14" height="2" rx="0.5"/><rect x="1" y="12" width="14" height="2" rx="0.5"/></svg>
+      List
+    </button>
+  </div>
 </div>
 <div class="category-tabs" id="category-tabs" style="margin-bottom: 1.25rem;"></div>
 <div class="product-grid-page" id="product-list">
@@ -76,7 +86,10 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const VIEW_STORAGE_KEY = "products-view-mode";
 
 function formatQty(value) {
   const qty = Number(value);
@@ -90,15 +103,31 @@ function formatPercent(value) {
 
 let products = [];
 let categories = [];
+let editingId = null;
 let activeCategory = "all";
 let searchQuery = "";
+let viewMode = localStorage.getItem(VIEW_STORAGE_KEY) === "list" ? "list" : "grid";
 const productForm = document.getElementById("product-form");
+const formTitle = document.getElementById("form-title");
 const categorySelect = document.getElementById("product-category");
 const productSubmit = document.getElementById("product-submit");
+const productCancel = document.getElementById("product-cancel");
+const qtyLabel = document.getElementById("product-qty-label");
 const categoryTabs = document.getElementById("category-tabs");
 const productSearchInput = document.getElementById("product-search");
 const productList = document.getElementById("product-list");
+const productViewToggle = document.getElementById("product-view-toggle");
 const csvUpload = document.getElementById("csv-upload");
+const sortState = createSortState("name", "asc");
+
+const PRODUCT_SORT = {
+  name: (p) => p.name || "",
+  category_name: (p) => p.category_name || "",
+  selling_price: (p) => Number(p.selling_price || 0),
+  remaining_qty: (p) => Number(p.remaining_qty || 0),
+  tax_rate: (p) => Number(p.tax_rate || 0),
+  is_active: (p) => (p.is_active ? 1 : 0),
+};
 
 function renderCategoryOptions() {
   const options = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
@@ -109,6 +138,32 @@ function renderCategoryOptions() {
   }
 }
 
+function resetForm() {
+  editingId = null;
+  formTitle.textContent = "Add product";
+  productSubmit.textContent = "Add product";
+  productCancel.style.display = "none";
+  qtyLabel.textContent = "Initial qty";
+  productForm.reset();
+  document.getElementById("product-qty").value = "0";
+  document.getElementById("product-active").checked = true;
+}
+
+function startEdit(product) {
+  editingId = product.id;
+  formTitle.textContent = "Edit product";
+  productSubmit.textContent = "Save changes";
+  productCancel.style.display = "";
+  qtyLabel.textContent = "Qty";
+  document.getElementById("product-name").value = product.name;
+  categorySelect.value = String(product.category);
+  document.getElementById("product-price").value = product.selling_price;
+  document.getElementById("product-tax").value = product.tax_rate ?? "";
+  document.getElementById("product-qty").value = product.remaining_qty ?? "0";
+  document.getElementById("product-active").checked = product.is_active;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function matchesSearch(product) {
   if (!searchQuery) return true;
   const haystack = [product.name, product.category_name]
@@ -116,6 +171,84 @@ function matchesSearch(product) {
     .join(" ")
     .toLowerCase();
   return haystack.includes(searchQuery);
+}
+
+function recipeLink(product) {
+  if (product.category_name === "Ingredients") return "";
+  return `<a href="/recipes/?product=${product.id}" class="btn btn-ghost btn-sm">Recipe</a>`;
+}
+
+function renderProductCard(p) {
+  return `
+    <div class="card" style="padding: 1.25rem 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+        <h3 style="margin: 0; font-size: 1rem;">${p.name}</h3>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
+          ${recipeLink(p)}
+          <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
+        </div>
+      </div>
+      <p style="margin: 0.5rem 0; color: var(--color-muted); font-size: 0.85rem;">${p.category_name}</p>
+      <div style="display: flex; justify-content: space-between; align-items: end; gap: 0.75rem; margin-top: 0.75rem;">
+        <p style="margin: 0; font-family: Fraunces, Georgia, serif; font-size: 1.35rem; font-weight: 600; color: var(--color-amber-glow);">
+          ${formatCurrency(p.selling_price)}
+        </p>
+        <div style="text-align: right; font-size: 0.8rem; color: var(--color-muted);">
+          <div>Qty: <strong style="color: var(--color-espresso);">${formatQty(p.remaining_qty)}</strong></div>
+          <div>Tax: <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderProductTable(filtered) {
+  const sorted = sortItems(filtered, sortState, PRODUCT_SORT);
+
+  return `
+    <div class="card" style="padding: 0;">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              ${sortTh("Name", "name", sortState)}
+              ${sortTh("Category", "category_name", sortState)}
+              ${sortTh("Price", "selling_price", sortState, { align: "right" })}
+              ${sortTh("Qty", "remaining_qty", sortState, { align: "right" })}
+              ${sortTh("Tax", "tax_rate", sortState, { align: "right" })}
+              ${sortTh("Status", "is_active", sortState)}
+              ${actionTh()}
+            </tr>
+          </thead>
+          <tbody>
+            ${sorted.map(p => `
+              <tr>
+                <td><strong>${p.name}</strong></td>
+                <td>${p.category_name}</td>
+                <td style="text-align: right;">${formatCurrency(p.selling_price)}</td>
+                <td style="text-align: right;">${formatQty(p.remaining_qty)}</td>
+                <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
+                <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
+                <td style="text-align: right;">
+                  ${recipeLink(p)}
+                  <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function updateViewToggle() {
+  productViewToggle.querySelectorAll(".pos-mode-btn").forEach(btn => {
+    const active = btn.dataset.view === viewMode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
 }
 
 function render() {
@@ -133,30 +266,25 @@ function render() {
     : products.filter(p => p.category_name === activeCategory);
   filtered = filtered.filter(matchesSearch);
 
+  updateViewToggle();
+  productList.classList.toggle("product-grid-page", viewMode === "grid");
+
   if (!filtered.length) {
     const message = searchQuery ? "No matching products" : "No products found";
-    productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
+    if (viewMode === "list") {
+      productList.innerHTML = `<div class="card" style="padding: 0;"><div class="empty-state"><p>${message}</p></div></div>`;
+    } else {
+      productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
+    }
     return;
   }
 
-  productList.innerHTML = filtered.map(p => `
-    <div class="card" style="padding: 1.25rem 1.5rem;">
-      <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
-        <h3 style="margin: 0; font-size: 1rem;">${p.name}</h3>
-        <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
-      </div>
-      <p style="margin: 0.5rem 0; color: var(--color-muted); font-size: 0.85rem;">${p.category_name}</p>
-      <div style="display: flex; justify-content: space-between; align-items: end; gap: 0.75rem; margin-top: 0.75rem;">
-        <p style="margin: 0; font-family: Fraunces, Georgia, serif; font-size: 1.35rem; font-weight: 600; color: var(--color-amber-glow);">
-          ${formatCurrency(p.selling_price)}
-        </p>
-        <div style="text-align: right; font-size: 0.8rem; color: var(--color-muted);">
-          <div>Qty: <strong style="color: var(--color-espresso);">${formatQty(p.remaining_qty)}</strong></div>
-          <div>Tax: <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
-        </div>
-      </div>
-    </div>
-  `).join("");
+  if (viewMode === "list") {
+    productList.innerHTML = renderProductTable(filtered);
+    bindTableSort(productList, sortState, render);
+  } else {
+    productList.innerHTML = filtered.map(renderProductCard).join("");
+  }
 }
 
 async function loadProducts() {
@@ -185,20 +313,32 @@ productForm.addEventListener("submit", async (e) => {
     is_active: document.getElementById("product-active").checked,
   };
   if (taxRaw) payload.tax_rate = taxRaw;
-  if (qtyRaw) payload.remaining_qty = qtyRaw;
+  if (qtyRaw || editingId) payload.remaining_qty = qtyRaw || "0";
 
   try {
-    await apiPost("/products/", payload);
-    showToast("Product added");
-    productForm.reset();
-    document.getElementById("product-qty").value = "0";
-    document.getElementById("product-active").checked = true;
+    if (editingId) {
+      await apiPatch(`/products/${editingId}/`, payload);
+      showToast("Product updated");
+    } else {
+      await apiPost("/products/", payload);
+      showToast("Product added");
+    }
+    resetForm();
     await loadProducts();
   } catch (err) {
     showToast(err.message, true);
   } finally {
     productSubmit.disabled = false;
   }
+});
+
+productCancel.addEventListener("click", resetForm);
+
+productList.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-edit]");
+  if (!btn) return;
+  const product = products.find(p => String(p.id) === btn.dataset.edit);
+  if (product) startEdit(product);
 });
 
 categoryTabs.addEventListener("click", (e) => {
@@ -210,6 +350,14 @@ categoryTabs.addEventListener("click", (e) => {
 
 productSearchInput.addEventListener("input", () => {
   searchQuery = productSearchInput.value.trim().toLowerCase();
+  render();
+});
+
+productViewToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn[data-view]");
+  if (!btn || btn.dataset.view === viewMode) return;
+  viewMode = btn.dataset.view;
+  localStorage.setItem(VIEW_STORAGE_KEY, viewMode);
   render();
 });
 

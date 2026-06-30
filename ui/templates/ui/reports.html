@@ -54,6 +54,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const filterSearch = document.getElementById("filter-search");
 const filterNonZero = document.getElementById("filter-non-zero");
@@ -66,6 +67,15 @@ const reportTable = document.getElementById("report-table");
 const reportGeneratedAt = document.getElementById("report-generated-at");
 
 const customerAccountsUrl = "{% url 'ui:customer-accounts' %}";
+let reportData = null;
+const sortState = createSortState("full_name", "asc");
+
+const REPORT_SORT = {
+  full_name: (c) => c.full_name || "",
+  phone: (c) => c.phone || "",
+  email: (c) => c.email || "",
+  account_balance: (c) => Number(c.account_balance || 0),
+};
 
 function reportParams() {
   const params = new URLSearchParams();
@@ -76,6 +86,7 @@ function reportParams() {
 }
 
 function renderReport(data) {
+  reportData = data;
   const summary = data.summary || {};
   summaryCount.textContent = summary.customer_count ?? 0;
   summaryWithBalance.textContent = summary.customers_with_balance ?? 0;
@@ -88,19 +99,21 @@ function renderReport(data) {
     return;
   }
 
+  const sorted = sortItems(customers, sortState, REPORT_SORT);
+
   reportTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Customer</th>
-          <th>Phone</th>
-          <th>Email</th>
-          <th style="text-align: right;">Current balance</th>
-          <th></th>
+          ${sortTh("Customer", "full_name", sortState)}
+          ${sortTh("Phone", "phone", sortState)}
+          ${sortTh("Email", "email", sortState)}
+          ${sortTh("Current balance", "account_balance", sortState, { align: "right" })}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${customers.map(c => {
+        ${sorted.map(c => {
           const balance = Number(c.account_balance || 0);
           const balanceClass = balance > 0 ? "text-success" : "";
           return `
@@ -147,6 +160,10 @@ filterSearch.addEventListener("keydown", (e) => {
 });
 filterNonZero.addEventListener("change", loadReport);
 printReportBtn?.addEventListener("click", () => window.print());
+
+bindTableSort(reportTable, sortState, () => {
+  if (reportData) renderReport(reportData);
+});
 
 loadReport();
 </script>

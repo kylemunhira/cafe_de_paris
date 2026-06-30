@@ -63,6 +63,23 @@ h1, h3 {
   border: 1px solid rgba(44, 24, 16, 0.12);
 }
 
+.btn-accent {
+  background: var(--color-gold, #c9a227);
+  color: #fff;
+  border: none;
+}
+
+.btn-accent:hover {
+  filter: brightness(0.95);
+}
+
+.btn-accent:disabled,
+.btn-primary:disabled,
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .form-group label {
   display: block;
   font-size: 0.75rem;
@@ -309,13 +326,15 @@ h1, h3 {
 }
 
 /* POS — category badges (left column, matches product cards) */
-.pos-products .category-tabs {
+.pos-products .category-tabs,
+.dining-table-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 0.75rem;
 }
 
-.pos-products .category-tab.category-card {
+.pos-products .category-tab.category-card,
+.dining-table-grid .category-tab.category-card {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -329,22 +348,27 @@ h1, h3 {
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
   user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.pos-products .category-tab.category-card .name {
+.pos-products .category-tab.category-card .name,
+.dining-table-grid .category-tab.category-card .name {
   font-weight: 600;
   font-size: 0.9rem;
   line-height: 1.3;
   white-space: normal;
 }
 
-.pos-products .category-tab.category-card:hover {
+.pos-products .category-tab.category-card:hover,
+.dining-table-grid .category-tab.category-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-soft);
   border-color: var(--color-latte);
 }
 
-.pos-products .category-tab.category-card.active {
+.pos-products .category-tab.category-card.active,
+.dining-table-grid .category-tab.category-card.active {
   background: var(--color-espresso);
   color: #fff;
   border-color: var(--color-espresso);
@@ -352,7 +376,8 @@ h1, h3 {
   transform: none;
 }
 
-.pos-products .category-tab.category-card.active .name {
+.pos-products .category-tab.category-card.active .name,
+.dining-table-grid .category-tab.category-card.active .name {
   color: #fff;
 }
 
@@ -541,6 +566,8 @@ h1, h3 {
 }
 
 .badge-open { background: #fef3c7; color: #92400e; }
+.badge-active { background: #d1fae5; color: #065f46; }
+.badge-inactive { background: #f3f4f6; color: #6b7280; }
 .badge-requested { background: #e0e7ff; color: #3730a3; }
 .badge-delivered { background: #d1fae5; color: #065f46; }
 
@@ -682,4 +709,92 @@ h1, h3 {
 @media (max-width: 900px) {
   .pos-layout { grid-template-columns: 1fr; }
   .cart-panel { position: static; max-height: none; }
+}
+
+/* Dining table picker */
+.table-select-trigger {
+  width: 100%;
+  min-height: 3rem;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(44, 24, 16, 0.12);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.table-select-trigger.has-value {
+  color: var(--color-espresso);
+  font-weight: 600;
+}
+
+.dining-table-grid .category-tab.category-card {
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dining-table-grid .category-tab.category-card .table-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  line-height: 1.2;
+}
+
+.dining-table-grid .category-tab.category-card.occupied:not(.active) {
+  background: linear-gradient(165deg, #f5c47a 0%, #d4843f 100%);
+  border-color: #c4732f;
+  color: #2c1810;
+}
+
+.dining-table-grid .category-tab.category-card.occupied:not(.active) .name,
+.dining-table-grid .category-tab.category-card.occupied:not(.active) .table-status {
+  color: #2c1810;
+}
+
+.dining-table-grid .category-tab.category-card.active .table-status {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.table-manage-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.table-manage-row,
+.table-manage-add {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.table-manage-row {
+  padding: 0.65rem;
+  border: 1px solid rgba(44, 24, 16, 0.08);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.table-manage-add {
+  grid-template-columns: 1fr auto;
+}
+
+.table-manage-row .btn,
+.table-manage-add .btn {
+  min-height: 2.75rem;
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  .table-manage-row,
+  .table-manage-add {
+    grid-template-columns: 1fr;
+  }
 }

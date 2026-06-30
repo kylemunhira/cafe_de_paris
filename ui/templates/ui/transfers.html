@@ -87,6 +87,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
@@ -98,6 +99,17 @@ let destinationBranches = [];
 let products = [];
 let draftLines = [];
 let activeFilter = "all";
+const sortState = createSortState("created_at", "desc");
+
+const NOTE_SORT = {
+  id: (n) => Number(n.id),
+  products: (n) => formatLineSummary(n),
+  line_count: (n) => Number(n.line_count ?? n.lines?.length ?? 0),
+  total_quantity: (n) => Number(n.total_quantity),
+  to_branch_name: (n) => n.to_branch_name || "",
+  status: (n) => n.status || "",
+  created_at: (n) => n.created_at || "",
+};
 
 const fromBranchSelect = document.getElementById("from-branch");
 const toBranchSelect = document.getElementById("to-branch");
@@ -160,7 +172,7 @@ function renderDraftLines() {
 function renderBakeryStats() {
   const totalSkus = bakeryInventory.length;
   const totalUnits = bakeryInventory.reduce((sum, item) => sum + Number(item.quantity), 0);
-  const pending = allNotes.filter(n => ["requested", "approved", "dispatched"].includes(n.status)).length;
+  const pending = allNotes.filter(n => n.status === "requested").length;
 
   bakeryStats.innerHTML = `
     <div class="card stat-card">
@@ -171,7 +183,7 @@ function renderBakeryStats() {
     <div class="card stat-card">
       <div class="label">Active delivery notes</div>
       <div class="value">${pending}</div>
-      <div class="sub">Awaiting delivery</div>
+      <div class="sub">Awaiting approval</div>
     </div>
   `;
 }
@@ -184,9 +196,6 @@ function noteActions(note) {
 
   if (note.status === "requested") {
     actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
-    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
-  } else if (note.status === "approved") {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="dispatch" data-id="${id}">Dispatch</button>`);
     actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
   } else if (note.status === "dispatched" && CAN_RECEIVE) {
     actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="deliver" data-id="${id}">Deliver</button>`);
@@ -202,10 +211,35 @@ function formatLineSummary(note) {
   return preview.join(", ") + extra;
 }
 
+function formatReceiptSummary(note) {
+  if (!note.lines?.length) return "";
+  return note.lines
+    .map(l => `${l.product_name} (${formatQty(l.quantity)})`)
+    .join(", ");
+}
+
+function transferActionToast(action, updated) {
+  const noteRef = `DN-${String(updated.id).padStart(5, "0")}`;
+  const summary = formatReceiptSummary(updated);
+  if (action === "approve" && updated.status === "delivered") {
+    return summary
+      ? `Approved — stock added at ${updated.to_branch_name}: ${summary}`
+      : `Approved — stock added at ${updated.to_branch_name} (${noteRef})`;
+  }
+  if (action === "deliver") {
+    return summary
+      ? `Stock added at ${updated.to_branch_name}: ${summary}`
+      : `Stock added at ${updated.to_branch_name} (${noteRef})`;
+  }
+  return `Delivery note ${noteRef} ${action}d`;
+}
+
 function renderNotes() {
-  const filtered = activeFilter === "all"
-    ? allNotes
-    : allNotes.filter(n => n.status === activeFilter);
+  const filtered = sortItems(
+    activeFilter === "all" ? allNotes : allNotes.filter(n => n.status === activeFilter),
+    sortState,
+    NOTE_SORT,
+  );
 
   if (!filtered.length) {
     transfersTable.innerHTML = `<div class="empty-state"><p>No delivery notes found</p></div>`;
@@ -216,14 +250,14 @@ function renderNotes() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Note</th>
-          <th>Products</th>
-          <th>Items</th>
-          <th>Total qty</th>
-          <th>To</th>
-          <th>Status</th>
-          <th>Date</th>
-          <th></th>
+          ${sortTh("Note", "id", sortState)}
+          ${sortTh("Products", "products", sortState)}
+          ${sortTh("Items", "line_count", sortState)}
+          ${sortTh("Total qty", "total_quantity", sortState)}
+          ${sortTh("To", "to_branch_name", sortState)}
+          ${sortTh("Status", "status", sortState)}
+          ${sortTh("Date", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
@@ -388,7 +422,7 @@ transfersTable.addEventListener("click", async (e) => {
     const index = allNotes.findIndex(n => String(n.id) === id);
     if (index >= 0) allNotes[index] = updated;
 
-    if (action === "dispatch" || action === "deliver") {
+    if (action === "approve" || action === "dispatch") {
       const bakeryId = bakeryBranches[0]?.id;
       if (bakeryId) {
         const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
@@ -400,7 +434,11 @@ transfersTable.addEventListener("click", async (e) => {
 
     renderNotes();
     renderBakeryStats();
-    showToast(`Delivery note #${id} ${action}ed`);
+    showToast(
+      action === "approve" || action === "deliver"
+        ? transferActionToast(action, updated)
+        : `Delivery note #${id} ${action}ed`
+    );
   } catch (err) {
     showToast(err.message, true);
     btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
@@ -416,6 +454,8 @@ document.querySelectorAll("[data-filter]").forEach(tab => {
     renderNotes();
   });
 });
+
+bindTableSort(transfersTable, sortState, renderNotes);
 
 loadData().catch(err => {
   transfersTable.innerHTML = `<div class="empty-state">Failed to load delivery notes: ${err.message}</div>`;

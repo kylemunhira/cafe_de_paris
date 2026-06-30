@@ -1,0 +1,226 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Ingredient Usage — Café de Paris{% endblock %}
+{% block page_title %}Daily Ingredient Usage{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
+{% endblock %}
+
+{% block content %}
+<div class="card report-filters">
+  <div class="report-filters-grid">
+    <label>
+      <span>Date</span>
+      <input type="date" id="filter-date" class="report-input">
+    </label>
+    {% if can_filter_any_branch %}
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    {% endif %}
+    <label style="grid-column: span 2;">
+      <span>Search ingredient</span>
+      <input type="search" id="filter-search" class="report-input" placeholder="Name…" autocomplete="off">
+    </label>
+    <label class="report-checkbox-label">
+      <input type="checkbox" id="filter-active-only" checked>
+      <span>Active ingredients only</span>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="report-summary">
+  <div class="card stat-card">
+    <div class="stat-label">Ingredients used</div>
+    <div class="stat-value" id="summary-ingredients">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Branches</div>
+    <div class="stat-value" id="summary-branches">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Total quantity used</div>
+    <div class="stat-value" id="summary-quantity">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Total usage cost</div>
+    <div class="stat-value" id="summary-cost">—</div>
+  </div>
+</div>
+
+<div class="card report-panel" id="report-table-card" style="padding: 0;">
+  <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">Usage by branch</h3>
+    <p class="report-panel-note" id="report-generated-at" style="margin: 0.35rem 0 0;"></p>
+  </div>
+  <div class="table-wrap" id="report-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+
+const filterDate = document.getElementById("filter-date");
+const filterBranch = document.getElementById("filter-branch");
+const filterSearch = document.getElementById("filter-search");
+const filterActiveOnly = document.getElementById("filter-active-only");
+const applyFilters = document.getElementById("apply-filters");
+const printReportBtn = document.getElementById("print-report-btn");
+const summaryIngredients = document.getElementById("summary-ingredients");
+const summaryBranches = document.getElementById("summary-branches");
+const summaryQuantity = document.getElementById("summary-quantity");
+const summaryCost = document.getElementById("summary-cost");
+const reportTable = document.getElementById("report-table");
+const reportGeneratedAt = document.getElementById("report-generated-at");
+
+let reportData = null;
+const sortState = createSortState("ingredient_name", "asc");
+
+const REPORT_SORT = {
+  ingredient_name: (r) => r.ingredient_name || "",
+  branch_name: (r) => r.branch_name || "",
+  from_sales: (r) => Number(r.from_sales),
+  from_production: (r) => Number(r.from_production),
+  quantity_used: (r) => Number(r.quantity_used),
+  unit_cost: (r) => Number(r.unit_cost),
+  usage_cost: (r) => Number(r.usage_cost),
+};
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function defaultDate() {
+  const today = new Date();
+  return today.toISOString().slice(0, 10);
+}
+
+function reportParams() {
+  const params = new URLSearchParams();
+  if (filterDate.value) params.set("date", filterDate.value);
+  if (canFilterAnyBranch && filterBranch?.value) {
+    params.set("branch", filterBranch.value);
+  }
+  const search = filterSearch.value.trim();
+  if (search) params.set("search", search);
+  if (!filterActiveOnly.checked) params.set("active_only", "0");
+  return params;
+}
+
+function renderReport(data) {
+  reportData = data;
+  const summary = data.summary || {};
+  summaryIngredients.textContent = summary.ingredient_count ?? 0;
+  summaryBranches.textContent = summary.branch_count ?? 0;
+  summaryQuantity.textContent = formatQty(summary.total_quantity_used ?? 0);
+  summaryCost.textContent = formatCurrency(summary.total_usage_cost ?? 0);
+
+  const reportDate = data.date || filterDate.value;
+  reportGeneratedAt.textContent = `Usage for ${reportDate} — ${summary.row_count ?? 0} lines`;
+
+  const rows = data.rows || [];
+  if (!rows.length) {
+    reportTable.innerHTML = `<div class="empty-state"><p>No ingredient usage recorded for this date</p></div>`;
+    return;
+  }
+
+  const showBranchColumn = (summary.branch_count ?? 0) > 1;
+  const sorted = sortItems(rows, sortState, REPORT_SORT);
+  const totalUnitCost = rows.reduce((sum, row) => sum + Number(row.unit_cost || 0), 0);
+
+  reportTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Ingredient", "ingredient_name", sortState)}
+          ${showBranchColumn ? sortTh("Branch", "branch_name", sortState) : ""}
+          ${sortTh("From sales", "from_sales", sortState, { align: "right" })}
+          ${sortTh("From production", "from_production", sortState, { align: "right" })}
+          ${sortTh("Total used", "quantity_used", sortState, { align: "right" })}
+          ${sortTh("Unit cost", "unit_cost", sortState, { align: "right" })}
+          ${sortTh("Usage cost", "usage_cost", sortState, { align: "right" })}
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(row => `
+          <tr>
+            <td><strong>${row.ingredient_name}</strong></td>
+            ${showBranchColumn ? `<td>${row.branch_name}</td>` : ""}
+            <td style="text-align: right;">${formatQty(row.from_sales)}</td>
+            <td style="text-align: right;">${formatQty(row.from_production)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatQty(row.quantity_used)}</td>
+            <td style="text-align: right;">${formatCurrency(row.unit_cost)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatCurrency(row.usage_cost)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="${showBranchColumn ? 4 : 3}"><strong>Total</strong></td>
+          <td style="text-align: right; font-weight: 700;">${formatQty(summary.total_quantity_used ?? 0)}</td>
+          <td style="text-align: right; font-weight: 700;">${formatCurrency(totalUnitCost)}</td>
+          <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_usage_cost ?? 0)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+async function loadReport() {
+  reportTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    const params = reportParams();
+    const query = params.toString();
+    const data = await apiGet(`/reports/ingredient-usage/${query ? `?${query}` : ""}`);
+    renderReport(data);
+  } catch (err) {
+    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+    showToast(err.message, true);
+  }
+}
+
+async function loadBranches() {
+  if (!canFilterAnyBranch || !filterBranch) return;
+  const data = await apiGet("/branches/?page_size=500");
+  const branches = unwrapList(data).filter(b => b.is_active);
+  filterBranch.innerHTML = `<option value="">All branches</option>` +
+    branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+}
+
+filterDate.value = defaultDate();
+applyFilters.addEventListener("click", loadReport);
+filterSearch.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    loadReport();
+  }
+});
+filterActiveOnly.addEventListener("change", loadReport);
+printReportBtn?.addEventListener("click", () => window.print());
+
+bindTableSort(reportTable, sortState, () => {
+  if (reportData) renderReport(reportData);
+});
+
+loadBranches()
+  .then(loadReport)
+  .catch(err => {
+    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+  });
+</script>
+{% endblock %}

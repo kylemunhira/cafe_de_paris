@@ -10,7 +10,13 @@ from catalog.models import Product, ProductCategory
 from accounts.models import StaffProfile, StaffRole
 from orders.models import FiscalApprovalStatus, Order, OrderStatus
 from payments.models import Currency, CurrencyRate
-from zimra_fiscal.client import build_submit_url, resolve_device_id
+from zimra_fiscal.client import (
+    build_device_action_url,
+    build_submit_url,
+    call_device_api,
+    resolve_device_id,
+)
+from zimra_fiscal.fiscal_day import normalize_fiscal_day_status
 from zimra_fiscal.models import FiscalReceipt, FiscalReceiptStatus
 from zimra_fiscal.receipt import build_fiscal_receipt_payload
 from zimra_fiscal.response import apply_zimra_response, parse_zimra_response_body
@@ -241,6 +247,13 @@ class ZimraClientTests(TestCase):
             "http://192.168.100.8:5008/api/submit_receipt/30541",
         )
 
+    @override_settings(ZIMRA_FISCAL_BASE_URL="http://192.168.100.8:5008")
+    def test_build_device_action_url(self):
+        self.assertEqual(
+            build_device_action_url("30541", "close_day"),
+            "http://192.168.100.8:5008/api/close_day/30541",
+        )
+
     @override_settings(ZIMRA_DEFAULT_DEVICE_ID="30541")
     def test_resolve_device_id_prefers_branch_value(self):
         branch = Branch.objects.create(
@@ -257,6 +270,130 @@ class ZimraClientTests(TestCase):
             branch_type=BranchType.BRANCH,
         )
         self.assertEqual(resolve_device_id(branch), "30541")
+
+
+class FiscalDayStatusTests(TestCase):
+    def test_normalize_fiscal_day_status(self):
+        normalized = normalize_fiscal_day_status(
+            {
+                "status_code": 200,
+                "body": {
+                    "fiscalDayStatus": "FiscalDayOpened",
+                    "lastFiscalDayNo": 12,
+                    "lastReceiptGlobalNo": 44,
+                },
+            }
+        )
+        self.assertEqual(normalized["fiscal_day_status"], "FiscalDayOpened")
+        self.assertEqual(normalized["fiscal_day_number"], 12)
+        self.assertEqual(normalized["last_receipt_global_no"], 44)
+        self.assertTrue(normalized["can_close_day"])
+        self.assertFalse(normalized["can_open_day"])
+
+    def test_normalize_closed_day(self):
+        normalized = normalize_fiscal_day_status(
+            {
+                "status_code": 200,
+                "body": {"fiscalDayStatus": "FiscalDayClosed", "lastFiscalDayNo": 11},
+            }
+        )
+        self.assertTrue(normalized["can_open_day"])
+        self.assertFalse(normalized["can_close_day"])
+
+
+class BranchFiscalDayApiTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Fiscal Branch",
+            code="FIS",
+            branch_type=BranchType.BRANCH,
+            fiscalization_enabled=True,
+            zimra_device_id="30541",
+        )
+        self.manager = User.objects.create_user(username="fiscalmgr", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+            pos_access=True,
+        )
+        self.client.force_authenticate(self.manager)
+
+    @patch("branches.views.get_fiscal_day_status")
+    def test_fiscal_day_status_endpoint(self, mock_status):
+        mock_status.return_value = {
+            "branch_id": self.branch.id,
+            "branch_name": self.branch.name,
+            "device_id": "30541",
+            "fiscal_day_status": "FiscalDayOpened",
+            "fiscal_day_number": 3,
+            "can_open_day": False,
+            "can_close_day": True,
+        }
+        response = self.client.get(f"/api/branches/{self.branch.id}/fiscal-day/status/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["fiscal_day_status"], "FiscalDayOpened")
+        mock_status.assert_called_once()
+
+    @patch("branches.views.open_fiscal_day")
+    def test_fiscal_day_open_endpoint(self, mock_open):
+        mock_open.return_value = {
+            "branch_id": self.branch.id,
+            "fiscal_day_status": "FiscalDayOpened",
+            "fiscal_day_number": 4,
+            "can_open_day": False,
+            "can_close_day": True,
+        }
+        response = self.client.post(
+            f"/api/branches/{self.branch.id}/fiscal-day/open/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_open.assert_called_once()
+
+    @patch("branches.views.close_fiscal_day")
+    def test_fiscal_day_close_endpoint(self, mock_close):
+        mock_close.return_value = {
+            "branch_id": self.branch.id,
+            "operation_id": "ABC:1",
+            "can_open_day": False,
+            "can_close_day": False,
+        }
+        response = self.client.post(
+            f"/api/branches/{self.branch.id}/fiscal-day/close/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_close.assert_called_once()
+
+    @patch("branches.views.get_fiscal_day_status")
+    def test_cashier_can_access_fiscal_day_status(self, mock_status):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        cashier = User.objects.create_user(username="cashier", password="pass")
+        StaffProfile.objects.create(
+            user=cashier,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        mock_status.return_value = {
+            "branch_id": self.branch.id,
+            "fiscal_day_status": "FiscalDayClosed",
+            "can_open_day": True,
+            "can_close_day": False,
+        }
+        self.client.force_authenticate(cashier)
+        response = self.client.get(f"/api/branches/{self.branch.id}/fiscal-day/status/")
+        self.assertEqual(response.status_code, 200)
+        mock_status.assert_called_once()
 
 
 class OrderPayFiscalizationTests(TestCase):

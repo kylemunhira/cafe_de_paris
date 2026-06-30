@@ -49,6 +49,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, apiPatch, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let customers = [];
 let editingId = null;
@@ -64,6 +65,16 @@ const loyaltyInput = document.getElementById("customer-loyalty");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const customersTable = document.getElementById("customers-table");
+const sortState = createSortState("created_at", "desc");
+
+const CUSTOMER_SORT = {
+  name: (c) => displayName(c),
+  phone: (c) => c.phone || "",
+  email: (c) => c.email || "",
+  account_balance: (c) => Number(c.account_balance || 0),
+  loyalty_points: (c) => Number(c.loyalty_points || 0),
+  created_at: (c) => c.created_at || "",
+};
 
 function resetForm() {
   editingId = null;
@@ -99,21 +110,23 @@ function render() {
     return;
   }
 
+  const sorted = sortItems(customers, sortState, CUSTOMER_SORT);
+
   customersTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Phone</th>
-          <th>Email</th>
-          <th>Account</th>
-          <th>Loyalty</th>
-          <th>Added</th>
-          <th></th>
+          ${sortTh("Name", "name", sortState)}
+          ${sortTh("Phone", "phone", sortState)}
+          ${sortTh("Email", "email", sortState)}
+          ${sortTh("Account", "account_balance", sortState)}
+          ${sortTh("Loyalty", "loyalty_points", sortState)}
+          ${sortTh("Added", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${customers.map(c => `
+        ${sorted.map(c => `
           <tr>
             <td><strong>${displayName(c)}</strong></td>
             <td>${c.phone || "—"}</td>
@@ -176,6 +189,8 @@ customersTable.addEventListener("click", (e) => {
   const customer = customers.find(c => String(c.id) === btn.dataset.id);
   if (customer) startEdit(customer);
 });
+
+bindTableSort(customersTable, sortState, render);
 
 loadCustomers().catch(err => {
   customersTable.innerHTML = `<div class="empty-state">Failed to load customers: ${err.message}</div>`;
