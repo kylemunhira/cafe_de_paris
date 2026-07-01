@@ -8,6 +8,8 @@ from accounts.models import StaffProfile, StaffRole
 from bakery.models import Recipe
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
+from orders.models import Order, OrderStatus
+from payments.models import Currency, CurrencyRate
 from inventory.models import (
     BranchInventory,
     DeliveryNote,
@@ -707,3 +709,201 @@ class StoresTransferTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["payment_status"], "unpaid")
+
+
+class OrderRecipeConsumptionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Test Branch",
+            code="TST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        StaffProfile.objects.create(
+            user=self.user,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.client.force_authenticate(user=self.user)
+        self.menu_category = ProductCategory.objects.create(name="Coffee")
+        self.ingredient_category = ProductCategory.objects.create(name="Ingredients")
+        self.beans = Product.objects.create(
+            name="Coffee Beans",
+            category=self.ingredient_category,
+            selling_price=Decimal("10.00"),
+        )
+        self.milk = Product.objects.create(
+            name="Milk",
+            category=self.ingredient_category,
+            selling_price=Decimal("2.00"),
+        )
+        self.espresso = Product.objects.create(
+            name="Espresso",
+            category=self.menu_category,
+            selling_price=Decimal("3.50"),
+        )
+        Recipe.objects.create(
+            product=self.espresso,
+            ingredient=self.beans,
+            quantity_required=Decimal("0.02"),
+        )
+        Recipe.objects.create(
+            product=self.espresso,
+            ingredient=self.milk,
+            quantity_required=Decimal("0.10"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=self.beans,
+            quantity=Decimal("1.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=self.milk,
+            quantity=Decimal("1.00"),
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+
+    def _create_order(self, quantity="2"):
+        order = Order.objects.create(branch=self.branch)
+        order.items.create(
+            product=self.espresso,
+            quantity=Decimal(quantity),
+            price=self.espresso.selling_price,
+        )
+        order.recalculate_total()
+        return order
+
+    def test_pay_deducts_recipe_ingredients(self):
+        order = self._create_order(quantity="2")
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        beans = BranchInventory.objects.get(branch=self.branch, product=self.beans)
+        milk = BranchInventory.objects.get(branch=self.branch, product=self.milk)
+        self.assertEqual(beans.quantity, Decimal("0.96"))
+        self.assertEqual(milk.quantity, Decimal("0.80"))
+
+    def test_pay_blocked_when_ingredients_insufficient(self):
+        BranchInventory.objects.filter(
+            branch=self.branch,
+            product=self.beans,
+        ).update(quantity=Decimal("0.01"))
+        order = self._create_order(quantity="2")
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Insufficient stock", response.data["detail"])
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+
+    def test_pay_deducts_bakery_product_stock_not_ingredients(self):
+        bakery_category = ProductCategory.objects.create(name="Breads & pastries")
+        flour = Product.objects.create(
+            name="Flour",
+            category=self.ingredient_category,
+            selling_price=Decimal("1.00"),
+        )
+        pie = Product.objects.create(
+            name="Meat Pie",
+            category=bakery_category,
+            selling_price=Decimal("3.00"),
+        )
+        Recipe.objects.create(
+            product=pie,
+            ingredient=flour,
+            quantity_required=Decimal("0.20"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=flour,
+            quantity=Decimal("10.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=pie,
+            quantity=Decimal("5.00"),
+        )
+
+        order = Order.objects.create(branch=self.branch)
+        order.items.create(product=pie, quantity=Decimal("2"), price=pie.selling_price)
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        pie_stock = BranchInventory.objects.get(branch=self.branch, product=pie)
+        flour_stock = BranchInventory.objects.get(branch=self.branch, product=flour)
+        self.assertEqual(pie_stock.quantity, Decimal("3.00"))
+        self.assertEqual(flour_stock.quantity, Decimal("10.00"))
+
+    def test_pay_blocked_when_bakery_product_stock_insufficient(self):
+        bakery_category = ProductCategory.objects.create(name="Savory")
+        pie = Product.objects.create(
+            name="Chicken Pie",
+            category=bakery_category,
+            selling_price=Decimal("3.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=pie,
+            quantity=Decimal("1.00"),
+        )
+
+        order = Order.objects.create(branch=self.branch)
+        order.items.create(product=pie, quantity=Decimal("2"), price=pie.selling_price)
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Insufficient stock", response.data["detail"])
+        self.assertIn("Chicken Pie", response.data["detail"])
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+
+    def test_pay_without_recipe_does_not_require_stock(self):
+        latte = Product.objects.create(
+            name="Latte",
+            category=self.menu_category,
+            selling_price=Decimal("4.00"),
+        )
+        order = Order.objects.create(branch=self.branch)
+        order.items.create(product=latte, quantity=Decimal("1"), price=latte.selling_price)
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)

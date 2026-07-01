@@ -11,6 +11,7 @@ from branches.models import DiningTable
 from branches.serializers import DiningTableSerializer
 from orders.models import FiscalApprovalStatus, Order, OrderItem, OrderStatus
 from orders.services import ReceiptNumberError, allocate_receipt_number
+from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 from payments.serializers import CurrencySerializer
 
 from .models import SyncedClientOrder
@@ -88,6 +89,10 @@ def _pay_order(order, payment_data, user=None):
 
     receipt_number = allocate_receipt_number(order.branch)
     paid_at = payment_data.get("paid_at") or timezone.now()
+    try:
+        consume_order_recipe_materials(order)
+    except InsufficientOrderMaterialsError as exc:
+        raise ValueError(str(exc)) from exc
     order.payment_currency = currency
     order.exchange_rate = rate
     order.amount_paid = currency.convert_from_base(order.total_amount)

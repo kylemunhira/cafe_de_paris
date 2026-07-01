@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -6,7 +7,8 @@ from django.utils import timezone
 
 from django.db.models import Q
 
-from catalog.constants import INGREDIENTS_CATEGORY
+from bakery.models import Recipe
+from catalog.constants import INGREDIENTS_CATEGORY, is_bakery_transfer_product
 from catalog.models import Product
 
 from .models import (
@@ -85,6 +87,91 @@ def set_inventory_quantity(branch, product, quantity: Decimal) -> BranchInventor
         inventory.quantity = quantity
         inventory.save(update_fields=["quantity", "last_updated"])
         return inventory
+
+
+class OrderMaterialShortage:
+    def __init__(self, ingredient, required, available):
+        self.ingredient = ingredient
+        self.required = required
+        self.available = available
+
+
+class InsufficientOrderMaterialsError(Exception):
+    def __init__(self, shortages: list[OrderMaterialShortage]):
+        self.shortages = shortages
+        details = ", ".join(
+            f"{item.ingredient.name} (need {item.required}, have {item.available})"
+            for item in shortages
+        )
+        super().__init__(f"Insufficient stock for this sale: {details}")
+
+
+def order_recipe_material_requirements(order) -> dict[int, Decimal]:
+    """Stock quantities to deduct when an order is paid."""
+    items = list(order.items.select_related("product__category"))
+    if not items:
+        return {}
+
+    kitchen_product_ids = {
+        item.product_id
+        for item in items
+        if not is_bakery_transfer_product(item.product)
+    }
+    recipes_by_product: dict[int, list[Recipe]] = defaultdict(list)
+    if kitchen_product_ids:
+        for recipe in Recipe.objects.filter(product_id__in=kitchen_product_ids):
+            recipes_by_product[recipe.product_id].append(recipe)
+
+    requirements: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
+    for item in items:
+        if is_bakery_transfer_product(item.product):
+            requirements[item.product_id] += item.quantity
+            continue
+        for recipe in recipes_by_product.get(item.product_id, []):
+            requirements[recipe.ingredient_id] += item.quantity * recipe.quantity_required
+    return dict(requirements)
+
+
+def consume_order_recipe_materials(order) -> None:
+    """
+    Deduct branch stock when an order is paid.
+    Bakery products deduct finished goods; kitchen products deduct recipe ingredients.
+    Other products without a recipe are skipped. Raises if stock is insufficient.
+    """
+    requirements = order_recipe_material_requirements(order)
+    if not requirements:
+        return
+
+    branch = order.branch
+    product_ids = list(requirements.keys())
+    products = {
+        row.id: row
+        for row in Product.objects.filter(id__in=product_ids)
+    }
+    inventory_rows = BranchInventory.objects.filter(
+        branch=branch,
+        product_id__in=product_ids,
+    )
+    available_by_product = {
+        row.product_id: row.quantity for row in inventory_rows
+    }
+
+    shortages = []
+    for product_id, required in requirements.items():
+        available = available_by_product.get(product_id, Decimal("0"))
+        if available < required:
+            shortages.append(
+                OrderMaterialShortage(
+                    products[product_id],
+                    required,
+                    available,
+                )
+            )
+    if shortages:
+        raise InsufficientOrderMaterialsError(shortages)
+
+    for product_id, required in requirements.items():
+        adjust_inventory(branch, products[product_id], -required)
 
 
 def approve_transfer(transfer: StockTransfer) -> StockTransfer:

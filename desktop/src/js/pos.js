@@ -344,7 +344,9 @@ function setTablePickerManageMode(enabled) {
   tablePickerView.hidden = enabled;
   tableManageView.hidden = !enabled;
   tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
-  tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+  if (tableManageToggleBtn) {
+    tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+  }
   if (enabled) renderTableManageList();
   else renderTablePickerGrid();
 }

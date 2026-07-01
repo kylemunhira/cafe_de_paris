@@ -19,6 +19,8 @@ from customers.services import (
     pay_order_from_account,
 )
 
+from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
+
 from .models import Expense, FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
 from .serializers import (
     ExpenseCreateSerializer,
@@ -146,6 +148,25 @@ class OrderViewSet(viewsets.ModelViewSet):
             except ReceiptNumberError as exc:
                 return Response(
                     {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                consume_order_recipe_materials(order)
+            except InsufficientOrderMaterialsError as exc:
+                return Response(
+                    {
+                        "detail": str(exc),
+                        "shortages": [
+                            {
+                                "ingredient_id": item.ingredient.id,
+                                "ingredient_name": item.ingredient.name,
+                                "required": str(item.required),
+                                "available": str(item.available),
+                            }
+                            for item in exc.shortages
+                        ],
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

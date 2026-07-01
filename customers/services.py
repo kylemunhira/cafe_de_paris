@@ -7,6 +7,8 @@ from payments.models import Currency
 from orders.models import FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
 from orders.services import ReceiptNumberError, allocate_receipt_number
 
+from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
+
 from .models import Customer, CustomerAccountTransaction, CustomerAccountTransactionType
 
 
@@ -93,6 +95,11 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
     try:
         receipt_number = allocate_receipt_number(order.branch)
     except ReceiptNumberError as exc:
+        raise CustomerAccountError(str(exc)) from exc
+
+    try:
+        consume_order_recipe_materials(order)
+    except InsufficientOrderMaterialsError as exc:
         raise CustomerAccountError(str(exc)) from exc
 
     base_currency = Currency.objects.filter(is_base=True, is_active=True).first()

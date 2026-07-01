@@ -601,7 +601,9 @@ function setTablePickerManageMode(enabled) {
   tablePickerView.style.display = enabled ? "none" : "";
   tableManageView.style.display = enabled ? "" : "none";
   tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
-  tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+  if (tableManageToggleBtn) {
+    tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+  }
   if (enabled) {
     renderTableManageList();
   } else {

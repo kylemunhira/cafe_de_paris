@@ -58,6 +58,12 @@
 </div>
 
 <div class="products-toolbar">
+  <div class="form-group products-toolbar__branch">
+    <label for="branch-select">Branch</label>
+    <select id="branch-select">
+      <option value="">Loading…</option>
+    </select>
+  </div>
   <input
     type="search"
     id="product-search"
@@ -76,6 +82,7 @@
     </button>
   </div>
 </div>
+<p id="products-branch-hint" class="products-branch-hint"></p>
 <div class="category-tabs" id="category-tabs" style="margin-bottom: 1.25rem;"></div>
 <div class="product-grid-page" id="product-list">
   <div class="skeleton" style="height: 140px;"></div>
@@ -88,8 +95,11 @@
 <script type="module">
 import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 
 const VIEW_STORAGE_KEY = "products-view-mode";
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
 function formatQty(value) {
   const qty = Number(value);
@@ -103,6 +113,9 @@ function formatPercent(value) {
 
 let products = [];
 let categories = [];
+let branches = [];
+let branchInventory = new Map();
+let selectedBranchId = null;
 let editingId = null;
 let activeCategory = "all";
 let searchQuery = "";
@@ -118,16 +131,83 @@ const productSearchInput = document.getElementById("product-search");
 const productList = document.getElementById("product-list");
 const productViewToggle = document.getElementById("product-view-toggle");
 const csvUpload = document.getElementById("csv-upload");
+const branchSelect = document.getElementById("branch-select");
+const productsBranchHint = document.getElementById("products-branch-hint");
 const sortState = createSortState("name", "asc");
 
 const PRODUCT_SORT = {
   name: (p) => p.name || "",
   category_name: (p) => p.category_name || "",
   selling_price: (p) => Number(p.selling_price || 0),
-  remaining_qty: (p) => Number(p.remaining_qty || 0),
+  branch_qty: (p) => Number(p.branch_qty || 0),
   tax_rate: (p) => Number(p.tax_rate || 0),
   is_active: (p) => (p.is_active ? 1 : 0),
 };
+
+function selectedBranch() {
+  return branches.find(b => b.id === selectedBranchId) || null;
+}
+
+function updateQtyLabel() {
+  const branch = selectedBranch();
+  qtyLabel.textContent = branch ? `Stock at ${branch.name}` : "Branch stock";
+}
+
+function updateBranchHint() {
+  const branch = selectedBranch();
+  if (!branch) {
+    productsBranchHint.textContent = canFilterAnyBranch
+      ? "Select a branch to view stock quantities."
+      : "No branch assigned — contact an administrator.";
+    return;
+  }
+  productsBranchHint.textContent = `Showing stock at ${branch.name}.`;
+}
+
+async function fetchAllInventory(params = {}) {
+  const query = new URLSearchParams({ page_size: "1000", ...params });
+  let page = 1;
+  let all = [];
+  while (true) {
+    query.set("page", String(page));
+    const data = await apiGet(`/inventory/?${query}`);
+    all = all.concat(unwrapList(data));
+    if (!data.next) break;
+    page += 1;
+  }
+  return all;
+}
+
+async function loadBranchInventory() {
+  if (!selectedBranchId) {
+    branchInventory = new Map();
+    return;
+  }
+
+  const rows = await fetchAllInventory({ branch: String(selectedBranchId) });
+  branchInventory = new Map(rows.map(row => [row.product, Number(row.quantity)]));
+}
+
+async function syncBranchStock(productId, newQty) {
+  if (!selectedBranchId) {
+    throw new Error("Select a branch before setting stock");
+  }
+
+  const currentQty = branchInventory.get(productId) ?? 0;
+  const delta = Number(newQty) - currentQty;
+  if (delta === 0) return;
+
+  await apiPost("/inventory/adjust/", {
+    branch: selectedBranchId,
+    product: productId,
+    delta,
+  });
+}
+
+function stockColumnLabel() {
+  const branch = selectedBranch();
+  return branch ? `Stock at ${branch.name}` : "Stock";
+}
 
 function renderCategoryOptions() {
   const options = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
@@ -147,6 +227,7 @@ function resetForm() {
   productForm.reset();
   document.getElementById("product-qty").value = "0";
   document.getElementById("product-active").checked = true;
+  updateQtyLabel();
 }
 
 function startEdit(product) {
@@ -154,13 +235,13 @@ function startEdit(product) {
   formTitle.textContent = "Edit product";
   productSubmit.textContent = "Save changes";
   productCancel.style.display = "";
-  qtyLabel.textContent = "Qty";
   document.getElementById("product-name").value = product.name;
   categorySelect.value = String(product.category);
   document.getElementById("product-price").value = product.selling_price;
   document.getElementById("product-tax").value = product.tax_rate ?? "";
-  document.getElementById("product-qty").value = product.remaining_qty ?? "0";
+  document.getElementById("product-qty").value = product.branch_qty ?? "0";
   document.getElementById("product-active").checked = product.is_active;
+  updateQtyLabel();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -180,22 +261,20 @@ function recipeLink(product) {
 
 function renderProductCard(p) {
   return `
-    <div class="card" style="padding: 1.25rem 1.5rem;">
-      <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
-        <h3 style="margin: 0; font-size: 1rem;">${p.name}</h3>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
+    <div class="card product-mgmt-card">
+      <div class="product-mgmt-card__header">
+        <h3 class="product-mgmt-card__name">${p.name}</h3>
+        <div class="product-mgmt-card__actions">
           <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
           ${recipeLink(p)}
           <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
         </div>
       </div>
-      <p style="margin: 0.5rem 0; color: var(--color-muted); font-size: 0.85rem;">${p.category_name}</p>
-      <div style="display: flex; justify-content: space-between; align-items: end; gap: 0.75rem; margin-top: 0.75rem;">
-        <p style="margin: 0; font-family: Fraunces, Georgia, serif; font-size: 1.35rem; font-weight: 600; color: var(--color-amber-glow);">
-          ${formatCurrency(p.selling_price)}
-        </p>
-        <div style="text-align: right; font-size: 0.8rem; color: var(--color-muted);">
-          <div>Qty: <strong style="color: var(--color-espresso);">${formatQty(p.remaining_qty)}</strong></div>
+      <p class="product-mgmt-card__category">${p.category_name}</p>
+      <div class="product-mgmt-card__footer">
+        <p class="product-mgmt-card__price">${formatCurrency(p.selling_price)}</p>
+        <div class="product-mgmt-card__meta">
+          <div>${stockColumnLabel()}: <strong style="color: var(--color-espresso);">${formatQty(p.branch_qty)}</strong></div>
           <div>Tax: <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
         </div>
       </div>
@@ -215,7 +294,7 @@ function renderProductTable(filtered) {
               ${sortTh("Name", "name", sortState)}
               ${sortTh("Category", "category_name", sortState)}
               ${sortTh("Price", "selling_price", sortState, { align: "right" })}
-              ${sortTh("Qty", "remaining_qty", sortState, { align: "right" })}
+              ${sortTh(stockColumnLabel(), "branch_qty", sortState, { align: "right" })}
               ${sortTh("Tax", "tax_rate", sortState, { align: "right" })}
               ${sortTh("Status", "is_active", sortState)}
               ${actionTh()}
@@ -227,7 +306,7 @@ function renderProductTable(filtered) {
                 <td><strong>${p.name}</strong></td>
                 <td>${p.category_name}</td>
                 <td style="text-align: right;">${formatCurrency(p.selling_price)}</td>
-                <td style="text-align: right;">${formatQty(p.remaining_qty)}</td>
+                <td style="text-align: right;">${formatQty(p.branch_qty)}</td>
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
                 <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
                 <td style="text-align: right;">
@@ -252,6 +331,22 @@ function updateViewToggle() {
 }
 
 function render() {
+  updateBranchHint();
+
+  if (!selectedBranchId) {
+    productList.classList.toggle("product-grid-page", viewMode === "grid");
+    const message = canFilterAnyBranch
+      ? "Select a branch to view product stock"
+      : "No branch assigned — contact an administrator";
+    if (viewMode === "list") {
+      productList.innerHTML = `<div class="card" style="padding: 0;"><div class="empty-state"><p>${message}</p></div></div>`;
+    } else {
+      productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
+    }
+    categoryTabs.innerHTML = "";
+    return;
+  }
+
   const categories = [...new Set(products.map(p => p.category_name))].sort();
   const tabs = ["all", ...categories];
 
@@ -289,8 +384,36 @@ function render() {
 
 async function loadProducts() {
   const productsData = await apiGet("/products/?exclude_category=Ingredients&page_size=500");
-  products = unwrapList(productsData);
+  products = unwrapList(productsData).map(product => ({
+    ...product,
+    branch_qty: branchInventory.get(product.id) ?? 0,
+  }));
   render();
+}
+
+async function reload() {
+  await loadBranchInventory();
+  await loadProducts();
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/?page_size=500");
+  branches = branchesForUser(
+    unwrapList(data).filter(b => b.is_active),
+    staffBranchId,
+    canFilterAnyBranch,
+  );
+
+  setupBranchSelect(branchSelect, branches, {
+    canSelectAny: canFilterAnyBranch,
+    emptyLabel: "No branches available",
+  });
+
+  selectedBranchId = branches.length === 1
+    ? branches[0].id
+    : (branchSelect.value ? Number(branchSelect.value) : null);
+  updateQtyLabel();
+  await reload();
 }
 
 async function loadCategories() {
@@ -313,18 +436,26 @@ productForm.addEventListener("submit", async (e) => {
     is_active: document.getElementById("product-active").checked,
   };
   if (taxRaw) payload.tax_rate = taxRaw;
-  if (qtyRaw || editingId) payload.remaining_qty = qtyRaw || "0";
+  const targetQty = qtyRaw || "0";
 
   try {
     if (editingId) {
       await apiPatch(`/products/${editingId}/`, payload);
+      await syncBranchStock(editingId, targetQty);
       showToast("Product updated");
     } else {
-      await apiPost("/products/", payload);
+      if (Number(targetQty) > 0 && !selectedBranchId) {
+        throw new Error("Select a branch before setting opening stock");
+      }
+      const created = await apiPost("/products/", {
+        ...payload,
+        remaining_qty: "0",
+      });
+      await syncBranchStock(created.id, targetQty);
       showToast("Product added");
     }
     resetForm();
-    await loadProducts();
+    await reload();
   } catch (err) {
     showToast(err.message, true);
   } finally {
@@ -333,6 +464,16 @@ productForm.addEventListener("submit", async (e) => {
 });
 
 productCancel.addEventListener("click", resetForm);
+
+branchSelect.addEventListener("change", async () => {
+  selectedBranchId = branchSelect.value ? Number(branchSelect.value) : null;
+  updateQtyLabel();
+  if (editingId) {
+    const product = products.find(p => p.id === editingId);
+    if (product) document.getElementById("product-qty").value = product.branch_qty;
+  }
+  await reload();
+});
 
 productList.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-edit]");
@@ -375,7 +516,7 @@ csvUpload.addEventListener("change", async (e) => {
     if (result.created) parts.push(`${result.created} created`);
     if (result.updated) parts.push(`${result.updated} updated`);
     showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
-    await loadProducts();
+    await reload();
   } catch (err) {
     let message = err.message;
     try {
@@ -391,7 +532,7 @@ csvUpload.addEventListener("change", async (e) => {
   }
 });
 
-Promise.all([loadCategories(), loadProducts()]).catch(err => {
+Promise.all([loadCategories(), loadBranches()]).catch(err => {
   productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Failed to load products: ${err.message}</div>`;
 });
 </script>
