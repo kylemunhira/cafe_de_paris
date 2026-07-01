@@ -69,6 +69,8 @@ class DesktopSyncTests(TestCase):
     def test_pull_catalog_excludes_non_sellable_products(self):
         ingredients = ProductCategory.objects.create(name="Ingredients")
         assets = ProductCategory.objects.create(name="Cutlery", is_asset=True)
+        components = ProductCategory.objects.create(name="Components")
+        bakery = ProductCategory.objects.create(name="Breads & pastries")
         Product.objects.create(
             name="Coffee Beans",
             category=ingredients,
@@ -81,13 +83,25 @@ class DesktopSyncTests(TestCase):
             selling_price=Decimal("1.00"),
             is_active=True,
         )
+        Product.objects.create(
+            name="Pastry Cream",
+            category=components,
+            selling_price=Decimal("0"),
+            is_active=True,
+        )
+        Product.objects.create(
+            name="Croissant",
+            category=bakery,
+            selling_price=Decimal("2.75"),
+            is_active=True,
+        )
 
         response = self.client.get("/api/sync/pull/")
         self.assertEqual(response.status_code, 200)
         product_names = {p["name"] for p in response.data["products"]}
-        self.assertEqual(product_names, {"Espresso"})
+        self.assertEqual(product_names, {"Espresso", "Croissant"})
         category_names = {c["name"] for c in response.data["categories"]}
-        self.assertEqual(category_names, {"Drinks"})
+        self.assertEqual(category_names, {"Drinks", "Breads & pastries"})
 
     def test_push_open_order_then_payment(self):
         client_id = "660e8400-e29b-41d4-a716-446655440001"

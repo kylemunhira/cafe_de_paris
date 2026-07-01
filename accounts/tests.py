@@ -719,6 +719,7 @@ class CashierConsoleAccessTests(APITestCase):
     def test_cashier_can_access_pos_only_pages(self):
         self.client.force_login(self.cashier)
         self.assertEqual(self.client.get(reverse("ui:pos")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:stock-take")).status_code, 200)
         self.assertEqual(self.client.get(reverse("ui:orders")).status_code, 403)
         self.assertEqual(self.client.get(reverse("ui:products")).status_code, 403)
         self.assertEqual(self.client.get(reverse("ui:expenses")).status_code, 403)

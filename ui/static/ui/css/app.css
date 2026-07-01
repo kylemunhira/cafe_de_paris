@@ -1144,6 +1144,12 @@ table.data-table tbody tr:hover {
   flex: 0 0 auto;
 }
 
+.products-page-description {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
 .products-branch-hint {
   margin: -0.5rem 0 1rem;
   font-size: 0.85rem;

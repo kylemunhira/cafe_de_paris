@@ -9,8 +9,9 @@ from .csv_io import (
     import_ingredients_csv,
     import_products_csv,
 )
-from .constants import BAKERY_SELLABLE_CATEGORIES
+from .constants import BAKERY_CATEGORIES, BAKERY_SELLABLE_CATEGORIES
 from .models import Product, ProductCategory
+from .pos_catalog import pos_catalog_products
 from .serializers import ProductCategorySerializer, ProductSerializer
 
 
@@ -36,6 +37,9 @@ class ProductViewSet(viewsets.ModelViewSet):
         category = self.request.query_params.get("category")
         exclude_category = self.request.query_params.get("exclude_category")
         bakery_transfer = self.request.query_params.get("bakery_transfer")
+        bakery_manufactured = self.request.query_params.get("bakery_manufactured")
+        exclude_bakery = self.request.query_params.get("exclude_bakery")
+        pos_catalog = self.request.query_params.get("pos_catalog")
         if category:
             queryset = queryset.filter(category__name=category)
         if exclude_category:
@@ -45,6 +49,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                 is_active=True,
                 category__name__in=BAKERY_SELLABLE_CATEGORIES,
             )
+        if bakery_manufactured and bakery_manufactured.lower() in ("1", "true", "yes"):
+            queryset = queryset.filter(category__name__in=BAKERY_CATEGORIES)
+        if exclude_bakery and exclude_bakery.lower() in ("1", "true", "yes"):
+            queryset = queryset.exclude(category__name__in=BAKERY_CATEGORIES)
+        if pos_catalog and pos_catalog.lower() in ("1", "true", "yes"):
+            queryset = pos_catalog_products(queryset)
         return queryset
 
     @action(detail=False, methods=["get"], url_path="export-csv")

@@ -40,6 +40,8 @@ urlpatterns = [
     ),
     path("products/", views.ProductsView.as_view(), name="products"),
     path("ingredients/", views.IngredientsView.as_view(), name="ingredients"),
+    path("product-categories/", views.ProductCategoriesView.as_view(), name="product-categories"),
+    path("bakery-products/", views.BakeryProductsView.as_view(), name="bakery-products"),
     path("branches/", views.BranchesView.as_view(), name="branches"),
     path("transfers/", views.TransfersView.as_view(), name="transfers"),
     path("bakery-production/", views.BakeryProductionView.as_view(), name="bakery-production"),

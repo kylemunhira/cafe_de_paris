@@ -19,6 +19,11 @@ BAKERY_SELLABLE_CATEGORIES = {
 def is_bakery_transfer_product(product):
     return product.category.name in BAKERY_SELLABLE_CATEGORIES
 
+
+def is_bakery_manufactured_product(product):
+    """Products made at the central bakery (finished goods and components)."""
+    return product.category.name in BAKERY_CATEGORIES
+
 KITCHEN_CATEGORIES = {
     "Breakfast",
     "Mains",

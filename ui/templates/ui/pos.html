@@ -1646,7 +1646,7 @@ async function init() {
   try {
     const [branchesData, productsData, categoriesData, currenciesData, customersData, suppliersData] = await Promise.all([
       apiGet("/branches/?page_size=500").then(data => unwrapList(data)),
-      fetchAllPages("/products/"),
+      fetchAllPages("/products/?pos_catalog=true"),
       fetchAllPages("/categories/"),
       apiGet("/currencies/?page_size=500"),
       fetchAllPages("/customers/"),
@@ -1666,9 +1666,7 @@ async function init() {
       preferredBranchId,
       canFilterAnyBranch,
     );
-    products = productsData.filter(
-      p => p.is_active && p.category_name !== "Ingredients"
-    );
+    products = productsData;
     categories = categoriesData.filter(c =>
       products.some(p => p.category === c.id)
     );

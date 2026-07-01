@@ -1,8 +1,8 @@
 {% extends "ui/base.html" %}
 {% load static %}
 
-{% block title %}Products — Café de Paris{% endblock %}
-{% block page_title %}Products{% endblock %}
+{% block title %}{{ page_heading }} — Café de Paris{% endblock %}
+{% block page_title %}{{ page_heading }}{% endblock %}
 
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -15,8 +15,12 @@
 {% endblock %}
 
 {% block content %}
+{% if page_description %}
+<p class="products-page-description">{{ page_description }}</p>
+{% endif %}
+{{ bakery_category_names|json_script:"bakery-category-names" }}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add product</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% if product_list_mode == "bakery" %}Add bakery product{% else %}Add product{% endif %}</h3>
   <form id="product-form">
     <div class="form-row">
       <div class="form-group">
@@ -93,11 +97,16 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, fetchAllPages, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 
-const VIEW_STORAGE_KEY = "products-view-mode";
+const VIEW_STORAGE_KEY = "products-view-mode-{{ product_list_mode|default:'menu' }}";
+const productListMode = "{{ product_list_mode|default:'menu' }}";
+const productLabel = productListMode === "bakery" ? "bakery product" : "product";
+const BAKERY_CATEGORY_NAMES = new Set(
+  JSON.parse(document.getElementById("bakery-category-names").textContent),
+);
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
@@ -157,25 +166,15 @@ function updateBranchHint() {
   const branch = selectedBranch();
   if (!branch) {
     productsBranchHint.textContent = canFilterAnyBranch
-      ? "Select a branch to view stock quantities."
-      : "No branch assigned — contact an administrator.";
+      ? "Select a branch to view stock quantities. Products are listed below."
+      : "No branch assigned — stock quantities unavailable.";
     return;
   }
   productsBranchHint.textContent = `Showing stock at ${branch.name}.`;
 }
 
 async function fetchAllInventory(params = {}) {
-  const query = new URLSearchParams({ page_size: "1000", ...params });
-  let page = 1;
-  let all = [];
-  while (true) {
-    query.set("page", String(page));
-    const data = await apiGet(`/inventory/?${query}`);
-    all = all.concat(unwrapList(data));
-    if (!data.next) break;
-    page += 1;
-  }
-  return all;
+  return fetchAllPages("/inventory/", { page_size: "1000", ...params });
 }
 
 async function loadBranchInventory() {
@@ -220,8 +219,8 @@ function renderCategoryOptions() {
 
 function resetForm() {
   editingId = null;
-  formTitle.textContent = "Add product";
-  productSubmit.textContent = "Add product";
+  formTitle.textContent = `Add ${productLabel}`;
+  productSubmit.textContent = `Add ${productLabel}`;
   productCancel.style.display = "none";
   qtyLabel.textContent = "Initial qty";
   productForm.reset();
@@ -232,7 +231,7 @@ function resetForm() {
 
 function startEdit(product) {
   editingId = product.id;
-  formTitle.textContent = "Edit product";
+  formTitle.textContent = `Edit ${productLabel}`;
   productSubmit.textContent = "Save changes";
   productCancel.style.display = "";
   document.getElementById("product-name").value = product.name;
@@ -333,20 +332,6 @@ function updateViewToggle() {
 function render() {
   updateBranchHint();
 
-  if (!selectedBranchId) {
-    productList.classList.toggle("product-grid-page", viewMode === "grid");
-    const message = canFilterAnyBranch
-      ? "Select a branch to view product stock"
-      : "No branch assigned — contact an administrator";
-    if (viewMode === "list") {
-      productList.innerHTML = `<div class="card" style="padding: 0;"><div class="empty-state"><p>${message}</p></div></div>`;
-    } else {
-      productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
-    }
-    categoryTabs.innerHTML = "";
-    return;
-  }
-
   const categories = [...new Set(products.map(p => p.category_name))].sort();
   const tabs = ["all", ...categories];
 
@@ -365,7 +350,9 @@ function render() {
   productList.classList.toggle("product-grid-page", viewMode === "grid");
 
   if (!filtered.length) {
-    const message = searchQuery ? "No matching products" : "No products found";
+    const message = searchQuery
+      ? "No matching products"
+      : (products.length ? "No products in this category" : "No products found");
     if (viewMode === "list") {
       productList.innerHTML = `<div class="card" style="padding: 0;"><div class="empty-state"><p>${message}</p></div></div>`;
     } else {
@@ -383,8 +370,11 @@ function render() {
 }
 
 async function loadProducts() {
-  const productsData = await apiGet("/products/?exclude_category=Ingredients&page_size=500");
-  products = unwrapList(productsData).map(product => ({
+  const listParams = productListMode === "bakery"
+    ? { bakery_manufactured: "true" }
+    : { exclude_category: "Ingredients", exclude_bakery: "true" };
+  const productsData = await fetchAllPages("/products/", listParams);
+  products = productsData.map(product => ({
     ...product,
     branch_qty: branchInventory.get(product.id) ?? 0,
   }));
@@ -418,7 +408,10 @@ async function loadBranches() {
 
 async function loadCategories() {
   const data = await apiGet("/categories/?page_size=500");
-  categories = unwrapList(data).filter(c => c.name !== "Ingredients");
+  categories = unwrapList(data).filter(c => {
+    if (productListMode === "bakery") return BAKERY_CATEGORY_NAMES.has(c.name);
+    return c.name !== "Ingredients" && !BAKERY_CATEGORY_NAMES.has(c.name);
+  });
   renderCategoryOptions();
 }
 

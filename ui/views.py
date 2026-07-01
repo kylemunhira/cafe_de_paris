@@ -182,10 +182,45 @@ class ProductsView(BaseUIView):
     template_name = "ui/products.html"
     active_nav = "products"
 
+    def get_context_data(self, **kwargs):
+        from catalog.constants import BAKERY_CATEGORIES
+
+        context = super().get_context_data(**kwargs)
+        context["product_list_mode"] = "menu"
+        context["page_heading"] = "List Products"
+        context["page_description"] = (
+            "Menu items made to order at branches. "
+            "Bakery goods are managed under Bakery Products and sold on POS."
+        )
+        context["bakery_category_names"] = sorted(BAKERY_CATEGORIES)
+        return context
+
 
 class IngredientsView(BaseUIView):
     template_name = "ui/ingredients.html"
     active_nav = "ingredients"
+
+
+class ProductCategoriesView(BaseUIView):
+    template_name = "ui/product_categories.html"
+    active_nav = "product_categories"
+
+
+class BakeryProductsView(BaseUIView):
+    template_name = "ui/products.html"
+    active_nav = "bakery_products"
+
+    def get_context_data(self, **kwargs):
+        from catalog.constants import BAKERY_CATEGORIES
+
+        context = super().get_context_data(**kwargs)
+        context["product_list_mode"] = "bakery"
+        context["page_heading"] = "Bakery Products"
+        context["page_description"] = (
+            "Finished goods and components manufactured at the central bakery."
+        )
+        context["bakery_category_names"] = sorted(BAKERY_CATEGORIES)
+        return context
 
 
 class BranchesView(BaseUIView):
@@ -300,6 +335,15 @@ class RecipesView(BaseUIView):
 class StockTakeView(BaseUIView):
     template_name = "ui/stock_take.html"
     active_nav = "stock_take"
+    allow_cashier = True
+
+    def access_allowed(self, user):
+        from accounts.branch_access import user_can_access_management_console
+
+        return user_can_access_management_console(user)
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import (

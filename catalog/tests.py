@@ -109,6 +109,30 @@ class BakeryTransferProductFilterTests(TestCase):
         names = {item["name"] for item in response.data["results"]}
         self.assertEqual(names, {"Croissant"})
 
+    def test_bakery_manufactured_filter_includes_components(self):
+        response = self.client.get("/api/products/?bakery_manufactured=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Croissant", "Pastry Cream"})
+
+    def test_exclude_bakery_filter_omits_bakery_categories(self):
+        response = self.client.get("/api/products/?exclude_bakery=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Espresso"})
+
+    def test_pos_catalog_includes_bakery_finished_goods(self):
+        response = self.client.get("/api/products/?pos_catalog=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Croissant", "Espresso"})
+
+    def test_pos_catalog_excludes_components(self):
+        response = self.client.get("/api/products/?pos_catalog=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertNotIn("Pastry Cream", names)
+
 
 class IngredientCsvTests(TestCase):
     def setUp(self):
