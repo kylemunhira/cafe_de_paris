@@ -288,7 +288,7 @@
 import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 
-const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const canFilterAnyBranch = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
 const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 
 const INCLUSIVE_TAX_RATE = Number(document.querySelector(".pos-layout")?.dataset.inclusiveTaxRate ?? 0);
@@ -374,8 +374,8 @@ const stockTakeRequiredMessage = document.getElementById("stock-take-required-me
 const stockTakeRequiredCloseBtn = document.getElementById("stock-take-required-close-btn");
 const stockTakeRequiredCancelBtn = document.getElementById("stock-take-required-cancel-btn");
 
-const canManageFiscalDay = {{ can_manage_fiscal_day|yesno:"true,false" }};
-const canManageDiningTables = {{ can_manage_dining_tables|yesno:"true,false" }};
+const canManageFiscalDay = "{{ can_manage_fiscal_day|yesno:'true,false' }}" === "true";
+const canManageDiningTables = "{{ can_manage_dining_tables|yesno:'true,false' }}" === "true";
 const fiscalDayBtn = document.getElementById("fiscal-day-btn");
 const fiscalDayModal = document.getElementById("fiscal-day-modal");
 const fiscalDayCloseBtn = document.getElementById("fiscal-day-close-btn");
