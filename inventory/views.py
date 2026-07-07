@@ -4,6 +4,7 @@ from accounts.branch_access import (
     filter_by_branch_participation,
     get_staff_branch_id,
     user_can_access_bakery_transfers,
+    user_can_access_central_invoices,
     user_can_access_stores_transfers,
     user_can_approve_delivery,
     user_can_manage_outgoing_delivery,
@@ -24,7 +25,14 @@ from .csv_io import (
     export_stock_take_report_csv,
     import_stock_take_csv,
 )
-from .models import BranchInventory, DeliveryNote, StockTake, StockTakeStatus, StockTransfer
+from .models import (
+    BranchInventory,
+    CentralInvoice,
+    DeliveryNote,
+    StockTake,
+    StockTakeStatus,
+    StockTransfer,
+)
 from branches.models import Branch, BranchType
 
 from .serializers import (
@@ -32,6 +40,8 @@ from .serializers import (
     BakeryDeliveryNoteCreateSerializer,
     BakeryTransferCreateSerializer,
     BranchInventorySerializer,
+    CentralInvoiceCreateSerializer,
+    CentralInvoiceSerializer,
     DeliveryNoteSerializer,
     InventoryAdjustSerializer,
     STORES_TRANSFER_DESTINATION_TYPES,
@@ -46,6 +56,8 @@ from .services import (
     DuplicateStockTakeError,
     IncompleteStockTakeError,
     InsufficientStockError,
+    InvalidCentralInvoicePaymentError,
+    InvalidCentralInvoiceStateError,
     InvalidDeliveryNoteStateError,
     InvalidStockTakeStateError,
     InvalidTransferStateError,
@@ -53,6 +65,7 @@ from .services import (
     approve_delivery_note,
     approve_transfer,
     cancel_delivery_note,
+    cancel_central_invoice,
     cancel_stock_take,
     cancel_transfer,
     complete_stock_take,
@@ -64,6 +77,7 @@ from .services import (
     daily_stock_take_day_end_status,
     day_end_stock_take_message,
     InvalidDeliveryNotePaymentError,
+    mark_central_invoice_paid,
     mark_delivery_note_paid,
     sync_stock_take_lines,
 )
@@ -295,7 +309,7 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         if approval and not user_can_approve_delivery(request.user, note):
             from_branch_type = note.from_branch.branch_type
             if from_branch_type == BranchType.BAKERY:
-                detail = "Only central bakery or the receiving branch can approve this delivery."
+                detail = "Only the receiving branch can approve this delivery."
             elif from_branch_type == BranchType.STORES:
                 detail = "Only central stores or the receiving branch can approve this delivery."
             else:
@@ -570,3 +584,84 @@ class StockTakeViewSet(viewsets.ModelViewSet):
             {**result, "stock_take": StockTakeSerializer(stock_take).data},
             status=status.HTTP_200_OK,
         )
+
+
+class CentralInvoiceViewSet(viewsets.ModelViewSet):
+    queryset = CentralInvoice.objects.select_related(
+        "from_branch",
+        "customer",
+        "paid_by",
+    ).prefetch_related("lines__product").all()
+    serializer_class = CentralInvoiceSerializer
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        payment_status = self.request.query_params.get("payment_status")
+        branch_id = self.request.query_params.get("branch")
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
+        return filter_by_branch_field(queryset, self.request.user, branch_field="from_branch_id")
+
+    def create(self, request, *args, **kwargs):
+        if not user_can_access_central_invoices(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can create central invoices."
+            )
+        serializer = CentralInvoiceCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            invoice = serializer.save()
+        except InsufficientStockError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "available": str(exc.available),
+                    "requested": str(exc.requested),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except InvalidCentralInvoiceStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        invoice = self.get_queryset().get(pk=invoice.pk)
+        return Response(
+            CentralInvoiceSerializer(invoice).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="mark-paid")
+    def mark_paid(self, request, pk=None):
+        if not user_can_access_central_invoices(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can record invoice payment."
+            )
+        invoice = self.get_object()
+        try:
+            invoice = mark_central_invoice_paid(invoice, request.user)
+        except (InvalidCentralInvoicePaymentError, InvalidCentralInvoiceStateError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        invoice = self.get_queryset().get(pk=invoice.pk)
+        return Response(CentralInvoiceSerializer(invoice).data)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        if not user_can_access_central_invoices(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can cancel central invoices."
+            )
+        invoice = self.get_object()
+        try:
+            invoice = cancel_central_invoice(invoice)
+        except (InvalidCentralInvoicePaymentError, InvalidCentralInvoiceStateError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except InsufficientStockError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "available": str(exc.available),
+                    "requested": str(exc.requested),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        invoice = self.get_queryset().get(pk=invoice.pk)
+        return Response(CentralInvoiceSerializer(invoice).data)

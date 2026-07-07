@@ -2,12 +2,33 @@ from django.contrib import admin
 
 from .models import (
     BranchInventory,
+    CentralInvoice,
+    CentralInvoiceLine,
     DeliveryNote,
     DeliveryNoteLine,
     StockTake,
     StockTakeLine,
     StockTransfer,
 )
+
+
+class CentralInvoiceLineInline(admin.TabularInline):
+    model = CentralInvoiceLine
+    extra = 0
+
+
+@admin.register(CentralInvoice)
+class CentralInvoiceAdmin(admin.ModelAdmin):
+    list_display = (
+        "invoice_number",
+        "from_branch",
+        "customer",
+        "status",
+        "payment_status",
+        "created_at",
+    )
+    list_filter = ("status", "payment_status", "from_branch")
+    inlines = [CentralInvoiceLineInline]
 
 
 class DeliveryNoteLineInline(admin.TabularInline):

@@ -7,7 +7,7 @@ BAKERY_CATEGORIES = {
     "Components",
 }
 
-# Finished bakery goods sold on POS and transferable to branches.
+# Finished bakery goods sold on POS and transferable to stores and branches.
 # Components are internal sub-recipes; Ingredients are raw materials.
 BAKERY_SELLABLE_CATEGORIES = {
     "Breads & pastries",

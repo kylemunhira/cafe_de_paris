@@ -1,16 +1,20 @@
 from decimal import Decimal
 
 from accounts.branch_access import effective_branch_id
+from django.db import transaction
 from rest_framework import serializers
 
 from branches.models import Branch, BranchType
 from bakery.costing import product_unit_cost
 from catalog.constants import BAKERY_SELLABLE_CATEGORIES, is_bakery_transfer_product
 from catalog.models import Product
+from customers.models import Customer
 from orders.serializers import staff_display_name
 
 from .models import (
     BranchInventory,
+    CentralInvoice,
+    CentralInvoiceLine,
     DeliveryNote,
     DeliveryNoteLine,
     StockTake,
@@ -94,7 +98,7 @@ class StockTransferCreateSerializer(serializers.ModelSerializer):
         return attrs
 
 
-BAKERY_TRANSFER_DESTINATION_TYPES = (BranchType.STORES,)
+BAKERY_TRANSFER_DESTINATION_TYPES = (BranchType.STORES, BranchType.BRANCH)
 STORES_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH, BranchType.HQ)
 
 
@@ -117,7 +121,7 @@ class BakeryTransferCreateSerializer(serializers.ModelSerializer):
     def validate_to_branch(self, branch):
         if branch.branch_type not in BAKERY_TRANSFER_DESTINATION_TYPES:
             raise serializers.ValidationError(
-                "Transfers must be sent to central stores."
+                "Transfers must be sent to central stores or a branch."
             )
         if not branch.is_active:
             raise serializers.ValidationError("Destination branch is not active.")
@@ -265,19 +269,22 @@ class BakeryDeliveryNoteCreateSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+        from inventory.services import finalize_bakery_delivery_note_creation
+
         lines_data = validated_data.pop("lines")
-        note = DeliveryNote.objects.create(**validated_data)
-        DeliveryNoteLine.objects.bulk_create(
-            [
-                DeliveryNoteLine(
-                    delivery_note=note,
-                    product=line["product"],
-                    quantity=line["quantity"],
-                )
-                for line in lines_data
-            ]
-        )
-        return note
+        with transaction.atomic():
+            note = DeliveryNote.objects.create(**validated_data)
+            DeliveryNoteLine.objects.bulk_create(
+                [
+                    DeliveryNoteLine(
+                        delivery_note=note,
+                        product=line["product"],
+                        quantity=line["quantity"],
+                    )
+                    for line in lines_data
+                ]
+            )
+            return finalize_bakery_delivery_note_creation(note)
 
 
 class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
@@ -475,3 +482,137 @@ class StockTakeLinesUpdateSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         return update_stock_take_lines(instance, validated_data["lines"])
+
+
+class CentralInvoiceLineSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    line_total = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+
+    class Meta:
+        model = CentralInvoiceLine
+        fields = ["id", "product", "product_name", "quantity", "unit_price", "line_total"]
+
+
+class CentralInvoiceSerializer(serializers.ModelSerializer):
+    from_branch_name = serializers.CharField(source="from_branch.name", read_only=True)
+    customer_name = serializers.CharField(source="customer.__str__", read_only=True)
+    lines = CentralInvoiceLineSerializer(many=True, read_only=True)
+    line_count = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
+    total_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    paid_by_name = serializers.SerializerMethodField()
+    payment_status_display = serializers.CharField(
+        source="get_payment_status_display",
+        read_only=True,
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = CentralInvoice
+        fields = [
+            "id",
+            "from_branch",
+            "from_branch_name",
+            "customer",
+            "customer_name",
+            "invoice_number",
+            "status",
+            "status_display",
+            "payment_status",
+            "payment_status_display",
+            "paid_at",
+            "paid_by",
+            "paid_by_name",
+            "notes",
+            "created_at",
+            "lines",
+            "line_count",
+            "total_quantity",
+            "total_amount",
+        ]
+        read_only_fields = [
+            "invoice_number",
+            "status",
+            "payment_status",
+            "paid_at",
+            "paid_by",
+            "created_at",
+        ]
+
+    def get_paid_by_name(self, obj):
+        return staff_display_name(obj.paid_by)
+
+    def get_line_count(self, obj):
+        return obj.lines.count()
+
+    def get_total_quantity(self, obj):
+        return obj.total_quantity
+
+
+class CentralInvoiceLineCreateSerializer(serializers.Serializer):
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0"),
+    )
+
+    def validate_product(self, product):
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be sold on central invoices. "
+                f"Allowed categories: {', '.join(sorted(BAKERY_SELLABLE_CATEGORIES))}."
+            )
+        return product
+
+    def validate_quantity(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Quantity must be greater than zero.")
+        return value
+
+
+class CentralInvoiceCreateSerializer(serializers.Serializer):
+    from_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.STORES)
+    )
+    customer = serializers.PrimaryKeyRelatedField(
+        queryset=Customer.objects.all()
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    lines = CentralInvoiceLineCreateSerializer(many=True)
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("Add at least one product line.")
+        product_ids = [line["product"].id for line in value]
+        if len(product_ids) != len(set(product_ids)):
+            raise serializers.ValidationError("Each product may only appear once.")
+        return value
+
+    def create(self, validated_data):
+        from inventory.services import finalize_central_invoice_creation
+
+        lines_data = validated_data.pop("lines")
+        notes = validated_data.pop("notes", "")
+        with transaction.atomic():
+            invoice = CentralInvoice.objects.create(notes=notes, **validated_data)
+            CentralInvoiceLine.objects.bulk_create(
+                [
+                    CentralInvoiceLine(
+                        central_invoice=invoice,
+                        product=line["product"],
+                        quantity=line["quantity"],
+                        unit_price=line.get("unit_price") or line["product"].selling_price,
+                    )
+                    for line in lines_data
+                ]
+            )
+            return finalize_central_invoice_creation(invoice)

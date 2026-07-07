@@ -1,0 +1,234 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Central Invoice {{ invoice.invoice_number }} — Café de Paris</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #2c1810;
+      background: #f5f0ea;
+      font-size: 11pt;
+      line-height: 1.45;
+    }
+    .toolbar {
+      padding: 1rem;
+      text-align: center;
+      background: #faf6f1;
+      border-bottom: 1px solid #e8dfd4;
+    }
+    .toolbar button {
+      background: #2c1810;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1.25rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .sheet {
+      max-width: 210mm;
+      min-height: 277mm;
+      margin: 1rem auto;
+      padding: 18mm;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(44, 24, 16, 0.08);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #2c1810;
+    }
+    .brand h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.02em; }
+    .brand p { margin: 0.25rem 0 0; color: #6b5c52; font-size: 0.85rem; }
+    .doc-meta { text-align: right; }
+    .doc-meta h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .doc-meta p { margin: 0.35rem 0 0; color: #6b5c52; font-size: 0.85rem; }
+    .parties {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .party-box h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b5c52;
+    }
+    .party-box p { margin: 0.15rem 0 0; font-size: 0.95rem; }
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.5rem;
+    }
+    .items th, .items td {
+      border: 1px solid #d8cfc4;
+      padding: 0.55rem 0.65rem;
+      text-align: left;
+    }
+    .items th {
+      background: #f5ebe0;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .items td.qty, .items td.price, .items td.amt,
+    .items th.qty, .items th.price, .items th.amt {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .summary {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 2rem;
+    }
+    .summary-box {
+      min-width: 260px;
+      border: 1px solid #d8cfc4;
+      padding: 0.75rem 1rem;
+      background: #faf6f1;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.9rem;
+    }
+    .summary-row + .summary-row { margin-top: 0.35rem; }
+    .summary-row.grand {
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid #2c1810;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-top: 2.5rem;
+    }
+    .signature-line {
+      border-top: 1px solid #2c1810;
+      padding-top: 0.4rem;
+      font-size: 0.8rem;
+      color: #6b5c52;
+    }
+    @media print {
+      .toolbar { display: none; }
+      body { background: #fff; }
+      .sheet {
+        max-width: none;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Print central invoice</button>
+  </div>
+
+  <div class="sheet">
+    <div class="header">
+      <div class="brand">
+        <h1>Café de Paris</h1>
+        <p>Central Stores — External customer invoice</p>
+      </div>
+      <div class="doc-meta">
+        <h2>Tax Invoice</h2>
+        <p><strong>Invoice No.</strong> {{ invoice.invoice_number }}</p>
+        <p><strong>Date</strong> {{ invoice.created_at|date:"d M Y, H:i" }}</p>
+      </div>
+    </div>
+
+    <div class="parties">
+      <div class="party-box">
+        <h3>From (Supplier)</h3>
+        <p><strong>{{ invoice.from_branch.name }}</strong></p>
+        {% if invoice.from_branch.location %}<p>{{ invoice.from_branch.location }}</p>{% endif %}
+      </div>
+      <div class="party-box">
+        <h3>To (Customer)</h3>
+        <p><strong>{{ invoice.customer }}</strong></p>
+        {% if invoice.customer.phone %}<p>{{ invoice.customer.phone }}</p>{% endif %}
+        {% if invoice.customer.email %}<p>{{ invoice.customer.email }}</p>{% endif %}
+      </div>
+    </div>
+
+    {% if invoice.notes %}
+    <p style="margin: 0 0 1rem; font-size: 0.9rem;"><strong>Notes:</strong> {{ invoice.notes }}</p>
+    {% endif %}
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th style="width: 40px;">#</th>
+          <th>Product</th>
+          <th class="qty">Qty</th>
+          <th class="price">Unit price{% if base_currency %} ({{ base_currency.code }}){% endif %}</th>
+          <th class="amt">Amount{% if base_currency %} ({{ base_currency.code }}){% endif %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in invoice.lines.all %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>{{ line.product.name }}</td>
+          <td class="qty">{{ line.quantity }}</td>
+          <td class="price">{{ line.unit_price }}</td>
+          <td class="amt">{{ line.line_total }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No line items</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="summary">
+      <div class="summary-box">
+        <div class="summary-row">
+          <span>Line items</span>
+          <strong>{{ invoice.lines.count }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Total quantity</span>
+          <strong>{{ invoice.total_quantity }}</strong>
+        </div>
+        <div class="summary-row grand">
+          <span>Invoice total</span>
+          <strong>{% if base_currency %}{{ base_currency.symbol }}{% endif %}{{ invoice.total_amount }}</strong>
+        </div>
+        <div class="summary-row" style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #d8cfc4;">
+          <span>Payment status</span>
+          <strong>{% if invoice.payment_status == "paid" %}Paid{% else %}Unpaid{% endif %}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="signatures">
+      <div class="signature-line">Dispatched by (Central Stores)</div>
+      <div class="signature-line">Received by (Customer)</div>
+    </div>
+  </div>
+</body>
+</html>

@@ -176,6 +176,11 @@ def user_can_access_stores_transfers(user):
     return get_staff_branch_type(user) == BranchType.STORES
 
 
+def user_can_access_central_invoices(user):
+    """Central stores staff selling bakery products to external customers."""
+    return user_can_access_stores_transfers(user)
+
+
 def user_is_cashier(user):
     """Branch cashier — limited web console (POS and fiscal documents only)."""
     if not user or not user.is_authenticated:
@@ -242,7 +247,11 @@ def user_can_receive_delivery(user, note):
 
 
 def user_can_approve_delivery(user, note):
-    """Sending branch approves outgoing notes; receiving branch approves on GRV."""
+    """Receiving branch approves bakery deliveries; stores use approve/dispatch workflow."""
+    from branches.models import BranchType
+
+    if note.from_branch.branch_type == BranchType.BAKERY:
+        return user_can_receive_delivery(user, note)
     return user_can_manage_outgoing_delivery(user, note) or user_can_receive_delivery(
         user, note
     )

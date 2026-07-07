@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}Stock Transfers — Café de Paris{% endblock %}
-{% block page_title %}Bakery → Central Stores{% endblock %}
+{% block page_title %}Bakery → Stores & Branches{% endblock %}
 
 {% block topbar_actions %}
 <a href="{% url 'ui:bakery-production' %}" class="btn btn-ghost btn-sm">Record production</a>
@@ -25,9 +25,9 @@
         </select>
       </div>
       <div class="form-group">
-        <label for="to-branch">Destination (central stores)</label>
+        <label for="to-branch">Destination (stores or branch)</label>
         <select id="to-branch" required>
-          <option value="">Select central stores…</option>
+          <option value="">Select destination…</option>
         </select>
       </div>
     </div>
@@ -195,10 +195,7 @@ function noteActions(note) {
   ];
 
   if (note.status === "requested") {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
     actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
-  } else if (note.status === "dispatched" && CAN_RECEIVE) {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="deliver" data-id="${id}">Deliver</button>`);
   }
 
   return actions.join(" ");
@@ -225,6 +222,9 @@ function transferActionToast(action, updated) {
     return summary
       ? `Approved — stock added at ${updated.to_branch_name}: ${summary}`
       : `Approved — stock added at ${updated.to_branch_name} (${noteRef})`;
+  }
+  if (action === "dispatch") {
+    return `${noteRef} dispatched from bakery. Awaiting receipt at ${updated.to_branch_name}.`;
   }
   if (action === "deliver") {
     return summary
@@ -284,7 +284,7 @@ function populateFormOptions() {
   `).join("");
 
   toBranchSelect.innerHTML = `
-    <option value="">Select central stores…</option>
+    <option value="">Select destination…</option>
     ${destinationBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
 
@@ -313,7 +313,9 @@ async function loadData() {
   allNotes = unwrapList(notesData);
 
   bakeryBranches = branches.filter(b => b.branch_type === "bakery" && b.is_active);
-  destinationBranches = branches.filter(b => b.branch_type === "stores" && b.is_active);
+  destinationBranches = branches.filter(
+    b => (b.branch_type === "stores" || b.branch_type === "branch") && b.is_active
+  );
 
   if (!bakeryBranches.length) {
     transferForm.innerHTML = `<div class="empty-state"><p>No central bakery configured. Add a branch with type "Bakery".</p></div>`;
@@ -374,7 +376,7 @@ transferForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   if (!toBranchSelect.value) {
-    showToast("Select central stores as the destination", true);
+    showToast("Select central stores or a branch as the destination", true);
     return;
   }
   if (!draftLines.length) {
@@ -399,9 +401,16 @@ transferForm.addEventListener("submit", async (e) => {
     draftLines = [];
     renderDraftLines();
     toBranchSelect.value = "";
+    const bakeryId = bakeryBranches[0]?.id;
+    if (bakeryId) {
+      const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
+      bakeryInventory = unwrapList(inventoryData);
+      populateFormOptions();
+      updateStockHint();
+    }
     renderNotes();
     renderBakeryStats();
-    showToast(`Delivery note DN-${String(note.id).padStart(5, "0")} created`);
+    showToast(`Delivery note DN-${String(note.id).padStart(5, "0")} created — awaiting approval at ${note.to_branch_name}`);
     window.open(printUrlTemplate.replace("{id}", note.id), "_blank");
   } catch (err) {
     showToast(err.message, true);
@@ -422,7 +431,7 @@ transfersTable.addEventListener("click", async (e) => {
     const index = allNotes.findIndex(n => String(n.id) === id);
     if (index >= 0) allNotes[index] = updated;
 
-    if (action === "approve" || action === "dispatch") {
+    if (action === "cancel") {
       const bakeryId = bakeryBranches[0]?.id;
       if (bakeryId) {
         const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
@@ -434,11 +443,7 @@ transfersTable.addEventListener("click", async (e) => {
 
     renderNotes();
     renderBakeryStats();
-    showToast(
-      action === "approve" || action === "deliver"
-        ? transferActionToast(action, updated)
-        : `Delivery note #${id} ${action}ed`
-    );
+    showToast(`Delivery note #${id} ${action}ed`);
   } catch (err) {
     showToast(err.message, true);
     btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);

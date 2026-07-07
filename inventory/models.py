@@ -273,3 +273,88 @@ class StockTakeLine(models.Model):
         if self.counted_quantity is None:
             return None
         return self.counted_quantity - self.system_quantity
+
+
+class CentralInvoiceStatus(models.TextChoices):
+    DISPATCHED = "dispatched", "Dispatched"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class CentralInvoice(models.Model):
+    """Sale or transfer of bakery products from central stores to an external customer."""
+
+    from_branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="central_invoices",
+    )
+    customer = models.ForeignKey(
+        "customers.Customer",
+        on_delete=models.PROTECT,
+        related_name="central_invoices",
+    )
+    invoice_number = models.CharField(max_length=32, unique=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=CentralInvoiceStatus.choices,
+        default=CentralInvoiceStatus.DISPATCHED,
+    )
+    payment_status = models.CharField(
+        max_length=10,
+        choices=TransferInvoicePaymentStatus.choices,
+        default=TransferInvoicePaymentStatus.UNPAID,
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="central_invoices_marked_paid",
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Central invoice {self.invoice_number} — {self.customer}"
+
+    @property
+    def total_quantity(self):
+        return sum(line.quantity for line in self.lines.all())
+
+    @property
+    def total_amount(self):
+        from decimal import Decimal
+
+        return sum(
+            (line.unit_price or Decimal("0")) * line.quantity for line in self.lines.all()
+        )
+
+
+class CentralInvoiceLine(models.Model):
+    central_invoice = models.ForeignKey(
+        CentralInvoice,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="central_invoice_lines",
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        unique_together = ("central_invoice", "product")
+        ordering = ["product__name"]
+
+    def __str__(self):
+        return f"{self.product} x {self.quantity}"
+
+    @property
+    def line_total(self):
+        return self.unit_price * self.quantity

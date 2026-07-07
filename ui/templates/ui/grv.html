@@ -186,7 +186,14 @@ grvTable.addEventListener("click", async (e) => {
 
     renderNotes();
     renderStats();
-    if (action === "deliver") {
+    if (action === "approve" && updated.status === "delivered") {
+      const summary = formatReceiptSummary(updated);
+      showToast(
+        summary
+          ? `Stock added at ${updated.to_branch_name}: ${summary}`
+          : `GRV-${String(id).padStart(5, "0")} received`
+      );
+    } else if (action === "deliver") {
       const summary = formatReceiptSummary(updated);
       showToast(
         summary

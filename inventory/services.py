@@ -239,13 +239,33 @@ def _delivery_note_lines(note: DeliveryNote) -> list:
     )
 
 
-def _is_bakery_to_stores_delivery(note: DeliveryNote) -> bool:
+def _is_bakery_outbound_delivery(note: DeliveryNote) -> bool:
     from branches.models import BranchType
 
-    return (
-        note.from_branch.branch_type == BranchType.BAKERY
-        and note.to_branch.branch_type == BranchType.STORES
+    return note.from_branch.branch_type == BranchType.BAKERY and note.to_branch.branch_type in (
+        BranchType.STORES,
+        BranchType.BRANCH,
     )
+
+
+def finalize_bakery_delivery_note_creation(note: DeliveryNote) -> DeliveryNote:
+    """Deduct bakery stock as soon as the delivery note is created."""
+    with transaction.atomic():
+        note = DeliveryNote.objects.select_for_update().select_related(
+            "from_branch", "to_branch"
+        ).get(pk=note.pk)
+        lines = _delivery_note_lines(note)
+        if not lines:
+            raise InvalidDeliveryNoteStateError(
+                note, "at least one product line", "create"
+            )
+        for line in lines:
+            adjust_inventory(
+                note.from_branch,
+                line.product,
+                -line.quantity,
+            )
+    return note
 
 
 def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
@@ -253,7 +273,7 @@ def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
         raise InvalidDeliveryNoteStateError(
             note, StockTransferStatus.REQUESTED, "approve"
         )
-    if _is_bakery_to_stores_delivery(note):
+    if _is_bakery_outbound_delivery(note):
         with transaction.atomic():
             note = DeliveryNote.objects.select_for_update().select_related(
                 "from_branch", "to_branch"
@@ -268,11 +288,6 @@ def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
                     note, "at least one product line", "approve"
                 )
             for line in lines:
-                adjust_inventory(
-                    note.from_branch,
-                    line.product,
-                    -line.quantity,
-                )
                 adjust_inventory(
                     note.to_branch,
                     line.product,
@@ -635,6 +650,24 @@ def cancel_delivery_note(note: DeliveryNote) -> DeliveryNote:
             f"{StockTransferStatus.REQUESTED} or {StockTransferStatus.APPROVED}",
             "cancel",
         )
+    if note.status == StockTransferStatus.REQUESTED and _is_bakery_outbound_delivery(note):
+        with transaction.atomic():
+            note = DeliveryNote.objects.select_for_update().select_related(
+                "from_branch", "to_branch"
+            ).get(pk=note.pk)
+            if note.status != StockTransferStatus.REQUESTED:
+                raise InvalidDeliveryNoteStateError(
+                    note, StockTransferStatus.REQUESTED, "cancel"
+                )
+            for line in _delivery_note_lines(note):
+                adjust_inventory(
+                    note.from_branch,
+                    line.product,
+                    line.quantity,
+                )
+            note.status = StockTransferStatus.CANCELLED
+            note.save(update_fields=["status"])
+        return note
     note.status = StockTransferStatus.CANCELLED
     note.save(update_fields=["status"])
     return note
@@ -679,3 +712,120 @@ def assign_transfer_invoice_number(note: DeliveryNote) -> DeliveryNote:
     note.invoice_number = f"{from_code}{to_code}{note.pk:05d}"
     note.save(update_fields=["invoice_number"])
     return note
+
+
+class InvalidCentralInvoiceStateError(Exception):
+    def __init__(self, invoice, expected, action):
+        self.invoice = invoice
+        self.expected = expected
+        self.action = action
+        super().__init__(
+            f"Central invoice {invoice.invoice_number} must be '{expected}' to {action}, "
+            f"currently '{invoice.status}'."
+        )
+
+
+class InvalidCentralInvoicePaymentError(Exception):
+    def __init__(self, invoice, detail):
+        self.invoice = invoice
+        super().__init__(detail)
+
+
+def _central_invoice_lines(invoice):
+    from .models import CentralInvoiceLine
+
+    return list(
+        CentralInvoiceLine.objects.filter(central_invoice_id=invoice.pk).select_related(
+            "product"
+        )
+    )
+
+
+def assign_central_invoice_number(invoice) -> object:
+    from branches.models import BranchType
+
+    if invoice.from_branch.branch_type != BranchType.STORES:
+        raise InvalidCentralInvoiceStateError(
+            invoice, "central stores", "issue invoice"
+        )
+    from_code = (invoice.from_branch.code or "STR").upper()
+    invoice.invoice_number = f"CI{from_code}{invoice.pk:05d}"
+    invoice.save(update_fields=["invoice_number"])
+    return invoice
+
+
+def finalize_central_invoice_creation(invoice) -> object:
+    """Assign invoice number and deduct central stores stock."""
+    from .models import CentralInvoiceStatus
+
+    with transaction.atomic():
+        invoice = type(invoice).objects.select_for_update().select_related(
+            "from_branch", "customer"
+        ).get(pk=invoice.pk)
+        lines = _central_invoice_lines(invoice)
+        if not lines:
+            raise InvalidCentralInvoiceStateError(
+                invoice, "at least one product line", "create"
+            )
+        assign_central_invoice_number(invoice)
+        for line in lines:
+            adjust_inventory(
+                invoice.from_branch,
+                line.product,
+                -line.quantity,
+            )
+        invoice.status = CentralInvoiceStatus.DISPATCHED
+        invoice.save(update_fields=["status"])
+    return invoice
+
+
+def cancel_central_invoice(invoice) -> object:
+    from .models import CentralInvoiceStatus, TransferInvoicePaymentStatus
+
+    if invoice.status != CentralInvoiceStatus.DISPATCHED:
+        raise InvalidCentralInvoiceStateError(
+            invoice, CentralInvoiceStatus.DISPATCHED, "cancel"
+        )
+    if invoice.payment_status == TransferInvoicePaymentStatus.PAID:
+        raise InvalidCentralInvoicePaymentError(
+            invoice,
+            f"Central invoice {invoice.invoice_number} is already paid.",
+        )
+    with transaction.atomic():
+        invoice = type(invoice).objects.select_for_update().select_related(
+            "from_branch"
+        ).get(pk=invoice.pk)
+        if invoice.status != CentralInvoiceStatus.DISPATCHED:
+            raise InvalidCentralInvoiceStateError(
+                invoice, CentralInvoiceStatus.DISPATCHED, "cancel"
+            )
+        for line in _central_invoice_lines(invoice):
+            adjust_inventory(
+                invoice.from_branch,
+                line.product,
+                line.quantity,
+            )
+        invoice.status = CentralInvoiceStatus.CANCELLED
+        invoice.save(update_fields=["status"])
+    return invoice
+
+
+def mark_central_invoice_paid(invoice, user) -> object:
+    from django.utils import timezone
+
+    from .models import CentralInvoiceStatus, TransferInvoicePaymentStatus
+
+    if invoice.status != CentralInvoiceStatus.DISPATCHED:
+        raise InvalidCentralInvoiceStateError(
+            invoice, CentralInvoiceStatus.DISPATCHED, "mark as paid"
+        )
+    if invoice.payment_status == TransferInvoicePaymentStatus.PAID:
+        raise InvalidCentralInvoicePaymentError(
+            invoice,
+            f"Central invoice {invoice.invoice_number} is already paid.",
+        )
+    invoice.payment_status = TransferInvoicePaymentStatus.PAID
+    invoice.paid_at = timezone.now()
+    invoice.paid_by = user
+    invoice.save(update_fields=["payment_status", "paid_at", "paid_by"])
+    return invoice

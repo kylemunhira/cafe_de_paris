@@ -4,6 +4,7 @@ from accounts.branch_access import (
     filter_by_branch_participation,
     user_can_access_bakery_transfers,
     user_can_access_cashier_invoices,
+    user_can_access_central_invoices,
     user_can_access_fiscal_receipts,
     user_can_access_grv,
     user_can_access_kitchen,
@@ -26,7 +27,7 @@ from django.views.generic import DetailView, TemplateView
 from branches.models import Branch
 from customers.models import Customer, CustomerAccountTransaction
 from customers.statement import build_customer_statement_report
-from inventory.models import DeliveryNote
+from inventory.models import CentralInvoice, DeliveryNote
 from inventory.services import daily_stock_take_day_end_status, day_end_stock_take_message
 from orders.day_end import build_day_end_report
 from orders.models import FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
@@ -320,6 +321,14 @@ class StoresTransfersView(BaseUIView):
         return user_can_access_stores_transfers(user)
 
 
+class CentralInvoicesView(BaseUIView):
+    template_name = "ui/central_invoices.html"
+    active_nav = "central_invoices"
+
+    def access_allowed(self, user):
+        return user_can_access_central_invoices(user)
+
+
 class GrvView(BaseUIView):
     template_name = "ui/grv.html"
     active_nav = "grv"
@@ -604,6 +613,27 @@ class TransferInvoicePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin,
         if not note.invoice_number:
             raise Http404("Transfer invoice is only available for central stores dispatches.")
         return note
+
+    def get_context_data(self, **kwargs):
+        from payments.models import Currency
+
+        context = super().get_context_data(**kwargs)
+        context["base_currency"] = Currency.objects.filter(is_base=True).first()
+        return context
+
+
+class CentralInvoicePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView):
+    model = CentralInvoice
+    template_name = "ui/central_invoice_print.html"
+    context_object_name = "invoice"
+
+    def get_queryset(self):
+        queryset = CentralInvoice.objects.select_related(
+            "from_branch",
+            "customer",
+            "paid_by",
+        ).prefetch_related("lines__product")
+        return filter_by_branch_field(queryset, self.request.user, branch_field="from_branch")
 
     def get_context_data(self, **kwargs):
         from payments.models import Currency

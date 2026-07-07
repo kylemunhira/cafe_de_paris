@@ -222,7 +222,7 @@ class BakeryTransferTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("bakery", str(response.data).lower())
 
-    def test_rejects_direct_transfer_to_branch(self):
+    def test_allows_direct_transfer_to_branch(self):
         response = self.client.post(
             "/api/transfers/from-bakery/",
             {
@@ -233,8 +233,8 @@ class BakeryTransferTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("central stores", str(response.data).lower())
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["to_branch"], self.branch.id)
 
     def test_rejects_transfer_to_hq(self):
         response = self.client.post(
@@ -248,7 +248,7 @@ class BakeryTransferTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("central stores", str(response.data).lower())
+        self.assertIn("central stores or a branch", str(response.data).lower())
 
     def test_rejects_transfer_to_bakery(self):
         other_bakery = Branch.objects.create(
@@ -425,10 +425,7 @@ class DeliveryNoteTests(TestCase):
             format="json",
         )
         note_id = create_response.data["id"]
-
-        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
-        self.assertEqual(approve_response.status_code, 200)
-        self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
+        self.assertEqual(create_response.data["status"], StockTransferStatus.REQUESTED)
 
         croissant_bakery = BranchInventory.objects.get(
             branch=self.bakery,
@@ -438,6 +435,14 @@ class DeliveryNoteTests(TestCase):
             branch=self.bakery,
             product=self.muffin,
         )
+        self.assertEqual(croissant_bakery.quantity, Decimal("40"))
+        self.assertEqual(muffin_bakery.quantity, Decimal("45"))
+
+        self.client.force_authenticate(user=self.stores_clerk)
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
+
         croissant_stores = BranchInventory.objects.get(
             branch=self.stores,
             product=self.croissant,
@@ -446,20 +451,53 @@ class DeliveryNoteTests(TestCase):
             branch=self.stores,
             product=self.muffin,
         )
-        self.assertEqual(croissant_bakery.quantity, Decimal("40"))
-        self.assertEqual(muffin_bakery.quantity, Decimal("45"))
         self.assertEqual(croissant_stores.quantity, Decimal("10"))
         self.assertEqual(muffin_stores.quantity, Decimal("5"))
 
-    def test_bakery_cannot_confirm_receipt(self):
-        note = DeliveryNote.objects.create(
-            from_branch=self.bakery,
-            to_branch=self.branch,
-            status=StockTransferStatus.DISPATCHED,
-        )
-        note.lines.create(product=self.croissant, quantity=Decimal("6"))
+    def test_bakery_to_branch_delivery_note_workflow(self):
         self.client.force_authenticate(user=self.baker)
-        response = self.client.post(f"/api/delivery-notes/{note.id}/deliver/")
+        create_response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": self.croissant.id, "quantity": "6"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        note_id = create_response.data["id"]
+
+        bakery_stock = BranchInventory.objects.get(
+            branch=self.bakery,
+            product=self.croissant,
+        )
+        self.assertEqual(bakery_stock.quantity, Decimal("44"))
+
+        self.client.force_authenticate(user=self.cashier)
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
+
+        branch_stock = BranchInventory.objects.get(
+            branch=self.branch,
+            product=self.croissant,
+        )
+        self.assertEqual(branch_stock.quantity, Decimal("6"))
+
+    def test_bakery_cannot_approve_incoming_to_branch(self):
+        self.client.force_authenticate(user=self.baker)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": self.croissant.id, "quantity": "6"}],
+            },
+            format="json",
+        )
+        note_id = create_response.data["id"]
+        response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
         self.assertEqual(response.status_code, 403)
 
     def test_incoming_filter_returns_only_destination_branch_notes(self):

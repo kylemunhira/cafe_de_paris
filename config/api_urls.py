@@ -7,6 +7,7 @@ from branches.views import BranchViewSet, DiningTableViewSet
 from catalog.views import MenuAddonGroupViewSet, ProductCategoryViewSet, ProductViewSet
 from inventory.views import (
     BranchInventoryViewSet,
+    CentralInvoiceViewSet,
     DeliveryNoteViewSet,
     StockTakeViewSet,
     StockTransferViewSet,
@@ -43,6 +44,7 @@ router.register("currency-rates", CurrencyRateViewSet, basename="currency-rate")
 router.register("inventory", BranchInventoryViewSet, basename="inventory")
 router.register("transfers", StockTransferViewSet, basename="transfer")
 router.register("delivery-notes", DeliveryNoteViewSet, basename="delivery-note")
+router.register("central-invoices", CentralInvoiceViewSet, basename="central-invoice")
 router.register("stock-takes", StockTakeViewSet, basename="stock-take")
 router.register("customers", CustomerViewSet, basename="customer")
 router.register("suppliers", SupplierViewSet, basename="supplier")

@@ -1,0 +1,494 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Central Invoice — Café de Paris{% endblock %}
+{% block page_title %}Central Invoice{% endblock %}
+
+{% block content %}
+<p style="margin: 0 0 1.25rem; color: var(--color-muted); max-width: 52rem;">
+  Sell or transfer bakery products from central stores to external customers. Stock is deducted when the invoice is created.
+</p>
+
+<div class="stat-grid" id="invoice-stats" style="margin-bottom: 1.25rem;">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New central invoice</h3>
+  <form id="invoice-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="from-branch">Central stores</label>
+        <select id="from-branch" required disabled>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="customer">External customer</label>
+        <select id="customer" required>
+          <option value="">Select customer…</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row" style="align-items: end;">
+      <div class="form-group" style="flex: 2;">
+        <label for="product">Product</label>
+        <select id="product">
+          <option value="">Select product…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 120px;">
+        <label for="quantity">Qty</label>
+        <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 0 0 auto;">
+        <button type="button" id="add-line-btn" class="btn btn-ghost">Add product</button>
+      </div>
+    </div>
+    <p id="stock-hint" style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-muted);"></p>
+
+    <div class="table-wrap" id="lines-wrap" style="display: none; margin-bottom: 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th style="text-align: right;">Qty</th>
+            <th style="text-align: right;">Unit price</th>
+            <th style="text-align: right;">Line total</th>
+            <th style="text-align: right;">Available</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body"></tbody>
+      </table>
+    </div>
+
+    <div class="form-group">
+      <label for="notes">Notes (optional)</label>
+      <input type="text" id="notes" maxlength="500" placeholder="Delivery instructions, PO reference, etc.">
+    </div>
+
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create invoice</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="all">All</button>
+    <button class="category-tab" data-filter="dispatched">Active</button>
+    <button class="category-tab" data-filter="unpaid">Unpaid</button>
+    <button class="category-tab" data-filter="paid">Paid</button>
+    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+  </div>
+  <div class="table-wrap" id="invoices-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const CAN_MARK_PAID = "{{ can_mark_central_invoice_paid|yesno:'true,false' }}" === "true";
+const printUrlTemplate = "{% url 'ui:central-invoice-print' 0 %}".replace("/0/", "/{id}/");
+
+let allInvoices = [];
+let storesInventory = [];
+let storesBranches = [];
+let customers = [];
+let products = [];
+let draftLines = [];
+let activeFilter = "all";
+const sortState = createSortState("created_at", "desc");
+
+const INVOICE_SORT = {
+  invoice_number: (i) => i.invoice_number || "",
+  customer_name: (i) => i.customer_name || "",
+  products: (i) => formatLineSummary(i),
+  total_amount: (i) => Number(i.total_amount),
+  payment_status: (i) => i.payment_status || "",
+  created_at: (i) => i.created_at || "",
+};
+
+const fromBranchSelect = document.getElementById("from-branch");
+const customerSelect = document.getElementById("customer");
+const productSelect = document.getElementById("product");
+const quantityInput = document.getElementById("quantity");
+const notesInput = document.getElementById("notes");
+const stockHint = document.getElementById("stock-hint");
+const invoicesTable = document.getElementById("invoices-table");
+const invoiceStats = document.getElementById("invoice-stats");
+const invoiceForm = document.getElementById("invoice-form");
+const linesWrap = document.getElementById("lines-wrap");
+const linesBody = document.getElementById("lines-body");
+const submitBtn = document.getElementById("submit-btn");
+const addLineBtn = document.getElementById("add-line-btn");
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+}
+
+function getStoresStock(productId) {
+  const item = storesInventory.find(i => String(i.product) === String(productId));
+  return item ? Number(item.quantity) : 0;
+}
+
+function getProduct(productId) {
+  return products.find(p => String(p.id) === String(productId));
+}
+
+function getProductName(productId) {
+  return getProduct(productId)?.name || `Product ${productId}`;
+}
+
+function getProductPrice(productId) {
+  const product = getProduct(productId);
+  return product ? Number(product.selling_price) : 0;
+}
+
+function updateStockHint() {
+  const productId = productSelect.value;
+  if (!productId) {
+    stockHint.textContent = "";
+    return;
+  }
+  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))} · Price: ${formatCurrency(getProductPrice(productId))}`;
+}
+
+function draftLineTotal(line) {
+  return Number(line.quantity) * Number(line.unit_price);
+}
+
+function draftGrandTotal() {
+  return draftLines.reduce((sum, line) => sum + draftLineTotal(line), 0);
+}
+
+function renderDraftLines() {
+  if (!draftLines.length) {
+    linesWrap.style.display = "none";
+    linesBody.innerHTML = "";
+    submitBtn.disabled = true;
+    return;
+  }
+
+  linesWrap.style.display = "block";
+  submitBtn.disabled = !customerSelect.value;
+  const rows = draftLines.map((line, index) => `
+    <tr>
+      <td>${line.product_name}</td>
+      <td style="text-align: right;">${formatQty(line.quantity)}</td>
+      <td style="text-align: right;">${formatCurrency(line.unit_price)}</td>
+      <td style="text-align: right;">${formatCurrency(draftLineTotal(line))}</td>
+      <td style="text-align: right;">${formatQty(getStoresStock(line.product))}</td>
+      <td style="text-align: right;">
+        <button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button>
+      </td>
+    </tr>
+  `).join("");
+
+  linesBody.innerHTML = `${rows}
+    <tr>
+      <td colspan="3" style="text-align: right;"><strong>Invoice total</strong></td>
+      <td style="text-align: right;"><strong>${formatCurrency(draftGrandTotal())}</strong></td>
+      <td colspan="2"></td>
+    </tr>`;
+}
+
+function paymentBadge(status) {
+  if (status === "paid") {
+    return '<span class="badge badge-success">Paid</span>';
+  }
+  return '<span class="badge badge-warning">Unpaid</span>';
+}
+
+function invoiceActions(invoice) {
+  const id = invoice.id;
+  const actions = [
+    `<a href="${printUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-ghost btn-sm">Print</a>`,
+  ];
+  if (invoice.status === "dispatched" && invoice.payment_status !== "paid" && CAN_MARK_PAID) {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="mark-paid" data-id="${id}">Mark paid</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  }
+  return actions.join(" ");
+}
+
+function formatLineSummary(invoice) {
+  if (!invoice.lines?.length) return "—";
+  const preview = invoice.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
+  const extra = invoice.lines.length > 2 ? ` +${invoice.lines.length - 2} more` : "";
+  return preview.join(", ") + extra;
+}
+
+function renderStats() {
+  const active = allInvoices.filter(i => i.status === "dispatched").length;
+  const unpaid = allInvoices.filter(i => i.status === "dispatched" && i.payment_status !== "paid").length;
+
+  invoiceStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Active invoices</div>
+      <div class="value">${active}</div>
+      <div class="sub">Stock already dispatched</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Awaiting payment</div>
+      <div class="value">${unpaid}</div>
+      <div class="sub">Unpaid central invoices</div>
+    </div>
+  `;
+}
+
+function filterInvoices() {
+  if (activeFilter === "all") return allInvoices;
+  if (activeFilter === "unpaid") {
+    return allInvoices.filter(i => i.status === "dispatched" && i.payment_status !== "paid");
+  }
+  if (activeFilter === "paid") {
+    return allInvoices.filter(i => i.payment_status === "paid");
+  }
+  return allInvoices.filter(i => i.status === activeFilter);
+}
+
+function renderInvoices() {
+  const filtered = sortItems(filterInvoices(), sortState, INVOICE_SORT);
+
+  if (!filtered.length) {
+    invoicesTable.innerHTML = `<div class="empty-state"><p>No central invoices found</p></div>`;
+    return;
+  }
+
+  invoicesTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Invoice", "invoice_number", sortState)}
+          ${sortTh("Customer", "customer_name", sortState)}
+          ${sortTh("Products", "products", sortState)}
+          ${sortTh("Total", "total_amount", sortState)}
+          ${sortTh("Payment", "payment_status", sortState)}
+          ${sortTh("Date", "created_at", sortState)}
+          ${actionTh()}
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(i => `
+          <tr>
+            <td><strong>${i.invoice_number}</strong></td>
+            <td>${i.customer_name}</td>
+            <td style="max-width: 260px;">${formatLineSummary(i)}</td>
+            <td style="text-align: right;">${formatCurrency(i.total_amount)}</td>
+            <td>${i.status === "cancelled" ? '<span class="badge">Cancelled</span>' : paymentBadge(i.payment_status)}</td>
+            <td>${formatDate(i.created_at)}</td>
+            <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${invoiceActions(i)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadData() {
+  const [branchesData, customersData, productsData, invoicesData] = await Promise.all([
+    apiGet("/branches/"),
+    apiGet("/customers/?page_size=1000"),
+    apiGet("/products/?bakery_transfer=true&page_size=1000"),
+    apiGet("/central-invoices/"),
+  ]);
+
+  const branches = unwrapList(branchesData);
+  customers = unwrapList(customersData).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  products = unwrapList(productsData);
+  allInvoices = unwrapList(invoicesData);
+
+  storesBranches = branches.filter(b => b.branch_type === "stores" && b.is_active);
+
+  if (!storesBranches.length) {
+    invoiceForm.innerHTML = `<div class="empty-state"><p>No central stores configured. Add a branch with type "Central Stores".</p></div>`;
+    invoicesTable.innerHTML = `<div class="empty-state"><p>Cannot load invoices without central stores.</p></div>`;
+    invoiceStats.innerHTML = "";
+    return;
+  }
+
+  fromBranchSelect.innerHTML = storesBranches.map(b => `
+    <option value="${b.id}" selected>${b.name}</option>
+  `).join("");
+
+  customerSelect.innerHTML = `
+    <option value="">Select customer…</option>
+    ${customers.map(c => `<option value="${c.id}">${c.full_name || c.id}</option>`).join("")}
+  `;
+
+  const storesId = storesBranches[0].id;
+  const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
+  storesInventory = unwrapList(inventoryData);
+
+  const availableProducts = products
+    .filter(p => p.is_active)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  productSelect.innerHTML = `
+    <option value="">Select product…</option>
+    ${availableProducts.map(p => {
+      const stock = formatQty(getStoresStock(p.id));
+      return `<option value="${p.id}">${p.name} (${stock} in stock)</option>`;
+    }).join("")}
+  `;
+
+  renderStats();
+  renderInvoices();
+  updateStockHint();
+}
+
+productSelect.addEventListener("change", updateStockHint);
+customerSelect.addEventListener("change", () => {
+  if (draftLines.length) submitBtn.disabled = !customerSelect.value;
+});
+
+addLineBtn.addEventListener("click", () => {
+  const productId = productSelect.value;
+  const quantity = Number(quantityInput.value);
+
+  if (!productId) {
+    showToast("Select a product first", true);
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showToast("Enter a valid quantity", true);
+    return;
+  }
+  if (draftLines.some(line => String(line.product) === String(productId))) {
+    showToast("Product already added — remove it first to change quantity", true);
+    return;
+  }
+
+  draftLines.push({
+    product: Number(productId),
+    product_name: getProductName(productId),
+    quantity: String(quantity),
+    unit_price: String(getProductPrice(productId)),
+  });
+
+  productSelect.value = "";
+  quantityInput.value = "";
+  updateStockHint();
+  renderDraftLines();
+});
+
+linesBody.addEventListener("click", (e) => {
+  const btn = e.target.closest(".remove-line-btn");
+  if (!btn) return;
+  draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+invoiceForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (!customerSelect.value) {
+    showToast("Select a customer", true);
+    return;
+  }
+  if (!draftLines.length) {
+    showToast("Add at least one product", true);
+    return;
+  }
+
+  const payload = {
+    from_branch: Number(fromBranchSelect.value),
+    customer: Number(customerSelect.value),
+    notes: notesInput.value.trim(),
+    lines: draftLines.map(line => ({
+      product: line.product,
+      quantity: line.quantity,
+      unit_price: line.unit_price,
+    })),
+  };
+
+  submitBtn.disabled = true;
+
+  try {
+    const invoice = await apiPost("/central-invoices/", payload);
+    allInvoices.unshift(invoice);
+    draftLines = [];
+    notesInput.value = "";
+    customerSelect.value = "";
+    renderDraftLines();
+
+    const storesId = storesBranches[0]?.id;
+    if (storesId) {
+      const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
+      storesInventory = unwrapList(inventoryData);
+      const availableProducts = products.filter(p => p.is_active).sort((a, b) => a.name.localeCompare(b.name));
+      productSelect.innerHTML = `
+        <option value="">Select product…</option>
+        ${availableProducts.map(p => {
+          const stock = formatQty(getStoresStock(p.id));
+          return `<option value="${p.id}">${p.name} (${stock} in stock)</option>`;
+        }).join("")}
+      `;
+    }
+
+    renderStats();
+    renderInvoices();
+    showToast(`Invoice ${invoice.invoice_number} created — stock deducted`);
+    window.open(printUrlTemplate.replace("{id}", invoice.id), "_blank");
+  } catch (err) {
+    showToast(err.message, true);
+    submitBtn.disabled = draftLines.length > 0 && !!customerSelect.value;
+  }
+});
+
+invoicesTable.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(`/central-invoices/${id}/${action}/`, {});
+    const index = allInvoices.findIndex(i => String(i.id) === id);
+    if (index >= 0) allInvoices[index] = updated;
+
+    if (action === "cancel") {
+      const storesId = storesBranches[0]?.id;
+      if (storesId) {
+        const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
+        storesInventory = unwrapList(inventoryData);
+      }
+    }
+
+    renderStats();
+    renderInvoices();
+    showToast(action === "mark-paid" ? `Invoice ${updated.invoice_number} marked paid` : `Invoice ${updated.invoice_number} cancelled`);
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = action === "mark-paid" ? "Mark paid" : "Cancel";
+    btn.disabled = false;
+  }
+});
+
+document.querySelectorAll("[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeFilter = tab.dataset.filter;
+    renderInvoices();
+  });
+});
+
+bindTableSort(invoicesTable, sortState, renderInvoices);
+
+loadData().catch(err => {
+  invoicesTable.innerHTML = `<div class="empty-state">Failed to load central invoices: ${err.message}</div>`;
+});
+</script>
+{% endblock %}
