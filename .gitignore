@@ -51,6 +51,7 @@ htmlcov/
 # Desktop POS (Electron)
 desktop/node_modules/
 desktop/dist/
+desktop/dist-release/
 desktop/out/
 
 # OS
