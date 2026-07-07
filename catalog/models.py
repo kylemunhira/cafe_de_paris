@@ -63,3 +63,75 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class MenuAddonSelectionType(models.TextChoices):
+    MULTIPLE = "multiple", "Multiple"
+    SINGLE = "single", "Single"
+
+
+class MenuAddonGroup(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    selection_type = models.CharField(
+        max_length=20,
+        choices=MenuAddonSelectionType.choices,
+        default=MenuAddonSelectionType.MULTIPLE,
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class MenuAddon(models.Model):
+    group = models.ForeignKey(
+        MenuAddonGroup,
+        on_delete=models.CASCADE,
+        related_name="addons",
+    )
+    name = models.CharField(max_length=120)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    tax_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "name"],
+                name="catalog_menuaddon_unique_group_name",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class ProductMenuAddonGroup(models.Model):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="addon_group_links",
+    )
+    group = models.ForeignKey(
+        MenuAddonGroup,
+        on_delete=models.CASCADE,
+        related_name="product_links",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "group"],
+                name="catalog_productmenuaddongroup_unique",
+            ),
+        ]

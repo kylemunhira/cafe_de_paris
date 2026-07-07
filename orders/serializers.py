@@ -2,12 +2,20 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from catalog.models import Product
+from catalog.models import MenuAddon, Product
 from payments.models import Currency
 
 from customers.models import Customer
 
-from .models import Expense, FiscalApprovalStatus, Order, OrderItem, OrderStatus, PaymentMethod
+from .models import (
+    Expense,
+    FiscalApprovalStatus,
+    Order,
+    OrderItem,
+    OrderItemAddon,
+    OrderStatus,
+    PaymentMethod,
+)
 
 
 def staff_display_name(user):
@@ -16,12 +24,19 @@ def staff_display_name(user):
     return user.get_full_name() or user.username
 
 
+class OrderItemAddonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderItemAddon
+        fields = ["id", "menu_addon", "name", "price"]
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
+    addons = OrderItemAddonSerializer(many=True, read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ["id", "product", "product_name", "quantity", "price"]
+        fields = ["id", "product", "product_name", "quantity", "price", "notes", "addons"]
 
 
 class OrderItemCreateSerializer(serializers.Serializer):
@@ -31,6 +46,12 @@ class OrderItemCreateSerializer(serializers.Serializer):
     )
     quantity = serializers.DecimalField(
         max_digits=10, decimal_places=2, min_value=Decimal("0.01")
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    addon_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
     )
 
 
@@ -183,12 +204,57 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
         for item_data in items_data:
             product = item_data["product"]
-            OrderItem.objects.create(
+            addon_ids = item_data.get("addon_ids") or []
+            notes = (item_data.get("notes") or "").strip()
+
+            allowed_addon_ids = set(
+                MenuAddon.objects.filter(
+                    is_active=True,
+                    group__product_links__product=product,
+                ).values_list("id", flat=True)
+            )
+            selected_addons = []
+            if addon_ids:
+                addons = MenuAddon.objects.filter(
+                    id__in=addon_ids,
+                    is_active=True,
+                ).select_related("group")
+                by_group = {}
+                for addon in addons:
+                    if addon.id not in allowed_addon_ids:
+                        raise serializers.ValidationError(
+                            {
+                                "items": (
+                                    f'Add-on "{addon.name}" is not available for {product.name}.'
+                                )
+                            }
+                        )
+                    existing = by_group.get(addon.group_id)
+                    if existing and addon.group.selection_type == "single":
+                        raise serializers.ValidationError(
+                            {
+                                "items": (
+                                    f'Choose one option from "{addon.group.name}" for {product.name}.'
+                                )
+                            }
+                        )
+                    by_group[addon.group_id] = addon
+                    selected_addons.append(addon)
+
+            order_item = OrderItem.objects.create(
                 order=order,
                 product=product,
                 quantity=item_data["quantity"],
                 price=product.selling_price,
+                notes=notes,
             )
+            for addon in selected_addons:
+                OrderItemAddon.objects.create(
+                    order_item=order_item,
+                    menu_addon=addon,
+                    name=addon.name,
+                    price=addon.selling_price,
+                )
 
         order.recalculate_total()
         return order

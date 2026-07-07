@@ -14,9 +14,12 @@ def line_amount(quantity, price) -> Decimal:
 
 
 def receipt_total_from_order(order) -> Decimal:
-    return sum(
-        line_amount(item.quantity, item.price) for item in order.items.all()
-    )
+    total = Decimal("0")
+    for item in order.items.prefetch_related("addons"):
+        total += line_amount(item.quantity, item.price)
+        for addon in item.addons.all():
+            total += line_amount(item.quantity, addon.price)
+    return total
 
 
 def split_inclusive_total(total, tax_rate=None) -> dict:

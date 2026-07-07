@@ -463,6 +463,30 @@ class DayEndReportTests(TestCase):
         self.assertContains(response, "Completed daily stock take required", status_code=403)
         self.assertContains(response, "post variances", status_code=403)
 
+    def test_day_end_api_requires_completed_stock_take(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+
+        response = api.get(
+            f"/api/reports/day-end/?branch={self.branch.id}&date={self.today.isoformat()}"
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.data["completed"])
+
+    def test_day_end_api_returns_report(self):
+        self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+        self._complete_daily_stock_take()
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+
+        response = api.get(
+            f"/api/reports/day-end/?branch={self.branch.id}&date={self.today.isoformat()}&counted_{self.usd.id}=8.00"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["report"]["order_count"], 1)
+        self.assertTrue(response.data["report"]["has_counted_entries"])
+
 
 class ExpenseApiTests(TestCase):
     def setUp(self):

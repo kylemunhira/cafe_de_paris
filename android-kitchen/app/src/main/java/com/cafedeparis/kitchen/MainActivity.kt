@@ -66,8 +66,7 @@ class MainActivity : AppCompatActivity() {
         binding.retryButton.setOnClickListener { refreshOrders(manual = true) }
 
         if (session.isLoggedIn) {
-            showKitchen()
-            startPolling()
+            routeAfterLogin()
         } else {
             showLogin()
         }
@@ -77,7 +76,11 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         config.reload()
         if (session.isLoggedIn) {
-            refreshOrders(manual = true)
+            if (session.shouldOpenPos()) {
+                openPosAndFinish()
+            } else {
+                refreshOrders(manual = true)
+            }
         } else {
             showLogin()
         }
@@ -107,8 +110,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 session.saveLogin(response)
                 binding.passwordInput.text?.clear()
-                showKitchen()
-                startPolling()
+                routeAfterLogin()
                 requestBluetoothIfNeeded()
             } catch (err: ApiException) {
                 binding.loginError.text = err.message
@@ -121,6 +123,27 @@ class MainActivity : AppCompatActivity() {
                 binding.loginProgress.visibility = View.GONE
             }
         }
+    }
+
+    private fun routeAfterLogin() {
+        if (session.shouldOpenPos()) {
+            openPosAndFinish()
+            return
+        }
+        if (!session.canAccessKitchen) {
+            binding.loginError.text = getString(R.string.login_not_allowed)
+            binding.loginError.visibility = View.VISIBLE
+            session.clearLogin()
+            showLogin()
+            return
+        }
+        showKitchen()
+        startPolling()
+    }
+
+    private fun openPosAndFinish() {
+        startActivity(Intent(this, PosActivity::class.java))
+        finish()
     }
 
     private fun logout() {

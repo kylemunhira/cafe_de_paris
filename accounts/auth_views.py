@@ -79,6 +79,70 @@ class DesktopLoginView(APIView):
         )
 
 
+class MobileAppLoginView(APIView):
+    """Token login for the Android app (kitchen display and/or POS)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+
+        if not username or not password:
+            return Response(
+                {"detail": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            return Response(
+                {"detail": "Invalid username or password."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if not user.is_active:
+            return Response(
+                {"detail": "This account is disabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        can_kitchen = user_can_access_kitchen(user)
+        can_pos = user_can_access_pos(user)
+        if not can_kitchen and not can_pos:
+            return Response(
+                {"detail": "This account cannot use the mobile app."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            profile = user.staff_profile
+        except StaffProfile.DoesNotExist:
+            return Response(
+                {"detail": "Staff profile required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        token, _ = Token.objects.get_or_create(user=user)
+        display_name = user.get_full_name() or user.username
+
+        return Response(
+            {
+                "token": token.key,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "display_name": display_name,
+                    "role": profile.role,
+                    "can_manage_fiscal_day": user_can_manage_fiscal_day(user),
+                    "can_manage_dining_tables": user_can_manage_dining_tables(user),
+                },
+                "branch": BranchSerializer(profile.branch).data,
+                "can_access_kitchen": can_kitchen,
+                "can_access_pos": can_pos,
+            }
+        )
+
+
 class KitchenLoginView(APIView):
     """Token login for the kitchen Android display (kitchen staff only)."""
 

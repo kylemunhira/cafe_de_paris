@@ -82,6 +82,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         return super().partial_update(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to create orders.")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         order = serializer.save()
@@ -92,6 +94,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to collect payment.")
         order = self.get_object()
         if order.status == OrderStatus.CANCELLED:
             return Response(

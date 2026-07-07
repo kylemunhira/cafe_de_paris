@@ -34,7 +34,10 @@ class OrderAdapter : ListAdapter<KitchenOrder, OrderAdapter.OrderViewHolder>(Dif
                 val qty = item.quantity.toDoubleOrNull()?.let {
                     String.format(Locale.US, "%.2f", it)
                 } ?: item.quantity
-                "$qty x ${item.product_name}"
+                val addonText = item.addons.joinToString(", ") { "+ ${it.name}" }
+                val noteText = if (item.notes.isNotBlank()) " (${item.notes})" else ""
+                val suffix = listOf(addonText, noteText).filter { it.isNotBlank() }.joinToString(" ")
+                "$qty x ${item.product_name}$suffix"
             }.ifBlank { "No items" }
 
             val statusColor = when (order.kitchen_status) {

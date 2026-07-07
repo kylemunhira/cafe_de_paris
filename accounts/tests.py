@@ -40,6 +40,26 @@ class StaffUserApiTests(APITestCase):
         )
         self.client.force_authenticate(user=self.hq_admin)
 
+    def test_create_cashier_grants_pos_access(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "username": "poscashier",
+                "email": "pos@example.com",
+                "password": "securepass1",
+                "branch": self.branch.id,
+                "role": StaffRole.CASHIER,
+                "pos_access": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["pos_access"])
+        user = User.objects.get(username="poscashier")
+        self.assertTrue(user.staff_profile.pos_access)
+        self.assertTrue(user_can_access_pos(user))
+
     def test_create_staff_user_with_branch(self):
         response = self.client.post(
             self.list_url,
@@ -332,9 +352,19 @@ class TransferNavAccessTests(APITestCase):
             user=hq_cashier,
             branch=self.hq,
             role=StaffRole.CASHIER,
-            pos_access=True,
+            pos_access=False,
         )
         self.assertTrue(user_can_access_pos(hq_cashier))
+
+    def test_cashier_role_grants_pos_access_without_flag(self):
+        cashier = User.objects.create_user(username="nocheck", password="pass")
+        StaffProfile.objects.create(
+            user=cashier,
+            branch=self.hq,
+            role=StaffRole.CASHIER,
+            pos_access=False,
+        )
+        self.assertTrue(user_can_access_pos(cashier))
 
     def test_global_users_use_bakery_transfers_not_grv(self):
         self.assertTrue(user_can_access_bakery_transfers(self.hq_admin))
@@ -669,6 +699,49 @@ class KitchenLoginTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(user_can_access_kitchen(self.baker))
+
+
+class MobileAppLoginTests(APITestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            name="Main Street",
+            branch_type=BranchType.BRANCH,
+        )
+        self.cashier = User.objects.create_user(username="cashier", password="secret")
+        StaffProfile.objects.create(
+            user=self.cashier,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.kitchen_staff = User.objects.create_user(username="cook", password="secret")
+        StaffProfile.objects.create(
+            user=self.kitchen_staff,
+            branch=self.branch,
+            role=StaffRole.STAFF,
+        )
+        self.login_url = "/api/auth/mobile-login/"
+
+    def test_cashier_gets_pos_access(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "cashier", "password": "secret"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["can_access_pos"])
+        self.assertTrue(response.data["can_access_kitchen"])
+        self.assertEqual(response.data["user"]["role"], StaffRole.CASHIER)
+
+    def test_kitchen_staff_gets_kitchen_only(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "cook", "password": "secret"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["can_access_pos"])
+        self.assertTrue(response.data["can_access_kitchen"])
 
 
 class CashierConsoleAccessTests(APITestCase):

@@ -98,12 +98,22 @@ def _parse_price(value):
     return parsed
 
 
+def _open_csv_reader(file_obj):
+    """Open a CSV DictReader, falling back to cp1252 when UTF-8 fails."""
+    raw = file_obj.read()
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            return csv.DictReader(io.StringIO(raw.decode(encoding)))
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError("csv", b"", 0, 1, "unsupported encoding")
+
+
 def import_products_csv(file_obj):
     try:
-        text = io.TextIOWrapper(file_obj, encoding="utf-8-sig")
-        reader = csv.DictReader(text)
+        reader = _open_csv_reader(file_obj)
     except UnicodeDecodeError as exc:
-        return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "File must be UTF-8 encoded CSV"}]}
+        return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "File must be UTF-8 or Windows-1252 encoded CSV"}]}
 
     if not reader.fieldnames:
         return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "CSV file is empty"}]}
@@ -190,10 +200,9 @@ def import_products_csv(file_obj):
 
 def import_ingredients_csv(file_obj):
     try:
-        text = io.TextIOWrapper(file_obj, encoding="utf-8-sig")
-        reader = csv.DictReader(text)
+        reader = _open_csv_reader(file_obj)
     except UnicodeDecodeError:
-        return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "File must be UTF-8 encoded CSV"}]}
+        return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "File must be UTF-8 or Windows-1252 encoded CSV"}]}
 
     if not reader.fieldnames:
         return {"created": 0, "updated": 0, "errors": [{"row": 0, "message": "CSV file is empty"}]}
@@ -220,7 +229,7 @@ def import_ingredients_csv(file_obj):
             try:
                 name = str(row.get(normalized_headers.get("name", "name"), "")).strip()
                 if not name:
-                    raise ValueError("name is required")
+                    continue
 
                 unit_cost = _parse_decimal(
                     row.get(normalized_headers.get("unit_cost", "unit_cost")),
@@ -238,14 +247,19 @@ def import_ingredients_csv(file_obj):
                 id_header = normalized_headers.get("id")
                 product_id = str(row.get(id_header, "")).strip() if id_header else ""
 
+                product = None
                 if product_id:
                     try:
                         product = Product.objects.get(
                             pk=int(product_id),
                             category=category,
                         )
-                    except (ValueError, Product.DoesNotExist) as exc:
-                        raise ValueError(f"ingredient id {product_id!r} not found") from exc
+                    except (ValueError, Product.DoesNotExist):
+                        product = Product.objects.filter(category=category, name=name).first()
+                else:
+                    product = Product.objects.filter(category=category, name=name).first()
+
+                if product:
                     product.name = name
                     product.selling_price = unit_cost
                     if remaining_qty is not None:

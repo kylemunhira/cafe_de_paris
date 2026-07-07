@@ -1,8 +1,6 @@
 package com.cafedeparis.kitchen.data
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
 
 class SessionManager(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -23,6 +21,26 @@ class SessionManager(context: Context) {
         get() = prefs.getString(KEY_DISPLAY_NAME, null)
         set(value) = prefs.edit().putString(KEY_DISPLAY_NAME, value).apply()
 
+    var userRole: String?
+        get() = prefs.getString(KEY_USER_ROLE, null)
+        set(value) = prefs.edit().putString(KEY_USER_ROLE, value).apply()
+
+    var canAccessKitchen: Boolean
+        get() = prefs.getBoolean(KEY_CAN_ACCESS_KITCHEN, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_ACCESS_KITCHEN, value).apply()
+
+    var canAccessPos: Boolean
+        get() = prefs.getBoolean(KEY_CAN_ACCESS_POS, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_ACCESS_POS, value).apply()
+
+    var fiscalizationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FISCALIZATION_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_FISCALIZATION_ENABLED, value).apply()
+
+    var canManageDiningTables: Boolean
+        get() = prefs.getBoolean(KEY_CAN_MANAGE_DINING_TABLES, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_MANAGE_DINING_TABLES, value).apply()
+
     var printerAddress: String?
         get() = prefs.getString(KEY_PRINTER_ADDRESS, null)
         set(value) = prefs.edit().putString(KEY_PRINTER_ADDRESS, value?.trim()).apply()
@@ -30,11 +48,24 @@ class SessionManager(context: Context) {
     val isLoggedIn: Boolean
         get() = !token.isNullOrBlank() && branchId > 0
 
+    fun shouldOpenPos(): Boolean {
+        if (!canAccessPos) return false
+        return when (userRole) {
+            "cashier", "branch_manager" -> true
+            else -> canAccessPos && !canAccessKitchen
+        }
+    }
+
     fun saveLogin(response: LoginResponse) {
         token = response.token
         branchId = response.branch.id
         branchName = response.branch.name
         displayName = response.user.display_name
+        userRole = response.user.role
+        canAccessKitchen = response.can_access_kitchen
+        canAccessPos = response.can_access_pos
+        fiscalizationEnabled = response.branch.fiscalization_enabled
+        canManageDiningTables = response.user.can_manage_dining_tables
     }
 
     fun clearLogin() {
@@ -43,6 +74,11 @@ class SessionManager(context: Context) {
             .remove(KEY_BRANCH_ID)
             .remove(KEY_BRANCH_NAME)
             .remove(KEY_DISPLAY_NAME)
+            .remove(KEY_USER_ROLE)
+            .remove(KEY_CAN_ACCESS_KITCHEN)
+            .remove(KEY_CAN_ACCESS_POS)
+            .remove(KEY_FISCALIZATION_ENABLED)
+            .remove(KEY_CAN_MANAGE_DINING_TABLES)
             .apply()
     }
 
@@ -69,6 +105,11 @@ class SessionManager(context: Context) {
         private const val KEY_BRANCH_ID = "branch_id"
         private const val KEY_BRANCH_NAME = "branch_name"
         private const val KEY_DISPLAY_NAME = "display_name"
+        private const val KEY_USER_ROLE = "user_role"
+        private const val KEY_CAN_ACCESS_KITCHEN = "can_access_kitchen"
+        private const val KEY_CAN_ACCESS_POS = "can_access_pos"
+        private const val KEY_FISCALIZATION_ENABLED = "fiscalization_enabled"
+        private const val KEY_CAN_MANAGE_DINING_TABLES = "can_manage_dining_tables"
         private const val KEY_PRINTER_ADDRESS = "printer_address"
         private const val KEY_PRINTED_IDS = "printed_order_ids"
     }
@@ -76,7 +117,7 @@ class SessionManager(context: Context) {
 
 object JsonParsers {
     fun parseLoginResponse(body: String): LoginResponse {
-        val json = JSONObject(body)
+        val json = org.json.JSONObject(body)
         val user = json.getJSONObject("user")
         val branch = json.getJSONObject("branch")
         return LoginResponse(
@@ -86,6 +127,8 @@ object JsonParsers {
                 username = user.getString("username"),
                 display_name = user.getString("display_name"),
                 role = user.getString("role"),
+                can_manage_fiscal_day = user.optBoolean("can_manage_fiscal_day", false),
+                can_manage_dining_tables = user.optBoolean("can_manage_dining_tables", false),
             ),
             branch = Branch(
                 id = branch.getInt("id"),
@@ -93,26 +136,108 @@ object JsonParsers {
                 location = branch.optString("location", null),
                 fiscalization_enabled = branch.optBoolean("fiscalization_enabled", false),
             ),
+            can_access_kitchen = json.optBoolean("can_access_kitchen", false),
+            can_access_pos = json.optBoolean("can_access_pos", false),
         )
     }
 
     fun parseOrders(body: String): List<KitchenOrder> {
-        val json = JSONObject(body)
-        val results = json.optJSONArray("results") ?: JSONArray()
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
         return (0 until results.length()).map { index ->
             parseOrder(results.getJSONObject(index))
         }
     }
 
-    private fun parseOrder(json: JSONObject): KitchenOrder {
-        val itemsJson = json.optJSONArray("items") ?: JSONArray()
+    fun parseOrder(body: String): KitchenOrder = parseOrder(org.json.JSONObject(body))
+
+    fun parseProducts(body: String): List<Product> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            parseProduct(results.getJSONObject(index))
+        }
+    }
+
+    private fun parseProduct(item: org.json.JSONObject): Product {
+        val addonGroupsJson = item.optJSONArray("addon_groups") ?: org.json.JSONArray()
+        val addonGroups = (0 until addonGroupsJson.length()).map { groupIndex ->
+            val group = addonGroupsJson.getJSONObject(groupIndex)
+            val addonsJson = group.optJSONArray("addons") ?: org.json.JSONArray()
+            val addons = (0 until addonsJson.length()).map { addonIndex ->
+                val addon = addonsJson.getJSONObject(addonIndex)
+                MenuAddon(
+                    id = addon.getInt("id"),
+                    name = addon.getString("name"),
+                    selling_price = addon.optString("selling_price", "0"),
+                    is_active = addon.optBoolean("is_active", true),
+                )
+            }
+            MenuAddonGroup(
+                id = group.getInt("id"),
+                name = group.getString("name"),
+                selection_type = group.optString("selection_type", "multiple"),
+                addons = addons,
+            )
+        }
+        return Product(
+            id = item.getInt("id"),
+            name = item.getString("name"),
+            category = item.optInt("category").takeIf { item.has("category") && !item.isNull("category") },
+            category_name = item.optString("category_name", null),
+            selling_price = item.optString("selling_price", "0"),
+            addon_groups = addonGroups,
+        )
+    }
+
+    fun parseCategories(body: String): List<ProductCategory> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            ProductCategory(
+                id = item.getInt("id"),
+                name = item.getString("name"),
+            )
+        }
+    }
+
+    fun parseCurrencies(body: String): List<Currency> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            Currency(
+                id = item.getInt("id"),
+                code = item.optString("code", ""),
+                name = item.getString("name"),
+                symbol = item.optString("symbol", ""),
+                is_base = item.optBoolean("is_base", false),
+                is_active = item.optBoolean("is_active", true),
+                current_rate = item.optString("current_rate", null),
+            )
+        }
+    }
+
+    private fun parseOrder(json: org.json.JSONObject): KitchenOrder {
+        val itemsJson = json.optJSONArray("items") ?: org.json.JSONArray()
         val items = (0 until itemsJson.length()).map { i ->
             val item = itemsJson.getJSONObject(i)
+            val addonsJson = item.optJSONArray("addons") ?: org.json.JSONArray()
+            val addons = (0 until addonsJson.length()).map { addonIndex ->
+                val addon = addonsJson.getJSONObject(addonIndex)
+                OrderItemAddon(
+                    name = addon.getString("name"),
+                    price = addon.optString("price", "0"),
+                )
+            }
             OrderItem(
                 id = item.getInt("id"),
                 product_name = item.getString("product_name"),
                 quantity = item.optString("quantity", "0"),
                 price = item.optString("price", "0"),
+                notes = item.optString("notes", ""),
+                addons = addons,
             )
         }
         return KitchenOrder(
@@ -129,6 +254,65 @@ object JsonParsers {
             created_at = json.optString("created_at", ""),
             items = items,
             branch_fiscalization_enabled = json.optBoolean("branch_fiscalization_enabled", false),
+            customer = json.optInt("customer").takeIf { json.has("customer") && !json.isNull("customer") },
+            payment_currency_name = json.optString("payment_currency_name", null),
+            payment_currency_symbol = json.optString("payment_currency_symbol", null),
+            amount_paid = json.optString("amount_paid", null),
+            receipt_number = json.optString("receipt_number", null),
+            paid_by_name = json.optString("paid_by_name", null),
+            fiscal_approval_status = json.optString("fiscal_approval_status", null),
+            payment_method = json.optString("payment_method", null),
+            customer_account_balance = json.optString("customer_account_balance", null),
+        )
+    }
+
+    fun parseCustomers(body: String): List<Customer> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            Customer(
+                id = item.getInt("id"),
+                full_name = item.optString("full_name", item.optString("first_name", "Customer")),
+                account_balance = item.optString("account_balance", "0"),
+            )
+        }
+    }
+
+    fun parseDiningTables(body: String): List<DiningTable> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            DiningTable(
+                id = item.getInt("id"),
+                branch = item.getInt("branch"),
+                name = item.getString("name"),
+                sort_order = item.optInt("sort_order", 0),
+                is_active = item.optBoolean("is_active", true),
+            )
+        }
+    }
+
+    fun parseDayEndStockTakeCheck(body: String): DayEndStockTakeCheck {
+        val json = org.json.JSONObject(body)
+        return DayEndStockTakeCheck(
+            completed = json.optBoolean("completed", false),
+            detail = json.optString("detail", ""),
+            draftInProgress = json.optBoolean("draft_in_progress", false),
+        )
+    }
+
+    fun parseDayEndReport(body: String): DayEndReportResponse {
+        val json = org.json.JSONObject(body)
+        val branch = json.getJSONObject("branch")
+        val base = json.optJSONObject("base_currency")
+        return DayEndReportResponse(
+            branchName = branch.getString("name"),
+            branchLocation = branch.optString("location", null),
+            baseCurrencyCode = base?.optString("code", null),
+            printedAt = json.optString("printed_at", ""),
+            report = json.getJSONObject("report"),
         )
     }
 }

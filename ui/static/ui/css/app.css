@@ -941,6 +941,16 @@ table.data-table tbody tr:hover {
   font-size: 0.95rem;
 }
 
+.product-card--has-addons {
+  border-color: rgba(180, 120, 40, 0.35);
+}
+
+.product-addon-hint {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  margin-bottom: 0.35rem;
+}
+
 .cart-panel {
   position: sticky;
   top: 5.5rem;

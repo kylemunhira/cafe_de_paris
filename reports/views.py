@@ -15,6 +15,12 @@ from purchasing.reports import build_supplier_spend_summary_report
 from .ingredients import build_ingredient_stock_report, build_ingredient_usage_report
 from .services import build_profit_report, build_report_summary, export_sales_csv
 from .vat import build_vat_report
+from orders.day_end import build_day_end_report
+from orders.day_end_serialization import parse_counted_by_currency, serialize_day_end_report
+from inventory.services import daily_stock_take_day_end_status, day_end_stock_take_message
+from branches.models import Branch
+from payments.models import Currency
+from django.utils import timezone
 
 
 class ReportSummaryView(APIView):
@@ -133,6 +139,73 @@ class ReportIngredientUsageView(APIView):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
         return Response(data)
+
+
+class DayEndReportView(APIView):
+    """Day-end cash-up report for POS clients (Android, etc.)."""
+
+    def get(self, request):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to view day-end reports.")
+
+        try:
+            branch_id = effective_branch_id(
+                request.user, request.query_params.get("branch")
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        branch = Branch.objects.filter(pk=branch_id, is_active=True).first()
+        if not branch:
+            return Response({"detail": "Branch not found."}, status=404)
+
+        report_date = request.query_params.get("date") or timezone.localdate().isoformat()
+        status_info = daily_stock_take_day_end_status(branch, report_date)
+        if not status_info["completed"]:
+            return Response(
+                {
+                    "detail": day_end_stock_take_message(
+                        branch,
+                        report_date,
+                        completed=False,
+                        draft_in_progress=status_info["draft_in_progress"],
+                    ),
+                    "completed": False,
+                    "draft_in_progress": status_info["draft_in_progress"],
+                    "count_date": report_date,
+                    "branch": branch.id,
+                    "branch_name": branch.name,
+                },
+                status=403,
+            )
+
+        report = build_day_end_report(
+            branch,
+            report_date,
+            counted_by_currency=parse_counted_by_currency(request.query_params),
+        )
+        base_currency = Currency.objects.filter(is_base=True).first()
+        return Response(
+            {
+                "branch": {
+                    "id": branch.id,
+                    "name": branch.name,
+                    "location": branch.location,
+                },
+                "base_currency": (
+                    {
+                        "id": base_currency.id,
+                        "code": base_currency.code,
+                        "name": base_currency.name,
+                        "symbol": base_currency.symbol,
+                    }
+                    if base_currency
+                    else None
+                ),
+                "printed_at": timezone.now().isoformat(),
+                "report": serialize_day_end_report(report),
+            }
+        )
 
 
 class ReportVATView(APIView):

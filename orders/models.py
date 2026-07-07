@@ -149,9 +149,13 @@ class Order(models.Model):
         return f"Order #{self.pk} - {self.branch}"
 
     def recalculate_total(self):
-        total = self.items.aggregate(
-            total=models.Sum(models.F("quantity") * models.F("price"))
-        )["total"] or Decimal("0")
+        from orders.tax import line_amount
+
+        total = Decimal("0")
+        for item in self.items.prefetch_related("addons"):
+            total += line_amount(item.quantity, item.price)
+            for addon in item.addons.all():
+                total += line_amount(item.quantity, addon.price)
         self.total_amount = total
         self.save(update_fields=["total_amount"])
 
@@ -186,6 +190,7 @@ class OrderItem(models.Model):
     )
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    notes = models.CharField(max_length=200, blank=True, default="")
 
     class Meta:
         ordering = ["id"]
@@ -195,7 +200,13 @@ class OrderItem(models.Model):
 
     @property
     def line_total(self):
-        return self.quantity * self.price
+        from orders.tax import line_amount
+
+        base = line_amount(self.quantity, self.price)
+        addon_total = sum(
+            line_amount(self.quantity, addon.price) for addon in self.addons.all()
+        )
+        return base + addon_total
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -203,6 +214,36 @@ class OrderItem(models.Model):
 
     def delete(self, *args, **kwargs):
         order = self.order
+        super().delete(*args, **kwargs)
+        order.recalculate_total()
+
+
+class OrderItemAddon(models.Model):
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.CASCADE,
+        related_name="addons",
+    )
+    menu_addon = models.ForeignKey(
+        "catalog.MenuAddon",
+        on_delete=models.PROTECT,
+        related_name="order_item_addons",
+    )
+    name = models.CharField(max_length=120)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.order_item.order.recalculate_total()
+
+    def delete(self, *args, **kwargs):
+        order = self.order_item.order
         super().delete(*args, **kwargs)
         order.recalculate_total()
 

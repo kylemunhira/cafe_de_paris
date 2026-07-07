@@ -281,6 +281,27 @@
     </div>
   </div>
 </div>
+
+<div
+  id="addon-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;"
+>
+  <div class="card" style="width:min(520px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+      <h3 id="addon-modal-title" style="margin:0; font-size:1.05rem;">Add-ons</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="addon-modal-close-btn">Close</button>
+    </div>
+    <div id="addon-modal-groups"></div>
+    <div class="form-group" style="margin-top: 1rem;">
+      <label for="addon-modal-notes">Order notes</label>
+      <input type="text" id="addon-modal-notes" class="report-input" maxlength="200" placeholder="Special instructions for kitchen…">
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1rem;">
+      <button type="button" class="btn btn-ghost" id="addon-modal-cancel-btn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="addon-modal-add-btn">Add to cart</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -294,6 +315,7 @@ const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 const INCLUSIVE_TAX_RATE = Number(document.querySelector(".pos-layout")?.dataset.inclusiveTaxRate ?? 0);
 
 const cart = new Map();
+let pendingAddonProduct = null;
 let products = [];
 let categories = [];
 let activeCategory = "all";
@@ -387,6 +409,13 @@ const fiscalDayStatusBadge = document.getElementById("fiscal-day-status-badge");
 const fiscalDayNumberEl = document.getElementById("fiscal-day-number");
 const fiscalDayGlobalNoEl = document.getElementById("fiscal-day-global-no");
 const fiscalDayErrorEl = document.getElementById("fiscal-day-error");
+const addonModal = document.getElementById("addon-modal");
+const addonModalTitle = document.getElementById("addon-modal-title");
+const addonModalGroups = document.getElementById("addon-modal-groups");
+const addonModalNotes = document.getElementById("addon-modal-notes");
+const addonModalCloseBtn = document.getElementById("addon-modal-close-btn");
+const addonModalCancelBtn = document.getElementById("addon-modal-cancel-btn");
+const addonModalAddBtn = document.getElementById("addon-modal-add-btn");
 
 let fiscalDayStatus = null;
 
@@ -1019,19 +1048,23 @@ function renderCart() {
     return;
   }
 
-  cartItems.innerHTML = [...cart.values()].map(item => `
-    <div class="cart-item" data-id="${item.id}">
+  cartItems.innerHTML = [...cart.values()].map(item => {
+    const summary = formatAddonSummary(item);
+    return `
+    <div class="cart-item" data-line-key="${item.lineKey}">
       <div class="info">
         <div class="name">${item.name}</div>
+        ${summary ? `<div class="line-total" style="font-size: 0.78rem; color: var(--color-muted);">${summary}</div>` : ""}
         <div class="line-total">${formatCurrency(item.price)} each</div>
       </div>
       <div class="qty-control">
-        <button class="qty-btn" data-action="dec" data-id="${item.id}">−</button>
+        <button class="qty-btn" data-action="dec" data-line-key="${item.lineKey}">−</button>
         <span style="min-width: 1.5rem; text-align: center; font-weight: 600;">${item.quantity}</span>
-        <button class="qty-btn" data-action="inc" data-id="${item.id}">+</button>
+        <button class="qty-btn" data-action="inc" data-line-key="${item.lineKey}">+</button>
       </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   cartTotal.textContent = formatCurrency(getCartTotal());
   checkoutBtn.disabled = !branchSelect.value;
@@ -1153,26 +1186,146 @@ async function loadOpenOrders({ notifyReady = false } = {}) {
   }
 }
 
-function addToCart(product) {
-  const existing = cart.get(product.id);
+function cartLineKey(productId, addonIds, notes) {
+  const sorted = [...addonIds].sort((a, b) => a - b).join(",");
+  return `${productId}|${sorted}|${(notes || "").trim()}`;
+}
+
+function addonUnitPrice(addons) {
+  return addons.reduce((sum, addon) => sum + Number(addon.selling_price || 0), 0);
+}
+
+function formatAddonSummary(item) {
+  const parts = [];
+  if (item.addons?.length) {
+    parts.push(item.addons.map(addon => addon.name).join(", "));
+  }
+  if (item.notes) parts.push(`Note: ${item.notes}`);
+  return parts.join(" · ");
+}
+
+function productHasAddons(product) {
+  return (product.addon_groups || []).some(group => (group.addons || []).length);
+}
+
+function mountAddonModal() {
+  if (!addonModal || addonModal.dataset.mounted === "true") return;
+  document.body.appendChild(addonModal);
+  addonModal.dataset.mounted = "true";
+}
+
+function closeAddonModal() {
+  pendingAddonProduct = null;
+  if (addonModal) addonModal.style.display = "none";
+}
+
+function renderAddonModalGroups(product) {
+  const groups = (product.addon_groups || []).filter(group => (group.addons || []).length);
+  addonModalTitle.textContent = `Add-ons — ${product.name}`;
+  addonModalNotes.value = "";
+
+  if (!groups.length) {
+    addonModalGroups.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">No add-ons configured for this item.</p>`;
+    return;
+  }
+
+  addonModalGroups.innerHTML = groups.map(group => `
+    <div class="addon-group-block" data-group-id="${group.id}" style="margin-bottom: 1rem;">
+      <p style="margin: 0 0 0.5rem; font-weight: 600; font-size: 0.9rem;">${group.name}</p>
+      <div class="addon-options" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        ${group.addons.filter(addon => addon.is_active !== false).map(addon => `
+          <label class="addon-option" style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.6rem; border: 1px solid var(--color-border); border-radius: 999px; cursor: pointer;">
+            <input
+              type="${group.selection_type === "single" ? "radio" : "checkbox"}"
+              name="addon-group-${group.id}"
+              value="${addon.id}"
+              data-group-id="${group.id}"
+              data-selection-type="${group.selection_type}"
+              data-name="${addon.name}"
+              data-price="${addon.selling_price}"
+            >
+            <span>${addon.name}${Number(addon.selling_price) > 0 ? ` (+${formatCurrency(addon.selling_price)})` : ""}</span>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
+function openAddonModal(product) {
+  mountAddonModal();
+  if (!addonModal || !addonModalGroups || !addonModalTitle || !addonModalNotes) {
+    addToCart(product);
+    return;
+  }
+  pendingAddonProduct = product;
+  renderAddonModalGroups(product);
+  addonModal.style.display = "flex";
+  addonModalNotes.focus();
+}
+
+function collectSelectedAddons() {
+  const selected = [];
+  addonModalGroups.querySelectorAll("input:checked").forEach(input => {
+    selected.push({
+      id: Number(input.value),
+      name: input.dataset.name,
+      selling_price: Number(input.dataset.price || 0),
+    });
+  });
+  return selected;
+}
+
+addonModalCloseBtn?.addEventListener("click", closeAddonModal);
+addonModalCancelBtn?.addEventListener("click", closeAddonModal);
+addonModalAddBtn?.addEventListener("click", () => {
+  if (!pendingAddonProduct) return;
+  const addons = collectSelectedAddons();
+  const notes = addonModalNotes.value.trim();
+  addToCart(pendingAddonProduct, { addons, notes });
+  closeAddonModal();
+});
+addonModal?.addEventListener("click", (event) => {
+  if (event.target === addonModal) closeAddonModal();
+});
+addonModal?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeAddonModal();
+});
+
+function addToCart(product, { addons = [], notes = "" } = {}) {
+  const addonIds = addons.map(addon => addon.id);
+  const lineKey = cartLineKey(product.id, addonIds, notes);
+  const unitPrice = Number(product.selling_price) + addonUnitPrice(addons);
+  const existing = cart.get(lineKey);
   if (existing) {
     existing.quantity += 1;
   } else {
-    cart.set(product.id, {
+    cart.set(lineKey, {
+      lineKey,
       id: product.id,
       name: product.name,
-      price: Number(product.selling_price),
+      price: unitPrice,
       quantity: 1,
+      addons,
+      notes,
     });
   }
   renderCart();
 }
 
-function updateQty(id, delta) {
-  const item = cart.get(id);
+function handleProductTap(product) {
+  if (productHasAddons(product)) {
+    openAddonModal(product);
+    return;
+  }
+  addToCart(product);
+}
+
+function updateQty(lineKey, delta) {
+  const item = cart.get(lineKey);
   if (!item) return;
   item.quantity += delta;
-  if (item.quantity <= 0) cart.delete(id);
+  if (item.quantity <= 0) cart.delete(lineKey);
   renderCart();
 }
 
@@ -1180,8 +1333,7 @@ cartItems.addEventListener("click", (e) => {
   if (posMode !== "order") return;
   const btn = e.target.closest(".qty-btn");
   if (!btn) return;
-  const id = Number(btn.dataset.id);
-  updateQty(id, btn.dataset.action === "inc" ? 1 : -1);
+  updateQty(btn.dataset.lineKey, btn.dataset.action === "inc" ? 1 : -1);
 });
 
 function renderCategories() {
@@ -1216,12 +1368,16 @@ function renderProducts() {
     return;
   }
 
-  productGrid.innerHTML = filtered.map(p => `
-    <div class="card product-card" data-id="${p.id}">
+  productGrid.innerHTML = filtered.map(p => {
+    const hasAddons = productHasAddons(p);
+    return `
+    <div class="card product-card${hasAddons ? " product-card--has-addons" : ""}" data-id="${p.id}">
       <div class="name">${p.name}</div>
+      ${hasAddons ? `<div class="product-addon-hint">Tap to choose add-ons</div>` : ""}
       <div class="price">${formatCurrency(p.selling_price)}</div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 }
 
 categoryTabs.addEventListener("click", (e) => {
@@ -1243,7 +1399,7 @@ productGrid.addEventListener("click", (e) => {
   const card = e.target.closest(".product-card");
   if (!card) return;
   const product = products.find(p => p.id === Number(card.dataset.id));
-  if (product) addToCart(product);
+  if (product) handleProductTap(product);
 });
 
 receiptOrdersList.addEventListener("click", (e) => {
@@ -1294,6 +1450,8 @@ async function placeOrder() {
       items: [...cart.values()].map(item => ({
         product_id: item.id,
         quantity: item.quantity,
+        notes: item.notes || "",
+        addon_ids: (item.addons || []).map(addon => addon.id),
       })),
     };
     if (orderType.value === "dine_in" && tableNumber.value.trim()) {
@@ -1643,6 +1801,7 @@ dayendModal?.addEventListener("keydown", (event) => {
 });
 
 async function init() {
+  mountAddonModal();
   try {
     const [branchesData, productsData, categoriesData, currenciesData, customersData, suppliersData] = await Promise.all([
       apiGet("/branches/?page_size=500").then(data => unwrapList(data)),

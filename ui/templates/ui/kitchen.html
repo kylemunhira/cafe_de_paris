@@ -153,9 +153,12 @@ function orderMeta(order) {
 }
 
 function renderOrderCard(order) {
-  const items = (order.items || []).map(item =>
-    `<li><strong>${formatQty(item.quantity)}×</strong> ${item.product_name}</li>`
-  ).join("");
+  const items = (order.items || []).map(item => {
+    const addonText = (item.addons || []).map(addon => `+ ${addon.name}`).join(" ");
+    const noteText = item.notes ? ` (${item.notes})` : "";
+    const suffix = [addonText, noteText].filter(Boolean).join(" ");
+    return `<li><strong>${formatQty(item.quantity)}×</strong> ${item.product_name}${suffix ? ` <span style="color:var(--color-muted)">${suffix}</span>` : ""}</li>`;
+  }).join("");
 
   let actions = "";
   if (order.kitchen_status === "pending") {

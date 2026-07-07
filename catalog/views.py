@@ -9,10 +9,11 @@ from .csv_io import (
     import_ingredients_csv,
     import_products_csv,
 )
+from .menu_items_import import export_menu_items_csv, import_menu_items_csv
 from .constants import BAKERY_CATEGORIES, BAKERY_SELLABLE_CATEGORIES
-from .models import Product, ProductCategory
+from .models import MenuAddonGroup, Product, ProductCategory, ProductMenuAddonGroup
 from .pos_catalog import pos_catalog_products
-from .serializers import ProductCategorySerializer, ProductSerializer
+from .serializers import MenuAddonGroupSerializer, ProductCategorySerializer, ProductSerializer
 
 
 class ProductCategoryViewSet(viewsets.ModelViewSet):
@@ -20,8 +21,15 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = ProductCategorySerializer
 
 
+class MenuAddonGroupViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = MenuAddonGroup.objects.prefetch_related("addons").all()
+    serializer_class = MenuAddonGroupSerializer
+
+
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.select_related("category").all()
+    queryset = Product.objects.select_related("category").prefetch_related(
+        "addon_group_links__group__addons",
+    ).all()
     serializer_class = ProductSerializer
 
     def get_serializer_context(self):
@@ -105,4 +113,34 @@ class ProductViewSet(viewsets.ModelViewSet):
         result = import_ingredients_csv(upload)
         if result["errors"]:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="export-menu-items-csv")
+    def export_menu_items_csv(self, request):
+        response = HttpResponse(export_menu_items_csv(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="menu_items.csv"'
+        return response
+
+    @action(detail=False, methods=["post"], url_path="import-menu-items-csv")
+    def import_menu_items_csv(self, request):
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "No file uploaded. Use form field name 'file'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not upload.name.lower().endswith(".csv"):
+            return Response(
+                {"detail": "Only .csv files are supported."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        replace = request.query_params.get("replace", "true").lower() in ("1", "true", "yes")
+        try:
+            result = import_menu_items_csv(upload, replace=replace)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc), "errors": [{"row": 0, "message": str(exc)}]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(result, status=status.HTTP_200_OK)

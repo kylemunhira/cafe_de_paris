@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="background">#F7F3EF</color>
+    <color name="card_background">#FFFFFF</color>
     <color name="text_primary">#2C1810</color>
     <color name="text_muted">#7A6558</color>
     <color name="accent">#8B4513</color>
@@ -9,5 +10,6 @@
     <color name="status_pending">#B45309</color>
     <color name="status_preparing">#1D4ED8</color>
     <color name="status_ready">#15803D</color>
+    <color name="table_occupied_bg">#FFF7ED</color>
     <color name="launcher_background">#8B4513</color>
 </resources>

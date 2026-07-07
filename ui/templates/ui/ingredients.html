@@ -54,7 +54,7 @@
       </select>
     </div>
     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
-      Stock is tracked separately for each branch. Purchases and stock takes update the selected branch.
+      Raw materials for Central Bakery and Central Stores only. Stock is tracked per branch.
     </p>
   </div>
   <div class="table-wrap" id="ingredients-table">
@@ -229,7 +229,9 @@ async function reload() {
 async function loadBranches() {
   const data = await apiGet("/branches/?page_size=500");
   branches = branchesForUser(
-    unwrapList(data).filter(b => b.is_active),
+    unwrapList(data).filter(
+      b => b.is_active && (b.branch_type === "bakery" || b.branch_type === "stores"),
+    ),
     staffBranchId,
     canFilterAnyBranch,
   );

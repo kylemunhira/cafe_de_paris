@@ -196,6 +196,11 @@ class ProductsView(BaseUIView):
         return context
 
 
+class MenuAddonsView(BaseUIView):
+    template_name = "ui/menu_addons.html"
+    active_nav = "menu_addons"
+
+
 class IngredientsView(BaseUIView):
     template_name = "ui/ingredients.html"
     active_nav = "ingredients"

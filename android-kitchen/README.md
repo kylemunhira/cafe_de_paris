@@ -1,21 +1,30 @@
-# Android kitchen display
+# Android kitchen & POS app
 
-Simple Android app for the kitchen: shows open POS orders, auto-prints new order tickets on a Bluetooth thermal printer, and removes orders from the screen once they are paid at the till.
+Android app for branch staff:
+
+- **Kitchen display** — shows open POS orders, auto-prints new order tickets on a Bluetooth thermal printer, and removes orders once they are paid at the till.
+- **Cashier POS** — cashiers and branch managers can take orders and collect payment directly from the same app.
 
 ## Requirements
 
 - Android 7.0+ tablet or phone (landscape layout)
 - Same Wi‑Fi network as the Café de Paris server
-- Bluetooth ESC/POS thermal printer (80 mm), paired in Android settings
-- Staff account with **kitchen access** (branch or HQ staff — same as the web Kitchen page)
+- Bluetooth ESC/POS thermal printer (80 mm), paired in Android settings — kitchen mode only
+- Staff account with **kitchen access** and/or **POS access**
+
+| Role | App mode |
+|------|----------|
+| Cashier | Point of Sale (orders + payments) |
+| Branch manager | Point of Sale |
+| Kitchen / branch staff | Kitchen display |
 
 ## Setup
 
 1. Set the server URL in `config.json` (see below).
-2. Open `android-kitchen/` in **Android Studio** and run the app on the kitchen tablet.
-3. Sign in with kitchen staff credentials (username + password only).
-4. Open **Settings** and choose the paired Bluetooth printer address.
-5. Leave the app open on the kitchen screen. It polls every 5 seconds.
+2. Open `android-kitchen/` in **Android Studio** and run the app on the tablet.
+3. Sign in with staff credentials (username + password only).
+4. **Kitchen staff:** open **Settings** and choose the paired Bluetooth printer address.
+5. **Cashiers:** use **Order** to place orders and **Receipt** to collect payment on open orders.
 
 ## Server URL (`config.json`)
 
@@ -45,18 +54,40 @@ adb push config.json /storage/emulated/0/Android/data/com.cafedeparis.kitchen/fi
 
 ## How it works
 
+### Kitchen display
+
 | Event | App behaviour |
 |--------|----------------|
 | New open order from POS | Appears on screen and prints automatically (once per order) |
 | Order paid at POS | Drops off the list on the next refresh (`status=open` filter) |
 | Printer offline | Order stays visible; printing retries for unprinted orders |
 
-API used:
+Polls every 5 seconds.
 
-- `POST /api/auth/kitchen-login/` — token login for kitchen staff
-- `GET /api/orders/?status=open&branch={id}` — open orders for the signed-in branch
+### Cashier POS
 
-Printed ticket layout matches the web **order slip** (items, table, UNPAID footer).
+| Tab | Purpose |
+|-----|---------|
+| **Order** | Browse POS catalog, build cart, place takeaway or dine-in orders (with table picker) |
+| **Receipt** | List open orders, select one, pay with **cash** or **customer account** |
+
+Receipt tab refreshes every 10 seconds. After payment, a **sales receipt** is printed automatically on the paired Bluetooth printer (same as web POS).
+
+Use **Day end** in the header to run cash-up: enter counted till amounts per currency and print the day-end summary (requires a completed daily stock take for that date).
+
+## API used
+
+- `POST /api/auth/mobile-login/` — token login (kitchen and/or POS access flags)
+- `GET /api/orders/?status=open&branch={id}` — open orders
+- `GET /api/products/?pos_catalog=true` — POS product catalog
+- `GET /api/categories/` — product categories
+- `GET /api/currencies/` — payment currencies
+- `GET /api/stock-takes/day-end-check/` — verify daily stock take before day end
+- `GET /api/reports/day-end/` — day-end cash-up report
+- `GET /api/customers/` — customers with account balances
+- `POST /api/orders/` — place order
+- `PATCH /api/orders/{id}/` — link customer for account payment
+- `POST /api/orders/{id}/pay/` — collect payment (cash or account)
 
 ## Server note
 

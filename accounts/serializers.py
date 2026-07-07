@@ -69,7 +69,9 @@ class StaffUserSerializer(serializers.ModelSerializer):
         branch = profile_data["branch"]
         role = profile_data.get("role", StaffRole.CASHIER)
         pos_access = profile_data.get("pos_access")
-        if pos_access is None:
+        if role == StaffRole.CASHIER:
+            pos_access = True
+        elif pos_access is None:
             pos_access = branch.branch_type == BranchType.BRANCH
         password = validated_data.pop("password")
 
@@ -102,5 +104,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
             profile.role = profile_data["role"]
         if "pos_access" in profile_data:
             profile.pos_access = profile_data["pos_access"]
+        if profile.role == StaffRole.CASHIER:
+            profile.pos_access = True
         profile.save()
         return instance

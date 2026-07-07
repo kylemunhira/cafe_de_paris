@@ -105,6 +105,10 @@ const USER_SORT = {
 
 function updatePosAccessDefault() {
   if (editingUserId) return;
+  if (roleSelect.value === "cashier") {
+    posAccessInput.checked = true;
+    return;
+  }
   const branch = branches.find(b => String(b.id) === branchSelect.value);
   posAccessInput.checked = branch?.branch_type === "branch";
 }
@@ -294,6 +298,7 @@ userForm.addEventListener("submit", async (e) => {
 
 cancelBtn.addEventListener("click", resetForm);
 branchSelect.addEventListener("change", updatePosAccessDefault);
+roleSelect.addEventListener("change", updatePosAccessDefault);
 
 usersTable.addEventListener("click", (e) => {
   const btn = e.target.closest(".edit-user-btn");

@@ -1,0 +1,68 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Menu Add-ons — Café de Paris{% endblock %}
+{% block page_title %}Menu Add-ons{% endblock %}
+
+{% block content %}
+<p class="products-page-description">
+  Add-on groups used at POS when ordering menu items. Edit a product under
+  <a href="{% url 'ui:products' %}">List Products</a> to choose which groups apply.
+</p>
+<div id="addon-groups-list">
+  <div class="skeleton" style="height: 120px; margin-bottom: 1rem;"></div>
+  <div class="skeleton" style="height: 120px;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+const container = document.getElementById("addon-groups-list");
+
+function renderGroup(group) {
+  const addons = (group.addons || []).filter(addon => addon.is_active !== false);
+  return `
+    <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem;">
+        <h3 style="margin: 0; font-size: 1rem;">${group.name}</h3>
+        <span class="badge badge-open">${group.selection_type === "single" ? "Choose one" : "Choose any"}</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        ${addons.length
+          ? addons.map(addon => `
+            <span class="badge" style="background: var(--color-cream); color: var(--color-espresso); font-weight: 500;">
+              ${addon.name}${Number(addon.selling_price) > 0 ? ` · ${formatCurrency(addon.selling_price)}` : ""}
+            </span>
+          `).join("")
+          : `<span style="color: var(--color-muted); font-size: 0.85rem;">No options</span>`}
+      </div>
+    </div>
+  `;
+}
+
+async function load() {
+  try {
+    const data = await apiGet("/menu-addon-groups/?page_size=100");
+    const groups = unwrapList(data);
+    if (!groups.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <p>No add-on groups yet.</p>
+          <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-muted);">
+            Run <code>python manage.py seed_menu_addons</code> on the server.
+          </p>
+        </div>`;
+      return;
+    }
+    container.innerHTML = groups.map(renderGroup).join("");
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><p>Failed to load add-ons: ${err.message}</p></div>`;
+    showToast(err.message, true);
+  }
+}
+
+load();
+</script>
+{% endblock %}

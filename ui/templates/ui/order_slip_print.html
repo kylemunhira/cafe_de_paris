@@ -44,6 +44,10 @@
         <tr>
           <td class="col-item">
             <div class="item-name">{{ item.product.name }}</div>
+            {% for addon in item.addons.all %}
+            <div class="item-detail">+ {{ addon.name }}{% if addon.price %} ({{ addon.price|floatformat:2 }}){% endif %}</div>
+            {% endfor %}
+            {% if item.notes %}<div class="item-detail">Note: {{ item.notes }}</div>{% endif %}
             <div class="item-detail">{{ item.price|floatformat:2 }} each</div>
           </td>
           <td class="col-qty">{{ item.quantity|floatformat:2 }}</td>

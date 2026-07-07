@@ -6,7 +6,11 @@
 
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
+  {% if product_list_mode == "bakery" %}
   <a href="/api/products/export-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  {% else %}
+  <a href="/api/products/export-menu-items-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  {% endif %}
   <label class="btn btn-primary btn-sm" style="cursor: pointer;">
     Upload CSV
     <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
@@ -53,6 +57,14 @@
         <input type="checkbox" id="product-active" name="is_active" checked>
         Active product
       </label>
+    </div>
+    <div id="addon-groups-section" class="form-group" style="display: none;">
+      <label>Menu add-ons for this product</label>
+      <p class="products-page-description" style="margin: 0 0 0.75rem;">
+        Choose which add-on groups appear when this product is ordered on POS.
+        <a href="{% url 'ui:menu-addons' %}">View all add-on options</a>
+      </p>
+      <div id="addon-group-options" style="display: grid; gap: 0.5rem;"></div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
       <button type="button" class="btn btn-ghost" id="product-cancel" style="display: none;">Cancel</button>
@@ -104,6 +116,9 @@ import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-sele
 const VIEW_STORAGE_KEY = "products-view-mode-{{ product_list_mode|default:'menu' }}";
 const productListMode = "{{ product_list_mode|default:'menu' }}";
 const productLabel = productListMode === "bakery" ? "bakery product" : "product";
+const csvImportUrl = productListMode === "bakery"
+  ? "/products/import-csv/"
+  : "/products/import-menu-items-csv/?replace=true";
 const BAKERY_CATEGORY_NAMES = new Set(
   JSON.parse(document.getElementById("bakery-category-names").textContent),
 );
@@ -122,6 +137,8 @@ function formatPercent(value) {
 
 let products = [];
 let categories = [];
+let addonGroups = [];
+let selectedAddonGroupIds = new Set();
 let branches = [];
 let branchInventory = new Map();
 let selectedBranchId = null;
@@ -134,6 +151,8 @@ const formTitle = document.getElementById("form-title");
 const categorySelect = document.getElementById("product-category");
 const productSubmit = document.getElementById("product-submit");
 const productCancel = document.getElementById("product-cancel");
+const addonGroupsSection = document.getElementById("addon-groups-section");
+const addonGroupOptions = document.getElementById("addon-group-options");
 const qtyLabel = document.getElementById("product-qty-label");
 const categoryTabs = document.getElementById("category-tabs");
 const productSearchInput = document.getElementById("product-search");
@@ -217,11 +236,43 @@ function renderCategoryOptions() {
   }
 }
 
+function renderAddonGroupOptions() {
+  if (!addonGroups.length) {
+    addonGroupOptions.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">No add-on groups yet. Run <code>python manage.py seed_menu_addons</code>.</p>`;
+    return;
+  }
+
+  addonGroupOptions.innerHTML = addonGroups.map(group => `
+    <label style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;">
+      <input type="checkbox" value="${group.id}" ${selectedAddonGroupIds.has(group.id) ? "checked" : ""}>
+      <span>
+        <strong>${group.name}</strong>
+        <span style="display:block; color: var(--color-muted); font-size: 0.82rem;">
+          ${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${group.addons?.length || 0} options
+        </span>
+      </span>
+    </label>
+  `).join("");
+}
+
+function setAddonGroupsForProduct(product) {
+  selectedAddonGroupIds = new Set((product?.addon_groups || []).map(group => group.id));
+  renderAddonGroupOptions();
+  addonGroupsSection.style.display = productListMode === "menu" ? "" : "none";
+}
+
+function readSelectedAddonGroupIds() {
+  return [...addonGroupOptions.querySelectorAll("input[type=checkbox]:checked")]
+    .map(input => Number(input.value));
+}
+
 function resetForm() {
   editingId = null;
   formTitle.textContent = `Add ${productLabel}`;
   productSubmit.textContent = `Add ${productLabel}`;
   productCancel.style.display = "none";
+  addonGroupsSection.style.display = "none";
+  selectedAddonGroupIds = new Set();
   qtyLabel.textContent = "Initial qty";
   productForm.reset();
   document.getElementById("product-qty").value = "0";
@@ -240,8 +291,18 @@ function startEdit(product) {
   document.getElementById("product-tax").value = product.tax_rate ?? "";
   document.getElementById("product-qty").value = product.branch_qty ?? "0";
   document.getElementById("product-active").checked = product.is_active;
+  setAddonGroupsForProduct(product);
   updateQtyLabel();
   window.scrollTo({ top: 0, behavior: "smooth" });
+
+  if (productListMode === "menu") {
+    apiGet(`/products/${product.id}/`).then(fresh => {
+      if (editingId !== product.id) return;
+      const index = products.findIndex(p => p.id === product.id);
+      if (index >= 0) products[index] = { ...products[index], ...fresh };
+      setAddonGroupsForProduct(fresh);
+    }).catch(() => {});
+  }
 }
 
 function matchesSearch(product) {
@@ -259,6 +320,9 @@ function recipeLink(product) {
 }
 
 function renderProductCard(p) {
+  const addonLine = productListMode === "menu" && p.addon_groups?.length
+    ? `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">Add-ons: ${p.addon_groups.map(group => group.name).join(", ")}</p>`
+    : "";
   return `
     <div class="card product-mgmt-card">
       <div class="product-mgmt-card__header">
@@ -270,6 +334,7 @@ function renderProductCard(p) {
         </div>
       </div>
       <p class="product-mgmt-card__category">${p.category_name}</p>
+      ${addonLine}
       <div class="product-mgmt-card__footer">
         <p class="product-mgmt-card__price">${formatCurrency(p.selling_price)}</p>
         <div class="product-mgmt-card__meta">
@@ -281,8 +346,19 @@ function renderProductCard(p) {
   `;
 }
 
+function formatAddonGroupNames(product) {
+  const groups = product?.addon_groups || [];
+  return groups.length ? groups.map(group => group.name).join(", ") : "—";
+}
+
 function renderProductTable(filtered) {
   const sorted = sortItems(filtered, sortState, PRODUCT_SORT);
+  const addonHeader = productListMode === "menu"
+    ? `<th>Add-ons</th>`
+    : "";
+  const addonCell = (p) => productListMode === "menu"
+    ? `<td style="font-size: 0.85rem; color: var(--color-muted);">${formatAddonGroupNames(p)}</td>`
+    : "";
 
   return `
     <div class="card" style="padding: 0;">
@@ -296,6 +372,7 @@ function renderProductTable(filtered) {
               ${sortTh(stockColumnLabel(), "branch_qty", sortState, { align: "right" })}
               ${sortTh("Tax", "tax_rate", sortState, { align: "right" })}
               ${sortTh("Status", "is_active", sortState)}
+              ${addonHeader}
               ${actionTh()}
             </tr>
           </thead>
@@ -308,6 +385,7 @@ function renderProductTable(filtered) {
                 <td style="text-align: right;">${formatQty(p.branch_qty)}</td>
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
                 <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
+                ${addonCell(p)}
                 <td style="text-align: right;">
                   ${recipeLink(p)}
                   <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
@@ -415,6 +493,15 @@ async function loadCategories() {
   renderCategoryOptions();
 }
 
+async function loadAddonGroups() {
+  if (productListMode !== "menu") {
+    addonGroups = [];
+    return;
+  }
+  const data = await apiGet("/menu-addon-groups/?page_size=100");
+  addonGroups = unwrapList(data);
+}
+
 productForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   productSubmit.disabled = true;
@@ -433,7 +520,10 @@ productForm.addEventListener("submit", async (e) => {
 
   try {
     if (editingId) {
-      await apiPatch(`/products/${editingId}/`, payload);
+      await apiPatch(`/products/${editingId}/`, {
+        ...payload,
+        addon_group_ids: readSelectedAddonGroupIds(),
+      });
       await syncBranchStock(editingId, targetQty);
       showToast("Product updated");
     } else {
@@ -500,12 +590,24 @@ csvUpload.addEventListener("change", async (e) => {
   e.target.value = "";
   if (!file) return;
 
+  if (productListMode !== "bakery") {
+    const confirmed = window.confirm(
+      "Import POS menu items from this CSV?\n\n"
+      + "Products in the file will be created or updated. "
+      + "Any active POS products not in the file will be deactivated.",
+    );
+    if (!confirmed) return;
+  }
+
   const formData = new FormData();
   formData.append("file", file);
 
   try {
-    const result = await apiUpload("/products/import-csv/", formData);
+    const result = await apiUpload(csvImportUrl, formData);
     const parts = [];
+    if (result.products_created) parts.push(`${result.products_created} created`);
+    if (result.products_updated) parts.push(`${result.products_updated} updated`);
+    if (result.deactivated) parts.push(`${result.deactivated} deactivated`);
     if (result.created) parts.push(`${result.created} created`);
     if (result.updated) parts.push(`${result.updated} updated`);
     showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
@@ -525,7 +627,7 @@ csvUpload.addEventListener("change", async (e) => {
   }
 });
 
-Promise.all([loadCategories(), loadBranches()]).catch(err => {
+Promise.all([loadCategories(), loadAddonGroups(), loadBranches()]).catch(err => {
   productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Failed to load products: ${err.message}</div>`;
 });
 </script>

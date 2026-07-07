@@ -4,6 +4,7 @@ from .constants import INGREDIENTS_CATEGORY
 POS_EXCLUDED_CATEGORIES = {
     INGREDIENTS_CATEGORY,
     "Components",
+    "Extras",
 }
 
 
@@ -15,6 +16,8 @@ def pos_catalog_products(queryset=None):
     return (
         qs.filter(is_active=True, category__is_asset=False)
         .exclude(category__name__in=POS_EXCLUDED_CATEGORIES)
+        .exclude(name__istartswith="add ")
         .select_related("category")
+        .prefetch_related("addon_group_links__group__addons")
         .order_by("name")
     )

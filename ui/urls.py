@@ -39,6 +39,7 @@ urlpatterns = [
         name="invoice-print",
     ),
     path("products/", views.ProductsView.as_view(), name="products"),
+    path("menu-addons/", views.MenuAddonsView.as_view(), name="menu-addons"),
     path("ingredients/", views.IngredientsView.as_view(), name="ingredients"),
     path("product-categories/", views.ProductCategoriesView.as_view(), name="product-categories"),
     path("bakery-products/", views.BakeryProductsView.as_view(), name="bakery-products"),

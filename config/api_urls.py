@@ -1,10 +1,10 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from accounts.auth_views import DesktopLoginView, KitchenLoginView
+from accounts.auth_views import DesktopLoginView, KitchenLoginView, MobileAppLoginView
 from accounts.views import StaffUserViewSet
 from branches.views import BranchViewSet, DiningTableViewSet
-from catalog.views import ProductCategoryViewSet, ProductViewSet
+from catalog.views import MenuAddonGroupViewSet, ProductCategoryViewSet, ProductViewSet
 from inventory.views import (
     BranchInventoryViewSet,
     DeliveryNoteViewSet,
@@ -17,6 +17,7 @@ from orders.views import ExpenseViewSet, OrderViewSet
 from purchasing.views import PurchaseOrderViewSet, SupplierViewSet
 from payments.views import CurrencyRateViewSet, CurrencyViewSet
 from reports.views import (
+    DayEndReportView,
     ReportCustomerBalancesView,
     ReportExportCsvView,
     ReportIngredientStockView,
@@ -33,6 +34,7 @@ router.register("users", StaffUserViewSet, basename="staffuser")
 router.register("branches", BranchViewSet)
 router.register("dining-tables", DiningTableViewSet, basename="dining-table")
 router.register("categories", ProductCategoryViewSet)
+router.register("menu-addon-groups", MenuAddonGroupViewSet, basename="menu-addon-group")
 router.register("products", ProductViewSet)
 router.register("orders", OrderViewSet)
 router.register("expenses", ExpenseViewSet, basename="expense")
@@ -51,11 +53,13 @@ router.register("production-orders", ProductionOrderViewSet, basename="productio
 urlpatterns = [
     path("auth/desktop-login/", DesktopLoginView.as_view(), name="desktop-login"),
     path("auth/kitchen-login/", KitchenLoginView.as_view(), name="kitchen-login"),
+    path("auth/mobile-login/", MobileAppLoginView.as_view(), name="mobile-login"),
     path("sync/ping/", SyncPingView.as_view(), name="sync-ping"),
     path("sync/pull/", SyncPullView.as_view(), name="sync-pull"),
     path("sync/push/", SyncPushView.as_view(), name="sync-push"),
     path("reports/summary/", ReportSummaryView.as_view(), name="report-summary"),
     path("reports/profit/", ReportProfitView.as_view(), name="report-profit"),
+    path("reports/day-end/", DayEndReportView.as_view(), name="report-day-end"),
     path("reports/export-csv/", ReportExportCsvView.as_view(), name="report-export-csv"),
     path(
         "reports/customer-balances/",

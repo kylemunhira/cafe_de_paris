@@ -130,7 +130,7 @@ def user_can_manage_users(user):
 
 
 def user_can_access_pos(user):
-    """POS access is granted per user; HQ admins and global users always have access."""
+    """POS access: cashiers, HQ admins, global users, or explicit pos_access flag."""
     if not user or not user.is_authenticated:
         return False
     if user_has_global_branch_access(user):
@@ -139,6 +139,8 @@ def user_can_access_pos(user):
         profile = user.staff_profile
     except StaffProfile.DoesNotExist:
         return False
+    if profile.role == StaffRole.CASHIER:
+        return True
     return profile.pos_access
 
 
