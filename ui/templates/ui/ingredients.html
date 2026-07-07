@@ -53,6 +53,14 @@
         <option value="">Loading…</option>
       </select>
     </div>
+    <input
+      type="search"
+      id="ingredient-search"
+      class="report-input"
+      placeholder="Search ingredients…"
+      style="max-width: 280px;"
+      autocomplete="off"
+    >
     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
       Raw materials for Central Bakery and Central Stores only. Stock is tracked per branch.
     </p>
@@ -79,6 +87,7 @@ let ingredients = [];
 let branchInventory = new Map();
 let selectedBranchId = null;
 let editingId = null;
+let searchQuery = "";
 
 const ingredientForm = document.getElementById("ingredient-form");
 const formTitle = document.getElementById("form-title");
@@ -93,6 +102,7 @@ const cancelBtn = document.getElementById("cancel-btn");
 const ingredientsTable = document.getElementById("ingredients-table");
 const csvUpload = document.getElementById("csv-upload");
 const branchSelect = document.getElementById("branch-select");
+const searchInput = document.getElementById("ingredient-search");
 const sortState = createSortState("name", "asc");
 
 const INGREDIENT_SORT = {
@@ -155,6 +165,18 @@ function startEdit(ingredient) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function matchesSearch(item) {
+  if (!searchQuery) return true;
+  const haystack = [
+    item.name,
+    item.is_active ? "active" : "inactive",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
 function render() {
   const branch = selectedBranch();
 
@@ -168,7 +190,13 @@ function render() {
     return;
   }
 
-  const sorted = sortItems(ingredients, sortState, INGREDIENT_SORT);
+  const filtered = ingredients.filter(matchesSearch);
+  if (!filtered.length) {
+    ingredientsTable.innerHTML = `<div class="empty-state"><p>No matching ingredients</p></div>`;
+    return;
+  }
+
+  const sorted = sortItems(filtered, sortState, INGREDIENT_SORT);
 
   ingredientsTable.innerHTML = `
     <table class="data-table">
@@ -327,6 +355,11 @@ ingredientsTable.addEventListener("click", (e) => {
 });
 
 bindTableSort(ingredientsTable, sortState, render);
+
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  render();
+});
 
 csvUpload.addEventListener("change", async (e) => {
   const file = e.target.files[0];

@@ -5,6 +5,8 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import com.cafedeparis.kitchen.data.DayEndReportResponse
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.OrderItem
+import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import org.json.JSONArray
 import java.io.OutputStream
 import java.nio.charset.Charset
@@ -19,6 +21,16 @@ class EscPosPrinter {
   fun printOrder(deviceAddress: String, order: KitchenOrder) {
     print(deviceAddress) { output ->
       writeKitchenTicket(output, order)
+    }
+  }
+
+  fun printOrderSlip(
+    deviceAddress: String,
+    order: KitchenOrder,
+    options: OrderSlipPrintOptions = OrderSlipPrintOptions(),
+  ) {
+    print(deviceAddress) { output ->
+      writeOrderSlip(output, order, options)
     }
   }
 
@@ -101,6 +113,98 @@ class EscPosPrinter {
 
     output.write(textLine("--------------------------------"))
     output.write(LF)
+    output.write(LF)
+  }
+
+  private fun writeOrderSlip(
+    output: OutputStream,
+    order: KitchenOrder,
+    options: OrderSlipPrintOptions,
+  ) {
+    val tax = orderSlipTaxBreakdown(order, options.taxRate)
+    val baseLabel = options.baseCurrencyCode?.let { " ($it)" }.orEmpty()
+
+    output.write(INIT)
+    output.write(ALIGN_CENTER)
+    if (order.branch_fiscalization_enabled) {
+      output.write(textLine("Cafe de Paris", doubleHeight = true))
+      if (order.branch_name.isNotBlank()) {
+        output.write(textLine(order.branch_name))
+      }
+      output.write(LF)
+    }
+
+    output.write(textLine("Order ticket", bold = true))
+    output.write(textLine("Order #${order.id}"))
+    output.write(textLine(formatDateTime(order.created_at)))
+    output.write(textLine(formatOrderType(order)))
+    order.customer_name?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Customer: $it"))
+    }
+    order.created_by_name?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Served by $it"))
+    }
+
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_LEFT)
+    output.write(
+      textLine(
+        "Item".padEnd(ITEM_NAME_W) + "Qty".padStart(ITEM_QTY_W) + "Amt".padStart(ITEM_AMT_W),
+        bold = true,
+      ),
+    )
+    output.write(textLine("-".repeat(LINE_WIDTH)))
+
+    if (order.items.isEmpty()) {
+      output.write(textLine("No items"))
+    } else {
+      for (item in order.items) {
+        val lineTotal = orderItemLineTotal(item)
+        output.write(
+          textLine(
+            itemColumns(item.product_name, item.quantity, lineTotal),
+            bold = true,
+          ),
+        )
+        for (addon in item.addons) {
+          val addonPrice = addon.price.toDoubleOrNull() ?: 0.0
+          val addonLabel = if (addonPrice > 0.0) {
+            "+ ${addon.name} (${formatPlainAmount(addon.price)})"
+          } else {
+            "+ ${addon.name}"
+          }
+          output.write(textLine("  $addonLabel"))
+        }
+        if (item.notes.isNotBlank()) {
+          output.write(textLine("  Note: ${item.notes}"))
+        }
+        val unitPrice = itemUnitPrice(item)
+        output.write(textLine("  ${formatPlainAmount(unitPrice.toString())} each"))
+      }
+    }
+
+    output.write(textLine("--------------------------------"))
+    if (order.branch_fiscalization_enabled) {
+      output.write(textLine("Subtotal$baseLabel", suffix = formatPlainAmount(tax.subtotal.toString())))
+      output.write(
+        textLine(
+          "Tax (${formatTaxRate(options.taxRate)})",
+          suffix = formatPlainAmount(tax.tax.toString()),
+        ),
+      )
+    }
+    output.write(
+      textLine(
+        "Total$baseLabel",
+        bold = true,
+        suffix = formatPlainAmount(tax.total.toString()),
+      ),
+    )
+
+    output.write(LF)
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Present this ticket when paying."))
+    output.write(textLine("UNPAID", bold = true, doubleHeight = true))
     output.write(LF)
   }
 
@@ -405,6 +509,60 @@ class EscPosPrinter {
     return trimmedLeft + " ".repeat(spaces) + right
   }
 
+  private fun truncText(text: String, max: Int): String {
+    return if (text.length > max) "${text.take(max - 1)}." else text
+  }
+
+  private fun itemColumns(name: String, quantity: String, amount: Double): String {
+    val label = truncText(name, ITEM_NAME_W).padEnd(ITEM_NAME_W)
+    val qty = formatQty(quantity).padStart(ITEM_QTY_W)
+    val amt = formatPlainAmount(amount.toString()).padStart(ITEM_AMT_W)
+    return "$label$qty$amt"
+  }
+
+  private fun itemUnitPrice(item: OrderItem): Double {
+    val productPrice = item.price.toDoubleOrNull() ?: 0.0
+    val addonUnitPrice = item.addons.sumOf { it.price.toDoubleOrNull() ?: 0.0 }
+    return roundMoney(productPrice + addonUnitPrice)
+  }
+
+  private fun orderItemLineTotal(item: OrderItem): Double {
+    val qty = item.quantity.toDoubleOrNull() ?: 0.0
+    return roundMoney(qty * itemUnitPrice(item))
+  }
+
+  private fun receiptTotalFromOrder(order: KitchenOrder): Double {
+    var total = 0.0
+    for (item in order.items) {
+      total += orderItemLineTotal(item)
+    }
+    return roundMoney(total)
+  }
+
+  private data class OrderSlipTaxBreakdown(
+    val subtotal: Double,
+    val tax: Double,
+    val total: Double,
+  )
+
+  private fun orderSlipTaxBreakdown(order: KitchenOrder, taxRate: Double): OrderSlipTaxBreakdown {
+    val total = receiptTotalFromOrder(order).let { computed ->
+      if (computed > 0.0) computed else order.total_amount.toDoubleOrNull() ?: 0.0
+    }
+    val divisor = 1.0 + taxRate / 100.0
+    val subtotal = roundMoney(total / divisor)
+    val tax = roundMoney(total - subtotal)
+    return OrderSlipTaxBreakdown(subtotal, tax, roundMoney(total))
+  }
+
+  private fun roundMoney(amount: Double): Double {
+    return Math.round(amount * 100.0) / 100.0
+  }
+
+  private fun formatTaxRate(rate: Double): String {
+    return String.format(Locale.US, "%.1f", rate)
+  }
+
   private fun formatOrderType(order: KitchenOrder): String {
     val type = when (order.order_type) {
       "dine_in" -> "Dine In"
@@ -452,6 +610,9 @@ class EscPosPrinter {
 
   companion object {
     private const val LINE_WIDTH = 32
+    private const val ITEM_NAME_W = 16
+    private const val ITEM_QTY_W = 5
+    private const val ITEM_AMT_W = 8
 
     private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private val PRINTER_CHARSET: Charset = Charset.forName("ISO-8859-1")

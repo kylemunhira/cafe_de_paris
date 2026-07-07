@@ -7,13 +7,13 @@ import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.GridLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -27,6 +27,7 @@ import com.cafedeparis.kitchen.data.Currency
 import com.cafedeparis.kitchen.data.Customer
 import com.cafedeparis.kitchen.data.DiningTable
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.databinding.ActivityPosBinding
@@ -54,7 +55,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class PosActivity : AppCompatActivity() {
+class PosActivity : KeepScreenOnActivity() {
 
     private lateinit var binding: ActivityPosBinding
     private lateinit var session: SessionManager
@@ -659,11 +660,9 @@ class PosActivity : AppCompatActivity() {
             selectedCurrencyId = usable.firstOrNull { it.is_base }?.id ?: usable.first().id
         }
         for (currency in usable) {
-            val button = MaterialButton(
-                this,
-                null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle,
-            ).apply {
+            val button = LayoutInflater.from(this)
+                .inflate(R.layout.item_category_chip, binding.currencyButtonGrid, false) as MaterialButton
+            button.apply {
                 text = currencyButtonLabel(currency)
                 isCheckable = true
                 isChecked = currency.id == selectedCurrencyId
@@ -869,6 +868,7 @@ class PosActivity : AppCompatActivity() {
                 cart.clear()
                 setSelectedTable(null)
                 renderCart()
+                printOrderTicket(order)
                 Toast.makeText(
                     this@PosActivity,
                     getString(R.string.order_placed, order.id, ProductAdapter.formatMoney(order.total_amount)),
@@ -984,6 +984,41 @@ class PosActivity : AppCompatActivity() {
     private fun showError(message: String) {
         binding.errorBanner.text = message
         binding.errorBanner.visibility = View.VISIBLE
+    }
+
+    private suspend fun printOrderTicket(order: KitchenOrder) {
+        val printerAddress = session.printerAddress
+        if (printerAddress.isNullOrBlank()) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@PosActivity, R.string.printer_not_configured, Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        val baseCurrency = currencies.firstOrNull { it.is_base }
+        val options = OrderSlipPrintOptions(
+            baseCurrencyCode = baseCurrency?.code?.takeIf { it.isNotBlank() }
+                ?: baseCurrency?.name,
+        )
+
+        try {
+            withContext(Dispatchers.IO) {
+                printer.printOrderSlip(printerAddress, order, options)
+            }
+        } catch (err: PrinterException) {
+            withContext(Dispatchers.Main) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            }
+        } catch (err: SecurityException) {
+            withContext(Dispatchers.Main) {
+                requestBluetoothIfNeeded()
+                showError(getString(R.string.bluetooth_permission_required))
+            }
+        } catch (err: Exception) {
+            withContext(Dispatchers.Main) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            }
+        }
     }
 
     private suspend fun printReceipt(order: KitchenOrder) {

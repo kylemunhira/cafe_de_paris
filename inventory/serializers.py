@@ -5,8 +5,12 @@ from django.db import transaction
 from rest_framework import serializers
 
 from branches.models import Branch, BranchType
-from bakery.costing import product_unit_cost
-from catalog.constants import BAKERY_SELLABLE_CATEGORIES, is_bakery_transfer_product
+from catalog.constants import (
+    BAKERY_SELLABLE_CATEGORIES,
+    INGREDIENTS_CATEGORY,
+    is_bakery_transfer_product,
+    is_ingredient_product,
+)
 from catalog.models import Product
 from customers.models import Customer
 from orders.serializers import staff_display_name
@@ -99,7 +103,7 @@ class StockTransferCreateSerializer(serializers.ModelSerializer):
 
 
 BAKERY_TRANSFER_DESTINATION_TYPES = (BranchType.STORES, BranchType.BRANCH)
-STORES_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH, BranchType.HQ)
+STORES_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH, BranchType.HQ, BranchType.BAKERY)
 
 
 class BakeryTransferCreateSerializer(serializers.ModelSerializer):
@@ -294,15 +298,10 @@ class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
 
     def validate_product(self, product):
-        if not is_bakery_transfer_product(product):
+        if not is_ingredient_product(product):
             raise serializers.ValidationError(
-                "Only finished bakery products can be transferred to branches. "
-                f"Allowed categories: {', '.join(sorted(BAKERY_SELLABLE_CATEGORIES))}."
-            )
-        unit_cost = product_unit_cost(product)
-        if unit_cost is None:
-            raise serializers.ValidationError(
-                f"No recipe cost configured for {product.name}."
+                f"Only ingredients can be transferred from central stores "
+                f"({INGREDIENTS_CATEGORY} category)."
             )
         return product
 
@@ -350,7 +349,7 @@ class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
                     delivery_note=note,
                     product=line["product"],
                     quantity=line["quantity"],
-                    unit_price=product_unit_cost(line["product"]),
+                    unit_price=line["product"].selling_price,
                 )
                 for line in lines_data
             ]

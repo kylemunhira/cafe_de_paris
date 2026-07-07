@@ -9,7 +9,7 @@ Android app for branch staff:
 
 - Android 7.0+ tablet or phone (landscape layout)
 - Same Wi‑Fi network as the Café de Paris server
-- Bluetooth ESC/POS thermal printer (80 mm), paired in Android settings — kitchen mode only
+- Bluetooth ESC/POS thermal printer (80 mm), paired in Android settings
 - Staff account with **kitchen access** and/or **POS access**
 
 | Role | App mode |
@@ -23,7 +23,7 @@ Android app for branch staff:
 1. Set the server URL in `config.json` (see below).
 2. Open `android-kitchen/` in **Android Studio** and run the app on the tablet.
 3. Sign in with staff credentials (username + password only).
-4. **Kitchen staff:** open **Settings** and choose the paired Bluetooth printer address.
+4. Open **Settings** and choose the paired Bluetooth printer address (kitchen display and POS).
 5. **Cashiers:** use **Order** to place orders and **Receipt** to collect payment on open orders.
 
 ## Server URL (`config.json`)
@@ -68,7 +68,7 @@ Polls every 5 seconds.
 
 | Tab | Purpose |
 |-----|---------|
-| **Order** | Browse POS catalog, build cart, place takeaway or dine-in orders (with table picker) |
+| **Order** | Browse POS catalog, build cart, place takeaway or dine-in orders (with table picker). Prints an **order ticket** (same layout as web POS) on the paired Bluetooth printer after each order. |
 | **Receipt** | List open orders, select one, pay with **cash** or **customer account** |
 
 Receipt tab refreshes every 10 seconds. After payment, a **sales receipt** is printed automatically on the paired Bluetooth printer (same as web POS).

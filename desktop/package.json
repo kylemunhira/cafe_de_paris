@@ -5,6 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "prebuild": "node -e \"require('fs').mkdirSync('receipt-css',{recursive:true});require('fs').copyFileSync('../ui/static/ui/css/receipt-print.css','receipt-css/receipt-print.css')\"",
     "build": "electron-builder --win",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
@@ -17,11 +18,8 @@
     "files": [
       "electron/**/*",
       "src/**/*",
-      {
-        "from": "../ui/static/ui/css/receipt-print.css",
-        "to": "receipt-css/receipt-print.css"
-      }
-    ],
+      "receipt-css/**/*"
+  ],
     "extraFiles": [
       {
         "from": "config.json",

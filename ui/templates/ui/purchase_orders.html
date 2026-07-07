@@ -8,7 +8,7 @@
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
   <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record purchase</h3>
   <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted);">
-    Stock is added to the branch immediately when you save.
+    Supplier purchases are recorded at central stores only. Stock is added immediately when you save.
   </p>
   <form id="po-form">
     <div class="form-row">
@@ -182,9 +182,10 @@ function isIngredientsOnlyBranch(branch) {
 }
 
 function branchesForPurchase(allBranches) {
-  if (canPurchaseForAnyBranch) return allBranches;
+  const centralStores = allBranches.filter(b => b.branch_type === "stores");
+  if (canPurchaseForAnyBranch) return centralStores;
   if (!staffBranchId) return [];
-  return allBranches.filter(b => String(b.id) === staffBranchId);
+  return centralStores.filter(b => String(b.id) === staffBranchId);
 }
 
 function isIngredientProduct(product) {
@@ -373,7 +374,9 @@ async function loadData() {
     apiGet("/purchase-orders/?page_size=500"),
   ]);
 
-  branches = branchesForPurchase(unwrapList(branchesData).filter(b => b.is_active));
+  branches = branchesForPurchase(
+    unwrapList(branchesData).filter(b => b.is_active && b.branch_type === "stores")
+  );
   suppliers = unwrapList(suppliersData);
   products = [...ingredientProducts, ...posProducts].filter(p => p.is_active);
   allOrders = unwrapList(ordersData);

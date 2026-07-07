@@ -28,6 +28,16 @@
 </div>
 
 <div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <input
+      type="search"
+      id="category-search"
+      class="report-input"
+      placeholder="Search categories…"
+      style="max-width: 320px;"
+      autocomplete="off"
+    >
+  </div>
   <div class="table-wrap" id="categories-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
   </div>
@@ -46,10 +56,12 @@ const isAssetInput = document.getElementById("category-is-asset");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const categoriesTable = document.getElementById("categories-table");
+const searchInput = document.getElementById("category-search");
 
 let categories = [];
 let productCounts = new Map();
 let editingId = null;
+let searchQuery = "";
 const sortState = createSortState("name");
 
 function setFormMode(mode) {
@@ -74,12 +86,38 @@ function startEdit(category) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function matchesSearch(category) {
+  if (!searchQuery) return true;
+  const haystack = [
+    category.name,
+    category.is_asset ? "asset yes" : "asset no",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
 function render() {
-  const rows = sortItems(
-    categories.map(c => ({
+  if (!categories.length) {
+    categoriesTable.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p>No categories yet</p></div>`;
+    return;
+  }
+
+  const filtered = categories
+    .map(c => ({
       ...c,
       product_count: productCounts.get(c.id) ?? 0,
-    })),
+    }))
+    .filter(matchesSearch);
+
+  if (!filtered.length) {
+    categoriesTable.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p>No matching categories</p></div>`;
+    return;
+  }
+
+  const rows = sortItems(
+    filtered,
     sortState,
     {
       name: c => c.name.toLowerCase(),
@@ -87,11 +125,6 @@ function render() {
       product_count: c => c.product_count,
     },
   );
-
-  if (!rows.length) {
-    categoriesTable.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p>No categories yet</p></div>`;
-    return;
-  }
 
   categoriesTable.innerHTML = `
     <table class="data-table">
@@ -187,6 +220,11 @@ categoriesTable.addEventListener("click", async (e) => {
   } catch (err) {
     showToast(err.message, true);
   }
+});
+
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  render();
 });
 
 reload();

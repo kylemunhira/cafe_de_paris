@@ -581,7 +581,7 @@ class DeliveryNoteTests(TestCase):
         response = self.client.get(f"/transfers/delivery-note/{note.id}/print/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Delivery Note")
-        self.assertContains(response, "Croissant")
+        self.assertContains(response, "Flour")
         self.assertContains(response, "DN-")
 
 
@@ -602,7 +602,7 @@ class StoresTransferTests(TestCase):
         StaffProfile.objects.create(
             user=self.stores_clerk,
             branch=self.stores,
-            role=StaffRole.BRANCH_MANAGER,
+            role=StaffRole.HQ_ADMIN,
         )
         self.cashier = User.objects.create_user(username="cashier", password="pass")
         StaffProfile.objects.create(
@@ -629,11 +629,28 @@ class StoresTransferTests(TestCase):
         )
         BranchInventory.objects.create(
             branch=self.stores,
-            product=self.croissant,
+            product=flour,
             quantity=Decimal("30"),
         )
+        self.flour = flour
 
     def test_create_stores_delivery_note_assigns_invoice(self):
+        self.client.force_authenticate(user=self.stores_clerk)
+        response = self.client.post(
+            "/api/delivery-notes/from-stores/",
+            {
+                "from_branch": self.stores.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": self.flour.id, "quantity": "6"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["invoice_number"])
+        self.assertEqual(response.data["lines"][0]["unit_price"], "1.00")
+        self.assertEqual(response.data["total_amount"], "6.00")
+
+    def test_create_stores_delivery_note_rejects_bakery_products(self):
         self.client.force_authenticate(user=self.stores_clerk)
         response = self.client.post(
             "/api/delivery-notes/from-stores/",
@@ -644,10 +661,7 @@ class StoresTransferTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, 201)
-        self.assertTrue(response.data["invoice_number"])
-        self.assertEqual(response.data["lines"][0]["unit_price"], "1.50")
-        self.assertEqual(response.data["total_amount"], "9.00")
+        self.assertEqual(response.status_code, 400)
 
     def test_stores_to_branch_workflow_updates_inventory(self):
         self.client.force_authenticate(user=self.stores_clerk)
@@ -656,7 +670,7 @@ class StoresTransferTests(TestCase):
             {
                 "from_branch": self.stores.id,
                 "to_branch": self.branch.id,
-                "lines": [{"product": self.croissant.id, "quantity": "6"}],
+                "lines": [{"product": self.flour.id, "quantity": "6"}],
             },
             format="json",
         )
@@ -671,14 +685,53 @@ class StoresTransferTests(TestCase):
 
         stores_stock = BranchInventory.objects.get(
             branch=self.stores,
-            product=self.croissant,
+            product=self.flour,
         )
         branch_stock = BranchInventory.objects.get(
             branch=self.branch,
-            product=self.croissant,
+            product=self.flour,
         )
         self.assertEqual(stores_stock.quantity, Decimal("24"))
         self.assertEqual(branch_stock.quantity, Decimal("6"))
+
+    def test_stores_to_bakery_workflow_updates_inventory(self):
+        bakery = Branch.objects.create(
+            name="Central Bakery",
+            branch_type=BranchType.BAKERY,
+            code="BAK",
+        )
+        bakery_clerk = User.objects.create_user(username="baker", password="pass")
+        StaffProfile.objects.create(
+            user=bakery_clerk,
+            branch=bakery,
+            role=StaffRole.BRANCH_MANAGER,
+        )
+
+        self.client.force_authenticate(user=self.stores_clerk)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-stores/",
+            {
+                "from_branch": self.stores.id,
+                "to_branch": bakery.id,
+                "lines": [{"product": self.flour.id, "quantity": "4"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        note_id = create_response.data["id"]
+
+        self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.client.post(f"/api/delivery-notes/{note_id}/dispatch/")
+
+        self.client.force_authenticate(user=bakery_clerk)
+        deliver_response = self.client.post(f"/api/delivery-notes/{note_id}/deliver/")
+        self.assertEqual(deliver_response.status_code, 200)
+
+        bakery_stock = BranchInventory.objects.get(
+            branch=bakery,
+            product=self.flour,
+        )
+        self.assertEqual(bakery_stock.quantity, Decimal("4"))
 
     def test_transfer_invoice_print_page(self):
         self.client.force_login(self.stores_clerk)
@@ -688,14 +741,14 @@ class StoresTransferTests(TestCase):
             invoice_number="STRAVO00001",
         )
         note.lines.create(
-            product=self.croissant,
+            product=self.flour,
             quantity=Decimal("6"),
-            unit_price=Decimal("2.75"),
+            unit_price=Decimal("1.00"),
         )
         response = self.client.get(f"/transfers/invoice/{note.id}/print/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "STRAVO00001")
-        self.assertContains(response, "Croissant")
+        self.assertContains(response, "Flour")
         self.assertContains(response, "Unpaid")
 
     def test_mark_transfer_invoice_paid(self):
@@ -706,9 +759,9 @@ class StoresTransferTests(TestCase):
             invoice_number="STRAVO00002",
         )
         note.lines.create(
-            product=self.croissant,
+            product=self.flour,
             quantity=Decimal("2"),
-            unit_price=Decimal("2.75"),
+            unit_price=Decimal("1.00"),
         )
 
         response = self.client.post(f"/api/delivery-notes/{note.id}/mark-paid/")
@@ -741,7 +794,7 @@ class StoresTransferTests(TestCase):
             {
                 "from_branch": self.stores.id,
                 "to_branch": self.branch.id,
-                "lines": [{"product": self.croissant.id, "quantity": "3"}],
+                "lines": [{"product": self.flour.id, "quantity": "3"}],
             },
             format="json",
         )

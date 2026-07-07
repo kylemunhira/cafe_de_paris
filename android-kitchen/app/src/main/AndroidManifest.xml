@@ -37,6 +37,7 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
+            android:keepScreenOn="true"
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.CafeDeParisKitchen.WithActionBar" />
     </application>

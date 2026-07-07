@@ -145,6 +145,11 @@ data class DayEndStockTakeCheck(
     val draftInProgress: Boolean = false,
 )
 
+data class OrderSlipPrintOptions(
+    val taxRate: Double = 15.5,
+    val baseCurrencyCode: String? = null,
+)
+
 data class DayEndReportResponse(
     val branchName: String,
     val branchLocation: String?,

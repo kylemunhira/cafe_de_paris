@@ -575,11 +575,15 @@ class PurchaseOrderBranchAccessTests(APITestCase):
             name="Branch B",
             branch_type=BranchType.BRANCH,
         )
+        self.stores_branch = Branch.objects.create(
+            name="Central Stores",
+            branch_type=BranchType.STORES,
+        )
         self.supplier = Supplier.objects.create(name="Main Supplier")
-        category = ProductCategory.objects.create(name="Beverages")
+        ingredient_category = ProductCategory.objects.create(name="Ingredients")
         self.product = Product.objects.create(
-            name="Coffee",
-            category=category,
+            name="Flour",
+            category=ingredient_category,
             selling_price="3.00",
         )
 
@@ -590,6 +594,13 @@ class PurchaseOrderBranchAccessTests(APITestCase):
             role=StaffRole.BRANCH_MANAGER,
         )
 
+        self.stores_staff = User.objects.create_user(username="stores_staff", password="pass")
+        StaffProfile.objects.create(
+            user=self.stores_staff,
+            branch=self.stores_branch,
+            role=StaffRole.STAFF,
+        )
+
         self.hq_admin = User.objects.create_user(username="hqboss", password="pass")
         StaffProfile.objects.create(
             user=self.hq_admin,
@@ -598,18 +609,18 @@ class PurchaseOrderBranchAccessTests(APITestCase):
         )
 
         self.po_a = PurchaseOrder.objects.create(
-            branch=self.branch_a,
+            branch=self.stores_branch,
             supplier=self.supplier,
             created_by=self.hq_admin,
         )
         self.po_b = PurchaseOrder.objects.create(
-            branch=self.branch_b,
+            branch=self.stores_branch,
             supplier=self.supplier,
             created_by=self.hq_admin,
         )
 
         self.po_payload = {
-            "branch": self.branch_b.id,
+            "branch": self.stores_branch.id,
             "supplier": self.supplier.id,
             "notes": "",
             "lines": [
@@ -621,39 +632,47 @@ class PurchaseOrderBranchAccessTests(APITestCase):
             ],
         }
 
-    def test_branch_manager_only_sees_own_purchase_orders(self):
-        self.client.force_authenticate(user=self.manager_a)
-        response = self.client.get("/api/purchase-orders/")
-        po_branches = {row["branch"] for row in response.data["results"]}
-        self.assertEqual(po_branches, {self.branch_a.id})
-
-    def test_branch_manager_cannot_filter_other_branch_purchase_orders(self):
-        self.client.force_authenticate(user=self.manager_a)
-        response = self.client.get(f"/api/purchase-orders/?branch={self.branch_b.id}")
-        self.assertEqual(response.data["count"], 1)
-        self.assertEqual(response.data["results"][0]["branch"], self.branch_a.id)
-
-    def test_branch_manager_cannot_create_purchase_for_other_branch(self):
+    def test_retail_branch_manager_cannot_create_purchase_orders(self):
         self.client.force_authenticate(user=self.manager_a)
         response = self.client.post(
             "/api/purchase-orders/", self.po_payload, format="json"
         )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_stores_staff_can_create_purchase_for_own_branch(self):
+        self.client.force_authenticate(user=self.stores_staff)
+        response = self.client.post(
+            "/api/purchase-orders/", self.po_payload, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["branch"], self.stores_branch.id)
+
+    def test_cannot_create_purchase_for_non_stores_branch(self):
+        self.client.force_authenticate(user=self.hq_admin)
+        payload = {**self.po_payload, "branch": self.branch_b.id}
+        response = self.client.post("/api/purchase-orders/", payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("branch", response.data)
+
+    def test_stores_staff_only_sees_own_purchase_orders(self):
+        self.client.force_authenticate(user=self.stores_staff)
+        response = self.client.get("/api/purchase-orders/")
+        po_branches = {row["branch"] for row in response.data["results"]}
+        self.assertEqual(po_branches, {self.stores_branch.id})
 
     def test_hq_admin_sees_all_purchase_orders(self):
         self.client.force_authenticate(user=self.hq_admin)
         response = self.client.get("/api/purchase-orders/")
         po_branches = {row["branch"] for row in response.data["results"]}
-        self.assertEqual(po_branches, {self.branch_a.id, self.branch_b.id})
+        self.assertEqual(po_branches, {self.stores_branch.id})
 
-    def test_hq_admin_can_create_purchase_for_other_branch(self):
+    def test_hq_admin_can_create_purchase_for_central_stores(self):
         self.client.force_authenticate(user=self.hq_admin)
         response = self.client.post(
             "/api/purchase-orders/", self.po_payload, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["branch"], self.branch_b.id)
+        self.assertEqual(response.data["branch"], self.stores_branch.id)
 
 
 class KitchenLoginTests(APITestCase):

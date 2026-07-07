@@ -201,7 +201,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if not user_can_create_purchase_orders(request.user):
             raise PermissionDenied(
-                "Only branch managers and HQ admins can record purchases."
+                "Only HQ admins and central stores staff can record purchases."
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

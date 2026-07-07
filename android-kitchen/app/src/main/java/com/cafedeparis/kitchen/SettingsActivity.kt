@@ -8,13 +8,12 @@ import android.os.Bundle
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.cafedeparis.kitchen.data.AppConfig
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.databinding.ActivitySettingsBinding
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : KeepScreenOnActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var session: SessionManager

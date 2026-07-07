@@ -263,7 +263,22 @@ def user_can_manage_suppliers(user):
 
 
 def user_can_create_purchase_orders(user):
-    """HQ admins and branch managers record purchases (stock added immediately)."""
+    """HQ admins and central stores staff record purchases (stock added immediately)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    if get_staff_branch_type(user) != BranchType.STORES:
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role in (StaffRole.BRANCH_MANAGER, StaffRole.STAFF)
+
+
+def user_can_manage_dining_tables(user):
+    """HQ admins and branch managers configure POS dining tables."""
     if not user or not user.is_authenticated:
         return False
     if user_has_global_branch_access(user):
@@ -273,11 +288,6 @@ def user_can_create_purchase_orders(user):
     except StaffProfile.DoesNotExist:
         return False
     return profile.role == StaffRole.BRANCH_MANAGER
-
-
-def user_can_manage_dining_tables(user):
-    """HQ admins and branch managers configure POS dining tables."""
-    return user_can_create_purchase_orders(user)
 
 
 def user_can_approve_purchase_orders(user):

@@ -18,6 +18,9 @@ function resolveReceiptStylesPath() {
     path.join(__dirname, "..", "receipt-css", "receipt-print.css"),
     path.join(__dirname, "..", "..", "ui", "static", "ui", "css", "receipt-print.css"),
   ];
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, "receipt-css", "receipt-print.css"));
+  }
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
   }
@@ -401,6 +404,15 @@ async function measureContentHeightMm(printWin) {
   return Math.ceil((heightPx / 96) * 25.4) + PAGE_MARGIN_MM;
 }
 
+function printWithOptions(webContents, options) {
+  return new Promise((resolve, reject) => {
+    webContents.print(options, (success, failureReason) => {
+      if (success) resolve();
+      else reject(new Error(failureReason || "Print failed"));
+    });
+  });
+}
+
 function printHtml(html, { deviceName } = {}) {
   return new Promise((resolve, reject) => {
     const tempPath = writeTempHtml(html);
@@ -440,20 +452,16 @@ function printHtml(html, { deviceName } = {}) {
         options = buildPrintOptions("", { usePrinterDefault: true });
       }
 
-      printWin.webContents.print(options, (success, failureReason) => {
-        if (success) {
-          finish();
-          return;
-        }
-
-        const reason = failureReason || "Print failed";
+      try {
+        await printWithOptions(printWin.webContents, options);
+        finish();
+      } catch (err) {
         if (retryStep < 2) {
-          attemptPrint(retryStep + 1).catch((err) => finish(err));
+          await attemptPrint(retryStep + 1);
           return;
         }
-
-        finish(new Error(reason));
-      });
+        finish(err);
+      }
     };
 
     printWin.webContents.on("did-fail-load", (_event, _code, description) => {
