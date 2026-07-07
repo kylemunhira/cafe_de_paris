@@ -60,6 +60,7 @@ const searchInput = document.getElementById("category-search");
 
 let categories = [];
 let productCounts = new Map();
+let activeProductCounts = new Map();
 let editingId = null;
 let searchQuery = "";
 const sortState = createSortState("name");
@@ -137,17 +138,23 @@ function render() {
         </tr>
       </thead>
       <tbody>
-        ${rows.map(c => `
+        ${rows.map(c => {
+          const activeCount = activeProductCounts.get(c.id) ?? 0;
+          const deleteDisabled = activeCount
+            ? ' disabled title="Deactivate all products in this category first"'
+            : "";
+          return `
           <tr>
             <td><strong>${c.name}</strong></td>
             <td>${c.is_asset ? "Yes" : "No"}</td>
             <td style="text-align: right;">${c.product_count.toLocaleString()}</td>
             <td style="text-align: right;">
               <button type="button" class="btn btn-ghost btn-sm" data-edit="${c.id}">Edit</button>
-              <button type="button" class="btn btn-ghost btn-sm" data-delete="${c.id}"${c.product_count ? ' disabled title="Remove products from this category first"' : ""}>Delete</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-delete="${c.id}"${deleteDisabled}>Delete</button>
             </td>
           </tr>
-        `).join("")}
+        `;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -157,8 +164,15 @@ function render() {
 async function loadProductCounts() {
   const data = await apiGet("/products/?page_size=500");
   productCounts = new Map();
+  activeProductCounts = new Map();
   for (const product of unwrapList(data)) {
     productCounts.set(product.category, (productCounts.get(product.category) ?? 0) + 1);
+    if (product.is_active) {
+      activeProductCounts.set(
+        product.category,
+        (activeProductCounts.get(product.category) ?? 0) + 1,
+      );
+    }
   }
 }
 

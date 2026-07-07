@@ -1,8 +1,11 @@
-from .constants import INGREDIENTS_CATEGORY
+from .constants import (
+    ALL_INGREDIENT_CATEGORIES,
+    ARCHIVED_CATEGORY,
+)
 
 # Internal sub-recipes are not sold directly on POS terminals.
-POS_EXCLUDED_CATEGORIES = {
-    INGREDIENTS_CATEGORY,
+POS_EXCLUDED_CATEGORIES = ALL_INGREDIENT_CATEGORIES | {
+    ARCHIVED_CATEGORY,
     "Components",
     "Extras",
 }
@@ -21,3 +24,12 @@ def pos_catalog_products(queryset=None):
         .prefetch_related("addon_group_links__group__addons")
         .order_by("name")
     )
+
+
+def pos_catalog_categories(queryset=None):
+    """Categories that contain at least one sellable POS product."""
+    from .models import ProductCategory
+
+    category_ids = pos_catalog_products().values_list("category_id", flat=True).distinct()
+    qs = queryset if queryset is not None else ProductCategory.objects.all()
+    return qs.filter(id__in=category_ids).order_by("name")

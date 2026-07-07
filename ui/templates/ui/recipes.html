@@ -36,6 +36,14 @@
           <label for="selling-price-input" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;">Selling price</label>
           <input type="number" id="selling-price-input" class="report-input" min="0" step="0.01" style="width: 120px;" disabled>
         </div>
+        <div>
+          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Cost of sales</div>
+          <div id="editor-cos" style="font-weight: 600; font-size: 1rem;">—</div>
+        </div>
+        <div>
+          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Gross profit</div>
+          <div id="editor-gp" style="font-weight: 600; font-size: 1rem;">—</div>
+        </div>
       </div>
     </div>
     <span id="editor-badge" class="badge badge-active"></span>
@@ -118,6 +126,8 @@ const recipeEmpty = document.getElementById("recipe-empty");
 const editorTitle = document.getElementById("editor-title");
 const editorMeta = document.getElementById("editor-meta");
 const editorCost = document.getElementById("editor-cost");
+const editorCos = document.getElementById("editor-cos");
+const editorGp = document.getElementById("editor-gp");
 const sellingPriceInput = document.getElementById("selling-price-input");
 const editorBadge = document.getElementById("editor-badge");
 const recipeLinesTable = document.getElementById("recipe-lines-table");
@@ -134,6 +144,35 @@ function formatMoney(value) {
   return Number.isFinite(amount)
     ? amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : "0.00";
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return `${Number(value).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+function recipeMargins(totalCost, sellingPrice) {
+  const cost = Number(totalCost);
+  const price = Number(sellingPrice);
+  if (!Number.isFinite(price) || price <= 0) {
+    return { costOfSalesPercent: null, grossProfit: null, grossProfitPercent: null };
+  }
+  const costOfSalesPercent = (cost / price) * 100;
+  const grossProfit = price - cost;
+  const grossProfitPercent = (grossProfit / price) * 100;
+  return { costOfSalesPercent, grossProfit, grossProfitPercent };
+}
+
+function updateEditorMetrics(totalCost, sellingPrice) {
+  const { costOfSalesPercent, grossProfit, grossProfitPercent } = recipeMargins(totalCost, sellingPrice);
+  editorCos.textContent = formatPercent(costOfSalesPercent);
+  if (grossProfit === null) {
+    editorGp.textContent = "—";
+    return;
+  }
+  editorGp.innerHTML =
+    `${formatMoney(grossProfit)} ` +
+    `<span style="font-size: 0.85rem; color: var(--color-muted); font-weight: 500;">(${formatPercent(grossProfitPercent)})</span>`;
 }
 
 function outputProducts() {
@@ -326,6 +365,8 @@ function renderEditor() {
     recipeEmpty.style.display = "";
     sellingPriceInput.disabled = true;
     sellingPriceInput.value = "";
+    editorCos.textContent = "—";
+    editorGp.textContent = "—";
     populateAddIngredientSelect();
     return;
   }
@@ -341,6 +382,7 @@ function renderEditor() {
   editorCost.textContent = formatMoney(totalCost);
   sellingPriceInput.disabled = false;
   sellingPriceInput.value = Number(product.selling_price).toFixed(2);
+  updateEditorMetrics(totalCost, sellingPriceInput.value);
   editorBadge.textContent = `${lines.length} ingredient${lines.length === 1 ? "" : "s"}`;
 
   populateAddIngredientSelect();
@@ -511,6 +553,14 @@ recipeLinesTable.addEventListener("change", async (e) => {
   }
 });
 
+sellingPriceInput.addEventListener("input", () => {
+  const product = selectedProduct();
+  if (!product) return;
+  const lines = recipesForProduct(product.id);
+  const totalCost = lines.reduce((sum, line) => sum + Number(line.line_cost || 0), 0);
+  updateEditorMetrics(totalCost, sellingPriceInput.value);
+});
+
 sellingPriceInput.addEventListener("change", async () => {
   const product = selectedProduct();
   if (!product) return;
@@ -530,6 +580,9 @@ sellingPriceInput.addEventListener("change", async () => {
     const index = products.findIndex(p => Number(p.id) === Number(product.id));
     if (index >= 0) products[index] = updated;
     sellingPriceInput.value = Number(updated.selling_price).toFixed(2);
+    const lines = recipesForProduct(product.id);
+    const totalCost = lines.reduce((sum, line) => sum + Number(line.line_cost || 0), 0);
+    updateEditorMetrics(totalCost, sellingPriceInput.value);
     renderRecipeBrowser();
     showToast("Selling price updated.");
   } catch (err) {

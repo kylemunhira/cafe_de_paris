@@ -7,6 +7,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from branches.models import Branch, BranchType
+from catalog.constants import BRANCH_INGREDIENTS_CATEGORY
 from catalog.models import Product, ProductCategory
 from inventory.models import (
     BranchInventory,
@@ -27,7 +28,7 @@ class StockTakeWorkflowTests(TestCase):
         )
         food_cat = ProductCategory.objects.create(name="Pastries", is_asset=False)
         ingredient_cat = ProductCategory.objects.create(
-            name="Ingredients", is_asset=False
+            name=BRANCH_INGREDIENTS_CATEGORY, is_asset=False
         )
         asset_cat = ProductCategory.objects.create(name="Equipment", is_asset=True)
 

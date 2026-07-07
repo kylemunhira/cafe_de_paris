@@ -360,13 +360,15 @@ async function refreshStoresInventory() {
 }
 
 async function loadData() {
-  const [branchesData, productsData, notesData] = await Promise.all([
-    apiGet("/branches/"),
-    apiGet("/products/?category=Ingredients&page_size=1000"),
+  const branchesData = await apiGet("/branches/");
+  const branches = unwrapList(branchesData);
+  const storesBranch = branches.find(b => b.branch_type === "stores" && b.is_active);
+
+  const [productsData, notesData] = await Promise.all([
+    apiGet(`/products/?page_size=1000&for_branch=${storesBranch?.id || ""}`),
     apiGet("/delivery-notes/?stores_only=true"),
   ]);
 
-  const branches = unwrapList(branchesData);
   products = unwrapList(productsData);
   allNotes = unwrapList(notesData);
 

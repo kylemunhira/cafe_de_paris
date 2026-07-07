@@ -11,7 +11,7 @@ from catalog.csv_io import (
     import_products_csv,
 )
 from catalog.menu_items_import import export_menu_items_csv
-from catalog.constants import INGREDIENTS_CATEGORY
+from catalog.constants import BRANCH_INGREDIENTS_CATEGORY, INGREDIENTS_CATEGORY
 from catalog.models import Product, ProductCategory
 
 
@@ -178,6 +178,59 @@ class IngredientCsvTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Product.objects.filter(name="Sugar").exists())
 
+    def test_import_branch_ingredients_csv_uses_branch_category(self):
+        csv_file = io.BytesIO(b"name,unit_cost,remaining_qty\n12 CM SAUCERS,10.74,15\n")
+        result = import_ingredients_csv(csv_file, category_name=BRANCH_INGREDIENTS_CATEGORY)
+        self.assertEqual(result["created"], 1)
+        product = Product.objects.get(name="12 CM SAUCERS")
+        self.assertEqual(product.category.name, BRANCH_INGREDIENTS_CATEGORY)
+
+
+class BranchIngredientFilterTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        bakery_cat = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        branch_cat = ProductCategory.objects.create(name=BRANCH_INGREDIENTS_CATEGORY)
+        self.bakery_ingredient = Product.objects.create(
+            name="Flour",
+            category=bakery_cat,
+            selling_price="1.00",
+        )
+        self.branch_ingredient = Product.objects.create(
+            name="12 CM SAUCERS",
+            category=branch_cat,
+            selling_price="10.74",
+        )
+        from branches.models import Branch, BranchType
+
+        self.bakery = Branch.objects.create(name="Bakery", branch_type=BranchType.BAKERY)
+        self.stores = Branch.objects.create(name="Stores", branch_type=BranchType.STORES)
+        self.outlet = Branch.objects.create(name="Avondale", branch_type=BranchType.BRANCH)
+
+    def test_for_branch_bakery_excludes_branch_ingredients(self):
+        response = self.client.get(f"/api/products/?for_branch={self.bakery.id}")
+        names = {item["name"] for item in response.data["results"]}
+        self.assertIn("Flour", names)
+        self.assertNotIn("12 CM SAUCERS", names)
+
+    def test_for_branch_outlet_excludes_bakery_ingredients(self):
+        response = self.client.get(f"/api/products/?for_branch={self.outlet.id}")
+        names = {item["name"] for item in response.data["results"]}
+        self.assertIn("12 CM SAUCERS", names)
+        self.assertNotIn("Flour", names)
+
+    def test_for_branch_ignores_null_string(self):
+        response = self.client.get("/api/products/?for_branch=null")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertIn("Flour", names)
+        self.assertIn("12 CM SAUCERS", names)
+
+    def test_for_branch_stores_includes_both(self):
+        response = self.client.get(f"/api/products/?for_branch={self.stores.id}")
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Flour", "12 CM SAUCERS"})
+
 
 class MenuItemsCsvApiTests(TestCase):
     def setUp(self):
@@ -222,3 +275,112 @@ class MenuItemsCsvApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn(b"Espresso (Short)", response.content)
+
+
+class ProductDeleteTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=self.category,
+            selling_price=Decimal("3.50"),
+        )
+
+    def test_delete_unused_product(self):
+        product_id = self.product.id
+        response = self.client.delete(f"/api/products/{product_id}/")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Product.objects.filter(id=product_id).exists())
+
+    def test_delete_used_product_deactivates(self):
+        from branches.models import Branch, BranchType
+        from orders.models import Order, OrderItem, OrderStatus, OrderType
+
+        branch = Branch.objects.create(name="Avondale", branch_type=BranchType.BRANCH)
+        order = Order.objects.create(
+            branch=branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("3.50"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+
+        response = self.client.delete(f"/api/products/{self.product.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["is_active"])
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.is_active)
+        self.assertTrue(Product.objects.filter(id=self.product.id).exists())
+
+
+class ProductCategoryDeleteTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(name="Coffee")
+
+    def test_delete_empty_category(self):
+        category_id = self.category.id
+        response = self.client.delete(f"/api/categories/{category_id}/")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ProductCategory.objects.filter(id=category_id).exists())
+
+    def test_delete_category_with_only_inactive_products(self):
+        Product.objects.create(
+            name="Old Espresso",
+            category=self.category,
+            selling_price=Decimal("3.50"),
+            is_active=False,
+        )
+        category_id = self.category.id
+        response = self.client.delete(f"/api/categories/{category_id}/")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ProductCategory.objects.filter(id=category_id).exists())
+        self.assertFalse(Product.objects.filter(name="Old Espresso").exists())
+
+    def test_delete_category_blocked_by_active_products(self):
+        Product.objects.create(
+            name="Espresso",
+            category=self.category,
+            selling_price=Decimal("3.50"),
+            is_active=True,
+        )
+        response = self.client.delete(f"/api/categories/{self.category.id}/")
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(ProductCategory.objects.filter(id=self.category.id).exists())
+
+    def test_delete_category_moves_inactive_products_with_history_to_archived(self):
+        from branches.models import Branch, BranchType
+        from orders.models import Order, OrderItem, OrderStatus, OrderType
+
+        product = Product.objects.create(
+            name="Espresso",
+            category=self.category,
+            selling_price=Decimal("3.50"),
+            is_active=False,
+        )
+        branch = Branch.objects.create(name="Avondale", branch_type=BranchType.BRANCH)
+        order = Order.objects.create(
+            branch=branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("3.50"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+
+        category_id = self.category.id
+        response = self.client.delete(f"/api/categories/{category_id}/")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ProductCategory.objects.filter(id=category_id).exists())
+        product.refresh_from_db()
+        self.assertEqual(product.category.name, "Archived")

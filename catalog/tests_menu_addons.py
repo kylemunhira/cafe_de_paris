@@ -118,3 +118,41 @@ class OrderAddonCreateTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class PosCatalogCategoryTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.drinks = ProductCategory.objects.create(name="Drinks")
+        self.ingredients = ProductCategory.objects.create(name="Ingredients")
+        self.assets = ProductCategory.objects.create(name="Cutlery", is_asset=True)
+        Product.objects.create(
+            name="Espresso",
+            category=self.drinks,
+            selling_price=Decimal("3.50"),
+            is_active=True,
+        )
+        Product.objects.create(
+            name="Coffee Beans",
+            category=self.ingredients,
+            selling_price=Decimal("5.00"),
+            is_active=True,
+        )
+        Product.objects.create(
+            name="Spoon",
+            category=self.assets,
+            selling_price=Decimal("1.00"),
+            is_active=True,
+        )
+
+    def test_categories_pos_catalog_filter_matches_sellable_categories(self):
+        response = self.client.get("/api/categories/?pos_catalog=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Drinks"})
+
+    def test_categories_without_filter_returns_all(self):
+        response = self.client.get("/api/categories/")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Cutlery", "Drinks", "Ingredients"})

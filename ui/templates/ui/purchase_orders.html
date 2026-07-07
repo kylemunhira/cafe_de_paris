@@ -120,6 +120,23 @@ const canPurchaseForAnyBranch = {{ can_purchase_for_any_branch|yesno:"true,false
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
 const INGREDIENTS_CATEGORY = "Ingredients";
+const BRANCH_INGREDIENTS_CATEGORY = "Branch Ingredients";
+
+function isIngredientProduct(product) {
+  return product.category_name === INGREDIENTS_CATEGORY
+    || product.category_name === BRANCH_INGREDIENTS_CATEGORY;
+}
+
+function ingredientProductsForBranch(branch) {
+  if (!branch) return products.filter(isIngredientProduct);
+  if (branch.branch_type === "bakery") {
+    return products.filter(p => p.category_name === INGREDIENTS_CATEGORY);
+  }
+  if (branch.branch_type === "branch") {
+    return products.filter(p => p.category_name === BRANCH_INGREDIENTS_CATEGORY);
+  }
+  return products.filter(isIngredientProduct);
+}
 
 const poForm = document.getElementById("po-form");
 const branchSelect = document.getElementById("po-branch");
@@ -188,10 +205,6 @@ function branchesForPurchase(allBranches) {
   return centralStores.filter(b => String(b.id) === staffBranchId);
 }
 
-function isIngredientProduct(product) {
-  return product.category_name === INGREDIENTS_CATEGORY;
-}
-
 async function fetchAllProducts(params = {}) {
   const query = new URLSearchParams({ page_size: "1000", ...params });
   let page = 1;
@@ -238,7 +251,7 @@ function updatePurchaseTypeUi() {
 function productsForBranch(branch, type = purchaseType) {
   const effectiveType = isIngredientsOnlyBranch(branch) ? "ingredients" : type;
   if (effectiveType === "ingredients") {
-    return products.filter(isIngredientProduct);
+    return ingredientProductsForBranch(branch);
   }
   return products.filter(p => !isIngredientProduct(p));
 }

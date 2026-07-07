@@ -6,38 +6,43 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from branches.models import Branch, BranchType
+from catalog.constants import (
+    ALL_INGREDIENT_CATEGORIES,
+    ingredient_categories_for_branch_type,
+    is_ingredient_product,
+)
 from catalog.models import Product
 
 from .models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, Supplier
 from .services import apply_purchase_order_inventory
 
-INGREDIENTS_CATEGORY = "Ingredients"
-
 
 def _validate_purchase_lines_for_branch(branch, lines):
-    """Bakery POs may only include raw materials; other branches may buy any product."""
+    """Central stores and bakery POs may only include ingredients valid for that branch."""
     errors = []
+    allowed_categories = ingredient_categories_for_branch_type(branch.branch_type)
     for index, line in enumerate(lines):
         product = line["product"]
-        is_ingredient = product.category.name == INGREDIENTS_CATEGORY
-        if branch.branch_type in (BranchType.BAKERY, BranchType.STORES) and not is_ingredient:
-            branch_label = (
-                "Central stores"
-                if branch.branch_type == BranchType.STORES
-                else "Bakery"
-            )
-            errors.append(
-                {
-                    "lines": {
-                        index: {
-                            "product": (
-                                f"{branch_label} purchase orders can only include raw materials "
-                                f"({INGREDIENTS_CATEGORY} category)."
-                            )
+        if branch.branch_type in (BranchType.BAKERY, BranchType.STORES):
+            if product.category.name not in allowed_categories:
+                branch_label = (
+                    "Central stores"
+                    if branch.branch_type == BranchType.STORES
+                    else "Bakery"
+                )
+                allowed = ", ".join(sorted(allowed_categories))
+                errors.append(
+                    {
+                        "lines": {
+                            index: {
+                                "product": (
+                                    f"{branch_label} purchase orders can only include "
+                                    f"raw materials ({allowed})."
+                                )
+                            }
                         }
                     }
-                }
-            )
+                )
     if errors:
         merged = {}
         for entry in errors:

@@ -62,7 +62,7 @@
       autocomplete="off"
     >
     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
-      Raw materials for Central Bakery and Central Stores only. Stock is tracked per branch.
+      Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets.
     </p>
   </div>
   <div class="table-wrap" id="ingredients-table">
@@ -80,7 +80,15 @@ import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-sele
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
-const INGREDIENTS_CATEGORY = "Ingredients";
+const INGREDIENT_BRANCH_TYPES = new Set(["bakery", "stores", "branch"]);
+const BAKERY_INGREDIENTS_CATEGORY = "Ingredients";
+const BRANCH_INGREDIENTS_CATEGORY = "Branch Ingredients";
+
+function ingredientCategoryForBranch(branch) {
+  if (!branch) return BAKERY_INGREDIENTS_CATEGORY;
+  if (branch.branch_type === "bakery") return BAKERY_INGREDIENTS_CATEGORY;
+  return BRANCH_INGREDIENTS_CATEGORY;
+}
 
 let branches = [];
 let ingredients = [];
@@ -234,13 +242,17 @@ async function loadBranchInventory() {
 
   const rows = await fetchAllInventory({
     branch: String(selectedBranchId),
-    category: INGREDIENTS_CATEGORY,
   });
   branchInventory = new Map(rows.map(row => [row.product, Number(row.quantity)]));
 }
 
 async function loadIngredients() {
-  const data = await apiGet(`/products/?category=${encodeURIComponent(INGREDIENTS_CATEGORY)}&page_size=500`);
+  if (!selectedBranchId) {
+    ingredients = [];
+    render();
+    return;
+  }
+  const data = await apiGet(`/products/?for_branch=${selectedBranchId}&page_size=500`);
   const products = unwrapList(data);
   ingredients = products.map(product => ({
     ...product,
@@ -258,7 +270,7 @@ async function loadBranches() {
   const data = await apiGet("/branches/?page_size=500");
   branches = branchesForUser(
     unwrapList(data).filter(
-      b => b.is_active && (b.branch_type === "bakery" || b.branch_type === "stores"),
+      b => b.is_active && INGREDIENT_BRANCH_TYPES.has(b.branch_type),
     ),
     staffBranchId,
     canFilterAnyBranch,
@@ -312,9 +324,10 @@ ingredientForm.addEventListener("submit", async (e) => {
       }
 
       const categories = unwrapList(await apiGet("/categories/?page_size=500"));
-      const category = categories.find(c => c.name === INGREDIENTS_CATEGORY);
+      const categoryName = ingredientCategoryForBranch(selectedBranch());
+      const category = categories.find(c => c.name === categoryName);
       if (!category) {
-        throw new Error('Category "Ingredients" not found — run bakery import or seed first');
+        throw new Error(`Category "${categoryName}" not found — run ingredient import or seed first`);
       }
 
       const created = await apiPost("/products/", {

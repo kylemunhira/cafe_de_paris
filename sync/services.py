@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionError
 
-from catalog.pos_catalog import pos_catalog_products
+from catalog.pos_catalog import pos_catalog_categories, pos_catalog_products
 from catalog.serializers import ProductCategorySerializer, ProductSerializer
 from branches.dining_tables import ensure_default_dining_tables
 from branches.models import DiningTable
@@ -21,10 +21,7 @@ def get_branch_catalog_payload(branch):
     """Products and categories a cashier POS needs for the assigned branch."""
     ensure_default_dining_tables(branch)
     products = pos_catalog_products()
-    category_ids = products.values_list("category_id", flat=True).distinct()
-    from catalog.models import ProductCategory
-
-    categories = ProductCategory.objects.filter(id__in=category_ids).order_by("name")
+    categories = pos_catalog_categories()
 
     return {
         "categories": ProductCategorySerializer(categories, many=True).data,

@@ -8,7 +8,12 @@ from django.utils import timezone
 from django.db.models import Q
 
 from bakery.models import Recipe
-from catalog.constants import INGREDIENTS_CATEGORY, is_bakery_transfer_product
+from catalog.constants import (
+    ALL_INGREDIENT_CATEGORIES,
+    INGREDIENTS_CATEGORY,
+    ingredient_categories_for_branch_type,
+    is_bakery_transfer_product,
+)
 from catalog.models import Product
 
 from .models import (
@@ -404,15 +409,18 @@ class DayEndStockTakeRequiredError(Exception):
         ))
 
 
-def products_for_stock_take(stock_take_type: str):
-    """Ingredients only — POS products are made per order, not held as branch stock."""
+def products_for_stock_take(stock_take_type: str, branch=None):
+    """Ingredients for the branch type — POS products are made per order, not held as branch stock."""
     queryset = Product.objects.filter(is_active=True).select_related("category")
-    if stock_take_type == StockTakeType.MONTHLY:
-        queryset = queryset.filter(
-            Q(category__name=INGREDIENTS_CATEGORY) | Q(category__is_asset=True)
-        )
+    if branch is not None:
+        categories = ingredient_categories_for_branch_type(branch.branch_type)
+        ingredient_filter = Q(category__name__in=categories)
     else:
-        queryset = queryset.filter(category__name=INGREDIENTS_CATEGORY)
+        ingredient_filter = Q(category__name__in=ALL_INGREDIENT_CATEGORIES)
+    if stock_take_type == StockTakeType.MONTHLY:
+        queryset = queryset.filter(ingredient_filter | Q(category__is_asset=True))
+    else:
+        queryset = queryset.filter(ingredient_filter)
     return queryset.order_by("category__name", "name")
 
 
@@ -512,7 +520,7 @@ def create_stock_take(branch, stock_take_type: str, count_date: date, created_by
                     product=product,
                     system_quantity=inventory_map.get(product.id, Decimal("0")),
                 )
-                for product in products_for_stock_take(stock_take_type)
+                for product in products_for_stock_take(stock_take_type, branch)
             ]
         )
     return stock_take
@@ -524,7 +532,7 @@ def sync_stock_take_lines(stock_take: StockTake) -> StockTake:
         return stock_take
 
     valid_product_ids = set(
-        products_for_stock_take(stock_take.stock_take_type).values_list("id", flat=True)
+        products_for_stock_take(stock_take.stock_take_type, stock_take.branch).values_list("id", flat=True)
     )
     inventory_map = {
         row.product_id: row.quantity

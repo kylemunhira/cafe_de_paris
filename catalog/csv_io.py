@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 
-from .constants import INGREDIENTS_CATEGORY
+from .constants import ALL_INGREDIENT_CATEGORIES, INGREDIENTS_CATEGORY
 from .models import Product, ProductCategory
 
 CSV_HEADERS = [
@@ -45,15 +45,16 @@ def export_products_csv():
     return output.getvalue()
 
 
-def export_ingredients_csv():
+def export_ingredients_csv(*, category_name=None):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=INGREDIENT_CSV_HEADERS)
     writer.writeheader()
-    for product in (
-        Product.objects.select_related("category")
-        .filter(category__name=INGREDIENTS_CATEGORY)
-        .order_by("name")
-    ):
+    queryset = Product.objects.select_related("category").filter(
+        category__name__in=ALL_INGREDIENT_CATEGORIES,
+    )
+    if category_name:
+        queryset = queryset.filter(category__name=category_name)
+    for product in queryset.order_by("name"):
         writer.writerow(
             {
                 "id": product.id,
@@ -198,7 +199,7 @@ def import_products_csv(file_obj):
     return {"created": created, "updated": updated, "errors": errors}
 
 
-def import_ingredients_csv(file_obj):
+def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
     try:
         reader = _open_csv_reader(file_obj)
     except UnicodeDecodeError:
@@ -216,7 +217,7 @@ def import_ingredients_csv(file_obj):
             "errors": [{"row": 0, "message": f"Missing required columns: {', '.join(missing)}"}],
         }
 
-    category, _ = ProductCategory.objects.get_or_create(name=INGREDIENTS_CATEGORY)
+    category, _ = ProductCategory.objects.get_or_create(name=category_name)
     created = 0
     updated = 0
     errors = []

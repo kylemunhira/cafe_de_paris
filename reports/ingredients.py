@@ -4,7 +4,8 @@ from django.utils import timezone
 
 from bakery.models import ProductionOrder, ProductionOrderStatus, Recipe
 from bakery.services import required_ingredients
-from branches.models import Branch
+from branches.models import Branch, BranchType
+from catalog.constants import ingredient_categories_for_branch_type
 from catalog.models import Product
 from inventory.models import BranchInventory
 from orders.models import OrderItem, OrderStatus
@@ -13,6 +14,21 @@ from .services import parse_date
 
 INGREDIENTS_CATEGORY = "Ingredients"
 DEFAULT_LOW_STOCK_THRESHOLD = Decimal("10")
+
+
+def _ingredient_categories_for_report(branch_id=None, branches=None):
+    if branch_id is not None:
+        branch = Branch.objects.filter(pk=branch_id).first()
+        if branch:
+            return ingredient_categories_for_branch_type(branch.branch_type)
+    if branches:
+        categories = set()
+        for branch in branches:
+            categories.update(ingredient_categories_for_branch_type(branch.branch_type))
+        return frozenset(categories)
+    from catalog.constants import ALL_INGREDIENT_CATEGORIES
+
+    return ALL_INGREDIENT_CATEGORIES
 
 
 def _decimal(value):
@@ -44,8 +60,9 @@ def build_ingredient_stock_report(
         branches = branches.filter(pk=branch_id)
     branches = list(branches)
 
+    categories = _ingredient_categories_for_report(branch_id=branch_id, branches=branches)
     ingredients_qs = Product.objects.filter(
-        category__name=INGREDIENTS_CATEGORY,
+        category__name__in=categories,
     ).select_related("category")
     if active_only:
         ingredients_qs = ingredients_qs.filter(is_active=True)

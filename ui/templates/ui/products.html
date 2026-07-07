@@ -109,7 +109,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiUpload, fetchAllPages, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiDelete, apiUpload, fetchAllPages, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 
@@ -331,6 +331,7 @@ function renderProductCard(p) {
           <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
           ${recipeLink(p)}
           <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
         </div>
       </div>
       <p class="product-mgmt-card__category">${p.category_name}</p>
@@ -389,6 +390,7 @@ function renderProductTable(filtered) {
                 <td style="text-align: right;">
                   ${recipeLink(p)}
                   <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
                 </td>
               </tr>
             `).join("")}
@@ -558,11 +560,39 @@ branchSelect.addEventListener("change", async () => {
   await reload();
 });
 
-productList.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-edit]");
-  if (!btn) return;
-  const product = products.find(p => String(p.id) === btn.dataset.edit);
-  if (product) startEdit(product);
+async function deleteProduct(product) {
+  const confirmed = window.confirm(
+    `Delete "${product.name}"?\n\n`
+    + "If this product appears in orders, purchases, or stock records it will be deactivated instead of removed.",
+  );
+  if (!confirmed) return;
+
+  try {
+    const result = await apiDelete(`/products/${product.id}/`);
+    if (result && result.is_active === false) {
+      showToast("Product deactivated (used in existing records)");
+    } else {
+      showToast("Product deleted");
+    }
+    if (editingId === product.id) resetForm();
+    await reload();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+productList.addEventListener("click", async (e) => {
+  const editBtn = e.target.closest("[data-edit]");
+  if (editBtn) {
+    const product = products.find(p => String(p.id) === editBtn.dataset.edit);
+    if (product) startEdit(product);
+    return;
+  }
+
+  const deleteBtn = e.target.closest("[data-delete]");
+  if (!deleteBtn) return;
+  const product = products.find(p => String(p.id) === deleteBtn.dataset.delete);
+  if (product) await deleteProduct(product);
 });
 
 categoryTabs.addEventListener("click", (e) => {

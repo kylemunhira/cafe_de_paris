@@ -1,4 +1,5 @@
 python manage.py import_ingredients --replace # bakery ingredients from csvdata/BAKERY INGREDIENTS.csv (Central Stores & Bakery)
+python manage.py import_branch_ingredients --replace # branch/kitchen ingredients from csvdata/NGONI INGREDIENTS.csv (Central Stores & branches only)
 python manage.py import_menu_items --replace # for POS menu items and categories
 python manage.py seed_menu_addons # for menu add-on groups linked to POS products
 

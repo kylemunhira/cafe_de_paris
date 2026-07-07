@@ -1805,8 +1805,8 @@ async function init() {
   try {
     const [branchesData, productsData, categoriesData, currenciesData, customersData, suppliersData] = await Promise.all([
       apiGet("/branches/?page_size=500").then(data => unwrapList(data)),
-      fetchAllPages("/products/?pos_catalog=true"),
-      fetchAllPages("/categories/"),
+      fetchAllPages("/products/", { pos_catalog: "true" }),
+      fetchAllPages("/categories/", { pos_catalog: "true" }),
       apiGet("/currencies/?page_size=500"),
       fetchAllPages("/customers/"),
       apiGet("/suppliers/?active_only=true&page_size=500"),
@@ -1826,9 +1826,7 @@ async function init() {
       canFilterAnyBranch,
     );
     products = productsData;
-    categories = categoriesData.filter(c =>
-      products.some(p => p.category === c.id)
-    );
+    categories = categoriesData;
 
     setupBranchSelect(branchSelect, activeBranches, {
       canSelectAny: canFilterAnyBranch,

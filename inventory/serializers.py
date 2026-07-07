@@ -6,8 +6,9 @@ from rest_framework import serializers
 
 from branches.models import Branch, BranchType
 from catalog.constants import (
+    ALL_INGREDIENT_CATEGORIES,
     BAKERY_SELLABLE_CATEGORIES,
-    INGREDIENTS_CATEGORY,
+    ingredient_categories_for_branch_type,
     is_bakery_transfer_product,
     is_ingredient_product,
 )
@@ -299,9 +300,9 @@ class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
 
     def validate_product(self, product):
         if not is_ingredient_product(product):
+            allowed = ", ".join(sorted(ALL_INGREDIENT_CATEGORIES))
             raise serializers.ValidationError(
-                f"Only ingredients can be transferred from central stores "
-                f"({INGREDIENTS_CATEGORY} category)."
+                f"Only ingredients can be transferred from central stores ({allowed})."
             )
         return product
 
@@ -336,6 +337,21 @@ class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"to_branch": "Source and destination branches must differ."}
             )
+        allowed_categories = ingredient_categories_for_branch_type(attrs["to_branch"].branch_type)
+        for index, line in enumerate(attrs["lines"]):
+            if line["product"].category.name not in allowed_categories:
+                raise serializers.ValidationError(
+                    {
+                        "lines": {
+                            index: {
+                                "product": (
+                                    f"{line['product'].name} is not stocked at "
+                                    f"{attrs['to_branch'].name}."
+                                )
+                            }
+                        }
+                    }
+                )
         return attrs
 
     def create(self, validated_data):
