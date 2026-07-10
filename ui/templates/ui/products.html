@@ -118,6 +118,7 @@
 import { apiGet, apiPost, apiPatch, apiDelete, apiUpload, fetchAllPages, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+import { formatStockQty, stockAdjustInlineHtml, handleInlineStockApply, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
 
 const VIEW_STORAGE_KEY = "products-view-mode-{{ product_list_mode|default:'menu' }}";
 const productListMode = "{{ product_list_mode|default:'menu' }}";
@@ -132,8 +133,7 @@ const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
 function formatQty(value) {
-  const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+  return formatStockQty(value);
 }
 
 function formatPercent(value) {
@@ -338,6 +338,9 @@ function renderProductCard(p) {
   const addonLine = productListMode === "menu" && p.addon_groups?.length
     ? `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">Add-ons: ${p.addon_groups.map(group => group.name).join(", ")}</p>`
     : "";
+  const stockAdjust = selectedBranchId
+    ? `<div class="product-mgmt-card__stock-adjust">${stockAdjustInlineHtml({ productId: p.id })}</div>`
+    : "";
   return `
     <div class="card product-mgmt-card">
       <div class="product-mgmt-card__header">
@@ -346,6 +349,7 @@ function renderProductCard(p) {
           <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
           ${dailyStockBadge(p)}
           ${recipeLink(p)}
+          ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">History</button>` : ""}
           <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
         </div>
@@ -355,10 +359,11 @@ function renderProductCard(p) {
       <div class="product-mgmt-card__footer">
         <p class="product-mgmt-card__price">${formatCurrency(p.selling_price)}</p>
         <div class="product-mgmt-card__meta">
-          <div>${stockColumnLabel()}: <strong style="color: var(--color-espresso);">${formatQty(p.branch_qty)}</strong></div>
+          <div>${stockColumnLabel()}: <strong style="color: var(--color-espresso);" data-branch-qty="${p.id}">${formatQty(p.branch_qty)}</strong></div>
           <div>Tax: <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
         </div>
       </div>
+      ${stockAdjust}
     </div>
   `;
 }
@@ -400,13 +405,19 @@ function renderProductTable(filtered) {
                 <td><strong>${p.name}</strong></td>
                 <td>${p.category_name}</td>
                 <td style="text-align: right;">${formatCurrency(p.selling_price)}</td>
-                <td style="text-align: right;">${formatQty(p.branch_qty)}</td>
+                <td style="text-align: right;">
+                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem;">
+                    <strong data-branch-qty="${p.id}">${formatQty(p.branch_qty)}</strong>
+                    ${selectedBranchId ? stockAdjustInlineHtml({ productId: p.id }) : ""}
+                  </div>
+                </td>
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
                 <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
                 <td>${p.daily_stock_take ? `<span class="badge badge-daily-stock">Yes</span>` : "—"}</td>
                 ${addonCell(p)}
                 <td style="text-align: right;">
                   ${recipeLink(p)}
+                  ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">History</button>` : ""}
                   <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
                   <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
                 </td>
@@ -601,6 +612,46 @@ async function deleteProduct(product) {
 }
 
 productList.addEventListener("click", async (e) => {
+  if (e.target.closest("[data-apply-stock]")) {
+    try {
+      await handleInlineStockApply(e, {
+        apiPost,
+        branchId: selectedBranchId,
+        onSuccess: (productId, newQty) => {
+          branchInventory.set(productId, newQty);
+          const product = products.find(p => p.id === productId);
+          if (product) product.branch_qty = newQty;
+          productList.querySelectorAll(`[data-branch-qty="${productId}"]`).forEach(el => {
+            el.textContent = formatQty(newQty);
+          });
+          showToast("Stock updated");
+        },
+      });
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+
+  const historyBtn = e.target.closest("[data-history]");
+  if (historyBtn) {
+    const product = products.find(p => String(p.id) === historyBtn.dataset.history);
+    const branch = selectedBranch();
+    try {
+      await openStockMovementHistory({
+        apiGet,
+        unwrapList,
+        branchId: selectedBranchId,
+        productId: Number(historyBtn.dataset.history),
+        productName: product?.name || "Product",
+        branchName: branch?.name || "Branch",
+      });
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+
   const editBtn = e.target.closest("[data-edit]");
   if (editBtn) {
     const product = products.find(p => String(p.id) === editBtn.dataset.edit);

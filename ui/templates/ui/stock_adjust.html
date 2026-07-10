@@ -1,0 +1,439 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Quick Stock — Café de Paris{% endblock %}
+{% block page_title %}Quick Stock{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-primary btn-sm" id="apply-all-btn" disabled>Apply all filled</button>
+{% endblock %}
+
+{% block content %}
+{{ bakery_sellable_categories|json_script:"bakery-sellable-categories" }}
+<p class="products-page-description">
+  Quickly add or set stock for bakery goods, shop items, or ingredients at a branch.
+</p>
+
+<div class="card" style="padding: 0;">
+  <div class="stock-adjust-toolbar">
+    <div class="form-group" style="margin: 0; min-width: 200px;">
+      <label for="branch-select">Branch</label>
+      <select id="branch-select">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin: 0;">
+      <label>Item type</label>
+      <div class="pos-mode-toggle" id="item-type-toggle" role="radiogroup" aria-label="Item type">
+        <button type="button" class="pos-mode-btn active" data-type="bakery" aria-pressed="true">Bakery</button>
+        <button type="button" class="pos-mode-btn" data-type="shop" aria-pressed="false">Shop</button>
+        <button type="button" class="pos-mode-btn" data-type="ingredients" aria-pressed="false">Ingredients</button>
+      </div>
+    </div>
+    <div class="form-group" style="margin: 0;">
+      <label>Mode</label>
+      <div class="pos-mode-toggle" id="mode-toggle" role="radiogroup" aria-label="Stock mode">
+        <button type="button" class="pos-mode-btn active" data-mode="add" aria-pressed="true">Add</button>
+        <button type="button" class="pos-mode-btn" data-mode="set" aria-pressed="false">Set</button>
+      </div>
+    </div>
+    <input
+      type="search"
+      id="item-search"
+      class="report-input"
+      placeholder="Search items…"
+      style="max-width: 260px; align-self: end;"
+      autocomplete="off"
+    >
+  </div>
+  <p id="stock-adjust-hint" class="products-branch-hint" style="padding: 0 1.5rem 0.75rem; margin: 0;"></p>
+  <div class="table-wrap" id="stock-adjust-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, fetchAllPages, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+import { applyStockChange, formatStockQty, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const staffBranchId = "{{ staff_branch_id|default:'' }}";
+const BAKERY_SELLABLE = new Set(
+  JSON.parse(document.getElementById("bakery-sellable-categories").textContent),
+);
+const INGREDIENT_BRANCH_TYPES = new Set(["bakery", "stores", "branch"]);
+
+const branchSelect = document.getElementById("branch-select");
+const itemTypeToggle = document.getElementById("item-type-toggle");
+const modeToggle = document.getElementById("mode-toggle");
+const itemSearch = document.getElementById("item-search");
+const tableEl = document.getElementById("stock-adjust-table");
+const hintEl = document.getElementById("stock-adjust-hint");
+const applyAllBtn = document.getElementById("apply-all-btn");
+
+let branches = [];
+let selectedBranchId = null;
+let itemType = "bakery";
+let mode = "add";
+let searchQuery = "";
+let items = [];
+let branchInventory = new Map();
+let loading = false;
+const sortState = createSortState("name", "asc");
+const pendingQty = new Map();
+
+const ITEM_SORT = {
+  name: (p) => p.name || "",
+  category_name: (p) => p.category_name || "",
+  branch_qty: (p) => Number(p.branch_qty || 0),
+};
+
+function selectedBranch() {
+  return branches.find(b => b.id === selectedBranchId) || null;
+}
+
+function updateModeToggle() {
+  modeToggle.querySelectorAll(".pos-mode-btn").forEach(btn => {
+    const active = btn.dataset.mode === mode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function updateTypeToggle() {
+  itemTypeToggle.querySelectorAll(".pos-mode-btn").forEach(btn => {
+    const active = btn.dataset.type === itemType;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function updateHint() {
+  const branch = selectedBranch();
+  if (!branch) {
+    hintEl.textContent = canFilterAnyBranch
+      ? "Select a branch to adjust stock."
+      : "No branch assigned — stock adjustments unavailable.";
+    return;
+  }
+  const typeLabel = itemType === "bakery" ? "bakery goods"
+    : itemType === "shop" ? "shop items"
+    : "ingredients";
+  const modeLabel = mode === "add" ? "Add amounts to current stock" : "Set stock to an absolute quantity";
+  hintEl.textContent = `${modeLabel} for ${typeLabel} at ${branch.name}.`;
+}
+
+function matchesSearch(item) {
+  if (!searchQuery) return true;
+  const haystack = [item.name, item.category_name].filter(Boolean).join(" ").toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function qtyPlaceholder() {
+  return mode === "add" ? "Add qty" : "Set qty";
+}
+
+function capturePendingFromDom() {
+  tableEl.querySelectorAll("tr[data-product-id]").forEach(row => {
+    const id = Number(row.dataset.productId);
+    const input = row.querySelector("[data-row-qty]");
+    if (!input) return;
+    const val = input.value.trim();
+    if (val === "") pendingQty.delete(id);
+    else pendingQty.set(id, val);
+  });
+}
+
+function updateApplyAllState() {
+  applyAllBtn.disabled = !selectedBranchId || pendingQty.size === 0 || loading;
+}
+
+function render() {
+  updateHint();
+  updateApplyAllState();
+
+  if (!selectedBranchId) {
+    tableEl.innerHTML = `<div class="empty-state"><p>Select a branch to view items</p></div>`;
+    return;
+  }
+
+  if (loading) {
+    tableEl.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+    return;
+  }
+
+  const filtered = items.filter(matchesSearch);
+  if (!filtered.length) {
+    tableEl.innerHTML = `<div class="empty-state"><p>${items.length ? "No matching items" : "No items for this type"}</p></div>`;
+    return;
+  }
+
+  const sorted = sortItems(filtered, sortState, ITEM_SORT);
+  const branch = selectedBranch();
+
+  tableEl.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Name", "name", sortState)}
+          ${sortTh("Category", "category_name", sortState)}
+          ${sortTh(`Stock at ${branch.name}`, "branch_qty", sortState, { align: "right" })}
+          <th style="text-align: right;">${mode === "add" ? "Add" : "Set"} qty</th>
+          ${actionTh()}
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(item => `
+          <tr data-product-id="${item.id}">
+            <td>
+              <strong>${item.name}</strong>
+              <div>
+                <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}" style="margin-top:0.25rem; padding-left:0;">History</button>
+              </div>
+            </td>
+            <td>${item.category_name || "—"}</td>
+            <td style="text-align: right;" data-current-qty>${formatStockQty(item.branch_qty)}</td>
+            <td style="text-align: right;">
+              <input
+                type="number"
+                class="stock-adjust-row-qty"
+                data-row-qty
+                min="0"
+                step="0.01"
+                placeholder="${qtyPlaceholder()}"
+                value="${pendingQty.has(item.id) ? pendingQty.get(item.id) : ""}"
+                aria-label="Quantity for ${item.name}"
+              >
+            </td>
+            <td style="text-align: right;">
+              <button type="button" class="btn btn-primary btn-sm" data-apply-row>Apply</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+  bindTableSort(tableEl, sortState, () => {
+    capturePendingFromDom();
+    render();
+  });
+}
+
+async function loadBranchInventory() {
+  if (!selectedBranchId) {
+    branchInventory = new Map();
+    return;
+  }
+  const rows = await fetchAllPages("/inventory/", {
+    page_size: "1000",
+    branch: String(selectedBranchId),
+  });
+  branchInventory = new Map(rows.map(row => [row.product, Number(row.quantity)]));
+}
+
+async function loadItems() {
+  if (!selectedBranchId) {
+    items = [];
+    return;
+  }
+
+  let products = [];
+  if (itemType === "bakery") {
+    products = await fetchAllPages("/products/", { bakery_manufactured: "true" });
+    products = products.filter(p => BAKERY_SELLABLE.has(p.category_name));
+  } else if (itemType === "shop") {
+    products = await fetchAllPages("/products/", {
+      exclude_category: "Ingredients",
+      exclude_bakery: "true",
+    });
+    products = products.filter(
+      p => p.category_name !== "Branch Ingredients" && p.category_name !== "Archived",
+    );
+  } else {
+    const branch = selectedBranch();
+    if (!branch || !INGREDIENT_BRANCH_TYPES.has(branch.branch_type)) {
+      items = [];
+      return;
+    }
+    products = unwrapList(
+      await apiGet(`/products/?for_branch=${selectedBranchId}&page_size=500`),
+    );
+  }
+
+  items = products
+    .filter(p => p.is_active !== false)
+    .map(p => ({
+      ...p,
+      branch_qty: branchInventory.get(p.id) ?? 0,
+    }));
+}
+
+async function reload() {
+  loading = true;
+  render();
+  try {
+    await loadBranchInventory();
+    await loadItems();
+  } catch (err) {
+    showToast(err.message, true);
+    items = [];
+  } finally {
+    loading = false;
+    render();
+  }
+}
+
+async function loadBranches() {
+  const data = await apiGet("/branches/?page_size=500");
+  branches = branchesForUser(
+    unwrapList(data).filter(b => b.is_active),
+    staffBranchId,
+    canFilterAnyBranch,
+  );
+
+  setupBranchSelect(branchSelect, branches, {
+    canSelectAny: canFilterAnyBranch,
+    emptyLabel: "No branches available",
+  });
+
+  selectedBranchId = branches.length === 1
+    ? branches[0].id
+    : (branchSelect.value ? Number(branchSelect.value) : null);
+  await reload();
+}
+
+async function applyOne(productId, amount) {
+  const result = await applyStockChange(apiPost, {
+    branchId: selectedBranchId,
+    productId,
+    mode,
+    amount,
+  });
+  const newQty = Number(result.quantity);
+  branchInventory.set(productId, newQty);
+  const item = items.find(i => i.id === productId);
+  if (item) item.branch_qty = newQty;
+  pendingQty.delete(productId);
+  return newQty;
+}
+
+branchSelect.addEventListener("change", async () => {
+  capturePendingFromDom();
+  pendingQty.clear();
+  selectedBranchId = branchSelect.value ? Number(branchSelect.value) : null;
+  await reload();
+});
+
+itemTypeToggle.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".pos-mode-btn[data-type]");
+  if (!btn || btn.dataset.type === itemType) return;
+  capturePendingFromDom();
+  pendingQty.clear();
+  itemType = btn.dataset.type;
+  updateTypeToggle();
+  await reload();
+});
+
+modeToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pos-mode-btn[data-mode]");
+  if (!btn || btn.dataset.mode === mode) return;
+  capturePendingFromDom();
+  mode = btn.dataset.mode;
+  updateModeToggle();
+  render();
+});
+
+itemSearch.addEventListener("input", () => {
+  capturePendingFromDom();
+  searchQuery = itemSearch.value.trim().toLowerCase();
+  render();
+});
+
+tableEl.addEventListener("input", (e) => {
+  const input = e.target.closest("[data-row-qty]");
+  if (!input) return;
+  const row = input.closest("tr[data-product-id]");
+  if (!row) return;
+  const id = Number(row.dataset.productId);
+  const val = input.value.trim();
+  if (val === "") pendingQty.delete(id);
+  else pendingQty.set(id, val);
+  updateApplyAllState();
+});
+
+tableEl.addEventListener("click", async (e) => {
+  const historyBtn = e.target.closest("[data-history]");
+  if (historyBtn) {
+    const productId = Number(historyBtn.dataset.history);
+    const item = items.find(i => i.id === productId);
+    const branch = selectedBranch();
+    try {
+      await openStockMovementHistory({
+        apiGet,
+        unwrapList,
+        branchId: selectedBranchId,
+        productId,
+        productName: item?.name || "Product",
+        branchName: branch?.name || "Branch",
+      });
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+
+  const btn = e.target.closest("[data-apply-row]");
+  if (!btn) return;
+  const row = btn.closest("tr[data-product-id]");
+  if (!row) return;
+  const productId = Number(row.dataset.productId);
+  const input = row.querySelector("[data-row-qty]");
+  const amount = input?.value;
+  btn.disabled = true;
+  try {
+    await applyOne(productId, amount);
+    showToast(mode === "add" ? "Stock added" : "Stock set");
+    if (input) input.value = "";
+    const qtyCell = row.querySelector("[data-current-qty]");
+    const item = items.find(i => i.id === productId);
+    if (qtyCell && item) qtyCell.textContent = formatStockQty(item.branch_qty);
+    updateApplyAllState();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+applyAllBtn.addEventListener("click", async () => {
+  capturePendingFromDom();
+  const entries = [...pendingQty.entries()];
+  if (!entries.length) return;
+
+  applyAllBtn.disabled = true;
+  let ok = 0;
+  let failed = 0;
+  for (const [productId, amount] of entries) {
+    try {
+      await applyOne(productId, amount);
+      ok += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  render();
+  if (failed && ok) showToast(`Updated ${ok}, ${failed} failed`, true);
+  else if (failed) showToast(`All ${failed} updates failed`, true);
+  else showToast(`Updated ${ok} item${ok === 1 ? "" : "s"}`);
+  updateApplyAllState();
+});
+
+updateTypeToggle();
+updateModeToggle();
+loadBranches().catch(err => showToast(err.message, true));
+</script>
+{% endblock %}

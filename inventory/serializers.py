@@ -22,6 +22,7 @@ from .models import (
     CentralInvoiceLine,
     DeliveryNote,
     DeliveryNoteLine,
+    StockMovement,
     StockTake,
     StockTakeLine,
     StockTakeType,
@@ -57,6 +58,44 @@ class InventoryAdjustSerializer(serializers.Serializer):
         if value == 0:
             raise serializers.ValidationError("Delta must not be zero.")
         return value
+
+
+class InventorySetSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.filter(is_active=True))
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0"))
+
+
+class StockMovementSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    reason_display = serializers.CharField(source="get_reason_display", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StockMovement
+        fields = [
+            "id",
+            "branch",
+            "branch_name",
+            "product",
+            "product_name",
+            "quantity_before",
+            "delta",
+            "quantity_after",
+            "reason",
+            "reason_display",
+            "note",
+            "reference_type",
+            "reference_id",
+            "created_by",
+            "created_by_name",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_created_by_name(self, obj):
+        return staff_display_name(obj.created_by) if obj.created_by_id else ""
 
 
 class StockTransferSerializer(serializers.ModelSerializer):

@@ -358,3 +358,70 @@ class CentralInvoiceLine(models.Model):
     @property
     def line_total(self):
         return self.unit_price * self.quantity
+
+
+class StockMovementReason(models.TextChoices):
+    MANUAL_ADD = "manual_add", "Manual add"
+    MANUAL_SET = "manual_set", "Manual set"
+    SALE = "sale", "Sale"
+    SALE_VOID = "sale_void", "Sale void"
+    TRANSFER_OUT = "transfer_out", "Transfer out"
+    TRANSFER_IN = "transfer_in", "Transfer in"
+    DELIVERY_OUT = "delivery_out", "Delivery out"
+    DELIVERY_IN = "delivery_in", "Delivery in"
+    DELIVERY_CANCEL = "delivery_cancel", "Delivery cancel"
+    PRODUCTION_CONSUME = "production_consume", "Production consume"
+    PRODUCTION_OUTPUT = "production_output", "Production output"
+    STOCK_TAKE = "stock_take", "Stock take"
+    PURCHASE = "purchase", "Purchase receive"
+    CENTRAL_INVOICE = "central_invoice", "Central invoice"
+    CENTRAL_INVOICE_CANCEL = "central_invoice_cancel", "Central invoice cancel"
+    ADJUSTMENT = "adjustment", "Adjustment"
+
+
+class StockMovement(models.Model):
+    """Append-only ledger of branch stock changes for a product."""
+
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.CASCADE,
+        related_name="stock_movements",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="stock_movements",
+    )
+    quantity_before = models.DecimalField(max_digits=12, decimal_places=2)
+    delta = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity_after = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(
+        max_length=32,
+        choices=StockMovementReason.choices,
+        default=StockMovementReason.ADJUSTMENT,
+    )
+    note = models.CharField(max_length=255, blank=True)
+    reference_type = models.CharField(max_length=40, blank=True)
+    reference_id = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="stock_movements",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["branch", "product", "-created_at"]),
+            models.Index(fields=["product", "-created_at"]),
+        ]
+
+    def __str__(self):
+        sign = "+" if self.delta >= 0 else ""
+        return (
+            f"{self.product} @ {self.branch}: {sign}{self.delta} "
+            f"({self.get_reason_display()})"
+        )

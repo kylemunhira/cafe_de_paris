@@ -29,6 +29,8 @@ from .models import (
     BranchInventory,
     CentralInvoice,
     DeliveryNote,
+    StockMovement,
+    StockMovementReason,
     StockTake,
     StockTakeStatus,
     StockTransfer,
@@ -44,6 +46,8 @@ from .serializers import (
     CentralInvoiceSerializer,
     DeliveryNoteSerializer,
     InventoryAdjustSerializer,
+    InventorySetSerializer,
+    StockMovementSerializer,
     STORES_TRANSFER_DESTINATION_TYPES,
     StoresDeliveryNoteCreateSerializer,
     StockTakeCreateSerializer,
@@ -62,6 +66,7 @@ from .services import (
     InvalidStockTakeStateError,
     InvalidTransferStateError,
     adjust_inventory,
+    set_inventory_quantity,
     approve_delivery_note,
     approve_transfer,
     cancel_delivery_note,
@@ -122,6 +127,10 @@ class BranchInventoryViewSet(viewsets.ReadOnlyModelViewSet):
                 data["branch"],
                 data["product"],
                 data["delta"],
+                reason=StockMovementReason.MANUAL_ADD
+                if data["delta"] > 0
+                else StockMovementReason.ADJUSTMENT,
+                user=request.user,
             )
         except InsufficientStockError as exc:
             return Response(
@@ -134,6 +143,52 @@ class BranchInventoryViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         return Response(BranchInventorySerializer(inventory).data)
+
+    @action(detail=False, methods=["post"])
+    def set(self, request):
+        serializer = InventorySetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            inventory = set_inventory_quantity(
+                data["branch"],
+                data["product"],
+                data["quantity"],
+                reason=StockMovementReason.MANUAL_SET,
+                user=request.user,
+            )
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(BranchInventorySerializer(inventory).data)
+
+    @action(detail=False, methods=["get"])
+    def movements(self, request):
+        branch_id = request.query_params.get("branch")
+        product_id = request.query_params.get("product")
+        if not branch_id or not product_id:
+            return Response(
+                {"detail": "Both branch and product query parameters are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = StockMovement.objects.select_related(
+            "branch", "product", "created_by"
+        ).filter(branch_id=branch_id, product_id=product_id)
+        queryset = filter_by_branch_field(
+            queryset, request.user, requested_branch_id=branch_id
+        )
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = StockMovementSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = StockMovementSerializer(queryset[:200], many=True)
+        return Response(serializer.data)
 
 
 class StockTransferViewSet(viewsets.ModelViewSet):

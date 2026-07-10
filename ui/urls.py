@@ -51,6 +51,7 @@ urlpatterns = [
     path("grv/", views.GrvView.as_view(), name="grv"),
     path("recipes/", views.RecipesView.as_view(), name="recipes"),
     path("stock-take/", views.StockTakeView.as_view(), name="stock-take"),
+    path("stock-adjust/", views.StockAdjustView.as_view(), name="stock-adjust"),
     path("expenses/", views.ExpensesView.as_view(), name="expenses"),
     path("customers/", views.CustomersView.as_view(), name="customers"),
     path("customer-accounts/", views.CustomerAccountsView.as_view(), name="customer-accounts"),

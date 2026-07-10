@@ -131,6 +131,87 @@ class InventoryTransferWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["quantity"], "15.00")
 
+    def test_inventory_set_endpoint(self):
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=self.product,
+            quantity=Decimal("10"),
+        )
+        response = self.client.post(
+            "/api/inventory/set/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "42.5",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["quantity"], "42.50")
+        self.assertEqual(
+            BranchInventory.objects.get(
+                branch=self.branch, product=self.product
+            ).quantity,
+            Decimal("42.50"),
+        )
+
+    def test_inventory_set_rejects_negative(self):
+        response = self.client.post(
+            "/api/inventory/set/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "-1",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_inventory_adjust_creates_stock_movement(self):
+        from inventory.models import StockMovement, StockMovementReason
+
+        response = self.client.post(
+            "/api/inventory/adjust/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "delta": "15",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        movement = StockMovement.objects.get(
+            branch=self.branch, product=self.product
+        )
+        self.assertEqual(movement.delta, Decimal("15"))
+        self.assertEqual(movement.quantity_before, Decimal("0"))
+        self.assertEqual(movement.quantity_after, Decimal("15"))
+        self.assertEqual(movement.reason, StockMovementReason.MANUAL_ADD)
+
+    def test_inventory_movements_endpoint(self):
+        from inventory.models import StockMovement, StockMovementReason
+
+        StockMovement.objects.create(
+            branch=self.branch,
+            product=self.product,
+            quantity_before=Decimal("0"),
+            delta=Decimal("10"),
+            quantity_after=Decimal("10"),
+            reason=StockMovementReason.MANUAL_ADD,
+        )
+        response = self.client.get(
+            f"/api/inventory/movements/?branch={self.branch.id}&product={self.product.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"] if "results" in response.data else response.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["delta"], "10.00")
+        self.assertEqual(results[0]["reason"], StockMovementReason.MANUAL_ADD)
+
+    def test_inventory_movements_requires_branch_and_product(self):
+        response = self.client.get("/api/inventory/movements/")
+        self.assertEqual(response.status_code, 400)
+
     def test_low_stock_filter(self):
         BranchInventory.objects.create(
             branch=self.branch,

@@ -82,6 +82,7 @@
 import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+import { formatStockQty, stockAdjustInlineHtml, handleInlineStockApply, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
 
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
@@ -130,8 +131,7 @@ const INGREDIENT_SORT = {
 };
 
 function formatQty(value) {
-  const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+  return formatStockQty(value);
 }
 
 function selectedBranch() {
@@ -236,10 +236,16 @@ function render() {
           <tr>
             <td><strong>${item.name}</strong></td>
             <td>${formatCurrency(item.selling_price)}</td>
-            <td>${formatQty(item.branch_qty)}</td>
+            <td>
+              <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem;">
+                <strong data-branch-qty="${item.id}">${formatQty(item.branch_qty)}</strong>
+                ${stockAdjustInlineHtml({ productId: item.id })}
+              </div>
+            </td>
             <td><span class="badge ${item.is_active ? "badge-active" : "badge-inactive"}">${item.is_active ? "Active" : "Inactive"}</span></td>
             <td>${item.daily_stock_take ? `<span class="badge badge-daily-stock">Yes</span>` : "—"}</td>
             <td style="text-align: right;">
+              <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}">History</button>
               <button type="button" class="btn btn-ghost btn-sm" data-edit="${item.id}">Edit</button>
             </td>
           </tr>
@@ -376,7 +382,50 @@ branchSelect.addEventListener("change", async () => {
   await reload();
 });
 
-ingredientsTable.addEventListener("click", (e) => {
+ingredientsTable.addEventListener("click", async (e) => {
+  if (e.target.closest("[data-apply-stock]")) {
+    try {
+      await handleInlineStockApply(e, {
+        apiPost,
+        branchId: selectedBranchId,
+        onSuccess: (productId, newQty) => {
+          branchInventory.set(productId, newQty);
+          const item = ingredients.find(i => i.id === productId);
+          if (item) item.branch_qty = newQty;
+          ingredientsTable.querySelectorAll(`[data-branch-qty="${productId}"]`).forEach(el => {
+            el.textContent = formatQty(newQty);
+          });
+          if (editingId === productId) {
+            qtyInput.value = String(newQty);
+          }
+          showToast("Stock updated");
+        },
+      });
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+
+  const historyBtn = e.target.closest("[data-history]");
+  if (historyBtn) {
+    const item = ingredients.find(i => String(i.id) === historyBtn.dataset.history);
+    const branch = selectedBranch();
+    try {
+      await openStockMovementHistory({
+        apiGet,
+        unwrapList,
+        branchId: selectedBranchId,
+        productId: Number(historyBtn.dataset.history),
+        productName: item?.name || "Ingredient",
+        branchName: branch?.name || "Branch",
+      });
+    } catch (err) {
+      showToast(err.message, true);
+    }
+    return;
+  }
+
   const btn = e.target.closest("[data-edit]");
   if (!btn) return;
   const item = ingredients.find(i => String(i.id) === btn.dataset.edit);

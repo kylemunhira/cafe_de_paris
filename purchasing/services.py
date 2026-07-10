@@ -18,11 +18,17 @@ class InvalidPurchaseOrderStateError(Exception):
 
 
 def apply_purchase_order_inventory(purchase_order: PurchaseOrder) -> None:
+    from inventory.models import StockMovementReason
+
     for line in purchase_order.lines.select_related("product"):
         adjust_inventory(
             purchase_order.branch,
             line.product,
             line.quantity,
+            reason=StockMovementReason.PURCHASE,
+            reference_type="purchase_order",
+            reference_id=purchase_order.pk,
+            user=purchase_order.created_by,
         )
 
 

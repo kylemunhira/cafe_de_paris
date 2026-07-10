@@ -6,6 +6,7 @@ from .models import (
     CentralInvoiceLine,
     DeliveryNote,
     DeliveryNoteLine,
+    StockMovement,
     StockTake,
     StockTakeLine,
     StockTransfer,
@@ -41,6 +42,34 @@ class BranchInventoryAdmin(admin.ModelAdmin):
     list_display = ("branch", "product", "quantity", "last_updated")
     list_filter = ("branch",)
     search_fields = ("product__name", "branch__name")
+
+
+@admin.register(StockMovement)
+class StockMovementAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "branch",
+        "product",
+        "delta",
+        "quantity_after",
+        "reason",
+        "created_by",
+    )
+    list_filter = ("reason", "branch")
+    search_fields = ("product__name", "branch__name", "note")
+    readonly_fields = (
+        "branch",
+        "product",
+        "quantity_before",
+        "delta",
+        "quantity_after",
+        "reason",
+        "note",
+        "reference_type",
+        "reference_id",
+        "created_by",
+        "created_at",
+    )
 
 
 @admin.register(DeliveryNote)

@@ -405,6 +405,23 @@ class StockTakeView(BaseUIView):
         return context
 
 
+class StockAdjustView(BaseUIView):
+    template_name = "ui/stock_adjust.html"
+    active_nav = "stock_adjust"
+
+    def access_allowed(self, user):
+        from accounts.branch_access import user_can_access_management_console
+
+        return user_can_access_management_console(user)
+
+    def get_context_data(self, **kwargs):
+        from catalog.constants import BAKERY_SELLABLE_CATEGORIES
+
+        context = super().get_context_data(**kwargs)
+        context["bakery_sellable_categories"] = sorted(BAKERY_SELLABLE_CATEGORIES)
+        return context
+
+
 class CustomersView(BaseUIView):
     template_name = "ui/customers.html"
     active_nav = "customers"

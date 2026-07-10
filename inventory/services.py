@@ -20,6 +20,8 @@ from .models import (
     BranchInventory,
     DeliveryNote,
     DeliveryNoteLine,
+    StockMovement,
+    StockMovementReason,
     StockTake,
     StockTakeLine,
     StockTakeStatus,
@@ -63,24 +65,86 @@ class InvalidDeliveryNoteStateError(Exception):
         )
 
 
-def adjust_inventory(branch, product, delta: Decimal, *, allow_negative=False) -> BranchInventory:
+def _record_stock_movement(
+    *,
+    branch,
+    product,
+    quantity_before: Decimal,
+    delta: Decimal,
+    quantity_after: Decimal,
+    reason: str = StockMovementReason.ADJUSTMENT,
+    note: str = "",
+    user=None,
+    reference_type: str = "",
+    reference_id=None,
+) -> StockMovement:
+    return StockMovement.objects.create(
+        branch=branch,
+        product=product,
+        quantity_before=quantity_before,
+        delta=delta,
+        quantity_after=quantity_after,
+        reason=reason or StockMovementReason.ADJUSTMENT,
+        note=(note or "")[:255],
+        reference_type=reference_type or "",
+        reference_id=reference_id,
+        created_by=user if getattr(user, "is_authenticated", False) else None,
+    )
+
+
+def adjust_inventory(
+    branch,
+    product,
+    delta: Decimal,
+    *,
+    allow_negative=False,
+    reason: str = StockMovementReason.ADJUSTMENT,
+    note: str = "",
+    user=None,
+    reference_type: str = "",
+    reference_id=None,
+) -> BranchInventory:
     with transaction.atomic():
         inventory, _ = BranchInventory.objects.select_for_update().get_or_create(
             branch=branch,
             product=product,
             defaults={"quantity": Decimal("0")},
         )
-        new_quantity = inventory.quantity + delta
+        quantity_before = inventory.quantity
+        new_quantity = quantity_before + delta
         if new_quantity < 0 and not allow_negative:
             raise InsufficientStockError(
-                branch, product, inventory.quantity, abs(delta)
+                branch, product, quantity_before, abs(delta)
             )
         inventory.quantity = new_quantity
         inventory.save(update_fields=["quantity", "last_updated"])
+        if delta != 0:
+            _record_stock_movement(
+                branch=branch,
+                product=product,
+                quantity_before=quantity_before,
+                delta=delta,
+                quantity_after=new_quantity,
+                reason=reason,
+                note=note,
+                user=user,
+                reference_type=reference_type,
+                reference_id=reference_id,
+            )
         return inventory
 
 
-def set_inventory_quantity(branch, product, quantity: Decimal) -> BranchInventory:
+def set_inventory_quantity(
+    branch,
+    product,
+    quantity: Decimal,
+    *,
+    reason: str = StockMovementReason.MANUAL_SET,
+    note: str = "",
+    user=None,
+    reference_type: str = "",
+    reference_id=None,
+) -> BranchInventory:
     if quantity < 0:
         raise ValueError("Quantity cannot be negative.")
     with transaction.atomic():
@@ -89,8 +153,23 @@ def set_inventory_quantity(branch, product, quantity: Decimal) -> BranchInventor
             product=product,
             defaults={"quantity": Decimal("0")},
         )
+        quantity_before = inventory.quantity
+        delta = quantity - quantity_before
         inventory.quantity = quantity
         inventory.save(update_fields=["quantity", "last_updated"])
+        if delta != 0:
+            _record_stock_movement(
+                branch=branch,
+                product=product,
+                quantity_before=quantity_before,
+                delta=delta,
+                quantity_after=quantity,
+                reason=reason,
+                note=note,
+                user=user,
+                reference_type=reference_type,
+                reference_id=reference_id,
+            )
         return inventory
 
 
@@ -184,6 +263,9 @@ def consume_order_recipe_materials(order) -> None:
             products[product_id],
             -required,
             allow_negative=allow_negative,
+            reason=StockMovementReason.SALE,
+            reference_type="order",
+            reference_id=order.pk,
         )
 
 
@@ -209,6 +291,9 @@ def restore_order_recipe_materials(order) -> None:
             products[product_id],
             required,
             allow_negative=True,
+            reason=StockMovementReason.SALE_VOID,
+            reference_type="order",
+            reference_id=order.pk,
         )
 
 
@@ -232,6 +317,9 @@ def dispatch_transfer(transfer: StockTransfer) -> StockTransfer:
             transfer.from_branch,
             transfer.product,
             -transfer.quantity,
+            reason=StockMovementReason.TRANSFER_OUT,
+            reference_type="transfer",
+            reference_id=transfer.pk,
         )
         transfer.status = StockTransferStatus.DISPATCHED
         transfer.save(update_fields=["status"])
@@ -248,6 +336,9 @@ def deliver_transfer(transfer: StockTransfer) -> StockTransfer:
             transfer.to_branch,
             transfer.product,
             transfer.quantity,
+            reason=StockMovementReason.TRANSFER_IN,
+            reference_type="transfer",
+            reference_id=transfer.pk,
         )
         transfer.status = StockTransferStatus.DELIVERED
         transfer.save(update_fields=["status"])
@@ -302,6 +393,9 @@ def finalize_bakery_delivery_note_creation(note: DeliveryNote) -> DeliveryNote:
                 note.from_branch,
                 line.product,
                 -line.quantity,
+                reason=StockMovementReason.DELIVERY_OUT,
+                reference_type="delivery_note",
+                reference_id=note.pk,
             )
     return note
 
@@ -330,6 +424,9 @@ def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
                     note.to_branch,
                     line.product,
                     line.quantity,
+                    reason=StockMovementReason.DELIVERY_IN,
+                    reference_type="delivery_note",
+                    reference_id=note.pk,
                 )
             note.status = StockTransferStatus.DELIVERED
             note.save(update_fields=["status"])
@@ -362,6 +459,9 @@ def dispatch_delivery_note(note: DeliveryNote) -> DeliveryNote:
                 note.from_branch,
                 line.product,
                 -line.quantity,
+                reason=StockMovementReason.DELIVERY_OUT,
+                reference_type="delivery_note",
+                reference_id=note.pk,
             )
         note.status = StockTransferStatus.DISPATCHED
         note.save(update_fields=["status"])
@@ -391,6 +491,9 @@ def deliver_delivery_note(note: DeliveryNote) -> DeliveryNote:
                 note.to_branch,
                 line.product,
                 line.quantity,
+                reason=StockMovementReason.DELIVERY_IN,
+                reference_type="delivery_note",
+                reference_id=note.pk,
             )
         note.status = StockTransferStatus.DELIVERED
         note.save(update_fields=["status"])
@@ -666,6 +769,10 @@ def complete_stock_take(stock_take: StockTake) -> StockTake:
                 stock_take.branch,
                 line.product,
                 line.counted_quantity,
+                reason=StockMovementReason.STOCK_TAKE,
+                reference_type="stock_take",
+                reference_id=stock_take.pk,
+                user=stock_take.created_by,
             )
             line.product.remaining_qty = line.counted_quantity
             products_to_update.append(line.product)
@@ -711,6 +818,9 @@ def cancel_delivery_note(note: DeliveryNote) -> DeliveryNote:
                     note.from_branch,
                     line.product,
                     line.quantity,
+                    reason=StockMovementReason.DELIVERY_CANCEL,
+                    reference_type="delivery_note",
+                    reference_id=note.pk,
                 )
             note.status = StockTransferStatus.CANCELLED
             note.save(update_fields=["status"])
@@ -820,6 +930,9 @@ def finalize_central_invoice_creation(invoice) -> object:
                 invoice.from_branch,
                 line.product,
                 -line.quantity,
+                reason=StockMovementReason.CENTRAL_INVOICE,
+                reference_type="central_invoice",
+                reference_id=invoice.pk,
             )
         invoice.status = CentralInvoiceStatus.DISPATCHED
         invoice.save(update_fields=["status"])
@@ -851,6 +964,9 @@ def cancel_central_invoice(invoice) -> object:
                 invoice.from_branch,
                 line.product,
                 line.quantity,
+                reason=StockMovementReason.CENTRAL_INVOICE_CANCEL,
+                reference_type="central_invoice",
+                reference_id=invoice.pk,
             )
         invoice.status = CentralInvoiceStatus.CANCELLED
         invoice.save(update_fields=["status"])

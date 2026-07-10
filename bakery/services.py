@@ -6,7 +6,7 @@ from django.db import transaction
 from branches.models import Branch, BranchType
 from catalog.constants import is_bakery_transfer_product
 from catalog.models import Product
-from inventory.models import BranchInventory
+from inventory.models import BranchInventory, StockMovementReason
 from inventory.services import InsufficientStockError, adjust_inventory
 
 from .models import ProductionOrder, ProductionOrderStatus, Recipe
@@ -151,7 +151,14 @@ def complete_production(
     with transaction.atomic():
         for ingredient_id, amount in requirements.items():
             try:
-                adjust_inventory(branch, ingredient_products[ingredient_id], -amount)
+                adjust_inventory(
+                    branch,
+                    ingredient_products[ingredient_id],
+                    -amount,
+                    reason=StockMovementReason.PRODUCTION_CONSUME,
+                    note=f"Production of {product.name}",
+                    user=created_by,
+                )
             except InsufficientStockError as exc:
                 raise InsufficientIngredientsError(
                     [
@@ -163,7 +170,14 @@ def complete_production(
                     ]
                 ) from exc
 
-        adjust_inventory(branch, product, quantity)
+        adjust_inventory(
+            branch,
+            product,
+            quantity,
+            reason=StockMovementReason.PRODUCTION_OUTPUT,
+            note=f"Produced {quantity}",
+            user=created_by,
+        )
         return ProductionOrder.objects.create(
             branch=branch,
             product=product,

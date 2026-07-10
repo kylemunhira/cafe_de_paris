@@ -1288,6 +1288,55 @@ table.data-table tbody tr:hover {
   max-width: 360px;
 }
 
+.stock-adjust-toolbar {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(44, 24, 16, 0.06);
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.stock-adjust-row-qty {
+  width: 6.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(44, 24, 16, 0.15);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.stock-adjust-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.stock-adjust-inline__mode {
+  padding: 0.25rem 0.35rem;
+  border: 1px solid rgba(44, 24, 16, 0.15);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  background: #fff;
+}
+
+.stock-adjust-inline__qty {
+  width: 4.75rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid rgba(44, 24, 16, 0.15);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.product-mgmt-card__stock-adjust {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(44, 24, 16, 0.06);
+}
+
 #product-view-toggle .pos-mode-btn {
   display: inline-flex;
   align-items: center;
