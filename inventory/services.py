@@ -187,6 +187,31 @@ def consume_order_recipe_materials(order) -> None:
         )
 
 
+def restore_order_recipe_materials(order) -> None:
+    """
+    Restore branch stock when a paid order is voided.
+    Mirrors consume_order_recipe_materials with positive adjustments.
+    """
+    requirements = order_recipe_material_requirements(order)
+    if not requirements:
+        return
+
+    branch = order.branch
+    product_ids = list(requirements.keys())
+    products = {
+        row.id: row
+        for row in Product.objects.filter(id__in=product_ids)
+    }
+
+    for product_id, required in requirements.items():
+        adjust_inventory(
+            branch,
+            products[product_id],
+            required,
+            allow_negative=True,
+        )
+
+
 def approve_transfer(transfer: StockTransfer) -> StockTransfer:
     if transfer.status != StockTransferStatus.REQUESTED:
         raise InvalidTransferStateError(

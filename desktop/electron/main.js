@@ -114,8 +114,15 @@ ipcMain.handle("catalog:list", () => ({
 
 ipcMain.handle("orders:create", (_event, payload) => db.createOrder(payload));
 ipcMain.handle("orders:open", () => db.listOpenOrders());
-ipcMain.handle("orders:pay", (_event, clientId, payment) =>
-  db.payOrder(clientId, payment)
+ipcMain.handle("orders:cancel", (_event, clientId) => db.cancelOrder(clientId));
+ipcMain.handle("orders:pay", (_event, clientId, payment, options) =>
+  db.payOrder(clientId, payment, options || {})
+);
+ipcMain.handle("orders:dismiss-table", (_event, tableNumber, keepClientId) =>
+  db.dismissLocalTableOrders(tableNumber, keepClientId || null)
+);
+ipcMain.handle("orders:sync-server-payment", (_event, serverId, payment) =>
+  db.syncLocalPaymentFromServer(serverId, payment)
 );
 ipcMain.handle("orders:pending-sync", () => db.listPendingSyncOrders());
 ipcMain.handle("orders:mark-synced", (_event, clientId, result) =>
@@ -125,6 +132,13 @@ ipcMain.handle("orders:update-kitchen-statuses", (_event, updates) =>
   db.updateKitchenStatuses(updates)
 );
 ipcMain.handle("sync:pending-count", () => db.pendingSyncCount());
+ipcMain.handle("sync:pending-status", () => db.getPendingSyncStatus());
+ipcMain.handle("sync:record-error", (_event, message) => {
+  db.recordSyncError(message);
+});
+ipcMain.handle("sync:clear-error", () => {
+  db.clearSyncErrors();
+});
 
 ipcMain.handle("reports:day-end", (_event, { date } = {}) => {
   const bounds = localDayBounds(date || null);

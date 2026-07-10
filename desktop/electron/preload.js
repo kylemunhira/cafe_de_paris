@@ -9,13 +9,22 @@ contextBridge.exposeInMainWorld("pos", {
   replaceCatalog: (payload) => ipcRenderer.invoke("catalog:replace", payload),
   createOrder: (payload) => ipcRenderer.invoke("orders:create", payload),
   listOpenOrders: () => ipcRenderer.invoke("orders:open"),
-  payOrder: (clientId, payment) => ipcRenderer.invoke("orders:pay", clientId, payment),
+  cancelOrder: (clientId) => ipcRenderer.invoke("orders:cancel", clientId),
+  payOrder: (clientId, payment, options) =>
+    ipcRenderer.invoke("orders:pay", clientId, payment, options),
+  dismissLocalTableOrders: (tableNumber, keepClientId) =>
+    ipcRenderer.invoke("orders:dismiss-table", tableNumber, keepClientId || null),
+  syncLocalPaymentFromServer: (serverId, payment) =>
+    ipcRenderer.invoke("orders:sync-server-payment", serverId, payment),
   listPendingSyncOrders: () => ipcRenderer.invoke("orders:pending-sync"),
   markOrderSynced: (clientId, result) =>
     ipcRenderer.invoke("orders:mark-synced", clientId, result),
   updateKitchenStatuses: (updates) =>
     ipcRenderer.invoke("orders:update-kitchen-statuses", updates),
   pendingSyncCount: () => ipcRenderer.invoke("sync:pending-count"),
+  getPendingSyncStatus: () => ipcRenderer.invoke("sync:pending-status"),
+  recordSyncError: (message) => ipcRenderer.invoke("sync:record-error", message),
+  clearSyncErrors: () => ipcRenderer.invoke("sync:clear-error"),
   getDayEndReport: (options) => ipcRenderer.invoke("reports:day-end", options || {}),
   getSetting: (key) => ipcRenderer.invoke("settings:get", key),
   setSetting: (key, value) => ipcRenderer.invoke("settings:set", key, value),

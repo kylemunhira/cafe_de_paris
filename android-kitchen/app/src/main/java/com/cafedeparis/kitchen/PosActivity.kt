@@ -11,8 +11,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.GridLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
+import android.view.ViewGroup
+import android.util.TypedValue
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -30,8 +35,11 @@ import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.data.SessionManager
+import com.cafedeparis.kitchen.data.Supplier
 import com.cafedeparis.kitchen.databinding.ActivityPosBinding
 import com.cafedeparis.kitchen.databinding.DialogDayEndBinding
+import java.util.Locale
+import com.cafedeparis.kitchen.databinding.DialogExpenseBinding
 import com.cafedeparis.kitchen.databinding.DialogTablePickerBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
@@ -47,7 +55,6 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -64,11 +71,14 @@ class PosActivity : KeepScreenOnActivity() {
 
     private val cart = linkedMapOf<String, CartLine>()
     private var products: List<Product> = emptyList()
+    private var allCurrencies: List<Currency> = emptyList()
     private var currencies: List<Currency> = emptyList()
+    private var suppliers: List<Supplier> = emptyList()
     private var customers: List<Customer> = emptyList()
     private var diningTables: List<DiningTable> = emptyList()
     private var openOrders: List<KitchenOrder> = emptyList()
     private var selectedOrder: KitchenOrder? = null
+    private var receiptPaymentOrderId: Int? = null
     private var selectedTableName: String? = null
     private var activeCategoryId: Int? = null
     private var searchQuery: String = ""
@@ -77,6 +87,7 @@ class PosActivity : KeepScreenOnActivity() {
     private var selectedCurrencyId: Int? = null
     private var tablePickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var dayEndDialog: androidx.appcompat.app.AlertDialog? = null
+    private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
     private var refreshJob: Job? = null
     private val printer = EscPosPrinter()
 
@@ -138,6 +149,7 @@ class PosActivity : KeepScreenOnActivity() {
         setupPaymentMethodToggle()
         setupActions()
         setupSearch()
+        updateReceiptModeVisibility()
 
         loadCatalog()
         setPosMode(PosMode.ORDER)
@@ -148,11 +160,136 @@ class PosActivity : KeepScreenOnActivity() {
         refreshJob?.cancel()
         tablePickerDialog?.dismiss()
         dayEndDialog?.dismiss()
+        expenseDialog?.dismiss()
         super.onDestroy()
     }
 
     private fun todayIso(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun openExpenseDialog() {
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                if (suppliers.isEmpty()) {
+                    suppliers = withContext(Dispatchers.IO) { api.fetchSuppliers() }
+                }
+                showExpenseDialog()
+            } catch (err: ApiException) {
+                if (err.statusCode == 403) {
+                    showExpenseDialog()
+                } else {
+                    handleApiError(err)
+                }
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun showExpenseDialog() {
+        val dialogBinding = DialogExpenseBinding.inflate(layoutInflater)
+        dialogBinding.expenseDateInput.setText(todayIso())
+
+        val activeSuppliers = suppliers.filter { it.is_active }
+        val supplierLabels = mutableListOf(getString(R.string.expense_supplier_none))
+        supplierLabels.addAll(activeSuppliers.map { it.name })
+        dialogBinding.expenseSupplierSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            supplierLabels,
+        )
+
+        val expenseCurrencies = allCurrencies.filter { it.is_active }
+        val currencyLabels = expenseCurrencies.map { currency ->
+            val symbol = currency.symbol.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+            "${currency.name}$symbol"
+        }
+        dialogBinding.expenseCurrencySpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            currencyLabels,
+        )
+        val baseCurrencyIndex = expenseCurrencies.indexOfFirst { it.is_base }.takeIf { it >= 0 } ?: 0
+        if (expenseCurrencies.isNotEmpty()) {
+            dialogBinding.expenseCurrencySpinner.setSelection(baseCurrencyIndex)
+        }
+
+        expenseDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.expense_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.save, null)
+            .create()
+
+        expenseDialog?.setOnShowListener {
+            val saveButton = expenseDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            saveButton?.setOnClickListener {
+                saveExpense(
+                    dialogBinding = dialogBinding,
+                    expenseCurrencies = expenseCurrencies,
+                    activeSuppliers = activeSuppliers,
+                )
+            }
+        }
+        expenseDialog?.show()
+    }
+
+    private fun saveExpense(
+        dialogBinding: DialogExpenseBinding,
+        expenseCurrencies: List<Currency>,
+        activeSuppliers: List<Supplier>,
+    ) {
+        val description = dialogBinding.expenseDescriptionInput.text?.toString()?.trim().orEmpty()
+        val amountRaw = dialogBinding.expenseAmountInput.text?.toString()?.trim().orEmpty()
+        val expenseDate = dialogBinding.expenseDateInput.text?.toString()?.trim().orEmpty().ifBlank { todayIso() }
+        val currencyIndex = dialogBinding.expenseCurrencySpinner.selectedItemPosition
+        val currency = expenseCurrencies.getOrNull(currencyIndex)
+
+        if (description.isBlank()) {
+            dialogBinding.expenseDescriptionInput.error = getString(R.string.expense_description_required)
+            dialogBinding.expenseDescriptionInput.requestFocus()
+            return
+        }
+        val amount = amountRaw.toDoubleOrNull()
+        if (amount == null || amount <= 0.0) {
+            dialogBinding.expenseAmountInput.error = getString(R.string.expense_amount_required)
+            dialogBinding.expenseAmountInput.requestFocus()
+            return
+        }
+        if (currency == null) {
+            Toast.makeText(this, R.string.expense_currency_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val supplierIndex = dialogBinding.expenseSupplierSpinner.selectedItemPosition - 1
+        val supplierId = activeSuppliers.getOrNull(supplierIndex)?.id
+
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                withContext(Dispatchers.IO) {
+                    api.createExpense(
+                        expenseDate = expenseDate,
+                        description = description,
+                        amount = amountRaw,
+                        currencyId = currency.id,
+                        supplierId = supplierId,
+                    )
+                }
+                expenseDialog?.dismiss()
+                Toast.makeText(this@PosActivity, R.string.expense_recorded, Toast.LENGTH_SHORT).show()
+            } catch (err: ApiException) {
+                handleApiError(err)
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
     }
 
     private fun openDayEndDialog() {
@@ -186,29 +323,65 @@ class PosActivity : KeepScreenOnActivity() {
         dialogBinding.dayEndCurrencyFields.removeAllViews()
 
         val activeCurrencies = currencies.filter { it.is_active }
+        val fiscal = session.fiscalizationEnabled
+        val codes = activeCurrencies
+            .map { it.code.trim().uppercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+
         val countedInputs = linkedMapOf<Int, TextInputEditText>()
-        for (currency in activeCurrencies) {
-            val label = if (currency.is_base) {
-                currency.name
-            } else {
-                val symbol = currency.symbol.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
-                "${currency.name}$symbol"
-            }
-            val fieldLayout = TextInputLayout(this).apply {
-                hint = label
-                layoutParams = android.widget.LinearLayout.LayoutParams(
+        var selectedCode = codes.firstOrNull().orEmpty()
+        if (fiscal && codes.isNotEmpty()) {
+            val codeSpinner = android.widget.Spinner(this)
+            codeSpinner.adapter = android.widget.ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                codes,
+            )
+            dialogBinding.dayEndCurrencyFields.addView(
+                android.widget.TextView(this).apply {
+                    text = getString(R.string.day_end_currency_code)
+                    setTextColor(getColor(R.color.text_muted))
+                    textSize = 13f
+                    setPadding(0, 0, 0, 8)
+                },
+            )
+            dialogBinding.dayEndCurrencyFields.addView(
+                codeSpinner,
+                android.widget.LinearLayout.LayoutParams(
                     android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                     android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { bottomMargin = 12 }
+                ).apply { bottomMargin = 12 },
+            )
+            codeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long,
+                ) {
+                    selectedCode = codes[position]
+                    rebuildDayEndCurrencyInputs(
+                        dialogBinding,
+                        activeCurrencies,
+                        countedInputs,
+                        selectedCode = selectedCode,
+                        fiscal = true,
+                    )
+                }
+
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
             }
-            val input = TextInputEditText(fieldLayout.context).apply {
-                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-            }
-            fieldLayout.addView(input)
-            dialogBinding.dayEndCurrencyFields.addView(fieldLayout)
-            countedInputs[currency.id] = input
         }
+
+        rebuildDayEndCurrencyInputs(
+            dialogBinding,
+            activeCurrencies,
+            countedInputs,
+            selectedCode = selectedCode,
+            fiscal = fiscal,
+        )
 
         dayEndDialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.day_end_title)
@@ -225,6 +398,46 @@ class PosActivity : KeepScreenOnActivity() {
         dayEndDialog?.show()
     }
 
+    private fun rebuildDayEndCurrencyInputs(
+        dialogBinding: DialogDayEndBinding,
+        activeCurrencies: List<Currency>,
+        countedInputs: MutableMap<Int, TextInputEditText>,
+        selectedCode: String,
+        fiscal: Boolean,
+    ) {
+        // Keep the code spinner (first two children when fiscal); clear currency inputs after.
+        val keepPrefix = if (fiscal && selectedCode.isNotBlank()) 2 else 0
+        while (dialogBinding.dayEndCurrencyFields.childCount > keepPrefix) {
+            dialogBinding.dayEndCurrencyFields.removeViewAt(dialogBinding.dayEndCurrencyFields.childCount - 1)
+        }
+        countedInputs.clear()
+
+        val visible = if (fiscal && selectedCode.isNotBlank()) {
+            activeCurrencies.filter { it.code.trim().uppercase() == selectedCode }
+        } else {
+            activeCurrencies
+        }
+
+        for (currency in visible) {
+            val label = currency.name.ifBlank { currency.code }
+            val fieldLayout = TextInputLayout(this).apply {
+                hint = label
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = 12 }
+            }
+            val input = TextInputEditText(fieldLayout.context).apply {
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                tag = currency.code.trim().uppercase()
+            }
+            fieldLayout.addView(input)
+            dialogBinding.dayEndCurrencyFields.addView(fieldLayout)
+            countedInputs[currency.id] = input
+        }
+    }
+
     private fun printDayEndReport(
         dialogBinding: DialogDayEndBinding,
         countedInputs: Map<Int, TextInputEditText>,
@@ -232,6 +445,7 @@ class PosActivity : KeepScreenOnActivity() {
         val reportDate = dialogBinding.dayEndDateInput.text?.toString()?.trim().orEmpty()
             .ifBlank { todayIso() }
         val counted = linkedMapOf<Int, String>()
+        val countedCodes = linkedSetOf<String>()
         for ((currencyId, input) in countedInputs) {
             val raw = input.text?.toString()?.trim().orEmpty()
             if (raw.isBlank()) continue
@@ -245,7 +459,13 @@ class PosActivity : KeepScreenOnActivity() {
                 ).show()
                 return
             }
+            val code = (input.tag as? String).orEmpty()
+            if (code.isNotBlank()) countedCodes.add(code)
             counted[currencyId] = String.format(Locale.US, "%.2f", amount)
+        }
+        if (session.fiscalizationEnabled && countedCodes.size > 1) {
+            Toast.makeText(this, R.string.day_end_mixed_codes, Toast.LENGTH_LONG).show()
+            return
         }
 
         lifecycleScope.launch {
@@ -427,7 +647,19 @@ class PosActivity : KeepScreenOnActivity() {
         binding.modeToggle.check(binding.orderModeButton.id)
         binding.modeToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
+            if (checkedId == binding.receiptModeButton.id && !session.canCollectPayment) {
+                binding.modeToggle.check(binding.orderModeButton.id)
+                return@addOnButtonCheckedListener
+            }
             setPosMode(if (checkedId == binding.receiptModeButton.id) PosMode.RECEIPT else PosMode.ORDER)
+        }
+    }
+
+    private fun updateReceiptModeVisibility() {
+        val showReceipt = session.canCollectPayment
+        binding.receiptModeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
+        if (!showReceipt && posMode == PosMode.RECEIPT) {
+            setPosMode(PosMode.ORDER)
         }
     }
 
@@ -452,12 +684,167 @@ class PosActivity : KeepScreenOnActivity() {
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
+        val splitWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                updateSplitPaymentRemaining()
+                updateReceiptCheckoutState()
+            }
+        }
+        binding.splitPaymentEnabled.setOnCheckedChangeListener { _, isChecked ->
+            binding.splitPaymentFields.visibility = if (isChecked) View.VISIBLE else View.GONE
+            binding.currencyGroup.visibility = if (isChecked || paymentMethod == PaymentMethod.ACCOUNT) {
+                View.GONE
+            } else {
+                View.VISIBLE
+            }
+            if (!isChecked) {
+                clearSplitPaymentInputs()
+            } else {
+                renderSplitPaymentRows(splitWatcher)
+                updateSplitPaymentRemaining()
+            }
+            updateReceiptCheckoutState()
+        }
+        binding.splitFillCashButton.setOnClickListener {
+            if (!isSplitPaymentActive()) return@setOnClickListener
+            val orderTotal = receiptInclusiveTotal()
+            val target = currencies.firstOrNull { it.is_base && paymentRate(it) != null }
+                ?: usableCurrencies().firstOrNull { paymentRate(it) != null }
+                ?: return@setOnClickListener
+            val othersBase = splitPaymentLines()
+                .filter { it.first != target.id }
+                .sumOf { it.third }
+            val restBase = roundMoney(orderTotal - othersBase)
+            val rate = paymentRate(target) ?: return@setOnClickListener
+            val rest = roundMoney(restBase * rate)
+            val input = binding.splitPaymentRows.findViewWithTag<EditText>("split-${target.id}")
+            input?.setText(if (rest > 0) String.format("%.2f", rest) else "")
+            updateSplitPaymentRemaining()
+            updateReceiptCheckoutState()
+        }
+    }
+
+    private fun allowsSplitPayment(): Boolean = !session.fiscalizationEnabled
+
+    private fun isSplitPaymentActive(): Boolean {
+        return allowsSplitPayment()
+            && paymentMethod != PaymentMethod.ACCOUNT
+            && binding.splitPaymentEnabled.isChecked
+    }
+
+    private fun renderSplitPaymentRows(watcher: TextWatcher) {
+        binding.splitPaymentRows.removeAllViews()
+        usableCurrencies().forEach { currency ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).also { it.bottomMargin = (4 * resources.displayMetrics.density).toInt() }
+            }
+            val label = TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    (96 * resources.displayMetrics.density).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+                text = currency.name
+                setTextColor(ContextCompat.getColor(this@PosActivity, R.color.text_muted))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            }
+            val input = EditText(this).apply {
+                tag = "split-${currency.id}"
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                hint = splitPaymentPlaceholder(currency)
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                maxLines = 1
+                addTextChangedListener(watcher)
+            }
+            row.addView(label)
+            row.addView(input)
+            binding.splitPaymentRows.addView(row)
+        }
+    }
+
+    private fun clearSplitPaymentInputs() {
+        for (i in 0 until binding.splitPaymentRows.childCount) {
+            val row = binding.splitPaymentRows.getChildAt(i) as? LinearLayout ?: continue
+            (row.getChildAt(1) as? EditText)?.setText("")
+        }
+        updateSplitPaymentRemaining()
+    }
+
+    /** Triple(currencyId, amountInCurrency, amountInBase) */
+    private fun splitPaymentLines(): List<Triple<Int, Double, Double>> {
+        if (!isSplitPaymentActive()) return emptyList()
+        return usableCurrencies().mapNotNull { currency ->
+            val input = binding.splitPaymentRows.findViewWithTag<EditText>("split-${currency.id}")
+            val amount = input?.text?.toString()?.toDoubleOrNull() ?: 0.0
+            val rate = paymentRate(currency) ?: return@mapNotNull null
+            if (amount <= 0) return@mapNotNull null
+            val rounded = roundMoney(amount)
+            Triple(currency.id, rounded, roundMoney(rounded / rate))
+        }
+    }
+
+    private fun splitPaymentRemainingBase(excludeCurrencyId: Int? = null): Double? {
+        if (!isSplitPaymentActive()) return null
+        val orderTotal = receiptInclusiveTotal()
+        val othersBase = splitPaymentLines()
+            .filter { it.first != excludeCurrencyId }
+            .sumOf { it.third }
+        return roundMoney(orderTotal - othersBase)
+    }
+
+    private fun splitPaymentPlaceholder(currency: Currency): String {
+        val remainingBase = splitPaymentRemainingBase(currency.id) ?: return "0.00"
+        val rate = paymentRate(currency) ?: return "0.00"
+        val amount = roundMoney(remainingBase * rate)
+        return if (amount > 0) String.format(Locale.US, "%.2f", amount) else "0.00"
+    }
+
+    private fun updateSplitPaymentPlaceholders() {
+        if (!isSplitPaymentActive()) return
+        usableCurrencies().forEach { currency ->
+            val input = binding.splitPaymentRows.findViewWithTag<EditText>("split-${currency.id}")
+                ?: return@forEach
+            input.hint = splitPaymentPlaceholder(currency)
+        }
+    }
+
+    private fun updateSplitPaymentRemaining() {
+        if (!isSplitPaymentActive()) return
+        val orderTotal = receiptInclusiveTotal()
+        val allocated = splitPaymentLines().sumOf { it.third }
+        val remaining = roundMoney(orderTotal - allocated)
+        binding.splitRemainingLabel.text = getString(
+            R.string.split_remaining,
+            ProductAdapter.formatMoney(remaining, baseCurrencySymbol()),
+        )
+        updateSplitPaymentPlaceholders()
     }
 
     private fun syncPaymentMethodUi() {
         val isAccount = paymentMethod == PaymentMethod.ACCOUNT
         binding.customerGroup.visibility = if (isAccount) View.VISIBLE else View.GONE
-        binding.currencyGroup.visibility = if (isAccount) View.GONE else View.VISIBLE
+        val available = !isAccount && allowsSplitPayment()
+        binding.splitPaymentGroup.visibility = if (available) View.VISIBLE else View.GONE
+        if (!available) {
+            binding.splitPaymentEnabled.isChecked = false
+            binding.splitPaymentFields.visibility = View.GONE
+            clearSplitPaymentInputs()
+            binding.currencyGroup.visibility = if (isAccount) View.GONE else View.VISIBLE
+        } else {
+            val splitOn = binding.splitPaymentEnabled.isChecked
+            binding.splitPaymentFields.visibility = if (splitOn) View.VISIBLE else View.GONE
+            binding.currencyGroup.visibility = if (splitOn) View.GONE else View.VISIBLE
+            if (splitOn) {
+                updateSplitPaymentRemaining()
+            }
+        }
         updateAccountBalanceHint()
     }
 
@@ -539,8 +926,14 @@ class PosActivity : KeepScreenOnActivity() {
                 customer != null && balance >= total
             }
             PaymentMethod.CASH -> {
-                val currency = selectedCurrency()
-                currency != null && paymentRate(currency) != null
+                if (isSplitPaymentActive()) {
+                    val lines = splitPaymentLines()
+                    val allocated = lines.sumOf { it.third }
+                    lines.isNotEmpty() && kotlin.math.abs(allocated - total) < 0.005
+                } else {
+                    val currency = selectedCurrency()
+                    currency != null && paymentRate(currency) != null
+                }
             }
         }
         val combined = receiptOrders().size > 1
@@ -564,10 +957,11 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun updatePaymentTotalDisplay(baseTotal: Double) {
-        if (posMode != PosMode.RECEIPT || paymentMethod == PaymentMethod.ACCOUNT) {
+        if (posMode != PosMode.RECEIPT || paymentMethod == PaymentMethod.ACCOUNT || isSplitPaymentActive()) {
             binding.totalCaption.setText(R.string.total)
             binding.totalLabel.text = ProductAdapter.formatMoney(baseTotal, baseCurrencySymbol())
             binding.exchangeRateLabel.visibility = View.GONE
+            updateSplitPaymentRemaining()
             return
         }
         val currency = selectedCurrency()
@@ -587,10 +981,12 @@ class PosActivity : KeepScreenOnActivity() {
             } else {
                 binding.exchangeRateLabel.visibility = View.GONE
             }
+            updateSplitPaymentRemaining()
         } else {
             binding.totalCaption.setText(R.string.total)
             binding.totalLabel.text = ProductAdapter.formatMoney(baseTotal, baseCurrencySymbol())
             binding.exchangeRateLabel.visibility = View.GONE
+            updateSplitPaymentRemaining()
         }
     }
 
@@ -606,12 +1002,16 @@ class PosActivity : KeepScreenOnActivity() {
         binding.settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        binding.expenseButton.setOnClickListener { openExpenseDialog() }
         binding.dayEndButton.setOnClickListener { openDayEndDialog() }
         binding.clearButton.setOnClickListener {
             if (posMode == PosMode.ORDER) {
                 cart.clear()
                 renderCart()
             }
+        }
+        binding.cancelOrderButton.setOnClickListener {
+            cancelSelectedOrder()
         }
         binding.checkoutButton.setOnClickListener {
             if (posMode == PosMode.ORDER) {
@@ -634,16 +1034,22 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun setPosMode(mode: PosMode) {
-        posMode = mode
-        binding.orderModePanel.visibility = if (mode == PosMode.ORDER) View.VISIBLE else View.GONE
-        binding.receiptModePanel.visibility = if (mode == PosMode.RECEIPT) View.VISIBLE else View.GONE
-        binding.paymentSection.visibility = if (mode == PosMode.RECEIPT && selectedOrder != null) View.VISIBLE else View.GONE
+        val resolvedMode = if (mode == PosMode.RECEIPT && !session.canCollectPayment) {
+            PosMode.ORDER
+        } else {
+            mode
+        }
+        posMode = resolvedMode
+        binding.orderModePanel.visibility = if (resolvedMode == PosMode.ORDER) View.VISIBLE else View.GONE
+        binding.receiptModePanel.visibility = if (resolvedMode == PosMode.RECEIPT) View.VISIBLE else View.GONE
+        binding.paymentSection.visibility = if (resolvedMode == PosMode.RECEIPT && selectedOrder != null) View.VISIBLE else View.GONE
 
-        if (mode == PosMode.RECEIPT) {
+        if (resolvedMode == PosMode.RECEIPT) {
             selectedOrder = null
             receiptAdapter.selectedOrderId = null
             binding.panelTitle.text = getString(R.string.collect_payment)
             binding.checkoutButton.text = getString(R.string.collect_payment)
+            binding.cancelOrderButton.visibility = View.GONE
             loadOpenOrders()
             startReceiptRefresh()
         } else {
@@ -651,6 +1057,7 @@ class PosActivity : KeepScreenOnActivity() {
             selectedOrder = null
             binding.panelTitle.text = getString(R.string.current_order)
             binding.checkoutButton.text = getString(R.string.place_order)
+            binding.cancelOrderButton.visibility = View.GONE
             syncOrderTypeUi(if (binding.orderTypeSpinner.selectedItemPosition == 1) "dine_in" else "takeaway")
             renderCart()
         }
@@ -681,6 +1088,7 @@ class PosActivity : KeepScreenOnActivity() {
                     )
                 }
                 products = catalog.products
+                allCurrencies = catalog.currencies
                 currencies = catalog.currencies.filter {
                     it.is_active && (it.is_base || !it.current_rate.isNullOrBlank())
                 }
@@ -849,6 +1257,7 @@ class PosActivity : KeepScreenOnActivity() {
         binding.cartList.visibility = if (hasLines) View.VISIBLE else View.GONE
         binding.clearButton.isEnabled = hasLines
         binding.checkoutButton.isEnabled = hasLines
+        binding.cancelOrderButton.visibility = View.GONE
         val total = lines.sumOf { it.price * it.quantity }
         binding.totalCaption.setText(R.string.total)
         binding.totalLabel.text = ProductAdapter.formatMoney(total, baseCurrencySymbol())
@@ -873,6 +1282,7 @@ class PosActivity : KeepScreenOnActivity() {
     private fun renderReceiptPanel() {
         val order = selectedOrder
         if (order == null) {
+            receiptPaymentOrderId = null
             binding.cartList.adapter = cartAdapter
             cartAdapter.submitList(emptyList())
             binding.emptyCartLabel.visibility = View.VISIBLE
@@ -880,11 +1290,15 @@ class PosActivity : KeepScreenOnActivity() {
             binding.paymentSection.visibility = View.GONE
             binding.clearButton.isEnabled = false
             binding.checkoutButton.isEnabled = false
+            binding.cancelOrderButton.visibility = View.GONE
             binding.totalCaption.setText(R.string.total)
             binding.totalLabel.text = ProductAdapter.formatMoney(0.0, baseCurrencySymbol())
             binding.exchangeRateLabel.visibility = View.GONE
             return
         }
+
+        val orderChanged = receiptPaymentOrderId != order.id
+        receiptPaymentOrderId = order.id
 
         val lines = receiptOrders().flatMap { tableOrder ->
             tableOrder.items.map { item ->
@@ -918,9 +1332,15 @@ class PosActivity : KeepScreenOnActivity() {
         binding.cartList.visibility = View.VISIBLE
         binding.paymentSection.visibility = View.VISIBLE
         binding.clearButton.isEnabled = false
-        paymentMethod = PaymentMethod.CASH
-        binding.paymentMethodToggle.check(binding.cashPaymentButton.id)
-        setupCustomerSpinner(order.customer)
+        binding.cancelOrderButton.visibility = View.VISIBLE
+        binding.cancelOrderButton.isEnabled = true
+        if (orderChanged) {
+            paymentMethod = PaymentMethod.CASH
+            binding.paymentMethodToggle.check(binding.cashPaymentButton.id)
+            setupCustomerSpinner(order.customer)
+            binding.splitPaymentEnabled.isChecked = false
+            clearSplitPaymentInputs()
+        }
         syncPaymentMethodUi()
         renderCurrencyButtons()
         updateReceiptCheckoutState()
@@ -979,6 +1399,43 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
+    private fun cancelSelectedOrder() {
+        val order = selectedOrder ?: return
+        MaterialAlertDialogBuilder(this)
+            .setMessage(getString(R.string.cancel_order_confirm, order.id))
+            .setPositiveButton(R.string.cancel_order) { _, _ ->
+                performCancelOrder(order)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun performCancelOrder(order: KitchenOrder) {
+        binding.cancelOrderButton.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    api.cancelOrder(order.id)
+                }
+                Toast.makeText(
+                    this@PosActivity,
+                    getString(R.string.order_cancelled, order.id),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                selectedOrder = null
+                receiptAdapter.selectedOrderId = null
+                loadOpenOrders(silent = true)
+                renderReceiptPanel()
+            } catch (err: ApiException) {
+                handleApiError(err)
+                binding.cancelOrderButton.isEnabled = selectedOrder != null
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+                binding.cancelOrderButton.isEnabled = selectedOrder != null
+            }
+        }
+    }
+
     private fun paySelectedOrder() {
         val order = selectedOrder ?: return
         val total = receiptInclusiveTotal()
@@ -1003,7 +1460,22 @@ class PosActivity : KeepScreenOnActivity() {
                 return
             }
         } else {
-            if (selectedCurrency() == null) {
+            if (isSplitPaymentActive()) {
+                val lines = splitPaymentLines()
+                val allocated = lines.sumOf { it.third }
+                if (lines.isEmpty() || kotlin.math.abs(allocated - total) >= 0.005) {
+                    Toast.makeText(
+                        this,
+                        getString(
+                            R.string.split_must_total,
+                            ProductAdapter.formatMoney(total, baseCurrencySymbol()),
+                            ProductAdapter.formatMoney(allocated, baseCurrencySymbol()),
+                        ),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return
+                }
+            } else if (selectedCurrency() == null) {
                 Toast.makeText(this, R.string.select_currency, Toast.LENGTH_SHORT).show()
                 return
             }
@@ -1020,9 +1492,19 @@ class PosActivity : KeepScreenOnActivity() {
                         }
                         api.payOrderFromAccount(order.id)
                     } else {
-                        api.payOrderCash(order.id, selectedCurrency()!!.id)
+                        val lines = if (isSplitPaymentActive()) splitPaymentLines() else emptyList()
+                        if (lines.isNotEmpty()) {
+                            api.payOrderWithTenders(
+                                order.id,
+                                lines.map { it.first to String.format("%.2f", it.second) },
+                            )
+                        } else {
+                            api.payOrderCash(order.id, selectedCurrency()!!.id)
+                        }
                     }
                 }
+                binding.splitPaymentEnabled.isChecked = false
+                clearSplitPaymentInputs()
                 printReceipt(paid)
                 if (paymentMethod == PaymentMethod.ACCOUNT && paid.customer != null) {
                     val updatedBalance = paid.customer_account_balance
@@ -1064,6 +1546,7 @@ class PosActivity : KeepScreenOnActivity() {
                 }
                 Toast.makeText(this@PosActivity, message, Toast.LENGTH_LONG).show()
                 selectedOrder = null
+                receiptPaymentOrderId = null
                 receiptAdapter.selectedOrderId = null
                 loadOpenOrders()
             } catch (err: ApiException) {

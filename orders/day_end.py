@@ -6,10 +6,11 @@ from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .models import Expense, Order, OrderItem, OrderStatus, OrderType, PaymentMethod
+from .models import Expense, Order, OrderItem, OrderPayment, OrderStatus, OrderType, PaymentMethod, TenderMethod
 from .tax import line_amount, split_inclusive_total
 
 ORDER_TYPE_LABELS = dict(OrderType.choices)
+TENDER_METHOD_LABELS = dict(TenderMethod.choices)
 
 
 def local_day_range(report_date=None):
@@ -68,16 +69,53 @@ def build_day_end_report(
     ]
 
     payments = list(
-        orders_qs.exclude(payment_method=PaymentMethod.ACCOUNT)
-        .values(
-            "payment_currency__id",
-            "payment_currency__code",
-            "payment_currency__name",
-            "payment_currency__symbol",
+        OrderPayment.objects.filter(
+            order__branch=branch,
+            order__status=OrderStatus.PAID,
+            order__paid_at__gte=start,
+            order__paid_at__lt=end,
         )
-        .annotate(order_count=Count("id"), total_paid=Coalesce(Sum("amount_paid"), Decimal("0")))
-        .order_by("payment_currency__name")
+        .values(
+            "currency__id",
+            "currency__code",
+            "currency__name",
+            "currency__symbol",
+        )
+        .annotate(
+            order_count=Count("order", distinct=True),
+            total_paid=Coalesce(Sum("amount"), Decimal("0")),
+        )
+        .order_by("currency__name")
     )
+    # Keep day-end template field names stable.
+    for row in payments:
+        row["payment_currency__id"] = row.pop("currency__id")
+        row["payment_currency__code"] = row.pop("currency__code")
+        row["payment_currency__name"] = row.pop("currency__name")
+        row["payment_currency__symbol"] = row.pop("currency__symbol")
+
+    payments_by_method = list(
+        OrderPayment.objects.filter(
+            order__branch=branch,
+            order__status=OrderStatus.PAID,
+            order__paid_at__gte=start,
+            order__paid_at__lt=end,
+        )
+        .values(
+            "method",
+            "currency__id",
+            "currency__code",
+            "currency__name",
+            "currency__symbol",
+        )
+        .annotate(
+            payment_count=Count("id"),
+            total_paid=Coalesce(Sum("amount"), Decimal("0")),
+        )
+        .order_by("method", "currency__name")
+    )
+    for row in payments_by_method:
+        row["method_label"] = TENDER_METHOD_LABELS.get(row["method"], row["method"])
 
     from customers.models import CustomerAccountTransaction, CustomerAccountTransactionType
 
@@ -211,6 +249,7 @@ def build_day_end_report(
         "tax_breakdown": tax_breakdown,
         "order_types": order_types,
         "payments": payments,
+        "payments_by_method": payments_by_method,
         "account_payments_total": account_payments_total,
         "cashup_rows": cashup_rows,
         "has_counted_entries": has_counted_entries,

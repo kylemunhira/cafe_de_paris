@@ -56,6 +56,14 @@ class Currency(models.Model):
             raise ValidationError(f'No exchange rate configured for "{self.name}".')
         return (base_amount * rate).quantize(Decimal("0.01"))
 
+    def convert_to_base(self, amount: Decimal) -> Decimal:
+        rate = self.get_current_rate()
+        if rate is None:
+            raise ValidationError(f'No exchange rate configured for "{self.name}".')
+        if rate == 0:
+            raise ValidationError(f'Invalid exchange rate for "{self.name}".')
+        return (amount / rate).quantize(Decimal("0.01"))
+
 
 class CurrencyRate(models.Model):
     currency = models.ForeignKey(

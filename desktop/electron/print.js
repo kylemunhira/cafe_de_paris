@@ -305,16 +305,31 @@ function renderOrderSlipHtml(data) {
   );
 }
 
+function tenderMethodLabel(method) {
+  const labels = { cash: "Cash", bank: "Bank", ecocash: "EcoCash" };
+  return labels[method] || method || "Payment";
+}
+
 function renderReceiptHtml(data) {
   const { branch, order, tax, payment, baseCurrency, fiscal, salesperson } = data;
   const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
   const receiptLine = order.receipt_number ? `<p>Receipt #${esc(order.receipt_number)}</p>` : "";
+  const tenderLines = Array.isArray(payment?.lines) ? payment.lines : [];
   const paymentRows = payment
     ? [
         ["Paid in", payment.currencyCode || payment.currencyName || ""],
         ...(payment.exchangeRate && !payment.isBase
           ? [["Exchange rate", String(payment.exchangeRate)]]
           : []),
+        ...tenderLines.map((line) => [
+          line.currencyName || line.currency_name || tenderMethodLabel(line.method),
+          formatPaidAmount({
+            amountPaid: line.amount,
+            symbol: line.symbol || payment.symbol,
+            currencyCode: line.currencyCode || payment.currencyCode,
+            currencyName: line.currencyName || payment.currencyName,
+          }),
+        ]),
       ]
     : [];
 
@@ -520,12 +535,32 @@ function renderTestPageHtml() {
 
 function formatPaymentLine(payment) {
   const currency = payment.currency;
-  const label = truncText(currency?.code || currency?.name || "—", 10).padEnd(10);
+  const code =
+    payment.payment_currency__code ||
+    payment.payment_currency__name ||
+    currency?.code ||
+    currency?.name ||
+    "—";
+  const label = truncText(code, 10).padEnd(10);
   const amount = money(payment.total_paid);
-  const symbol = currency?.symbol || "";
+  const symbol = payment.payment_currency__symbol || currency?.symbol || "";
   const amountText = symbol ? `${symbol}${amount}` : amount;
-  const count = `(${payment.order_count})`;
+  const count = `(${payment.order_count || 0})`;
   return padLine(`${label} ${amountText}`, count, LINE_CHARS);
+}
+
+function formatExpenseLine(expense) {
+  const label = truncText(expense.description || "Expense", 18).padEnd(18);
+  const symbol = expense.currency__symbol || "";
+  const amount = money(expense.amount);
+  const amountText = symbol ? `${symbol}${amount}` : amount;
+  return padLine(label, amountText, LINE_CHARS);
+}
+
+function formatCashupLine(label, value, symbol = "") {
+  const amount = value == null || value === "" ? "—" : money(value);
+  const amountText = symbol && value != null && value !== "" ? `${symbol}${amount}` : amount;
+  return padLine(label, amountText, LINE_CHARS);
 }
 
 function renderProductSummaryBlock(products) {
@@ -548,27 +583,54 @@ function renderProductSummaryBlock(products) {
 function renderDayEndReportHtml(data) {
   const { branch, report, tax, baseCurrency, printedAt } = data;
   const baseLabel = baseCurrency ? ` (${currencyCode(baseCurrency)})` : "";
-  const orderTypeRows = (report.orderTypes || []).map((row) => [
+  const reportDate = report.reportDate || report.report_date || "";
+  const orderCount = report.orderCount || report.order_count || 0;
+  const orderTypes = report.orderTypes || report.order_types || [];
+  const orderTypeRows = orderTypes.map((row) => [
     orderTypeLabel(row.order_type),
     String(row.count),
   ]);
 
   const paymentLines = (report.payments || []).map((payment) => formatPaymentLine(payment));
+  const expenseLines = (report.expenses || []).map((expense) => formatExpenseLine(expense));
+  const cashupRows = report.cashup_rows || [];
+  const cashupBlocks = cashupRows
+    .map((row) => {
+      const code =
+        row.payment_currency__name ||
+        row.payment_currency__code ||
+        row.currency?.name ||
+        row.currency?.code ||
+        "—";
+      const symbol = row.payment_currency__symbol || row.currency?.symbol || "";
+      const lines = [
+        formatCashupLine(`${code} expected`, row.expected_total, symbol),
+      ];
+      const expensesTotal = row.expenses_total;
+      if (expensesTotal && expensesTotal !== "0" && expensesTotal !== "0.00") {
+        lines.push(formatCashupLine("Less expenses", expensesTotal, symbol));
+        lines.push(formatCashupLine("Net expected", row.net_expected_total, symbol));
+      }
+      lines.push(formatCashupLine("Counted", row.counted_total, symbol));
+      lines.push(formatCashupLine("Variance", row.variance, symbol));
+      return lines.join("\n");
+    })
+    .join("\n");
 
   return wrapDocument(
-    `Day end ${report.reportDate || ""}`,
+    `Day end ${reportDate}`,
     `
     <div class="receipt">
       ${renderBrandHeader(branch)}
       <div class="center meta">
         <p><strong>Day End Report</strong></p>
-        <p>${esc(formatReportDate(report.reportDate))}</p>
+        <p>${esc(formatReportDate(reportDate))}</p>
         <p>Printed ${esc(formatDateTime(printedAt))}</p>
       </div>
       <hr class="divider">
       ${renderSummaryBlock(
         [
-          ["Orders", String(report.orderCount || 0)],
+          ["Orders", String(orderCount)],
           ...(orderTypeRows.length ? orderTypeRows : []),
         ],
         { boxed: true }
@@ -576,7 +638,7 @@ function renderDayEndReportHtml(data) {
       <hr class="divider">
       <div class="center meta"><p><strong>Sales${esc(baseLabel)}</strong></p></div>
       ${
-        report.orderCount
+        orderCount
           ? renderSummaryBlock([
               [`Subtotal${baseLabel}`, money(tax?.subtotal)],
               [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
@@ -590,6 +652,33 @@ function renderDayEndReportHtml(data) {
       <hr class="divider">
       <div class="center meta"><p><strong>Payments collected</strong></p></div>
       <pre class="lines">${esc(paymentLines.join("\n"))}</pre>`
+          : ""
+      }
+      ${
+        expenseLines.length
+          ? `
+      <hr class="divider">
+      <div class="center meta"><p><strong>Expenses</strong></p></div>
+      <pre class="lines">${esc(expenseLines.join("\n"))}</pre>`
+          : ""
+      }
+      ${
+        cashupBlocks
+          ? `
+      <hr class="divider">
+      <div class="center meta"><p><strong>Cash-up reconciliation</strong></p></div>
+      <pre class="lines">${esc(cashupBlocks)}</pre>
+      ${
+        report.has_counted_entries
+          ? `<pre class="lines">${esc(
+              padLine(
+                "Total variance",
+                money(report.variance_total || "0"),
+                LINE_CHARS
+              )
+            )}</pre>`
+          : ""
+      }`
           : ""
       }
       <hr class="divider">

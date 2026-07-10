@@ -15,8 +15,12 @@
       <p id="branch-label">Branch</p>
     </div>
     <div class="pos-topbar-actions">
-      <span id="sync-status" class="sync-badge">Offline</span>
+      <div id="sync-status" class="sync-status">
+        <span id="sync-status-label" class="sync-badge">Offline</span>
+        <span id="sync-status-error" class="sync-status-error" hidden></span>
+      </div>
       <button type="button" class="btn btn-ghost" id="fiscal-day-btn" hidden>Fiscal day</button>
+      <button type="button" class="btn btn-ghost" id="expense-btn">Add expense</button>
       <button type="button" class="btn btn-ghost" id="dayend-btn">Day end</button>
       <button type="button" class="btn btn-ghost" id="settings-btn">Settings</button>
       <button type="button" class="btn btn-ghost" id="sync-btn">Sync now</button>
@@ -48,6 +52,7 @@
               <span id="table-select-label">Choose table…</span>
             </button>
             <input type="hidden" id="table-number" value="">
+            <p id="tables-in-use-summary" class="tables-in-use-summary" hidden></p>
           </div>
         </div>
 
@@ -77,7 +82,7 @@
         <div id="receipt-mode-panel" class="card receipt-panel" style="display: none;">
           <div class="receipt-panel-header">
             <h3>Open orders</h3>
-            <p>Select an order to collect payment · kitchen status updates automatically</p>
+            <p>Select an order to collect payment · shows all open branch orders when online</p>
           </div>
           <div class="receipt-orders-list" id="receipt-orders-list"></div>
         </div>
@@ -116,6 +121,19 @@
                 <span class="pos-segment-placeholder">Loading…</span>
               </div>
             </div>
+            <div id="split-payment-group" style="display: none; margin-bottom: 0.75rem;">
+              <label class="split-payment-toggle">
+                <input type="checkbox" id="split-payment-enabled">
+                <span>Split across payment currencies</span>
+              </label>
+              <div id="split-payment-fields" style="display: none; margin-top: 0.6rem;">
+                <div class="split-payment-rows" id="split-payment-rows"></div>
+                <div class="split-payment-meta">
+                  <span>Remaining: <strong id="split-remaining">—</strong></span>
+                  <button type="button" class="btn btn-ghost btn-sm" id="split-fill-base-btn">Put rest on base</button>
+                </div>
+              </div>
+            </div>
             <div class="receipt-totals" id="receipt-totals"></div>
           </div>
           <div class="cart-total">
@@ -124,6 +142,9 @@
           </div>
           <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>
             Place Order
+          </button>
+          <button class="btn btn-ghost" id="cancel-order-btn" style="width: 100%; margin-top: 0.5rem; display: none;" disabled>
+            Cancel Order
           </button>
           <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>
             Clear Cart
@@ -209,6 +230,72 @@
         <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
           <button type="button" class="btn btn-ghost" id="stock-take-required-cancel-btn">Cancel</button>
           <button type="button" class="btn btn-primary" id="stock-take-required-open-btn">Open stock take</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="expense-modal" class="modal-overlay" hidden>
+    <div class="modal card" role="dialog" aria-labelledby="expense-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="expense-title">Record expense</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="expense-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="expense-date">Date</label>
+          <input type="date" id="expense-date" class="report-input">
+        </div>
+        <div class="form-group">
+          <label for="expense-supplier">Supplier (optional)</label>
+          <select id="expense-supplier" class="report-input">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="expense-description">Description</label>
+          <input type="text" id="expense-description" class="report-input" maxlength="200" placeholder="e.g. Milk delivery, petty cash">
+        </div>
+        <div class="form-group">
+          <label for="expense-currency">Currency</label>
+          <select id="expense-currency" class="report-input"></select>
+        </div>
+        <div class="form-group">
+          <label for="expense-amount">Amount</label>
+          <input type="number" id="expense-amount" class="report-input" step="0.01" min="0.01" placeholder="0.00">
+        </div>
+        <p class="settings-hint">Requires an online connection.</p>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+          <button type="button" class="btn btn-ghost" id="expense-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="expense-save-btn">Save expense</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dayend-modal" class="modal-overlay" hidden>
+    <div class="modal card" role="dialog" aria-labelledby="dayend-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="dayend-title">Day-end cash-up</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="dayend-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="dayend-date">Report date</label>
+          <input type="date" id="dayend-date" class="report-input">
+        </div>
+        <p class="settings-hint" style="margin-bottom:0.75rem;">
+          Enter counted amounts per currency. Leave blank for currencies you have not counted.
+          On fiscal branches, count only one currency code (USD or ZWG) — do not mix them.
+        </p>
+        <div id="dayend-code-group" class="form-group" hidden style="margin-bottom:0.75rem;">
+          <label for="dayend-currency-code">Currency code</label>
+          <select id="dayend-currency-code" class="report-input"></select>
+        </div>
+        <div id="dayend-currency-fields" style="display:grid; gap:0.6rem;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+          <button type="button" class="btn btn-ghost" id="dayend-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="dayend-print-btn">Print cash-up</button>
         </div>
       </div>
     </div>

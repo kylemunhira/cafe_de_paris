@@ -85,6 +85,8 @@ function initDb() {
   ensureOrderColumn("kitchen_ready_at", "TEXT");
   ensureOrderColumn("created_by_name", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("paid_by_name", "TEXT NOT NULL DEFAULT ''");
+  ensureOrderColumn("payment_method", "TEXT NOT NULL DEFAULT ''");
+  ensureOrderColumn("payments_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureTableColumn("products", "addon_groups_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureTableColumn("order_items", "notes", "TEXT NOT NULL DEFAULT ''");
   ensureTableColumn("order_items", "addons_json", "TEXT NOT NULL DEFAULT '[]'");
@@ -404,6 +406,15 @@ function consolidateTableOrders(clientId) {
   return getOrder(clientId);
 }
 
+function parsePaymentsJson(raw) {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function getOrder(clientId) {
   const order = db.prepare("SELECT * FROM orders WHERE client_id = ?").get(clientId);
   if (!order) return null;
@@ -413,7 +424,11 @@ function getOrder(clientId) {
     )
     .all(clientId)
     .map(mapOrderItem);
-  return { ...order, items };
+  return {
+    ...order,
+    items,
+    payments: parsePaymentsJson(order.payments_json),
+  };
 }
 
 function listOpenOrders() {
@@ -431,10 +446,34 @@ function listOpenOrders() {
   }));
 }
 
-function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumber, paidByName = "" }) {
+function cancelOrder(clientId) {
+  const order = getOrder(clientId);
+  if (!order || order.status !== "open") {
+    throw new Error("Only open orders can be cancelled.");
+  }
+  db.prepare(
+    `UPDATE orders SET status = 'cancelled', sync_status = 'synced' WHERE client_id = ?`
+  ).run(clientId);
+  return getOrder(clientId);
+}
+
+function payOrder(
+  clientId,
+  {
+    currencyId,
+    exchangeRate,
+    amountPaid,
+    receiptNumber,
+    paidByName = "",
+    paymentMethod = "cash",
+    payments = [],
+  },
+  { markSynced = false } = {}
+) {
   const order = consolidateTableOrders(clientId);
   const targetId = order.client_id;
   const paidAt = new Date().toISOString();
+  const paymentsJson = JSON.stringify(Array.isArray(payments) ? payments : []);
   db.prepare(
     `UPDATE orders SET
       status = 'paid',
@@ -444,10 +483,79 @@ function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumbe
       receipt_number = ?,
       paid_at = ?,
       paid_by_name = ?,
-      sync_status = 'pending'
+      payment_method = ?,
+      payments_json = ?,
+      sync_status = ?
     WHERE client_id = ?`
-  ).run(currencyId, exchangeRate, amountPaid, receiptNumber, paidAt, paidByName || "", targetId);
+  ).run(
+    currencyId,
+    exchangeRate,
+    amountPaid,
+    receiptNumber,
+    paidAt,
+    paidByName || "",
+    paymentMethod || "cash",
+    paymentsJson,
+    markSynced ? "synced" : "pending",
+    targetId
+  );
   return getOrder(targetId);
+}
+
+function dismissLocalTableOrders(tableNumber, keepClientId = null) {
+  const table = (tableNumber || "").trim();
+  if (!table) return 0;
+  if (keepClientId) {
+    return db
+      .prepare(
+        `UPDATE orders SET status = 'cancelled', sync_status = 'synced'
+         WHERE status = 'open' AND order_type = 'dine_in' AND table_number = ? AND client_id != ?`
+      )
+      .run(table, keepClientId).changes;
+  }
+  return db
+    .prepare(
+      `UPDATE orders SET status = 'cancelled', sync_status = 'synced'
+       WHERE status = 'open' AND order_type = 'dine_in' AND table_number = ?`
+    )
+    .run(table).changes;
+}
+
+function syncLocalPaymentFromServer(
+  serverId,
+  {
+    currencyId,
+    exchangeRate,
+    amountPaid,
+    receiptNumber,
+    paidByName = "",
+    paymentMethod = "cash",
+    payments = [],
+  }
+) {
+  const row = db
+    .prepare("SELECT client_id FROM orders WHERE server_id = ? AND status = 'open' LIMIT 1")
+    .get(serverId);
+  if (!row) return null;
+
+  const order = consolidateTableOrders(row.client_id);
+  const paid = payOrder(
+    order.client_id,
+    {
+      currencyId,
+      exchangeRate,
+      amountPaid,
+      receiptNumber,
+      paidByName,
+      paymentMethod,
+      payments,
+    },
+    { markSynced: true }
+  );
+  if ((paid.table_number || "").trim()) {
+    dismissLocalTableOrders(paid.table_number, paid.client_id);
+  }
+  return paid;
 }
 
 function listPendingSyncOrders() {
@@ -456,6 +564,7 @@ function listPendingSyncOrders() {
     .all()
     .map((order) => ({
       ...order,
+      payments: parsePaymentsJson(order.payments_json),
       items: db
         .prepare(
           "SELECT product_id, product_name, quantity, price, notes, addons_json FROM order_items WHERE order_client_id = ?"
@@ -518,6 +627,38 @@ function updateKitchenStatuses(updates) {
 function pendingSyncCount() {
   return db.prepare("SELECT COUNT(*) AS count FROM orders WHERE sync_status = 'pending'").get()
     .count;
+}
+
+function recordSyncError(message) {
+  const error = (message || "").trim();
+  db.prepare(
+    "UPDATE orders SET sync_error = ? WHERE sync_status = 'pending'"
+  ).run(error || null);
+  if (error) {
+    setSetting("last_sync_error", error);
+  }
+}
+
+function clearSyncErrors() {
+  db.prepare(
+    "UPDATE orders SET sync_error = NULL WHERE sync_status = 'pending'"
+  ).run();
+  setSetting("last_sync_error", "");
+}
+
+function getPendingSyncStatus() {
+  const pending = pendingSyncCount();
+  const lastError = (getSetting("last_sync_error", "") || "").trim();
+  const orderError = db
+    .prepare(
+      `SELECT sync_error FROM orders
+       WHERE sync_status = 'pending' AND sync_error IS NOT NULL AND sync_error != ''
+       ORDER BY created_at DESC
+       LIMIT 1`
+    )
+    .get();
+  const error = (orderError?.sync_error || lastError || "").trim();
+  return { pending, error };
 }
 
 function getCatalogSyncedAt() {
@@ -607,11 +748,17 @@ module.exports = {
   createOrder,
   getOrder,
   listOpenOrders,
+  cancelOrder,
   payOrder,
+  dismissLocalTableOrders,
+  syncLocalPaymentFromServer,
   listPendingSyncOrders,
   markOrderSynced,
   updateKitchenStatuses,
   pendingSyncCount,
+  recordSyncError,
+  clearSyncErrors,
+  getPendingSyncStatus,
   getCatalogSyncedAt,
   getDayEndReport,
 };

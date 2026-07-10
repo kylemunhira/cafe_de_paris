@@ -34,7 +34,18 @@ class OrderType(models.TextChoices):
 
 class PaymentMethod(models.TextChoices):
     CASH = "cash", "Cash"
+    BANK = "bank", "Bank"
+    ECOCASH = "ecocash", "EcoCash"
     ACCOUNT = "account", "Customer account"
+    MULTI = "multi", "Split payment"
+
+
+class TenderMethod(models.TextChoices):
+    """Tender types that can appear on a split (non-account) payment."""
+
+    CASH = "cash", "Cash"
+    BANK = "bank", "Bank"
+    ECOCASH = "ecocash", "EcoCash"
 
 
 class Order(models.Model):
@@ -82,7 +93,7 @@ class Order(models.Model):
         choices=PaymentMethod.choices,
         blank=True,
         default="",
-        help_text="How the order was paid (cash or customer account).",
+        help_text="How the order was paid (cash, bank, EcoCash, account, or split).",
     )
     status = models.CharField(
         max_length=20,
@@ -125,6 +136,19 @@ class Order(models.Model):
         blank=True,
         related_name="orders_paid",
         help_text="POS cashier who collected payment.",
+    )
+    cancelled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the order was cancelled (unpaid) or voided (paid).",
+    )
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_cancelled",
+        help_text="Staff who cancelled or voided the order.",
     )
     fiscal_approval_status = models.CharField(
         max_length=20,
@@ -175,6 +199,46 @@ class BranchReceiptSequence(models.Model):
 
     def __str__(self):
         return f"Receipt sequence for {self.branch}"
+
+
+class OrderPayment(models.Model):
+    """One currency tender line on a paid order."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="payments",
+    )
+    method = models.CharField(
+        max_length=20,
+        choices=TenderMethod.choices,
+        default=TenderMethod.CASH,
+        help_text="Inferred from the payment currency name when possible.",
+    )
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="order_payments",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    exchange_rate = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "currency"],
+                name="orders_orderpayment_unique_order_currency",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.currency} {self.amount} on order #{self.order_id}"
 
 
 class OrderItem(models.Model):
@@ -285,3 +349,91 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"{self.description} — {self.amount} ({self.branch})"
+
+
+class DayEndClose(models.Model):
+    """Persisted POS day-end cash-up (variance + activity snapshot)."""
+
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="day_end_closes",
+    )
+    report_date = models.DateField(
+        help_text="Business day this cash-up covers.",
+    )
+    closed_at = models.DateTimeField(auto_now=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="day_end_closes",
+    )
+    notes = models.CharField(max_length=255, blank=True, default="")
+    order_count = models.PositiveIntegerField(default=0)
+    gross_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    expenses_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    variance_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    has_counted_entries = models.BooleanField(default=False)
+    activity_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Frozen day-end report payload at close time.",
+    )
+
+    class Meta:
+        ordering = ["-report_date", "-closed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("branch", "report_date"),
+                name="orders_dayendclose_unique_branch_date",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Day end {self.report_date} — {self.branch}"
+
+
+class DayEndCashLine(models.Model):
+    """Per-currency cash-up line for a saved day-end close."""
+
+    day_end = models.ForeignKey(
+        DayEndClose,
+        on_delete=models.CASCADE,
+        related_name="cash_lines",
+    )
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="day_end_cash_lines",
+    )
+    sales_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    deposits_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    expenses_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    expected_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    net_expected_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    counted_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    variance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["currency__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("day_end", "currency"),
+                name="orders_dayendcashline_unique_day_currency",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.day_end} — {self.currency}"

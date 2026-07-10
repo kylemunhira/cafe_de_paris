@@ -162,7 +162,12 @@ class MainActivity : KeepScreenOnActivity() {
         binding.loginPanel.visibility = View.GONE
         binding.kitchenPanel.visibility = View.VISIBLE
         binding.branchLabel.text = getString(R.string.branch_label, session.branchName ?: "")
-        binding.staffLabel.text = session.displayName ?: ""
+        val stationLabel = session.kitchenStationDisplay
+        binding.staffLabel.text = if (stationLabel.isNullOrBlank()) {
+            session.displayName ?: ""
+        } else {
+            "${session.displayName ?: ""} · $stationLabel"
+        }
         updateStatus(getString(R.string.status_waiting))
     }
 

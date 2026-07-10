@@ -46,6 +46,17 @@
           POS access (web &amp; desktop)
         </label>
       </div>
+      <div class="form-group">
+        <label for="kitchen_station">Kitchen display station</label>
+        <select id="kitchen_station" name="kitchen_station">
+          <option value="">All stations</option>
+          <option value="kitchen">Kitchen</option>
+          <option value="bar">Bar</option>
+        </select>
+        <p style="margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--color-muted);">
+          Kitchen app users only see and auto-print orders for categories on this station.
+        </p>
+      </div>
       <div class="form-group" id="active-field" style="display: none;">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
           <input type="checkbox" id="is_active" name="is_active" checked>
@@ -84,6 +95,7 @@ const passwordHint = document.getElementById("password-hint");
 const activeField = document.getElementById("active-field");
 const isActiveInput = document.getElementById("is_active");
 const posAccessInput = document.getElementById("pos_access");
+const kitchenStationSelect = document.getElementById("kitchen_station");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const usersTable = document.getElementById("users-table");
@@ -99,13 +111,14 @@ const USER_SORT = {
   branch_name: (u) => u.branch_name || "",
   role: (u) => u.role_display || "",
   pos_access: (u) => u.pos_access ? 1 : 0,
+  kitchen_station: (u) => u.kitchen_station_display || "",
   is_active: (u) => u.is_active ? 1 : 0,
   date_joined: (u) => u.date_joined || "",
 };
 
 function updatePosAccessDefault() {
   if (editingUserId) return;
-  if (roleSelect.value === "cashier") {
+  if (roleSelect.value === "cashier" || roleSelect.value === "waiter") {
     posAccessInput.checked = true;
     return;
   }
@@ -146,6 +159,7 @@ function startEdit(user) {
   roleSelect.value = user.role;
   branchSelect.value = String(user.branch);
   posAccessInput.checked = user.pos_access;
+  kitchenStationSelect.value = user.kitchen_station || "";
   isActiveInput.checked = user.is_active;
 
   document.querySelector(".user-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -168,6 +182,7 @@ function renderUsers() {
           ${sortTh("Branch", "branch_name", sortState)}
           ${sortTh("Role", "role", sortState)}
           ${sortTh("POS", "pos_access", sortState)}
+          ${sortTh("Kitchen station", "kitchen_station", sortState)}
           ${sortTh("Status", "is_active", sortState)}
           ${sortTh("Joined", "date_joined", sortState)}
           ${actionTh()}
@@ -185,6 +200,7 @@ function renderUsers() {
                 ${user.pos_access ? "Yes" : "No"}
               </span>
             </td>
+            <td>${user.kitchen_station_display || "All"}</td>
             <td>
               <span class="badge ${user.is_active ? "badge-active" : "badge-inactive"}">
                 ${user.is_active ? "Active" : "Inactive"}
@@ -261,6 +277,7 @@ userForm.addEventListener("submit", async (e) => {
     branch: branchId,
     role,
     pos_access: posAccessInput.checked,
+    kitchen_station: kitchenStationSelect.value,
   };
 
   if (passwordInput.value) {

@@ -14,10 +14,12 @@
 
 {% block content %}
 <div class="pos-mode-bar">
+  {% if can_collect_payment %}
   <div id="pos-mode-toggle" class="pos-mode-toggle" role="tablist" aria-label="POS mode">
     <button type="button" class="pos-mode-btn active" data-mode="order" role="tab" aria-selected="true">Order</button>
     <button type="button" class="pos-mode-btn" data-mode="receipt" role="tab" aria-selected="false">Receipt</button>
   </div>
+  {% endif %}
 </div>
 
 <div class="pos-layout" data-inclusive-tax-rate="{{ inclusive_tax_rate|unlocalize }}">
@@ -116,6 +118,19 @@
             <span class="pos-segment-placeholder">Loading…</span>
           </div>
         </div>
+        <div id="split-payment-group" style="display: none; margin-bottom: 0.75rem;">
+          <label class="split-payment-toggle">
+            <input type="checkbox" id="split-payment-enabled">
+            <span>Split across payment currencies</span>
+          </label>
+          <div id="split-payment-fields" style="display: none; margin-top: 0.6rem;">
+            <div class="split-payment-rows" id="split-payment-rows"></div>
+            <div class="split-payment-meta">
+              <span>Remaining: <strong id="split-remaining">—</strong></span>
+              <button type="button" class="btn btn-ghost btn-sm" id="split-fill-base-btn">Put rest on base</button>
+            </div>
+          </div>
+        </div>
         <div class="receipt-totals" id="receipt-totals"></div>
       </div>
       <div class="cart-total">
@@ -124,6 +139,9 @@
       </div>
       <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>
         Place Order
+      </button>
+      <button class="btn btn-ghost" id="cancel-order-btn" style="width: 100%; margin-top: 0.5rem; display: none;" disabled>
+        Cancel Order
       </button>
       <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>
         Clear Cart
@@ -187,7 +205,12 @@
     </div>
     <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
       Enter counted amounts per currency. Leave blank for currencies you have not counted.
+      On fiscal branches, count only one currency code (USD or ZWG) — do not mix them.
     </p>
+    <div id="dayend-code-group" class="form-group" style="margin-bottom:0.75rem; display:none;">
+      <label for="dayend-currency-code">Currency code</label>
+      <select id="dayend-currency-code"></select>
+    </div>
     <div id="dayend-currency-fields" style="display:grid; gap:0.6rem;"></div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
       <button type="button" class="btn btn-ghost" id="dayend-cancel-btn">Cancel</button>
@@ -331,6 +354,8 @@ let selectedCurrencyId = null;
 let branches = [];
 let customers = [];
 let paymentMethod = "cash";
+/** Order id whose payment UI was last initialized; avoids resetting Cash/Account on kitchen refresh. */
+let receiptPaymentOrderKey = null;
 let kitchenRefreshTimer = null;
 let diningTables = [];
 let tablePickerManageMode = false;
@@ -357,12 +382,20 @@ const receiptCustomerSelect = document.getElementById("receipt-customer");
 const accountBalanceHint = document.getElementById("account-balance-hint");
 const receiptAccountBalance = document.getElementById("receipt-account-balance");
 const paymentCurrencyGroup = document.getElementById("payment-currency-group");
+const splitPaymentGroup = document.getElementById("split-payment-group");
+const splitPaymentEnabledInput = document.getElementById("split-payment-enabled");
+const splitPaymentFields = document.getElementById("split-payment-fields");
+const splitPaymentRows = document.getElementById("split-payment-rows");
+const splitRemainingEl = document.getElementById("split-remaining");
+const splitFillBaseBtn = document.getElementById("split-fill-base-btn");
+let splitPaymentEnabled = false;
 const categoryTabs = document.getElementById("category-tabs");
 const productSearchInput = document.getElementById("product-search");
 const productGrid = document.getElementById("product-grid");
 const cartItems = document.getElementById("cart-items");
 const cartTotal = document.getElementById("cart-total");
 const checkoutBtn = document.getElementById("checkout-btn");
+const cancelOrderBtn = document.getElementById("cancel-order-btn");
 const clearBtn = document.getElementById("clear-btn");
 const panelTitle = document.getElementById("panel-title");
 const orderModePanel = document.getElementById("order-mode-panel");
@@ -396,6 +429,8 @@ const dayendCancelBtn = document.getElementById("dayend-cancel-btn");
 const dayendPrintBtn = document.getElementById("dayend-print-btn");
 const dayendDateInput = document.getElementById("dayend-date");
 const dayendCurrencyFields = document.getElementById("dayend-currency-fields");
+const dayendCodeGroup = document.getElementById("dayend-code-group");
+const dayendCurrencyCodeSelect = document.getElementById("dayend-currency-code");
 const stockTakeRequiredModal = document.getElementById("stock-take-required-modal");
 const stockTakeRequiredMessage = document.getElementById("stock-take-required-message");
 const stockTakeRequiredCloseBtn = document.getElementById("stock-take-required-close-btn");
@@ -403,6 +438,7 @@ const stockTakeRequiredCancelBtn = document.getElementById("stock-take-required-
 
 const canManageFiscalDay = "{{ can_manage_fiscal_day|yesno:'true,false' }}" === "true";
 const canManageDiningTables = "{{ can_manage_dining_tables|yesno:'true,false' }}" === "true";
+const canCollectPayment = "{{ can_collect_payment|yesno:'true,false' }}" === "true";
 const fiscalDayBtn = document.getElementById("fiscal-day-btn");
 const fiscalDayModal = document.getElementById("fiscal-day-modal");
 const fiscalDayCloseBtn = document.getElementById("fiscal-day-close-btn");
@@ -778,15 +814,223 @@ tablePickerModal?.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeTablePickerModal();
 });
 
+function allowsSplitPayment() {
+  const branch = selectedBranch();
+  return Boolean(branch && !branch.fiscalization_enabled);
+}
+
+function isSplitPaymentActive() {
+  return allowsSplitPayment() && splitPaymentEnabled && paymentMethod !== "account";
+}
+
+function getSplitPaymentInputs() {
+  return Array.from(document.querySelectorAll(".split-payment-input"));
+}
+
+function currencyRate(currency) {
+  if (!currency) return null;
+  if (currency.is_base) return 1;
+  const rate = Number(currency.current_rate);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+function amountToBase(amount, currency) {
+  const rate = currencyRate(currency);
+  if (rate == null) return null;
+  return roundMoney(amount / rate);
+}
+
+function amountFromBase(baseAmount, currency) {
+  const rate = currencyRate(currency);
+  if (rate == null) return null;
+  return roundMoney(baseAmount * rate);
+}
+
+function renderSplitPaymentRows() {
+  if (!splitPaymentRows) return;
+  const active = currencies.filter((c) => c.is_active);
+  if (!active.length) {
+    splitPaymentRows.innerHTML = `<span class="pos-segment-placeholder">No currencies configured</span>`;
+    return;
+  }
+  const previous = {};
+  getSplitPaymentInputs().forEach((input) => {
+    previous[input.dataset.currencyId] = input.value;
+  });
+  splitPaymentRows.innerHTML = active.map((c) => {
+    const rateLabel = c.is_base ? "" : (c.current_rate ? ` · ${c.current_rate}` : " · no rate");
+    const value = previous[String(c.id)] || "";
+    const placeholder = splitPaymentPlaceholderForCurrency(c);
+    return `
+      <div class="split-payment-row">
+        <label for="split-currency-${c.id}" title="${c.name}${rateLabel}">${c.name}</label>
+        <input
+          type="number"
+          id="split-currency-${c.id}"
+          class="split-payment-input"
+          data-currency-id="${c.id}"
+          step="0.01"
+          min="0"
+          placeholder="${placeholder}"
+          value="${value}"
+        >
+      </div>
+    `;
+  }).join("");
+  getSplitPaymentInputs().forEach((input) => {
+    input.addEventListener("input", () => {
+      updateSplitPaymentRemaining();
+      if (selectedOrder) {
+        updateCheckoutButtonState(getReceiptInclusiveTotal());
+      }
+    });
+  });
+}
+
+function clearSplitPaymentInputs() {
+  getSplitPaymentInputs().forEach((input) => {
+    input.value = "";
+  });
+  updateSplitPaymentRemaining();
+}
+
+function setSplitPaymentEnabled(enabled) {
+  splitPaymentEnabled = Boolean(enabled);
+  if (splitPaymentEnabledInput) {
+    splitPaymentEnabledInput.checked = splitPaymentEnabled;
+  }
+  if (splitPaymentEnabled) {
+    renderSplitPaymentRows();
+  } else {
+    clearSplitPaymentInputs();
+  }
+  if (splitPaymentFields) {
+    splitPaymentFields.style.display = splitPaymentEnabled ? "" : "none";
+  }
+  // Hide single-currency picker while splitting across currencies.
+  if (paymentCurrencyGroup && paymentMethod !== "account") {
+    paymentCurrencyGroup.style.display = splitPaymentEnabled ? "none" : "";
+  }
+  updateSplitPaymentRemaining();
+  if (selectedOrder) {
+    const inclusiveTotal = getReceiptInclusiveTotal();
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  }
+}
+
+function getSplitPaymentLines() {
+  if (!isSplitPaymentActive()) return [];
+  return getSplitPaymentInputs()
+    .map((input) => {
+      const amount = Number(input.value);
+      if (!Number.isFinite(amount) || amount <= 0) return null;
+      const currencyId = Number(input.dataset.currencyId);
+      const currency = currencies.find((c) => c.id === currencyId);
+      if (!currency || currencyRate(currency) == null) return null;
+      return {
+        currency_id: currencyId,
+        currency,
+        amount: roundMoney(amount),
+        base_amount: amountToBase(amount, currency),
+      };
+    })
+    .filter(Boolean);
+}
+
+function getSplitPaymentAllocatedBase() {
+  return getSplitPaymentLines().reduce((sum, line) => sum + line.base_amount, 0);
+}
+
+function getSplitPaymentRemainingBaseForCurrency(excludeCurrencyId) {
+  const orderTotal = getOrderTotalBase();
+  if (orderTotal == null) return null;
+  const othersBase = getSplitPaymentLines()
+    .filter((line) => line.currency_id !== excludeCurrencyId)
+    .reduce((sum, line) => sum + line.base_amount, 0);
+  return roundMoney(orderTotal - othersBase);
+}
+
+function splitPaymentPlaceholderForCurrency(currency) {
+  const remainingBase = getSplitPaymentRemainingBaseForCurrency(currency.id);
+  if (remainingBase == null || currencyRate(currency) == null) return "0.00";
+  const amount = amountFromBase(remainingBase, currency);
+  return amount > 0 ? amount.toFixed(2) : "0.00";
+}
+
+function updateSplitPaymentPlaceholders() {
+  if (!isSplitPaymentActive()) return;
+  getSplitPaymentInputs().forEach((input) => {
+    const currencyId = Number(input.dataset.currencyId);
+    const currency = currencies.find((c) => c.id === currencyId);
+    input.placeholder = currency ? splitPaymentPlaceholderForCurrency(currency) : "0.00";
+  });
+}
+
+function getOrderTotalBase() {
+  if (!selectedOrder || paymentMethod === "account") return null;
+  const inclusiveTotal = getReceiptInclusiveTotal();
+  return computeTaxBreakdown(inclusiveTotal).total;
+}
+
+function updateSplitPaymentRemaining() {
+  if (!isSplitPaymentActive()) {
+    return;
+  }
+  updateSplitPaymentPlaceholders();
+  if (!splitRemainingEl) {
+    return;
+  }
+  const orderTotal = getOrderTotalBase();
+  if (orderTotal == null) {
+    splitRemainingEl.textContent = "—";
+    splitRemainingEl.className = "";
+    return;
+  }
+  const remaining = roundMoney(orderTotal - getSplitPaymentAllocatedBase());
+  splitRemainingEl.textContent = formatCurrencyAmount(remaining, baseCurrency);
+  splitRemainingEl.className = "";
+  if (Math.abs(remaining) < 0.005) {
+    splitRemainingEl.classList.add("split-balanced");
+  } else if (remaining < 0) {
+    splitRemainingEl.classList.add("split-over");
+  }
+}
+
+function syncSplitPaymentUI() {
+  if (!splitPaymentGroup) return;
+  const available = paymentMethod !== "account" && allowsSplitPayment();
+  splitPaymentGroup.style.display = available ? "" : "none";
+  if (!available) {
+    setSplitPaymentEnabled(false);
+    return;
+  }
+  if (splitPaymentEnabled) {
+    renderSplitPaymentRows();
+  }
+  if (splitPaymentFields) {
+    splitPaymentFields.style.display = splitPaymentEnabled ? "" : "none";
+  }
+  if (splitPaymentEnabledInput) {
+    splitPaymentEnabledInput.checked = splitPaymentEnabled;
+  }
+  if (paymentCurrencyGroup) {
+    paymentCurrencyGroup.style.display = splitPaymentEnabled ? "none" : "";
+  }
+  updateSplitPaymentRemaining();
+}
+
 function syncPaymentMethodUI() {
   const isAccount = paymentMethod === "account";
   receiptCustomerGroup.style.display = isAccount ? "" : "none";
-  paymentCurrencyGroup.style.display = isAccount ? "none" : "";
   if (isAccount) {
+    paymentCurrencyGroup.style.display = "none";
     updateAccountBalanceHint();
   } else {
     accountBalanceHint.style.display = "none";
+    paymentCurrencyGroup.style.display = isSplitPaymentActive() ? "none" : "";
   }
+  syncSplitPaymentUI();
 }
 
 function setPaymentMethod(method, { force = false } = {}) {
@@ -817,6 +1061,7 @@ function setPaymentCurrency(currencyId) {
   if (selectedOrder) {
     const inclusiveTotal = getReceiptInclusiveTotal();
     renderReceiptTotals(inclusiveTotal);
+    updateSplitPaymentRemaining();
     updateCheckoutButtonState(inclusiveTotal);
   }
 }
@@ -827,17 +1072,53 @@ paymentCurrencyToggle.addEventListener("click", (e) => {
   setPaymentCurrency(Number(btn.dataset.currencyId) || null);
 });
 
+splitPaymentEnabledInput?.addEventListener("change", () => {
+  setSplitPaymentEnabled(splitPaymentEnabledInput.checked);
+});
+
+splitFillBaseBtn?.addEventListener("click", () => {
+  if (!isSplitPaymentActive()) return;
+  const orderTotal = getOrderTotalBase();
+  if (orderTotal == null) return;
+  const targetCurrency = baseCurrency
+    || currencies.find((c) => c.is_active && currencyRate(c) != null)
+    || null;
+  if (!targetCurrency) return;
+  const input = getSplitPaymentInputs().find(
+    (el) => Number(el.dataset.currencyId) === targetCurrency.id,
+  );
+  if (!input) return;
+  const othersBase = getSplitPaymentLines()
+    .filter((line) => line.currency_id !== targetCurrency.id)
+    .reduce((sum, line) => sum + line.base_amount, 0);
+  const restBase = roundMoney(orderTotal - othersBase);
+  const rest = amountFromBase(restBase, targetCurrency);
+  input.value = rest > 0 ? rest.toFixed(2) : "";
+  updateSplitPaymentRemaining();
+  if (selectedOrder) {
+    updateCheckoutButtonState(getReceiptInclusiveTotal());
+  }
+});
+
 function customerDisplayName(customer) {
   return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
 }
 
 function renderCustomerSelects() {
+  const previousOrder = orderCustomerSelect.value;
+  const previousReceipt = receiptCustomerSelect.value;
   const options = customers.map(c => {
     const balance = Number(c.account_balance) > 0 ? ` · ${formatCurrency(c.account_balance)}` : "";
     return `<option value="${c.id}">${customerDisplayName(c)}${balance}</option>`;
   }).join("");
   orderCustomerSelect.innerHTML = `<option value="">Walk-in</option>${options}`;
   receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
+  if (previousOrder && customers.some(c => String(c.id) === previousOrder)) {
+    orderCustomerSelect.value = previousOrder;
+  }
+  if (previousReceipt && customers.some(c => String(c.id) === previousReceipt)) {
+    receiptCustomerSelect.value = previousReceipt;
+  }
   syncSearchableSelect(orderCustomerSelect);
   syncSearchableSelect(receiptCustomerSelect);
 }
@@ -870,6 +1151,13 @@ function updateCheckoutButtonState(inclusiveTotal) {
     checkoutBtn.disabled = !customer || !hasBalance;
     return;
   }
+  if (isSplitPaymentActive()) {
+    const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
+    const lines = getSplitPaymentLines();
+    const allocated = roundMoney(lines.reduce((sum, line) => sum + line.base_amount, 0));
+    checkoutBtn.disabled = !lines.length || Math.abs(allocated - orderTotal) >= 0.005;
+    return;
+  }
   const { hasRate } = computePaymentAmounts(computeTaxBreakdown(inclusiveTotal).total);
   checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
 }
@@ -896,17 +1184,21 @@ receiptCustomerSelect.addEventListener("change", async () => {
   }
 });
 
-posModeToggle.addEventListener("click", (e) => {
+posModeToggle?.addEventListener("click", (e) => {
   const btn = e.target.closest(".pos-mode-btn");
   if (!btn || !posModeToggle.contains(btn)) return;
   const mode = btn.dataset.mode;
   if (!mode || mode === posMode) return;
+  if (mode === "receipt" && !canCollectPayment) return;
   setPosMode(mode);
 });
 
 function setPosMode(mode) {
+  if (mode === "receipt" && !canCollectPayment) {
+    mode = "order";
+  }
   posMode = mode;
-  posModeToggle.querySelectorAll(".pos-mode-btn").forEach(btn => {
+  posModeToggle?.querySelectorAll(".pos-mode-btn").forEach(btn => {
     const active = btn.dataset.mode === mode;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-selected", active ? "true" : "false");
@@ -1043,7 +1335,7 @@ function renderPaymentCurrencyToggle() {
 
 function renderReceiptTotals(inclusiveTotal) {
   const { subtotal, tax, total } = computeTaxBreakdown(inclusiveTotal);
-  const useFx = paymentMethod !== "account";
+  const useFx = paymentMethod !== "account" && !isSplitPaymentActive();
   const { rate, amountDue, currency, hasRate } = useFx
     ? computePaymentAmounts(total)
     : { rate: null, amountDue: null, currency: null, hasRate: false };
@@ -1072,12 +1364,17 @@ function renderReceiptTotals(inclusiveTotal) {
     cartTotal.textContent = formatCurrencyAmount(total, baseCurrency);
     cartTotalLabel.textContent = "Total";
   }
+  updateSplitPaymentRemaining();
 }
 
 function renderCart() {
   panelTitle.textContent = "Current Order";
   checkoutBtn.textContent = "Place Order";
   clearBtn.style.display = "";
+  if (cancelOrderBtn) {
+    cancelOrderBtn.style.display = "none";
+    cancelOrderBtn.disabled = true;
+  }
   receiptPaymentSection.style.display = "none";
   cartTotalLabel.textContent = "Total";
 
@@ -1114,8 +1411,13 @@ function renderCart() {
 
 function renderReceiptPanel() {
   if (!selectedOrder) {
+    receiptPaymentOrderKey = null;
     panelTitle.textContent = "Receipt";
     clearBtn.style.display = "none";
+    if (cancelOrderBtn) {
+      cancelOrderBtn.style.display = "none";
+      cancelOrderBtn.disabled = true;
+    }
     cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to view details</p></div>`;
     cartTotal.textContent = formatCurrency(0);
     cartTotalLabel.textContent = "Total";
@@ -1125,12 +1427,20 @@ function renderReceiptPanel() {
     return;
   }
 
+  const orderKey = String(selectedOrder.id);
+  const orderChanged = orderKey !== receiptPaymentOrderKey;
+  receiptPaymentOrderKey = orderKey;
+
   const receiptOrders = getReceiptOrders();
   const combined = receiptOrders.length > 1;
   panelTitle.textContent = combined
     ? `Table ${selectedOrder.table_number} — ${receiptOrders.length} orders`
     : `Order #${selectedOrder.id}`;
   clearBtn.style.display = "none";
+  if (cancelOrderBtn) {
+    cancelOrderBtn.style.display = "";
+    cancelOrderBtn.disabled = false;
+  }
 
   const typeLabel = selectedOrder.order_type.replace("_", " ");
   const tableInfo = selectedOrder.table_number && !combined
@@ -1163,8 +1473,13 @@ function renderReceiptPanel() {
   `;
 
   renderPaymentCurrencyToggle();
-  setPaymentMethod("cash", { force: true });
-  receiptCustomerSelect.value = selectedOrder.customer ? String(selectedOrder.customer) : "";
+  if (orderChanged) {
+    setPaymentMethod("cash", { force: true });
+    setSplitPaymentEnabled(false);
+    receiptCustomerSelect.value = selectedOrder.customer ? String(selectedOrder.customer) : "";
+  } else {
+    syncPaymentMethodUI();
+  }
   updateAccountBalanceHint();
   receiptPaymentSection.style.display = "";
   const inclusiveTotal = getReceiptInclusiveTotal();
@@ -1474,10 +1789,34 @@ clearBtn.addEventListener("click", () => {
   renderCart();
 });
 
+cancelOrderBtn?.addEventListener("click", () => {
+  cancelSelectedOrder();
+});
+
+async function cancelSelectedOrder() {
+  if (!selectedOrder) return;
+  const orderId = selectedOrder.id;
+  if (!window.confirm(`Cancel unpaid order #${orderId}?`)) return;
+
+  cancelOrderBtn.disabled = true;
+  try {
+    await apiPost(`/orders/${orderId}/cancel/`, {});
+    showToast(`Order #${orderId} cancelled`);
+    selectedOrder = null;
+    await loadOpenOrders();
+    renderReceiptPanel();
+  } catch (err) {
+    showToast(err.message, true);
+    cancelOrderBtn.disabled = false;
+  }
+}
+
 branchSelect.addEventListener("change", () => {
   updateFiscalDayButtonVisibility();
   fiscalDayStatus = null;
   setSelectedTable("");
+  setSplitPaymentEnabled(false);
+  syncSplitPaymentUI();
   loadDiningTables().catch(() => {});
   if (posMode === "order") {
     renderCart();
@@ -1564,6 +1903,8 @@ async function paySelectedOrder() {
       showToast(`Insufficient balance. Available: ${formatCurrency(customer.account_balance)}`, true);
       return;
     }
+  } else if (isSplitPaymentActive()) {
+    // currency selection is replaced by per-currency split amounts
   } else if (!selectedCurrencyId) {
     showToast("Please select a payment currency", true);
     return;
@@ -1571,13 +1912,30 @@ async function paySelectedOrder() {
 
   let currency = null;
   let amountDue = null;
+  let splitLines = [];
   if (paymentMethod === "cash") {
-    const paymentInfo = computePaymentAmounts(orderTotal);
-    currency = paymentInfo.currency;
-    amountDue = paymentInfo.amountDue;
-    if (!paymentInfo.hasRate) {
-      showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
-      return;
+    if (isSplitPaymentActive()) {
+      splitLines = getSplitPaymentLines();
+      if (!splitLines.length) {
+        showToast("Enter at least one currency amount, or turn off split payment", true);
+        return;
+      }
+      const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
+      if (Math.abs(allocated - orderTotal) >= 0.005) {
+        showToast(
+          `Split payments must total ${formatCurrencyAmount(orderTotal, baseCurrency)} (now ${formatCurrencyAmount(allocated, baseCurrency)})`,
+          true,
+        );
+        return;
+      }
+    } else {
+      const paymentInfo = computePaymentAmounts(orderTotal);
+      currency = paymentInfo.currency;
+      amountDue = paymentInfo.amountDue;
+      if (!paymentInfo.hasRate) {
+        showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
+        return;
+      }
     }
   }
 
@@ -1587,9 +1945,20 @@ async function paySelectedOrder() {
   const printWindow = window.open("about:blank", "_blank");
 
   try {
-    const payPayload = paymentMethod === "account"
-      ? { payment_method: "account" }
-      : { currency_id: selectedCurrencyId, payment_method: "cash" };
+    let payPayload;
+    if (paymentMethod === "account") {
+      payPayload = { payment_method: "account" };
+    } else if (splitLines.length) {
+      payPayload = {
+        payment_method: splitLines.length > 1 ? "multi" : "cash",
+        payments: splitLines.map((line) => ({
+          currency_id: line.currency_id,
+          amount: line.amount.toFixed(2),
+        })),
+      };
+    } else {
+      payPayload = { currency_id: selectedCurrencyId, payment_method: "cash" };
+    }
     const order = await apiPost(`/orders/${selectedOrder.id}/pay/`, payPayload);
     if (paymentMethod === "account") {
       const customer = getCustomerById(receiptCustomerSelect.value);
@@ -1619,6 +1988,8 @@ async function paySelectedOrder() {
       window.open(printUrl, "_blank", "noopener");
     }
     selectedOrder = null;
+    receiptPaymentOrderKey = null;
+    setSplitPaymentEnabled(false);
     await loadOpenOrders();
     renderReceiptPanel();
   } catch (err) {
@@ -1774,6 +2145,74 @@ function closeDayEndModal() {
   dayendModal.style.display = "none";
 }
 
+function currencyCodeOf(currency) {
+  return String(currency?.code || "").trim().toUpperCase();
+}
+
+function isFiscalBranchSelected() {
+  return Boolean(branch?.fiscalization_enabled);
+}
+
+function dayEndCurrencyCodes(activeCurrencies) {
+  return [...new Set(activeCurrencies.map(currencyCodeOf).filter(Boolean))].sort();
+}
+
+function renderDayEndCurrencyFields() {
+  if (!dayendCurrencyFields) return;
+  const activeCurrencies = currencies.filter((c) => c.is_active);
+  const fiscal = isFiscalBranchSelected();
+  let visible = activeCurrencies;
+  if (fiscal && dayendCurrencyCodeSelect) {
+    const selectedCode = String(dayendCurrencyCodeSelect.value || "").trim().toUpperCase();
+    visible = activeCurrencies.filter((c) => currencyCodeOf(c) === selectedCode);
+  }
+  dayendCurrencyFields.innerHTML = visible.map((currency) => {
+    const label = currency.name || currency.code || `Currency ${currency.id}`;
+    return `
+      <div class="form-group" style="margin:0;">
+        <label for="dayend-counted-${currency.id}">${label}</label>
+        <input
+          type="number"
+          id="dayend-counted-${currency.id}"
+          data-currency-id="${currency.id}"
+          data-currency-code="${currencyCodeOf(currency)}"
+          step="0.01"
+          min="0"
+          placeholder="Leave blank to skip"
+        >
+      </div>
+    `;
+  }).join("") || `<p style="margin:0; font-size:0.85rem; color:var(--color-muted);">No currencies for this code.</p>`;
+}
+
+function setupDayEndCurrencyCodePicker(activeCurrencies) {
+  const fiscal = isFiscalBranchSelected();
+  if (!dayendCodeGroup || !dayendCurrencyCodeSelect) {
+    renderDayEndCurrencyFields();
+    return;
+  }
+  if (!fiscal) {
+    dayendCodeGroup.style.display = "none";
+    dayendCurrencyCodeSelect.innerHTML = "";
+    renderDayEndCurrencyFields();
+    return;
+  }
+  const codes = dayEndCurrencyCodes(activeCurrencies);
+  dayendCodeGroup.style.display = "";
+  const previous = String(dayendCurrencyCodeSelect.value || "").trim().toUpperCase();
+  dayendCurrencyCodeSelect.innerHTML = codes
+    .map((code) => `<option value="${code}">${code}</option>`)
+    .join("");
+  if (previous && codes.includes(previous)) {
+    dayendCurrencyCodeSelect.value = previous;
+  } else if (baseCurrency && codes.includes(currencyCodeOf(baseCurrency))) {
+    dayendCurrencyCodeSelect.value = currencyCodeOf(baseCurrency);
+  } else if (codes.length) {
+    dayendCurrencyCodeSelect.value = codes[0];
+  }
+  renderDayEndCurrencyFields();
+}
+
 async function openDayEndModal(reportDate) {
   const date = (reportDate || "").trim() || getTodayISO();
   const allowed = await ensureDailyStockTakeForDayEnd(date);
@@ -1784,23 +2223,7 @@ async function openDayEndModal(reportDate) {
 
   const activeCurrencies = currencies.filter(c => c.is_active);
   dayendDateInput.value = date;
-  dayendCurrencyFields.innerHTML = activeCurrencies.map(currency => {
-    const label = currency.code || currency.name || `Currency ${currency.id}`;
-    const symbol = currency.symbol ? ` (${currency.symbol})` : "";
-    return `
-      <div class="form-group" style="margin:0;">
-        <label for="dayend-counted-${currency.id}">${label}${symbol}</label>
-        <input
-          type="number"
-          id="dayend-counted-${currency.id}"
-          data-currency-id="${currency.id}"
-          step="0.01"
-          min="0"
-          placeholder="Leave blank to skip"
-        >
-      </div>
-    `;
-  }).join("");
+  setupDayEndCurrencyCodePicker(activeCurrencies);
   dayendModal.style.display = "flex";
   dayendDateInput.focus();
   return true;
@@ -1814,6 +2237,7 @@ function buildDayEndQuery() {
     auto: "1",
   });
   const inputs = dayendCurrencyFields.querySelectorAll("input[data-currency-id]");
+  const countedCodes = new Set();
   for (const input of inputs) {
     const raw = (input.value || "").trim();
     if (!raw) continue;
@@ -1822,7 +2246,14 @@ function buildDayEndQuery() {
     if (!Number.isFinite(parsed) || parsed < 0) {
       return { error: `Invalid amount for currency ${currencyId}` };
     }
+    const code = String(input.dataset.currencyCode || "").trim().toUpperCase();
+    if (code) countedCodes.add(code);
     params.set(`counted_${currencyId}`, String(parsed));
+  }
+  if (isFiscalBranchSelected() && countedCodes.size > 1) {
+    return {
+      error: `On fiscal branches, count only one currency code (${[...countedCodes].sort().join(" or ")}). Do not mix USD and ZWG.`,
+    };
   }
   return { params };
 }
@@ -1833,9 +2264,25 @@ function printDayEndReport() {
     showToast(error, true);
     return;
   }
-  ensureDailyStockTakeForDayEnd(params.get("date")).then((allowed) => {
+  ensureDailyStockTakeForDayEnd(params.get("date")).then(async (allowed) => {
     if (!allowed) {
       closeDayEndModal();
+      return;
+    }
+    const counted = {};
+    for (const [key, value] of params.entries()) {
+      if (!key.startsWith("counted_")) continue;
+      const currencyId = key.slice("counted_".length);
+      counted[currencyId] = value;
+    }
+    try {
+      await apiPost("/reports/day-end/", {
+        branch: Number(params.get("branch")),
+        date: params.get("date"),
+        counted,
+      });
+    } catch (err) {
+      showToast(err.message, true);
       return;
     }
     const printWindow = window.open("about:blank", "_blank");
@@ -1852,6 +2299,7 @@ function printDayEndReport() {
 dayendCloseBtn?.addEventListener("click", closeDayEndModal);
 dayendCancelBtn?.addEventListener("click", closeDayEndModal);
 dayendPrintBtn?.addEventListener("click", printDayEndReport);
+dayendCurrencyCodeSelect?.addEventListener("change", () => renderDayEndCurrencyFields());
 dayendDateInput?.addEventListener("change", async () => {
   if (dayendModal.style.display === "none") return;
   const date = (dayendDateInput.value || "").trim() || getTodayISO();

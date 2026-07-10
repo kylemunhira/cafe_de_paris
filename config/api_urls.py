@@ -18,6 +18,8 @@ from orders.views import ExpenseViewSet, OrderViewSet
 from purchasing.views import PurchaseOrderViewSet, SupplierViewSet
 from payments.views import CurrencyRateViewSet, CurrencyViewSet
 from reports.views import (
+    DayEndCloseDetailView,
+    DayEndCloseListView,
     DayEndReportView,
     ReportCustomerBalancesView,
     ReportExportCsvView,
@@ -63,6 +65,16 @@ urlpatterns = [
     path("reports/summary/", ReportSummaryView.as_view(), name="report-summary"),
     path("reports/profit/", ReportProfitView.as_view(), name="report-profit"),
     path("reports/day-end/", DayEndReportView.as_view(), name="report-day-end"),
+    path(
+        "reports/day-end-closes/",
+        DayEndCloseListView.as_view(),
+        name="report-day-end-closes",
+    ),
+    path(
+        "reports/day-end-closes/<int:pk>/",
+        DayEndCloseDetailView.as_view(),
+        name="report-day-end-close-detail",
+    ),
     path("reports/export-csv/", ReportExportCsvView.as_view(), name="report-export-csv"),
     path(
         "reports/customer-balances/",

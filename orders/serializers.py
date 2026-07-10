@@ -14,9 +14,11 @@ from .models import (
     Order,
     OrderItem,
     OrderItemAddon,
+    OrderPayment,
     OrderStatus,
     OrderType,
     PaymentMethod,
+    TenderMethod,
 )
 from .services import add_items_to_order, find_open_table_order
 
@@ -35,11 +37,24 @@ class OrderItemAddonSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
+    pos_station = serializers.CharField(
+        source="product.category.pos_station",
+        read_only=True,
+    )
     addons = OrderItemAddonSerializer(many=True, read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ["id", "product", "product_name", "quantity", "price", "notes", "addons"]
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "pos_station",
+            "quantity",
+            "price",
+            "notes",
+            "addons",
+        ]
 
 
 class OrderItemCreateSerializer(serializers.Serializer):
@@ -58,8 +73,44 @@ class OrderItemCreateSerializer(serializers.Serializer):
     )
 
 
+class OrderPaymentSerializer(serializers.ModelSerializer):
+    method_display = serializers.CharField(source="get_method_display", read_only=True)
+    currency_name = serializers.CharField(source="currency.name", read_only=True)
+    currency_symbol = serializers.CharField(source="currency.symbol", read_only=True)
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+
+    class Meta:
+        model = OrderPayment
+        fields = [
+            "id",
+            "method",
+            "method_display",
+            "currency",
+            "currency_code",
+            "currency_name",
+            "currency_symbol",
+            "amount",
+            "exchange_rate",
+        ]
+
+
+class OrderPaymentLineSerializer(serializers.Serializer):
+    currency_id = serializers.PrimaryKeyRelatedField(
+        queryset=Currency.objects.filter(is_active=True),
+        source="currency",
+    )
+    amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+    )
+    method = serializers.ChoiceField(
+        choices=TenderMethod.choices,
+        required=False,
+    )
+
+
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    payments = OrderPaymentSerializer(many=True, read_only=True)
     branch_name = serializers.CharField(source="branch.name", read_only=True)
     payment_currency_name = serializers.CharField(
         source="payment_currency.name",
@@ -77,6 +128,7 @@ class OrderSerializer(serializers.ModelSerializer):
     )
     created_by_name = serializers.SerializerMethodField()
     paid_by_name = serializers.SerializerMethodField()
+    cancelled_by_name = serializers.SerializerMethodField()
     fiscal_approved_by_name = serializers.SerializerMethodField()
     fiscal_receipt_number = serializers.SerializerMethodField()
     customer_name = serializers.SerializerMethodField()
@@ -105,6 +157,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "exchange_rate",
             "amount_paid",
             "payment_method",
+            "payments",
             "status",
             "kitchen_status",
             "kitchen_status_display",
@@ -120,6 +173,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "created_by_name",
             "paid_by",
             "paid_by_name",
+            "cancelled_at",
+            "cancelled_by",
+            "cancelled_by_name",
             "items",
             "created_at",
         ]
@@ -130,6 +186,9 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_paid_by_name(self, obj):
         return staff_display_name(obj.paid_by)
+
+    def get_cancelled_by_name(self, obj):
+        return staff_display_name(obj.cancelled_by)
 
     def get_fiscal_approved_by_name(self, obj):
         return staff_display_name(obj.fiscal_approved_by)
@@ -150,6 +209,15 @@ class OrderSerializer(serializers.ModelSerializer):
             return None
         return obj.customer.account_balance
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        station = self.context.get("kitchen_station")
+        if station:
+            data["items"] = [
+                item for item in data["items"] if item.get("pos_station") == station
+            ]
+        return data
+
 
 class OrderPaySerializer(serializers.Serializer):
     currency_id = serializers.PrimaryKeyRelatedField(
@@ -162,18 +230,42 @@ class OrderPaySerializer(serializers.Serializer):
         choices=PaymentMethod.choices,
         default=PaymentMethod.CASH,
     )
+    payments = OrderPaymentLineSerializer(many=True, required=False)
 
     def validate(self, attrs):
         payment_method = attrs.get("payment_method", PaymentMethod.CASH)
+        payments = attrs.get("payments")
+
         if payment_method == PaymentMethod.ACCOUNT:
+            if payments:
+                raise serializers.ValidationError(
+                    {"payments": "Cannot mix account payment with tender lines."}
+                )
             return attrs
+
+        if payments is not None:
+            if not payments:
+                raise serializers.ValidationError(
+                    {"payments": "At least one payment line is required."}
+                )
+            currency_ids = [line["currency"].id for line in payments]
+            if len(currency_ids) != len(set(currency_ids)):
+                raise serializers.ValidationError(
+                    {"payments": "Each payment currency can only appear once."}
+                )
+            return attrs
+
+        if payment_method == PaymentMethod.MULTI:
+            raise serializers.ValidationError(
+                {"payments": "Split payments require a payments list."}
+            )
+
         if not attrs.get("payment_currency"):
             raise serializers.ValidationError(
                 {"currency_id": "This field is required for cash payments."}
             )
+
         return attrs
-
-
 class OrderUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order

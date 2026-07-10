@@ -40,6 +40,49 @@ export async function fetchOpenOrders(serverUrl, token, branchId) {
   return parseResponse(res);
 }
 
+export function cancelServerOrder(session, orderId) {
+  return authedRequest(session, `/orders/${orderId}/cancel/`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export function payServerOrder(session, orderId, payload) {
+  return authedRequest(session, `/orders/${orderId}/pay/`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function patchServerOrder(session, orderId, payload) {
+  return authedRequest(session, `/orders/${orderId}/`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export function fetchSuppliers(session) {
+  return authedRequest(session, "/suppliers/?active_only=true&page_size=500");
+}
+
+export function createExpense(session, payload) {
+  return authedRequest(session, "/expenses/", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function fetchDayEndReport(session, { date, counted = {} }) {
+  return authedRequest(session, "/reports/day-end/", {
+    method: "POST",
+    body: {
+      branch: session.branch.id,
+      date,
+      counted,
+    },
+  });
+}
+
 async function authedRequest(session, path, { method = "GET", body } = {}) {
   if (!session?.serverUrl || !session?.token) {
     throw new Error("Sign in and connect to the server first.");

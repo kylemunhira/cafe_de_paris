@@ -1,22 +1,26 @@
+from collections import Counter
 from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
 from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionError
 
-from catalog.pos_catalog import pos_catalog_categories, pos_catalog_products
-from catalog.serializers import ProductCategorySerializer, ProductSerializer
 from branches.dining_tables import ensure_default_dining_tables
 from branches.models import DiningTable
 from branches.serializers import DiningTableSerializer
-from orders.models import FiscalApprovalStatus, Order, OrderStatus, OrderType
+from catalog.pos_catalog import pos_catalog_categories, pos_catalog_products
+from catalog.serializers import ProductCategorySerializer, ProductSerializer
+from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
+from orders.models import Order, OrderStatus, OrderType
 from orders.services import (
+    PaymentValidationError,
     ReceiptNumberError,
     add_items_to_order,
     allocate_receipt_number,
+    consolidate_table_orders,
     find_open_table_order,
+    mark_order_paid_with_tenders,
 )
-from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 from payments.serializers import CurrencySerializer
 
 from .models import SyncedClientOrder
@@ -54,6 +58,74 @@ def _existing_synced_order(client_id):
     return record.order if record else None
 
 
+def _normalize_item_quantity(quantity):
+    return Decimal(str(quantity)).quantize(Decimal("0.01"))
+
+
+def _order_item_signature(*, product_id, quantity, notes="", addon_ids=()):
+    return (
+        product_id,
+        _normalize_item_quantity(quantity),
+        (notes or "").strip(),
+        tuple(sorted(addon_ids or ())),
+    )
+
+
+def _signature_from_order_item(item):
+    addon_ids = [addon.menu_addon_id for addon in item.addons.all()]
+    return _order_item_signature(
+        product_id=item.product_id,
+        quantity=item.quantity,
+        notes=item.notes,
+        addon_ids=addon_ids,
+    )
+
+
+def _signature_from_items_data(item_data):
+    return _order_item_signature(
+        product_id=item_data["product"].id,
+        quantity=item_data["quantity"],
+        notes=item_data.get("notes") or "",
+        addon_ids=item_data.get("addon_ids") or (),
+    )
+
+
+def _reconcile_open_order_items(order, items_data):
+    """
+    Add desktop payload lines that are not yet on the server order.
+    Desktop sends the full joined order each sync, so diff before appending.
+    """
+    if order.status != OrderStatus.OPEN or not items_data:
+        return order
+
+    on_server = Counter()
+    for item in order.items.prefetch_related("addons"):
+        on_server[_signature_from_order_item(item)] += 1
+
+    wanted = Counter(_signature_from_items_data(data) for data in items_data)
+    to_add = wanted - on_server
+    if not to_add:
+        return order
+
+    new_items = []
+    for signature, count in to_add.items():
+        template = next(
+            data for data in items_data if _signature_from_items_data(data) == signature
+        )
+        new_items.extend([template] * count)
+
+    if new_items:
+        add_items_to_order(order, new_items)
+    return order
+
+
+def _prepare_existing_order_for_sync(order, items_data):
+    if order.status != OrderStatus.OPEN:
+        return order
+    order = consolidate_table_orders(order)
+    return _reconcile_open_order_items(order, items_data)
+
+
 def _create_order(branch, validated_data, user=None):
     items_data = validated_data["items"]
     table_number = (validated_data.get("table_number") or "").strip()
@@ -78,41 +150,48 @@ def _create_order(branch, validated_data, user=None):
 
 
 def _pay_order(order, payment_data, user=None):
-    currency = payment_data["payment_currency"]
-    rate = currency.get_current_rate()
-    if rate is None:
-        raise ValueError(
-            f'No exchange rate configured for "{currency.name}". '
-            "Add a rate under Payment & Rates → Rates."
-        )
-
     receipt_number = allocate_receipt_number(order.branch)
     paid_at = payment_data.get("paid_at") or timezone.now()
     try:
         consume_order_recipe_materials(order)
     except InsufficientOrderMaterialsError as exc:
         raise ValueError(str(exc)) from exc
-    order.payment_currency = currency
-    order.exchange_rate = rate
-    order.amount_paid = currency.convert_from_base(order.total_amount)
-    order.status = OrderStatus.PAID
-    order.receipt_number = receipt_number
-    order.paid_at = paid_at
-    order.paid_by = user
-    if order.branch.fiscalization_enabled:
-        order.fiscal_approval_status = FiscalApprovalStatus.PENDING
-    order.save(
-        update_fields=[
-            "payment_currency",
-            "exchange_rate",
-            "amount_paid",
-            "status",
-            "receipt_number",
-            "paid_at",
-            "paid_by",
-            "fiscal_approval_status",
+
+    payment_lines = payment_data.get("payments")
+    if payment_lines:
+        lines = [
+            {
+                "currency": line["currency"],
+                "amount": line["amount"],
+                "method": line.get("method"),
+            }
+            for line in payment_lines
         ]
-    )
+    else:
+        currency = payment_data["payment_currency"]
+        if currency.get_current_rate() is None:
+            raise ValueError(
+                f'No exchange rate configured for "{currency.name}". '
+                "Add a rate under Payment & Rates → Rates."
+            )
+        lines = [
+            {
+                "currency": currency,
+                "amount": currency.convert_from_base(order.total_amount),
+                "method": "cash",
+            }
+        ]
+
+    try:
+        mark_order_paid_with_tenders(
+            order,
+            payment_lines=lines,
+            receipt_number=receipt_number,
+            paid_by=user,
+            paid_at=paid_at,
+        )
+    except PaymentValidationError as exc:
+        raise ValueError(str(exc)) from exc
 
     return None
 
@@ -138,6 +217,7 @@ def import_client_order(branch, validated_data, user=None):
     payment = validated_data.get("payment")
     existing = _existing_synced_order(client_id)
     if existing:
+        existing = _prepare_existing_order_for_sync(existing, validated_data["items"])
         fiscal_receipt = _apply_payment_if_needed(existing, payment, user=user)
         return existing, True, fiscal_receipt
 

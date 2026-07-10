@@ -2,7 +2,7 @@ from django.db.models import Q
 
 from branches.models import BranchType
 
-from .models import StaffProfile, StaffRole
+from .models import DESKTOP_POS_ROLES, StaffProfile, StaffRole
 
 GLOBAL_ACCESS_USERNAMES = frozenset({"zimhope"})
 
@@ -129,8 +129,30 @@ def user_can_manage_users(user):
     return user_has_global_branch_access(user)
 
 
+def user_is_waiter(user):
+    """Branch waiter — POS order entry without payment collection."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.WAITER
+
+
+def get_staff_kitchen_station(user):
+    if not user or not user.is_authenticated:
+        return ""
+    try:
+        return user.staff_profile.kitchen_station or ""
+    except StaffProfile.DoesNotExist:
+        return ""
+
+
 def user_can_access_pos(user):
-    """POS access: cashiers, HQ admins, global users, or explicit pos_access flag."""
+    """POS access: cashiers, waiters, HQ admins, global users, or explicit pos_access flag."""
     if not user or not user.is_authenticated:
         return False
     if user_has_global_branch_access(user):
@@ -139,9 +161,29 @@ def user_can_access_pos(user):
         profile = user.staff_profile
     except StaffProfile.DoesNotExist:
         return False
-    if profile.role == StaffRole.CASHIER:
+    if profile.role in (StaffRole.CASHIER, StaffRole.WAITER):
         return True
     return profile.pos_access
+
+
+def user_can_collect_payment(user):
+    """Collect payment / issue receipts — not available to waiters."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_is_waiter(user):
+        return False
+    return user_can_access_pos(user)
+
+
+def user_can_use_desktop_pos(user):
+    """Offline desktop POS — cashiers, waiters, and branch managers."""
+    if not user_can_access_pos(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role in DESKTOP_POS_ROLES
 
 
 def user_can_access_kitchen(user):
@@ -208,10 +250,14 @@ def user_is_grv_staff(user):
 
 
 def user_can_access_management_console(user):
-    """Full management console — not cashiers or GRV-only staff."""
+    """Full management console — not cashiers, waiters, or GRV-only staff."""
     if not user or not user.is_authenticated:
         return False
-    return not user_is_cashier(user) and not user_is_grv_staff(user)
+    return (
+        not user_is_cashier(user)
+        and not user_is_waiter(user)
+        and not user_is_grv_staff(user)
+    )
 
 
 def user_can_access_cashier_invoices(user):
@@ -314,7 +360,7 @@ def user_can_manage_fiscal_day(user):
         return False
     if user_has_global_branch_access(user):
         return True
-    if not user_can_access_pos(user):
+    if user_is_waiter(user) or not user_can_access_pos(user):
         return False
     try:
         profile = user.staff_profile
@@ -326,6 +372,8 @@ def user_can_manage_fiscal_day(user):
 def user_can_access_fiscal_receipts(user):
     """Receipts nav: fiscal branches, or HQ/global users when any branch is fiscal."""
     if not user or not user.is_authenticated:
+        return False
+    if user_is_waiter(user):
         return False
     if user_has_global_branch_access(user):
         from branches.models import Branch

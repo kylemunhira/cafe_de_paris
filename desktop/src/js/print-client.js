@@ -45,8 +45,15 @@ export async function printOrderSlip(session, order, { taxRate }) {
 }
 
 export async function printDayEndReport(session, report, { taxRate }) {
-  const grossTotal = roundMoney(report.grossTotal || 0);
-  const tax = computeTaxBreakdown(grossTotal, taxRate);
+  const grossTotal = roundMoney(report.gross_total || report.grossTotal || 0);
+  const tax = report.tax_breakdown
+    ? {
+        subtotal: roundMoney(report.tax_breakdown.subtotal),
+        tax: roundMoney(report.tax_breakdown.tax),
+        total: roundMoney(report.tax_breakdown.total),
+        taxRate: Number(report.tax_breakdown.tax_rate || taxRate),
+      }
+    : computeTaxBreakdown(grossTotal, taxRate);
   const baseCurrency =
     (await window.pos.getCatalog()).currencies.find((c) => c.is_base) || null;
 
@@ -62,7 +69,7 @@ export async function printDayEndReport(session, report, { taxRate }) {
   });
 }
 
-export async function printSalesReceipt(session, order, { currency, taxRate }) {
+export async function printSalesReceipt(session, order, { currency, taxRate, payments = null }) {
   const inclusiveTotal = order.items?.length
     ? order.items.reduce(
         (sum, item) => sum + roundMoney(Number(item.price) * Number(item.quantity)),
@@ -71,8 +78,24 @@ export async function printSalesReceipt(session, order, { currency, taxRate }) {
     : roundMoney(order.total_amount);
 
   const tax = computeTaxBreakdown(inclusiveTotal, taxRate);
-  const baseCurrency =
-    (await window.pos.getCatalog()).currencies.find((c) => c.is_base) || null;
+  const catalogCurrencies = (await window.pos.getCatalog()).currencies || [];
+  const baseCurrency = catalogCurrencies.find((c) => c.is_base) || null;
+  const tenderLines = Array.isArray(payments)
+    ? payments
+    : Array.isArray(order.payments)
+      ? order.payments
+      : [];
+  const enrichedLines = tenderLines.map((line) => {
+    const lineCurrency =
+      catalogCurrencies.find((c) => c.id === Number(line.currency_id)) ||
+      (line.currency_id == null ? currency : null);
+    return {
+      ...line,
+      currencyName: lineCurrency?.name || line.currencyName,
+      currencyCode: lineCurrency?.code || line.currencyCode,
+      symbol: lineCurrency?.symbol || line.symbol,
+    };
+  });
 
   await window.pos.print({
     type: "receipt",
@@ -91,6 +114,7 @@ export async function printSalesReceipt(session, order, { currency, taxRate }) {
           exchangeRate: order.exchange_rate,
           amountPaid: order.amount_paid,
           isBase: currency.is_base,
+          lines: enrichedLines,
         }
       : null,
   });

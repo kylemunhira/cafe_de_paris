@@ -83,6 +83,25 @@
     </table>
     {% endif %}
 
+    {% if report.payments_by_method %}
+    <hr class="divider">
+    <div class="center meta"><p><strong>By payment method</strong></p></div>
+    <table class="summary">
+      {% for payment in report.payments_by_method %}
+      <tr>
+        <td class="col-label">
+          {{ payment.method_label }}
+          · {{ payment.currency__code|default:payment.currency__name|default:"—" }}
+        </td>
+        <td class="col-amt">
+          {% if payment.currency__symbol %}{{ payment.currency__symbol }}{% endif %}{{ payment.total_paid|floatformat:2 }}
+          ({{ payment.payment_count }})
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
     {% if report.expenses %}
     <hr class="divider">
     <div class="center meta"><p><strong>Expenses</strong></p></div>
@@ -107,7 +126,7 @@
       {% for row in report.cashup_rows %}
       <tr>
         <td class="col-label">
-          {{ row.payment_currency__code|default:row.payment_currency__name|default:"—" }} expected
+          {{ row.payment_currency__name|default:row.payment_currency__code|default:"—" }} expected
         </td>
         <td class="col-amt">
           {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.expected_total|floatformat:2 }}

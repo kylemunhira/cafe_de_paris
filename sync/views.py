@@ -8,8 +8,8 @@ from rest_framework.views import APIView
 from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionError
 from zimra_fiscal.response import fiscal_receipt_summary
 
-from accounts.branch_access import user_can_access_pos
-from accounts.models import StaffProfile, StaffRole
+from accounts.branch_access import user_can_access_pos, user_can_collect_payment, user_can_use_desktop_pos
+from accounts.models import StaffProfile
 from branches.serializers import BranchSerializer
 from orders.serializers import OrderSerializer
 
@@ -35,9 +35,9 @@ class DesktopSyncPermissionMixin:
                 {"detail": "Staff profile required."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if profile.role not in (StaffRole.CASHIER, StaffRole.BRANCH_MANAGER):
+        if not user_can_use_desktop_pos(user):
             return None, Response(
-                {"detail": "Desktop POS is for cashiers only."},
+                {"detail": "Desktop POS is for cashiers and waiters only."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return profile.branch, None
@@ -97,6 +97,14 @@ class SyncPushView(DesktopSyncPermissionMixin, APIView):
                 return Response(
                     {"detail": f"Order {index}: {serializer.errors}"},
                     status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if serializer.validated_data.get("payment") and not user_can_collect_payment(
+                request.user
+            ):
+                return Response(
+                    {"detail": "This account cannot collect payment."},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
 
             try:

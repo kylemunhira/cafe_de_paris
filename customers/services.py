@@ -140,3 +140,34 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
         notes=f"Order #{order.pk}",
         recorded_by=recorded_by,
     )
+
+
+@transaction.atomic
+def refund_order_to_account(*, order: Order, recorded_by=None) -> CustomerAccountTransaction:
+    """Credit the customer account when voiding an account-paid order."""
+    if order.status != OrderStatus.PAID:
+        raise CustomerAccountError("Only paid orders can be refunded to account.")
+    if order.payment_method != PaymentMethod.ACCOUNT:
+        raise CustomerAccountError("Order was not paid from a customer account.")
+    if not order.customer_id:
+        raise CustomerAccountError("Order has no linked customer to refund.")
+
+    refund_amount = _quantize(order.amount_paid or order.total_amount)
+    if refund_amount <= Decimal("0"):
+        raise CustomerAccountError("Refund amount must be greater than zero.")
+
+    customer = Customer.objects.select_for_update().get(pk=order.customer_id)
+    new_balance = _quantize(customer.account_balance + refund_amount)
+    customer.account_balance = new_balance
+    customer.save(update_fields=["account_balance"])
+
+    return CustomerAccountTransaction.objects.create(
+        customer=customer,
+        branch=order.branch,
+        transaction_type=CustomerAccountTransactionType.REFUND,
+        amount=refund_amount,
+        balance_after=new_balance,
+        order=order,
+        notes=f"Void order #{order.pk}",
+        recorded_by=recorded_by,
+    )

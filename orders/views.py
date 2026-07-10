@@ -2,9 +2,9 @@ from accounts.branch_access import (
     filter_by_branch_field,
     user_can_access_pos,
     user_can_approve_fiscal_receipt,
+    user_can_collect_payment,
 )
 from django.db import transaction
-from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -21,7 +21,8 @@ from customers.services import (
 
 from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 
-from .models import Expense, FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
+from .kitchen_station import filter_orders_for_kitchen_station, resolve_kitchen_station_filter
+from .models import Expense, FiscalApprovalStatus, Order, OrderStatus, PaymentMethod, TenderMethod
 from .serializers import (
     ExpenseCreateSerializer,
     ExpenseSerializer,
@@ -32,11 +33,16 @@ from .serializers import (
 )
 from .services import (
     InvalidKitchenStateError,
+    OrderCancelError,
+    PaymentValidationError,
     ReceiptNumberError,
     allocate_receipt_number,
+    cancel_order,
     consolidate_table_orders,
+    mark_order_paid_with_tenders,
     mark_order_ready,
     start_preparing_order,
+    void_order,
 )
 
 
@@ -47,8 +53,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         "payment_currency",
         "created_by",
         "paid_by",
+        "cancelled_by",
     ).prefetch_related(
-        "items__product",
+        "items__product__category",
+        "payments__currency",
         "fiscal_receipt",
     ).all()
     serializer_class = OrderSerializer
@@ -68,7 +76,20 @@ class OrderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(fiscal_approval_status=fiscal_approval_status)
         if fiscal_only in ("1", "true", "yes"):
             qs = qs.filter(branch__fiscalization_enabled=True)
-        return filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
+        qs = filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
+        station = resolve_kitchen_station_filter(
+            self.request.user,
+            self.request.query_params.get("pos_station"),
+        )
+        return filter_orders_for_kitchen_station(qs, station)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["kitchen_station"] = resolve_kitchen_station_filter(
+            self.request.user,
+            self.request.query_params.get("pos_station"),
+        )
+        return context
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -95,8 +116,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to collect payment.")
+        if not user_can_collect_payment(request.user):
+            raise PermissionDenied("This account cannot collect payment.")
         order = self.get_object()
         if order.status == OrderStatus.CANCELLED:
             return Response(
@@ -131,17 +152,34 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.refresh_from_db()
             return Response(OrderSerializer(order).data)
 
-        currency = serializer.validated_data["payment_currency"]
+        currency = serializer.validated_data.get("payment_currency")
+        payment_lines = serializer.validated_data.get("payments")
 
-        rate = currency.get_current_rate()
-        if rate is None:
-            return Response(
-                {
-                    "detail": f'No exchange rate configured for "{currency.name}". '
-                    "Add a rate under Payment & Rates → Rates."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if payment_lines:
+            for line in payment_lines:
+                if line["currency"].get_current_rate() is None:
+                    return Response(
+                        {
+                            "detail": f'No exchange rate configured for "{line["currency"].name}". '
+                            "Add a rate under Payment & Rates → Rates."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        else:
+            if currency is None:
+                return Response(
+                    {"currency_id": ["This field is required for cash payments."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rate = currency.get_current_rate()
+            if rate is None:
+                return Response(
+                    {
+                        "detail": f'No exchange rate configured for "{currency.name}". '
+                        "Add a rate under Payment & Rates → Rates."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         with transaction.atomic():
             order = (
@@ -177,38 +215,99 @@ class OrderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            order.payment_currency = currency
-            order.exchange_rate = rate
-            order.amount_paid = currency.convert_from_base(order.total_amount)
-            order.payment_method = PaymentMethod.CASH
-            order.status = OrderStatus.PAID
-            order.receipt_number = receipt_number
-            order.paid_at = timezone.now()
-            order.paid_by = request.user
-            fiscal_receipt = None
-            if order.branch.fiscalization_enabled:
-                order.fiscal_approval_status = FiscalApprovalStatus.PENDING
-            order.save(
-                update_fields=[
-                    "payment_currency",
-                    "exchange_rate",
-                    "amount_paid",
-                    "payment_method",
-                    "status",
-                    "receipt_number",
-                    "paid_at",
-                    "paid_by",
-                    "fiscal_approval_status",
+            if not payment_lines:
+                payment_lines = [
+                    {
+                        "currency": currency,
+                        "amount": currency.convert_from_base(order.total_amount),
+                        "method": (
+                            payment_method
+                            if payment_method in TenderMethod.values
+                            else TenderMethod.CASH
+                        ),
+                    }
                 ]
-            )
 
+            try:
+                mark_order_paid_with_tenders(
+                    order,
+                    payment_lines=payment_lines,
+                    receipt_number=receipt_number,
+                    paid_by=request.user,
+                )
+            except PaymentValidationError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        order = (
+            Order.objects.select_related(
+                "branch",
+                "customer",
+                "payment_currency",
+                "created_by",
+                "paid_by",
+            )
+            .prefetch_related("items__product", "payments__currency", "fiscal_receipt")
+            .get(pk=order.pk)
+        )
         response_data = OrderSerializer(order).data
-        if fiscal_receipt:
-            response_data["fiscal_receipt"] = fiscal_receipt.payload
-            response_data["fiscal_result"] = fiscal_receipt_summary(fiscal_receipt)
-            if fiscal_receipt.zimra_response is not None:
-                response_data["fiscal_zimra_response"] = fiscal_receipt.zimra_response
         return Response(response_data)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to cancel orders.")
+        order = self.get_object()
+        try:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(pk=order.pk)
+                order = cancel_order(order, cancelled_by=request.user)
+        except OrderCancelError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        order = (
+            Order.objects.select_related(
+                "branch",
+                "customer",
+                "payment_currency",
+                "created_by",
+                "paid_by",
+                "cancelled_by",
+            )
+            .prefetch_related("items__product", "payments__currency", "fiscal_receipt")
+            .get(pk=order.pk)
+        )
+        return Response(OrderSerializer(order).data)
+
+    @action(detail=True, methods=["post"])
+    def void(self, request, pk=None):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to void orders.")
+        order = self.get_object()
+        try:
+            with transaction.atomic():
+                order = (
+                    Order.objects.select_for_update()
+                    .select_related("branch")
+                    .get(pk=order.pk)
+                )
+                order = void_order(order, voided_by=request.user)
+        except OrderCancelError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        order = (
+            Order.objects.select_related(
+                "branch",
+                "customer",
+                "payment_currency",
+                "created_by",
+                "paid_by",
+                "cancelled_by",
+            )
+            .prefetch_related("items__product", "payments__currency", "fiscal_receipt")
+            .get(pk=order.pk)
+        )
+        return Response(OrderSerializer(order).data)
 
     @action(detail=True, methods=["post"], url_path="approve-fiscal")
     def approve_fiscal(self, request, pk=None):

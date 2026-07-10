@@ -4,6 +4,8 @@ from rest_framework import serializers
 
 from branches.models import Branch, BranchType
 
+from catalog.models import PosStation
+
 from .models import StaffProfile, StaffRole
 
 User = get_user_model()
@@ -31,6 +33,17 @@ class StaffUserSerializer(serializers.ModelSerializer):
         source="staff_profile.pos_access",
         required=False,
     )
+    kitchen_station = serializers.ChoiceField(
+        source="staff_profile.kitchen_station",
+        choices=[("", "All stations")] + list(PosStation.choices),
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    kitchen_station_display = serializers.CharField(
+        source="staff_profile.get_kitchen_station_display",
+        read_only=True,
+    )
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
@@ -44,11 +57,13 @@ class StaffUserSerializer(serializers.ModelSerializer):
             "role",
             "role_display",
             "pos_access",
+            "kitchen_station",
+            "kitchen_station_display",
             "is_active",
             "date_joined",
             "password",
         ]
-        read_only_fields = ["id", "date_joined", "branch_name", "role_display"]
+        read_only_fields = ["id", "date_joined", "branch_name", "role_display", "kitchen_station_display"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -69,7 +84,8 @@ class StaffUserSerializer(serializers.ModelSerializer):
         branch = profile_data["branch"]
         role = profile_data.get("role", StaffRole.CASHIER)
         pos_access = profile_data.get("pos_access")
-        if role == StaffRole.CASHIER:
+        kitchen_station = profile_data.get("kitchen_station", "")
+        if role in (StaffRole.CASHIER, StaffRole.WAITER):
             pos_access = True
         elif pos_access is None:
             pos_access = branch.branch_type == BranchType.BRANCH
@@ -83,6 +99,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
             branch=branch,
             role=role,
             pos_access=pos_access,
+            kitchen_station=kitchen_station,
         )
         return user
 
@@ -104,7 +121,9 @@ class StaffUserSerializer(serializers.ModelSerializer):
             profile.role = profile_data["role"]
         if "pos_access" in profile_data:
             profile.pos_access = profile_data["pos_access"]
-        if profile.role == StaffRole.CASHIER:
+        if "kitchen_station" in profile_data:
+            profile.kitchen_station = profile_data["kitchen_station"]
+        if profile.role in (StaffRole.CASHIER, StaffRole.WAITER):
             profile.pos_access = True
         profile.save()
         return instance

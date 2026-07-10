@@ -69,6 +69,18 @@ export function buildPushPayload(order) {
       currency_id: order.payment_currency_id,
       paid_at: order.paid_at,
     };
+    let payments = [];
+    try {
+      payments = JSON.parse(order.payments_json || "[]");
+    } catch {
+      payments = [];
+    }
+    if (Array.isArray(payments) && payments.length) {
+      payload.payment.payments = payments.map((line) => ({
+        currency_id: line.currency_id,
+        amount: String(line.amount),
+      }));
+    }
   }
   return payload;
 }
@@ -88,6 +100,7 @@ export async function pushPendingOrders(session) {
     });
   }
 
+  await window.pos.clearSyncErrors();
   return { pushed: response.results.length };
 }
 
@@ -115,10 +128,21 @@ export async function pullKitchenStatus(session) {
   return { updated };
 }
 
+const SYNC_ERROR_MESSAGES = {
+  offline: "No internet connection.",
+  server_unreachable: "Cannot reach server. Check config.json and that the server is running.",
+};
+
+async function recordSyncFailure(message) {
+  if (!message) return;
+  await window.pos.recordSyncError(message);
+}
+
 export async function runFullSync(session, { silent = false } = {}) {
   await pullCatalog(session);
   const { pushed } = await pushPendingOrders(session);
   await pullKitchenStatus(session);
+  await window.pos.clearSyncErrors();
   if (!silent) {
     const msg =
       pushed > 0
@@ -131,12 +155,22 @@ export async function runFullSync(session, { silent = false } = {}) {
 
 export async function runFullSyncIfOnline(session, options = {}) {
   if (!navigator.onLine) {
-    return { synced: false, reason: "offline" };
+    const message = SYNC_ERROR_MESSAGES.offline;
+    await recordSyncFailure(message);
+    if (!options.silent) {
+      showToast(message, true);
+    }
+    return { synced: false, reason: "offline", message };
   }
 
   const reachable = await checkServerReachable(session);
   if (!reachable) {
-    return { synced: false, reason: "server_unreachable" };
+    const message = SYNC_ERROR_MESSAGES.server_unreachable;
+    await recordSyncFailure(message);
+    if (!options.silent) {
+      showToast(message, true);
+    }
+    return { synced: false, reason: "server_unreachable", message };
   }
 
   if (syncing) {
@@ -148,10 +182,12 @@ export async function runFullSyncIfOnline(session, options = {}) {
     const result = await runFullSync(session, options);
     return { synced: true, ...result };
   } catch (err) {
+    const message = err?.message || "Sync failed.";
+    await recordSyncFailure(message);
     if (!options.silent) {
-      showToast(`Sync failed: ${err.message}`, true);
+      showToast(`Sync failed: ${message}`, true);
     }
-    return { synced: false, reason: "error", error: err };
+    return { synced: false, reason: "error", message, error: err };
   } finally {
     syncing = false;
   }
@@ -161,11 +197,14 @@ export async function runFullSyncIfOnline(session, options = {}) {
  * Sync when the network/server is available: on startup, when browser goes
  * online, and on a periodic retry interval.
  */
-export function startAutoSync(session, { onSyncComplete } = {}) {
+export function startAutoSync(session, { onSyncComplete, onSyncFinished } = {}) {
   const trySync = async () => {
     const result = await runFullSyncIfOnline(session, { silent: true });
     if (result.synced && onSyncComplete) {
       await onSyncComplete(result);
+    }
+    if (onSyncFinished) {
+      await onSyncFinished(result);
     }
     return result;
   };

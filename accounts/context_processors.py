@@ -10,6 +10,7 @@ from .branch_access import (
     user_can_access_pos,
     user_can_access_stores_transfers,
     user_can_approve_fiscal_receipt,
+    user_can_collect_payment,
     user_can_create_purchase_orders,
     user_can_manage_branches,
     user_can_manage_suppliers,
@@ -17,6 +18,7 @@ from .branch_access import (
     user_has_global_branch_access,
     user_is_cashier,
     user_is_grv_staff,
+    user_is_waiter,
 )
 
 
@@ -29,6 +31,7 @@ def nav_access(request):
     management = user_can_access_management_console(user)
     return {
         "is_cashier_only": user_is_cashier(user),
+        "is_waiter_only": user_is_waiter(user),
         "is_grv_staff_only": user_is_grv_staff(user),
         "show_management_nav": management,
         "show_dashboard_nav": user_can_access_dashboard(user),
@@ -48,6 +51,7 @@ def nav_access(request):
         "show_fiscal_receipts_nav": user_can_access_fiscal_receipts(user),
         "show_invoices_nav": management or user_can_access_cashier_invoices(user),
         "show_customers_nav": management and user_can_access_pos(user),
+        "show_customer_payment_nav": user_is_cashier(user) and user_can_collect_payment(user),
         "show_suppliers_nav": management and user_can_manage_suppliers(user),
         "show_customers_suppliers_nav": management and _show_customers_suppliers_nav(user),
         "show_purchase_orders_nav": management and user_can_create_purchase_orders(user),

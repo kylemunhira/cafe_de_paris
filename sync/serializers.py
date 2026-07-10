@@ -22,12 +22,48 @@ class SyncOrderItemSerializer(serializers.Serializer):
     )
 
 
+class SyncOrderPaymentLineSerializer(serializers.Serializer):
+    currency_id = serializers.PrimaryKeyRelatedField(
+        queryset=Currency.objects.filter(is_active=True),
+        source="currency",
+        required=False,
+    )
+    method = serializers.ChoiceField(
+        choices=["cash", "bank", "ecocash"],
+        required=False,
+    )
+    amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+    )
+
+
 class SyncOrderPaymentSerializer(serializers.Serializer):
     currency_id = serializers.PrimaryKeyRelatedField(
         queryset=Currency.objects.filter(is_active=True),
         source="payment_currency",
+        required=False,
+        allow_null=True,
     )
     paid_at = serializers.DateTimeField(required=False)
+    payments = SyncOrderPaymentLineSerializer(many=True, required=False)
+
+    def validate(self, attrs):
+        payments = attrs.get("payments")
+        if payments:
+            for line in payments:
+                if not line.get("currency") and not attrs.get("payment_currency"):
+                    raise serializers.ValidationError(
+                        {"payments": "Each payment line needs a currency_id."}
+                    )
+                if not line.get("currency"):
+                    line["currency"] = attrs["payment_currency"]
+            return attrs
+        if not attrs.get("payment_currency"):
+            raise serializers.ValidationError(
+                {"currency_id": "This field is required."}
+            )
+        return attrs
+
 
 
 class SyncOrderPushSerializer(serializers.Serializer):

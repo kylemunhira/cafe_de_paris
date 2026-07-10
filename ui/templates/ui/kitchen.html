@@ -96,6 +96,9 @@
   </div>
   <div style="font-size: 0.85rem; color: var(--color-muted); padding-bottom: 0.15rem;">
     Open POS orders appear here for the kitchen to prepare.
+    {% if kitchen_station_display %}
+    <strong>Showing {{ kitchen_station_display }} items only.</strong>
+    {% endif %}
   </div>
 </div>
 

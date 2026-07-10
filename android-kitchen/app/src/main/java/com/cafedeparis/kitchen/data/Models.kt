@@ -14,6 +14,9 @@ data class UserInfo(
     val role: String,
     val can_manage_fiscal_day: Boolean = false,
     val can_manage_dining_tables: Boolean = false,
+    val can_collect_payment: Boolean = true,
+    val kitchen_station: String? = null,
+    val kitchen_station_display: String? = null,
 )
 
 data class OrderItemAddon(
@@ -28,6 +31,14 @@ data class OrderItem(
     val price: String,
     val notes: String = "",
     val addons: List<OrderItemAddon> = emptyList(),
+)
+
+data class OrderPaymentLine(
+    val method: String,
+    val amount: String,
+    val method_display: String? = null,
+    val currency_name: String? = null,
+    val currency_symbol: String? = null,
 )
 
 data class KitchenOrder(
@@ -53,12 +64,19 @@ data class KitchenOrder(
     val fiscal_approval_status: String? = null,
     val payment_method: String? = null,
     val customer_account_balance: String? = null,
+    val payments: List<OrderPaymentLine> = emptyList(),
 )
 
 data class Customer(
     val id: Int,
     val full_name: String,
     val account_balance: String,
+)
+
+data class Supplier(
+    val id: Int,
+    val name: String,
+    val is_active: Boolean = true,
 )
 
 data class LoginResponse(

@@ -34,6 +34,7 @@ class Customer(models.Model):
 class CustomerAccountTransactionType(models.TextChoices):
     DEPOSIT = "deposit", "Deposit"
     PAYMENT = "payment", "Payment"
+    REFUND = "refund", "Refund"
 
 
 class CustomerAccountTransaction(models.Model):
@@ -103,4 +104,6 @@ class CustomerAccountTransaction(models.Model):
     def statement_label(self):
         if self.transaction_type == CustomerAccountTransactionType.DEPOSIT:
             return "Payment received"
+        if self.transaction_type == CustomerAccountTransactionType.REFUND:
+            return "Refund"
         return "Withdrawal"

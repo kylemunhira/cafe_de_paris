@@ -15,10 +15,11 @@ from accounts.branch_access import (
     user_is_branch_manager,
     user_is_cashier,
     user_is_grv_staff,
+    user_is_waiter,
 )
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.http import Http404
+from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -29,7 +30,8 @@ from customers.models import Customer, CustomerAccountTransaction
 from customers.statement import build_customer_statement_report
 from inventory.models import CentralInvoice, DeliveryNote
 from inventory.services import daily_stock_take_day_end_status, day_end_stock_take_message
-from orders.day_end import build_day_end_report
+from orders.day_end_close import DayEndValidationError, save_day_end_close
+from orders.day_end_serialization import parse_counted_by_currency
 from orders.models import FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
 from orders.serializers import staff_display_name
 from orders.tax import get_inclusive_tax_rate, order_receipt_tax_breakdown
@@ -39,13 +41,18 @@ from payments.models import Currency
 
 
 class CashierRestrictedAccessMixin(UserPassesTestMixin):
-    """Cashiers and GRV-only staff may only open explicitly allowed views."""
+    """Cashiers, waiters, and GRV-only staff may only open explicitly allowed views."""
 
     allow_cashier = False
+    allow_waiter = False
     allow_grv_staff = False
 
     def test_func(self):
         user = self.request.user
+        if user_is_waiter(user):
+            if not self.allow_waiter:
+                return False
+            return self.waiter_access_allowed(user)
         if user_is_cashier(user):
             if not self.allow_cashier:
                 return False
@@ -55,6 +62,9 @@ class CashierRestrictedAccessMixin(UserPassesTestMixin):
                 return False
             return self.grv_staff_access_allowed(user)
         return self.access_allowed(user)
+
+    def waiter_access_allowed(self, user):
+        return True
 
     def cashier_access_allowed(self, user):
         return True
@@ -67,7 +77,7 @@ class CashierRestrictedAccessMixin(UserPassesTestMixin):
 
 
 def default_console_url(user):
-    if user_is_cashier(user):
+    if user_is_cashier(user) or user_is_waiter(user):
         return reverse("ui:pos")
     if user_is_grv_staff(user):
         return reverse("ui:grv")
@@ -136,6 +146,7 @@ class POSView(BaseUIView):
     template_name = "ui/pos.html"
     active_nav = "pos"
     allow_cashier = True
+    allow_waiter = True
 
     def access_allowed(self, user):
         return user_can_access_pos(user)
@@ -143,6 +154,7 @@ class POSView(BaseUIView):
     def get_context_data(self, **kwargs):
         from accounts.branch_access import (
             get_staff_branch_id,
+            user_can_collect_payment,
             user_can_manage_dining_tables,
             user_can_manage_fiscal_day,
         )
@@ -156,6 +168,7 @@ class POSView(BaseUIView):
         context["can_manage_dining_tables"] = user_can_manage_dining_tables(
             self.request.user
         )
+        context["can_collect_payment"] = user_can_collect_payment(self.request.user)
         return context
 
 
@@ -167,10 +180,21 @@ class KitchenView(BaseUIView):
         return user_can_access_kitchen(user)
 
     def get_context_data(self, **kwargs):
-        from accounts.branch_access import get_staff_branch_id
+        from accounts.branch_access import get_staff_branch_id, get_staff_kitchen_station
 
         context = super().get_context_data(**kwargs)
         context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        station = get_staff_kitchen_station(self.request.user)
+        context["kitchen_station"] = station
+        if station:
+            try:
+                context["kitchen_station_display"] = (
+                    self.request.user.staff_profile.get_kitchen_station_display()
+                )
+            except Exception:
+                context["kitchen_station_display"] = station.title()
+        else:
+            context["kitchen_station_display"] = ""
         return context
 
 
@@ -245,6 +269,14 @@ class UsersView(BaseUIView):
 class ReportsView(BaseUIView):
     template_name = "ui/reports.html"
     active_nav = "reports"
+
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
+
+
+class DayEndReportPageView(BaseUIView):
+    template_name = "ui/day_end_report.html"
+    active_nav = "day_end_report"
 
     def access_allowed(self, user):
         return user_can_access_pos(user)
@@ -384,6 +416,7 @@ class CustomersView(BaseUIView):
 class CustomerAccountsView(BaseUIView):
     template_name = "ui/customer_accounts.html"
     active_nav = "customer_accounts"
+    allow_cashier = True
 
     def access_allowed(self, user):
         return user_can_access_pos(user)
@@ -402,6 +435,7 @@ class CustomerAccountTransactionPrintView(
     model = CustomerAccountTransaction
     template_name = "ui/customer_statement_print.html"
     context_object_name = "transaction"
+    allow_cashier = True
 
     def access_allowed(self, user):
         return user_can_access_pos(user)
@@ -435,6 +469,7 @@ class CustomerFullStatementPrintView(
     model = Customer
     template_name = "ui/customer_statement_print.html"
     context_object_name = "customer"
+    allow_cashier = True
 
     def access_allowed(self, user):
         return user_can_access_pos(user)
@@ -656,7 +691,7 @@ class PaidOrderPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, Detai
             "fiscal_receipt",
             "created_by",
             "paid_by",
-        ).prefetch_related("items__product")
+        ).prefetch_related("items__product", "payments__currency")
         return filter_by_branch_field(queryset, self.request.user)
 
     def get_object(self, queryset=None):
@@ -767,27 +802,30 @@ class DayEndPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, Template
                 },
                 status=403,
             )
+        try:
+            from orders.day_end_close import validate_fiscal_counted_currencies
+
+            validate_fiscal_counted_currencies(
+                branch, parse_counted_by_currency(request.GET)
+            )
+        except DayEndValidationError as exc:
+            return HttpResponseBadRequest(str(exc))
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         branch = self.get_branch()
         report_date = self.request.GET.get("date") or None
-        counted_by_currency = {}
-        for key, value in self.request.GET.items():
-            if not key.startswith("counted_"):
-                continue
-            try:
-                currency_id = int(key.split("counted_", 1)[1])
-            except (TypeError, ValueError):
-                continue
-            counted_by_currency[currency_id] = value
-        context["branch"] = branch
-        context["report"] = build_day_end_report(
+        counted_by_currency = parse_counted_by_currency(self.request.GET)
+        close, report = save_day_end_close(
             branch,
             report_date,
             counted_by_currency=counted_by_currency,
+            user=self.request.user,
         )
+        context["branch"] = branch
+        context["report"] = report
+        context["day_end_close"] = close
         context["base_currency"] = Currency.objects.filter(is_base=True).first()
         context["printed_at"] = timezone.now()
         context["auto_print"] = self.request.GET.get("auto") == "1"

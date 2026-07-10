@@ -5,15 +5,23 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.branch_access import user_can_access_kitchen, user_can_access_pos, user_can_manage_dining_tables, user_can_manage_fiscal_day
-from accounts.models import StaffProfile, StaffRole
+from accounts.branch_access import (
+    get_staff_kitchen_station,
+    user_can_access_kitchen,
+    user_can_access_pos,
+    user_can_collect_payment,
+    user_can_manage_dining_tables,
+    user_can_manage_fiscal_day,
+    user_can_use_desktop_pos,
+)
+from accounts.models import StaffProfile
 from branches.serializers import BranchSerializer
 
 User = get_user_model()
 
 
 class DesktopLoginView(APIView):
-    """Token login for the offline desktop POS (cashiers only)."""
+    """Token login for the offline desktop POS (cashiers, waiters, and branch managers)."""
 
     permission_classes = [AllowAny]
 
@@ -53,14 +61,15 @@ class DesktopLoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if profile.role not in (StaffRole.CASHIER, StaffRole.BRANCH_MANAGER):
+        if not user_can_use_desktop_pos(user):
             return Response(
-                {"detail": "Desktop POS is for cashiers only."},
+                {"detail": "Desktop POS is for cashiers and waiters only."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         token, _ = Token.objects.get_or_create(user=user)
         display_name = user.get_full_name() or user.username
+        kitchen_station = get_staff_kitchen_station(user)
 
         return Response(
             {
@@ -72,6 +81,11 @@ class DesktopLoginView(APIView):
                     "role": profile.role,
                     "can_manage_fiscal_day": user_can_manage_fiscal_day(user),
                     "can_manage_dining_tables": user_can_manage_dining_tables(user),
+                    "can_collect_payment": user_can_collect_payment(user),
+                    "kitchen_station": kitchen_station or None,
+                    "kitchen_station_display": profile.get_kitchen_station_display()
+                    if kitchen_station
+                    else None,
                 },
                 "branch": BranchSerializer(profile.branch).data,
                 "server_url": server_url or None,
@@ -124,6 +138,7 @@ class MobileAppLoginView(APIView):
 
         token, _ = Token.objects.get_or_create(user=user)
         display_name = user.get_full_name() or user.username
+        kitchen_station = get_staff_kitchen_station(user)
 
         return Response(
             {
@@ -135,6 +150,11 @@ class MobileAppLoginView(APIView):
                     "role": profile.role,
                     "can_manage_fiscal_day": user_can_manage_fiscal_day(user),
                     "can_manage_dining_tables": user_can_manage_dining_tables(user),
+                    "can_collect_payment": user_can_collect_payment(user),
+                    "kitchen_station": kitchen_station or None,
+                    "kitchen_station_display": profile.get_kitchen_station_display()
+                    if kitchen_station
+                    else None,
                 },
                 "branch": BranchSerializer(profile.branch).data,
                 "can_access_kitchen": can_kitchen,
@@ -185,6 +205,7 @@ class KitchenLoginView(APIView):
 
         token, _ = Token.objects.get_or_create(user=user)
         display_name = user.get_full_name() or user.username
+        kitchen_station = get_staff_kitchen_station(user)
 
         return Response(
             {
@@ -194,6 +215,10 @@ class KitchenLoginView(APIView):
                     "username": user.username,
                     "display_name": display_name,
                     "role": profile.role,
+                    "kitchen_station": kitchen_station or None,
+                    "kitchen_station_display": profile.get_kitchen_station_display()
+                    if kitchen_station
+                    else None,
                 },
                 "branch": BranchSerializer(profile.branch).data,
             }

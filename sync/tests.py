@@ -219,3 +219,113 @@ class DesktopSyncTests(TestCase):
         self.assertEqual(order.status, OrderStatus.PAID)
         stock = BranchInventory.objects.get(branch=self.branch, product=brioche)
         self.assertEqual(stock.quantity, Decimal("-1.00"))
+
+    def test_push_reconciles_items_after_table_order_grows(self):
+        latte = Product.objects.create(
+            name="Latte",
+            category=self.category,
+            selling_price=Decimal("4.00"),
+            is_active=True,
+        )
+        muffin = Product.objects.create(
+            name="Muffin",
+            category=self.category,
+            selling_price=Decimal("2.50"),
+            is_active=True,
+        )
+        client_id = "880e8400-e29b-41d4-a716-446655440003"
+        open_payload = {
+            "orders": [
+                {
+                    "client_id": client_id,
+                    "order_type": "dine_in",
+                    "table_number": "T10",
+                    "items": [
+                        {"product_id": self.product.id, "quantity": "1"},
+                        {"product_id": latte.id, "quantity": "1"},
+                    ],
+                }
+            ]
+        }
+        first = self.client.post("/api/sync/push/", open_payload, format="json")
+        self.assertEqual(first.status_code, 200)
+        order = Order.objects.get()
+        self.assertEqual(order.total_amount, Decimal("7.50"))
+
+        paid_payload = {
+            "orders": [
+                {
+                    "client_id": client_id,
+                    "order_type": "dine_in",
+                    "table_number": "T10",
+                    "items": [
+                        {"product_id": self.product.id, "quantity": "1"},
+                        {"product_id": latte.id, "quantity": "1"},
+                        {"product_id": muffin.id, "quantity": "2"},
+                    ],
+                    "payment": {"currency_id": self.base_currency.id},
+                }
+            ]
+        }
+        second = self.client.post("/api/sync/push/", paid_payload, format="json")
+        self.assertEqual(second.status_code, 200, second.data)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+        self.assertEqual(order.total_amount, Decimal("12.50"))
+        self.assertEqual(order.items.count(), 3)
+
+    def test_push_consolidates_sibling_table_orders_before_payment(self):
+        latte = Product.objects.create(
+            name="Latte",
+            category=self.category,
+            selling_price=Decimal("4.00"),
+            is_active=True,
+        )
+        client_id = "990e8400-e29b-41d4-a716-446655440004"
+        primary = Order.objects.create(
+            branch=self.branch,
+            order_type="dine_in",
+            table_number="T12",
+        )
+        primary.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=self.product.selling_price,
+        )
+        primary.recalculate_total()
+        SyncedClientOrder.objects.create(client_id=client_id, order=primary)
+
+        sibling = Order.objects.create(
+            branch=self.branch,
+            order_type="dine_in",
+            table_number="T12",
+        )
+        sibling.items.create(
+            product=latte,
+            quantity=Decimal("1"),
+            price=latte.selling_price,
+        )
+        sibling.recalculate_total()
+
+        paid_payload = {
+            "orders": [
+                {
+                    "client_id": client_id,
+                    "order_type": "dine_in",
+                    "table_number": "T12",
+                    "items": [
+                        {"product_id": self.product.id, "quantity": "1"},
+                        {"product_id": latte.id, "quantity": "1"},
+                    ],
+                    "payment": {"currency_id": self.base_currency.id},
+                }
+            ]
+        }
+        response = self.client.post("/api/sync/push/", paid_payload, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        primary.refresh_from_db()
+        self.assertEqual(primary.status, OrderStatus.PAID)
+        self.assertEqual(primary.total_amount, Decimal("7.50"))
+        self.assertFalse(Order.objects.filter(pk=sibling.pk).exists())

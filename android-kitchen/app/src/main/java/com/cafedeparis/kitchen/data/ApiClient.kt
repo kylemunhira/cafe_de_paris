@@ -60,6 +60,33 @@ class ApiClient(
         return JsonParsers.parseCustomers(body)
     }
 
+    fun fetchSuppliers(): List<Supplier> {
+        val token = requireToken()
+        val url = "${config.serverUrl}/api/suppliers/?active_only=true&page_size=500"
+        val body = getJson(url, token)
+        return JsonParsers.parseSuppliers(body)
+    }
+
+    fun createExpense(
+        expenseDate: String,
+        description: String,
+        amount: String,
+        currencyId: Int,
+        supplierId: Int? = null,
+    ) {
+        val token = requireToken()
+        val payload = JSONObject()
+            .put("branch", session.branchId)
+            .put("expense_date", expenseDate)
+            .put("description", description)
+            .put("amount", amount)
+            .put("currency", currencyId)
+        if (supplierId != null) {
+            payload.put("supplier", supplierId)
+        }
+        postJson("${config.serverUrl}/api/expenses/", payload, token)
+    }
+
     fun fetchDiningTables(): List<DiningTable> {
         val token = requireToken()
         val branchId = session.branchId
@@ -78,13 +105,15 @@ class ApiClient(
 
     fun fetchDayEndReport(date: String, countedByCurrency: Map<Int, String>): DayEndReportResponse {
         val token = requireToken()
-        val branchId = session.branchId
-        val query = StringBuilder("branch=$branchId&date=$date")
+        val counted = JSONObject()
         for ((currencyId, amount) in countedByCurrency) {
-            query.append("&counted_$currencyId=${java.net.URLEncoder.encode(amount, Charsets.UTF_8.name())}")
+            counted.put(currencyId.toString(), amount)
         }
-        val url = "${config.serverUrl}/api/reports/day-end/?$query"
-        val body = getJson(url, token)
+        val payload = JSONObject()
+            .put("branch", session.branchId)
+            .put("date", date)
+            .put("counted", counted)
+        val body = postJson("${config.serverUrl}/api/reports/day-end/", payload, token)
         return JsonParsers.parseDayEndReport(body)
     }
 
@@ -129,11 +158,38 @@ class ApiClient(
         return JsonParsers.parseOrder(body)
     }
 
+    fun cancelOrder(orderId: Int): KitchenOrder {
+        val token = requireToken()
+        val body = postJson("${config.serverUrl}/api/orders/$orderId/cancel/", JSONObject(), token)
+        return JsonParsers.parseOrder(body)
+    }
+
     fun payOrderCash(orderId: Int, currencyId: Int): KitchenOrder {
         val token = requireToken()
         val payload = JSONObject()
             .put("currency_id", currencyId)
             .put("payment_method", "cash")
+        val body = postJson("${config.serverUrl}/api/orders/$orderId/pay/", payload, token)
+        return JsonParsers.parseOrder(body)
+    }
+
+    fun payOrderWithTenders(
+        orderId: Int,
+        payments: List<Pair<Int, String>>,
+    ): KitchenOrder {
+        val token = requireToken()
+        val lines = org.json.JSONArray()
+        payments.forEach { (currencyId, amount) ->
+            lines.put(
+                JSONObject()
+                    .put("currency_id", currencyId)
+                    .put("amount", amount),
+            )
+        }
+        val paymentMethod = if (payments.size > 1) "multi" else "cash"
+        val payload = JSONObject()
+            .put("payment_method", paymentMethod)
+            .put("payments", lines)
         val body = postJson("${config.serverUrl}/api/orders/$orderId/pay/", payload, token)
         return JsonParsers.parseOrder(body)
     }

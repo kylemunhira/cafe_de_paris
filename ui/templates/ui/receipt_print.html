@@ -98,6 +98,12 @@
           <td class="col-label">Paid in</td>
           <td class="col-amt"><strong>{{ order.payment_currency.code|default:order.payment_currency.name }}</strong></td>
         </tr>
+        {% for payment in order.payments.all %}
+        <tr>
+          <td class="col-label">{{ payment.currency.name|default:payment.get_method_display }}</td>
+          <td class="col-amt">{% if payment.currency.symbol %}{{ payment.currency.symbol }}{% endif %}{{ payment.amount|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
       </table>
     </div>
     <table class="summary grand">

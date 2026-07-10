@@ -1,18 +1,32 @@
 import {
+  cancelServerOrder,
   closeFiscalDay,
   createDiningTable,
+  createExpense,
+  fetchDayEndReport,
   fetchDiningTables,
   fetchFiscalDayStatus,
+  fetchOpenOrders,
   fetchStockTakeDayEndCheck,
+  fetchSuppliers,
   formatCurrency,
   formatDate,
   kitchenStatusBadge,
   openFiscalDay,
+  patchServerOrder,
+  payServerOrder,
   showToast,
   updateDiningTable,
 } from "./api.js";
 import { printDayEndReport, printOrderSlip, printSalesReceipt } from "./print-client.js";
-import { isBrowserOnline, runFullSync, runFullSyncIfOnline, startAutoSync, startKitchenRefresh } from "./sync.js";
+import {
+  checkServerReachable,
+  isBrowserOnline,
+  runFullSync,
+  runFullSyncIfOnline,
+  startAutoSync,
+  startKitchenRefresh,
+} from "./sync.js";
 
 const cart = new Map();
 let session = null;
@@ -24,10 +38,15 @@ let activeCategory = "all";
 let searchQuery = "";
 let posMode = "order";
 let openOrders = [];
+let receiptOpenOrders = [];
+let remoteOpenOrders = [];
 let selectedOrder = null;
 let selectedCurrencyId = null;
 let paymentMethod = "cash";
+/** Order key whose payment UI was last initialized; avoids resetting Cash/Account on kitchen refresh. */
+let receiptPaymentOrderKey = null;
 let customers = [];
+let suppliers = [];
 let inclusiveTaxRate = 15.5;
 let stopAutoSync = null;
 let stopKitchenRefresh = null;
@@ -44,10 +63,30 @@ const FISCAL_STATUS_LABELS = {
 
 const branchLabel = document.getElementById("branch-label");
 const syncStatus = document.getElementById("sync-status");
+const syncStatusLabel = document.getElementById("sync-status-label");
+const syncStatusError = document.getElementById("sync-status-error");
 const syncBtn = document.getElementById("sync-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const fiscalDayBtn = document.getElementById("fiscal-day-btn");
+const expenseBtn = document.getElementById("expense-btn");
 const dayendBtn = document.getElementById("dayend-btn");
+const expenseModal = document.getElementById("expense-modal");
+const expenseCloseBtn = document.getElementById("expense-close-btn");
+const expenseCancelBtn = document.getElementById("expense-cancel-btn");
+const expenseSaveBtn = document.getElementById("expense-save-btn");
+const expenseDateInput = document.getElementById("expense-date");
+const expenseSupplierSelect = document.getElementById("expense-supplier");
+const expenseDescriptionInput = document.getElementById("expense-description");
+const expenseCurrencySelect = document.getElementById("expense-currency");
+const expenseAmountInput = document.getElementById("expense-amount");
+const dayendModal = document.getElementById("dayend-modal");
+const dayendCloseBtn = document.getElementById("dayend-close-btn");
+const dayendCancelBtn = document.getElementById("dayend-cancel-btn");
+const dayendPrintBtn = document.getElementById("dayend-print-btn");
+const dayendDateInput = document.getElementById("dayend-date");
+const dayendCurrencyFields = document.getElementById("dayend-currency-fields");
+const dayendCodeGroup = document.getElementById("dayend-code-group");
+const dayendCurrencyCodeSelect = document.getElementById("dayend-currency-code");
 const fiscalDayModal = document.getElementById("fiscal-day-modal");
 const fiscalDayCloseBtn = document.getElementById("fiscal-day-close-btn");
 const fiscalDayRefreshBtn = document.getElementById("fiscal-day-refresh-btn");
@@ -69,6 +108,7 @@ const productGrid = document.getElementById("product-grid");
 const cartItems = document.getElementById("cart-items");
 const cartTotal = document.getElementById("cart-total");
 const checkoutBtn = document.getElementById("checkout-btn");
+const cancelOrderBtn = document.getElementById("cancel-order-btn");
 const clearBtn = document.getElementById("clear-btn");
 const panelTitle = document.getElementById("panel-title");
 const orderType = document.getElementById("order-type");
@@ -76,6 +116,7 @@ const tableGroup = document.getElementById("table-group");
 const tableNumber = document.getElementById("table-number");
 const tableSelectBtn = document.getElementById("table-select-btn");
 const tableSelectLabel = document.getElementById("table-select-label");
+const tablesInUseSummary = document.getElementById("tables-in-use-summary");
 const tablePickerModal = document.getElementById("table-picker-modal");
 const tablePickerTitle = document.getElementById("table-picker-title");
 const tablePickerView = document.getElementById("table-picker-view");
@@ -94,6 +135,13 @@ const receiptPaymentSection = document.getElementById("receipt-payment-section")
 const paymentMethodToggle = document.getElementById("payment-method-toggle");
 const paymentCurrencyToggle = document.getElementById("payment-currency-toggle");
 const paymentCurrencyGroup = document.getElementById("payment-currency-group");
+const splitPaymentGroup = document.getElementById("split-payment-group");
+const splitPaymentEnabledInput = document.getElementById("split-payment-enabled");
+const splitPaymentFields = document.getElementById("split-payment-fields");
+const splitPaymentRows = document.getElementById("split-payment-rows");
+const splitRemainingEl = document.getElementById("split-remaining");
+const splitFillBaseBtn = document.getElementById("split-fill-base-btn");
+let splitPaymentEnabled = false;
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const receiptCustomerGroup = document.getElementById("receipt-customer-group");
 const accountBalanceHint = document.getElementById("account-balance-hint");
@@ -137,6 +185,22 @@ async function ensureDailyStockTakeForDayEnd(reportDate) {
   } catch (err) {
     showToast(err.message, true);
     return false;
+  }
+}
+
+function canCollectPayment() {
+  if (session?.user?.can_collect_payment != null) {
+    return Boolean(session.user.can_collect_payment);
+  }
+  return session?.user?.role !== "waiter";
+}
+
+function updateReceiptModeVisibility() {
+  if (!posModeToggle) return;
+  const showReceipt = canCollectPayment();
+  posModeToggle.style.display = showReceipt ? "" : "none";
+  if (!showReceipt && posMode === "receipt") {
+    setPosMode("order");
   }
 }
 
@@ -272,6 +336,7 @@ orderType.addEventListener("change", () => {
   if (orderType.value !== "dine_in") {
     setSelectedTable("");
   }
+  renderTablesInUseSummary();
 });
 
 function setSelectedTable(name) {
@@ -283,12 +348,176 @@ function setSelectedTable(name) {
 
 function occupiedTableNames() {
   const names = new Set();
+  const localServerIds = new Set(
+    openOrders.map((order) => order.server_id).filter(Boolean)
+  );
+
   for (const order of openOrders) {
     if (order.order_type === "dine_in" && order.table_number) {
       names.add(order.table_number);
     }
   }
+
+  for (const order of remoteOpenOrders) {
+    if (order.order_type !== "dine_in" || !order.table_number) continue;
+    if (order.id && localServerIds.has(order.id)) continue;
+    names.add(order.table_number);
+  }
+
   return names;
+}
+
+function ordersOnTable(tableName) {
+  const table = (tableName || "").trim();
+  if (!table) return { local: [], remote: [], total: 0 };
+
+  const local = openOrdersForTable(table);
+  const localServerIds = new Set(local.map((order) => order.server_id).filter(Boolean));
+  const remote = remoteOpenOrders.filter((order) => {
+    if (order.order_type !== "dine_in" || order.table_number !== table) return false;
+    if (order.id && localServerIds.has(order.id)) return false;
+    return true;
+  });
+
+  return { local, remote, total: local.length + remote.length };
+}
+
+function getOccupiedTablesSorted() {
+  const occupied = occupiedTableNames();
+  const known = diningTables.map((table) => table.name).filter((name) => occupied.has(name));
+  const extra = [...occupied].filter((name) => !known.includes(name));
+  return [...known, ...extra].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function renderTablesInUseSummary() {
+  if (!tablesInUseSummary) return;
+  if (orderType.value !== "dine_in") {
+    tablesInUseSummary.hidden = true;
+    tablesInUseSummary.textContent = "";
+    return;
+  }
+
+  const tables = getOccupiedTablesSorted();
+  if (!tables.length) {
+    tablesInUseSummary.hidden = true;
+    tablesInUseSummary.textContent = "";
+    return;
+  }
+
+  tablesInUseSummary.hidden = false;
+  tablesInUseSummary.textContent =
+    tables.length === 1 ? `Tables in use: ${tables[0]}` : `Tables in use: ${tables.join(", ")}`;
+}
+
+async function loadRemoteOpenOrders() {
+  if (!session?.branch?.id || !session?.serverUrl || !session?.token || !isBrowserOnline()) {
+    remoteOpenOrders = [];
+    receiptOpenOrders = mergeReceiptOpenOrders(openOrders, remoteOpenOrders);
+    return;
+  }
+
+  try {
+    const data = await fetchOpenOrders(
+      session.serverUrl,
+      session.token,
+      session.branch.id
+    );
+    remoteOpenOrders = Array.isArray(data?.results)
+      ? data.results
+      : Array.isArray(data)
+        ? data
+        : [];
+  } catch {
+    remoteOpenOrders = [];
+  }
+  receiptOpenOrders = mergeReceiptOpenOrders(openOrders, remoteOpenOrders);
+}
+
+function normalizeRemoteOrder(order) {
+  return {
+    client_id: `remote-${order.id}`,
+    server_id: order.id,
+    order_type: order.order_type,
+    table_number: order.table_number || "",
+    status: "open",
+    total_amount: Number(order.total_amount),
+    receipt_number: order.receipt_number || null,
+    kitchen_status: order.kitchen_status || "pending",
+    kitchen_started_at: order.kitchen_started_at || null,
+    kitchen_ready_at: order.kitchen_ready_at || null,
+    created_at: order.created_at,
+    customer: order.customer || null,
+    is_remote: true,
+    items: (order.items || []).map((item) => ({
+      product_id: item.product,
+      product_name: item.product_name,
+      quantity: Number(item.quantity),
+      price: Number(item.price),
+      notes: item.notes || "",
+      addons: (item.addons || []).map((addon) => ({
+        id: addon.id,
+        name: addon.name,
+        price: Number(addon.price || 0),
+      })),
+    })),
+  };
+}
+
+function mergeReceiptOpenOrders(localOrders, remoteOrders) {
+  const localServerIds = new Set(localOrders.map((order) => order.server_id).filter(Boolean));
+  const merged = [...localOrders];
+  for (const remote of remoteOrders) {
+    if (remote.id && localServerIds.has(remote.id)) continue;
+    merged.push(normalizeRemoteOrder(remote));
+  }
+  return merged.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
+function orderDisplayLabel(order) {
+  if (!order) return "";
+  if (order.receipt_number) return order.receipt_number;
+  if (order.server_id) return `#${order.server_id}`;
+  return order.client_id.slice(0, 8);
+}
+
+function receiptOrdersForTable(tableNumber) {
+  const table = (tableNumber || "").trim();
+  if (!table) return [];
+  return receiptOpenOrders.filter(
+    (order) => order.order_type === "dine_in" && order.table_number === table
+  );
+}
+
+function shouldPayOrderOnline(order) {
+  return Boolean(order?.is_remote || order?.server_id);
+}
+
+function mapApiOrderForPrint(apiOrder, paymentMeta = {}) {
+  return {
+    client_id: apiOrder.id ? `remote-${apiOrder.id}` : "",
+    server_id: apiOrder.id,
+    receipt_number: apiOrder.receipt_number,
+    order_type: apiOrder.order_type,
+    table_number: apiOrder.table_number || "",
+    total_amount: Number(apiOrder.total_amount),
+    amount_paid: Number(apiOrder.amount_paid),
+    exchange_rate: apiOrder.exchange_rate,
+    paid_by_name: apiOrder.paid_by_name,
+    created_by_name: apiOrder.created_by_name,
+    payment_currency_name: apiOrder.payment_currency_name,
+    payment_currency_symbol: apiOrder.payment_currency_symbol,
+    items: (apiOrder.items || []).map((item) => ({
+      product_name: item.product_name,
+      quantity: Number(item.quantity),
+      price: Number(item.price),
+      notes: item.notes || "",
+      addons: item.addons || [],
+    })),
+    payments: apiOrder.payments || paymentMeta.payments || [],
+    ...paymentMeta,
+  };
 }
 
 function openOrdersForTable(tableNumber) {
@@ -301,7 +530,7 @@ function openOrdersForTable(tableNumber) {
 
 function getReceiptOrders() {
   if (!selectedOrder) return [];
-  const tableOrders = openOrdersForTable(selectedOrder.table_number);
+  const tableOrders = receiptOrdersForTable(selectedOrder.table_number);
   return tableOrders.length > 1 ? tableOrders : [selectedOrder];
 }
 
@@ -340,9 +569,14 @@ function renderTablePickerGrid() {
   tablePickerGrid.innerHTML = diningTables
     .map((table) => {
       const classes = ["card", "category-tab", "category-card"];
+      const occupancy = ordersOnTable(table.name);
       if (occupied.has(table.name)) classes.push("occupied");
       if (table.name === selected) classes.push("active");
-      const statusLabel = occupied.has(table.name) ? "In use" : "Available";
+      const statusLabel = occupancy.total
+        ? occupancy.total > 1
+          ? `In use · ${occupancy.total} orders`
+          : "In use"
+        : "Available";
       return `
         <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}">
           <div class="name">${table.name}</div>
@@ -496,15 +730,223 @@ tablePickerModal?.addEventListener("click", (event) => {
   if (event.target === tablePickerModal) closeTablePickerModal();
 });
 
+function allowsSplitPayment() {
+  return Boolean(session?.branch && !session.branch.fiscalization_enabled);
+}
+
+function isSplitPaymentActive() {
+  return allowsSplitPayment() && splitPaymentEnabled && paymentMethod !== "account";
+}
+
+function getSplitPaymentInputs() {
+  return Array.from(document.querySelectorAll(".split-payment-input"));
+}
+
+function currencyRate(currency) {
+  if (!currency) return null;
+  if (currency.is_base) return 1;
+  const rate = Number(currency.current_rate);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+function amountToBase(amount, currency) {
+  const rate = currencyRate(currency);
+  if (rate == null) return null;
+  return roundMoney(amount / rate);
+}
+
+function amountFromBase(baseAmount, currency) {
+  const rate = currencyRate(currency);
+  if (rate == null) return null;
+  return roundMoney(baseAmount * rate);
+}
+
+function renderSplitPaymentRows() {
+  if (!splitPaymentRows) return;
+  const active = currencies.filter((c) => c.is_active);
+  if (!active.length) {
+    splitPaymentRows.innerHTML = `<span class="pos-segment-placeholder">No currencies configured</span>`;
+    return;
+  }
+  const previous = {};
+  getSplitPaymentInputs().forEach((input) => {
+    previous[input.dataset.currencyId] = input.value;
+  });
+  splitPaymentRows.innerHTML = active
+    .map((c) => {
+      const rateLabel = c.is_base ? "" : c.current_rate ? ` · ${c.current_rate}` : " · no rate";
+      const value = previous[String(c.id)] || "";
+      const placeholder = splitPaymentPlaceholderForCurrency(c);
+      return `
+      <div class="split-payment-row">
+        <label for="split-currency-${c.id}" title="${c.name}${rateLabel}">${c.name}</label>
+        <input
+          type="number"
+          id="split-currency-${c.id}"
+          class="split-payment-input"
+          data-currency-id="${c.id}"
+          step="0.01"
+          min="0"
+          placeholder="${placeholder}"
+          value="${value}"
+        >
+      </div>
+    `;
+    })
+    .join("");
+  getSplitPaymentInputs().forEach((input) => {
+    input.addEventListener("input", () => {
+      updateSplitPaymentRemaining();
+      if (selectedOrder) {
+        updateCheckoutButtonState(getReceiptInclusiveTotal());
+      }
+    });
+  });
+}
+
+function clearSplitPaymentInputs() {
+  getSplitPaymentInputs().forEach((input) => {
+    input.value = "";
+  });
+  updateSplitPaymentRemaining();
+}
+
+function setSplitPaymentEnabled(enabled) {
+  splitPaymentEnabled = Boolean(enabled);
+  if (splitPaymentEnabledInput) {
+    splitPaymentEnabledInput.checked = splitPaymentEnabled;
+  }
+  if (splitPaymentEnabled) {
+    renderSplitPaymentRows();
+  } else {
+    clearSplitPaymentInputs();
+  }
+  if (splitPaymentFields) {
+    splitPaymentFields.style.display = splitPaymentEnabled ? "" : "none";
+  }
+  if (paymentCurrencyGroup && paymentMethod !== "account") {
+    paymentCurrencyGroup.style.display = splitPaymentEnabled ? "none" : "";
+  }
+  updateSplitPaymentRemaining();
+  if (selectedOrder) {
+    const inclusiveTotal = getReceiptInclusiveTotal();
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+  }
+}
+
+function getSplitPaymentLines() {
+  if (!isSplitPaymentActive()) return [];
+  return getSplitPaymentInputs()
+    .map((input) => {
+      const amount = Number(input.value);
+      if (!Number.isFinite(amount) || amount <= 0) return null;
+      const currencyId = Number(input.dataset.currencyId);
+      const currency = currencies.find((c) => c.id === currencyId);
+      if (!currency || currencyRate(currency) == null) return null;
+      return {
+        currency_id: currencyId,
+        currency,
+        amount: roundMoney(amount),
+        base_amount: amountToBase(amount, currency),
+      };
+    })
+    .filter(Boolean);
+}
+
+function getSplitPaymentAllocatedBase() {
+  return getSplitPaymentLines().reduce((sum, line) => sum + line.base_amount, 0);
+}
+
+function getSplitPaymentRemainingBaseForCurrency(excludeCurrencyId) {
+  const orderTotal = getOrderTotalBase();
+  if (orderTotal == null) return null;
+  const othersBase = getSplitPaymentLines()
+    .filter((line) => line.currency_id !== excludeCurrencyId)
+    .reduce((sum, line) => sum + line.base_amount, 0);
+  return roundMoney(orderTotal - othersBase);
+}
+
+function splitPaymentPlaceholderForCurrency(currency) {
+  const remainingBase = getSplitPaymentRemainingBaseForCurrency(currency.id);
+  if (remainingBase == null || currencyRate(currency) == null) return "0.00";
+  const amount = amountFromBase(remainingBase, currency);
+  return amount > 0 ? amount.toFixed(2) : "0.00";
+}
+
+function updateSplitPaymentPlaceholders() {
+  if (!isSplitPaymentActive()) return;
+  getSplitPaymentInputs().forEach((input) => {
+    const currencyId = Number(input.dataset.currencyId);
+    const currency = currencies.find((c) => c.id === currencyId);
+    input.placeholder = currency ? splitPaymentPlaceholderForCurrency(currency) : "0.00";
+  });
+}
+
+function getOrderTotalBase() {
+  if (!selectedOrder || paymentMethod === "account") return null;
+  const inclusiveTotal = getReceiptInclusiveTotal();
+  return computeTaxBreakdown(inclusiveTotal).total;
+}
+
+function updateSplitPaymentRemaining() {
+  if (!isSplitPaymentActive()) {
+    return;
+  }
+  updateSplitPaymentPlaceholders();
+  if (!splitRemainingEl) {
+    return;
+  }
+  const orderTotal = getOrderTotalBase();
+  if (orderTotal == null) {
+    splitRemainingEl.textContent = "—";
+    splitRemainingEl.className = "";
+    return;
+  }
+  const remaining = roundMoney(orderTotal - getSplitPaymentAllocatedBase());
+  splitRemainingEl.textContent = money(remaining, baseCurrency);
+  splitRemainingEl.className = "";
+  if (Math.abs(remaining) < 0.005) {
+    splitRemainingEl.classList.add("split-balanced");
+  } else if (remaining < 0) {
+    splitRemainingEl.classList.add("split-over");
+  }
+}
+
+function syncSplitPaymentUI() {
+  if (!splitPaymentGroup) return;
+  const available = paymentMethod !== "account" && allowsSplitPayment();
+  splitPaymentGroup.style.display = available ? "" : "none";
+  if (!available) {
+    setSplitPaymentEnabled(false);
+    return;
+  }
+  if (splitPaymentEnabled) {
+    renderSplitPaymentRows();
+  }
+  if (splitPaymentFields) {
+    splitPaymentFields.style.display = splitPaymentEnabled ? "" : "none";
+  }
+  if (splitPaymentEnabledInput) {
+    splitPaymentEnabledInput.checked = splitPaymentEnabled;
+  }
+  if (paymentCurrencyGroup) {
+    paymentCurrencyGroup.style.display = splitPaymentEnabled ? "none" : "";
+  }
+  updateSplitPaymentRemaining();
+}
+
 function syncPaymentMethodUI() {
   const isAccount = paymentMethod === "account";
   receiptCustomerGroup.style.display = isAccount ? "" : "none";
-  paymentCurrencyGroup.style.display = isAccount ? "none" : "";
   if (isAccount) {
+    paymentCurrencyGroup.style.display = "none";
     updateAccountBalanceHint();
   } else {
     accountBalanceHint.style.display = "none";
+    paymentCurrencyGroup.style.display = isSplitPaymentActive() ? "none" : "";
   }
+  syncSplitPaymentUI();
 }
 
 function setPaymentMethod(method, { force = false } = {}) {
@@ -535,6 +977,7 @@ function setPaymentCurrency(currencyId) {
   if (selectedOrder) {
     const inclusiveTotal = getReceiptInclusiveTotal();
     renderReceiptTotals(inclusiveTotal);
+    updateSplitPaymentRemaining();
     updateCheckoutButtonState(inclusiveTotal);
   }
 }
@@ -545,16 +988,47 @@ paymentCurrencyToggle.addEventListener("click", (e) => {
   setPaymentCurrency(Number(btn.dataset.currencyId) || null);
 });
 
+splitPaymentEnabledInput?.addEventListener("change", () => {
+  setSplitPaymentEnabled(splitPaymentEnabledInput.checked);
+});
+
+splitFillBaseBtn?.addEventListener("click", () => {
+  if (!isSplitPaymentActive()) return;
+  const orderTotal = getOrderTotalBase();
+  if (orderTotal == null) return;
+  const targetCurrency =
+    baseCurrency || currencies.find((c) => c.is_active && currencyRate(c) != null) || null;
+  if (!targetCurrency) return;
+  const input = getSplitPaymentInputs().find(
+    (el) => Number(el.dataset.currencyId) === targetCurrency.id,
+  );
+  if (!input) return;
+  const othersBase = getSplitPaymentLines()
+    .filter((line) => line.currency_id !== targetCurrency.id)
+    .reduce((sum, line) => sum + line.base_amount, 0);
+  const restBase = roundMoney(orderTotal - othersBase);
+  const rest = amountFromBase(restBase, targetCurrency);
+  input.value = rest > 0 ? rest.toFixed(2) : "";
+  updateSplitPaymentRemaining();
+  if (selectedOrder) {
+    updateCheckoutButtonState(getReceiptInclusiveTotal());
+  }
+});
+
 function customerDisplayName(customer) {
   return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
 }
 
 function renderCustomerSelect() {
+  const previous = receiptCustomerSelect.value;
   const options = customers.map((c) => {
     const balance = Number(c.account_balance) > 0 ? ` · ${money(c.account_balance)}` : "";
     return `<option value="${c.id}">${customerDisplayName(c)}${balance}</option>`;
   }).join("");
   receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
+  if (previous && customers.some((c) => String(c.id) === previous)) {
+    receiptCustomerSelect.value = previous;
+  }
 }
 
 function getCustomerById(id) {
@@ -584,29 +1058,57 @@ function updateCheckoutButtonState(inclusiveTotal) {
     checkoutBtn.disabled = !customer || !hasBalance;
     return;
   }
+  if (isSplitPaymentActive()) {
+    const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
+    const lines = getSplitPaymentLines();
+    const allocated = roundMoney(lines.reduce((sum, line) => sum + line.base_amount, 0));
+    checkoutBtn.disabled = !lines.length || Math.abs(allocated - orderTotal) >= 0.005;
+    return;
+  }
   const { hasRate } = computePaymentAmounts(computeTaxBreakdown(inclusiveTotal).total);
   checkoutBtn.disabled = !selectedCurrencyId || !hasRate;
 }
 
-receiptCustomerSelect.addEventListener("change", () => {
+async function linkCustomerToOrder(orderId, customerId) {
+  const payload = { customer: customerId ? Number(customerId) : null };
+  return patchServerOrder(session, orderId, payload);
+}
+
+receiptCustomerSelect.addEventListener("change", async () => {
   updateAccountBalanceHint();
   if (!selectedOrder) return;
   const inclusiveTotal = getReceiptInclusiveTotal();
   renderReceiptTotals(inclusiveTotal);
   updateCheckoutButtonState(inclusiveTotal);
+
+  const customerId = receiptCustomerSelect.value;
+  selectedOrder.customer = customerId ? Number(customerId) : null;
+  if (!shouldPayOrderOnline(selectedOrder) || !selectedOrder.server_id) return;
+  if (!isBrowserOnline()) return;
+  try {
+    const reachable = await checkServerReachable(session);
+    if (!reachable) return;
+    await linkCustomerToOrder(selectedOrder.server_id, customerId);
+  } catch (err) {
+    showToast(err.message, true);
+  }
 });
 
-posModeToggle.addEventListener("click", (e) => {
+posModeToggle?.addEventListener("click", (e) => {
   const btn = e.target.closest(".pos-mode-btn");
   if (!btn || !posModeToggle.contains(btn)) return;
   const mode = btn.dataset.mode;
   if (!mode || mode === posMode) return;
+  if (mode === "receipt" && !canCollectPayment()) return;
   setPosMode(mode);
 });
 
 function setPosMode(mode) {
+  if (mode === "receipt" && !canCollectPayment()) {
+    mode = "order";
+  }
   posMode = mode;
-  posModeToggle.querySelectorAll(".pos-mode-btn").forEach((btn) => {
+  posModeToggle?.querySelectorAll(".pos-mode-btn").forEach((btn) => {
     const active = btn.dataset.mode === mode;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-selected", active ? "true" : "false");
@@ -677,10 +1179,13 @@ function computeTaxBreakdown(inclusiveTotal) {
 function getOrderInclusiveTotal(order) {
   if (!order) return 0;
   if (order.items?.length) {
-    return order.items.reduce(
-      (sum, item) => sum + roundMoney(Number(item.price) * Number(item.quantity)),
-      0
-    );
+    return order.items.reduce((sum, item) => {
+      const addonTotal = (item.addons || []).reduce(
+        (addonSum, addon) => addonSum + Number(addon.price || 0),
+        0
+      );
+      return sum + roundMoney((Number(item.price) + addonTotal) * Number(item.quantity));
+    }, 0);
   }
   return roundMoney(order.total_amount);
 }
@@ -786,7 +1291,7 @@ function renderPaymentCurrencyToggle() {
 
 function renderReceiptTotals(inclusiveTotal) {
   const { subtotal, tax, total } = computeTaxBreakdown(inclusiveTotal);
-  const useFx = paymentMethod !== "account";
+  const useFx = paymentMethod !== "account" && !isSplitPaymentActive();
   const { rate, amountDue, currency, hasRate } = useFx
     ? computePaymentAmounts(total)
     : { rate: null, amountDue: null, currency: null, hasRate: false };
@@ -817,12 +1322,17 @@ function renderReceiptTotals(inclusiveTotal) {
     cartTotal.textContent = money(total);
     cartTotalLabel.textContent = "Total";
   }
+  updateSplitPaymentRemaining();
 }
 
 function renderCart() {
   panelTitle.textContent = "Current Order";
   checkoutBtn.textContent = "Place Order";
   clearBtn.style.display = "";
+  if (cancelOrderBtn) {
+    cancelOrderBtn.style.display = "none";
+    cancelOrderBtn.disabled = true;
+  }
   receiptPaymentSection.style.display = "none";
   cartTotalLabel.textContent = "Total";
 
@@ -859,8 +1369,13 @@ function renderCart() {
 
 function renderReceiptPanel() {
   if (!selectedOrder) {
+    receiptPaymentOrderKey = null;
     panelTitle.textContent = "Receipt";
     clearBtn.style.display = "none";
+    if (cancelOrderBtn) {
+      cancelOrderBtn.style.display = "none";
+      cancelOrderBtn.disabled = true;
+    }
     cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to view details</p></div>`;
     cartTotal.textContent = money(0);
     cartTotalLabel.textContent = "Total";
@@ -870,12 +1385,20 @@ function renderReceiptPanel() {
     return;
   }
 
+  const orderKey = selectedOrder.client_id;
+  const orderChanged = orderKey !== receiptPaymentOrderKey;
+  receiptPaymentOrderKey = orderKey;
+
   const receiptOrders = getReceiptOrders();
   const combined = receiptOrders.length > 1;
   panelTitle.textContent = combined
     ? `Table ${selectedOrder.table_number} — ${receiptOrders.length} orders`
-    : `Order ${selectedOrder.receipt_number || selectedOrder.client_id.slice(0, 8)}`;
+    : `Order ${orderDisplayLabel(selectedOrder)}`;
   clearBtn.style.display = "none";
+  if (cancelOrderBtn) {
+    cancelOrderBtn.style.display = "";
+    cancelOrderBtn.disabled = false;
+  }
 
   const typeLabel = selectedOrder.order_type.replace("_", " ");
   cartItems.innerHTML = `
@@ -892,7 +1415,7 @@ function renderReceiptPanel() {
     ${receiptOrders
       .map(
         (order) => `
-      ${combined ? `<div class="receipt-meta" style="margin-top:0.75rem;font-weight:600;">Order ${order.server_id || order.client_id.slice(0, 8)}</div>` : ""}
+      ${combined ? `<div class="receipt-meta" style="margin-top:0.75rem;font-weight:600;">Order ${orderDisplayLabel(order)}</div>` : ""}
       ${order.items
         .map(
           (item) => `
@@ -914,8 +1437,13 @@ function renderReceiptPanel() {
   `;
 
   renderPaymentCurrencyToggle();
-  setPaymentMethod("cash", { force: true });
-  receiptCustomerSelect.value = "";
+  if (orderChanged) {
+    setPaymentMethod("cash", { force: true });
+    setSplitPaymentEnabled(false);
+    receiptCustomerSelect.value = selectedOrder.customer ? String(selectedOrder.customer) : "";
+  } else {
+    syncPaymentMethodUI();
+  }
   updateAccountBalanceHint();
   receiptPaymentSection.style.display = "";
   const inclusiveTotal = getReceiptInclusiveTotal();
@@ -925,14 +1453,14 @@ function renderReceiptPanel() {
 }
 
 function renderOpenOrdersList() {
-  if (!openOrders.length) {
-    receiptOrdersList.innerHTML = `<div class="empty-state"><p>No open orders</p></div>`;
+  if (!receiptOpenOrders.length) {
+    receiptOrdersList.innerHTML = `<div class="empty-state"><p>No open orders for this branch</p></div>`;
     return;
   }
 
-  receiptOrdersList.innerHTML = openOrders
+  receiptOrdersList.innerHTML = receiptOpenOrders
     .map((o) => {
-      const tableOrders = o.table_number ? openOrdersForTable(o.table_number) : [];
+      const tableOrders = o.table_number ? receiptOrdersForTable(o.table_number) : [];
       const combinedLabel =
         tableOrders.length > 1 ? ` · ${tableOrders.length} orders on table` : "";
       const displayTotal =
@@ -944,7 +1472,7 @@ function renderOpenOrdersList() {
       return `
       <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.client_id}">
         <div class="receipt-order-card-top">
-          <strong>${o.receipt_number || o.client_id.slice(0, 8)}</strong>
+          <strong>${orderDisplayLabel(o)}</strong>
           <span class="receipt-order-amount">${money(displayTotal)}</span>
         </div>
         <div class="receipt-order-card-meta">${o.order_type.replace("_", " ")}${o.table_number ? ` · Table ${o.table_number}` : ""}${combinedLabel} · ${o.items.length} items</div>
@@ -959,10 +1487,16 @@ function renderOpenOrdersList() {
 
 async function loadOpenOrders() {
   openOrders = await window.pos.listOpenOrders();
-  if (selectedOrder && !openOrders.some((o) => o.client_id === selectedOrder.client_id)) {
+  await loadRemoteOpenOrders();
+  const visibleOrders = receiptOpenOrders;
+  if (selectedOrder && !visibleOrders.some((o) => o.client_id === selectedOrder.client_id)) {
     selectedOrder = null;
   }
   renderOpenOrdersList();
+  renderTablesInUseSummary();
+  if (!tablePickerModal.hidden) {
+    renderTablePickerGrid();
+  }
   if (posMode === "receipt") renderReceiptPanel();
 }
 
@@ -1017,30 +1551,53 @@ function renderProducts() {
     .join("");
 }
 
+function setSyncErrorMessage(message) {
+  const text = (message || "").trim();
+  if (!text) {
+    syncStatusError.hidden = true;
+    syncStatusError.textContent = "";
+    syncStatus.classList.remove("has-error");
+    return;
+  }
+  syncStatusError.hidden = false;
+  syncStatusError.textContent = text;
+  syncStatus.classList.add("has-error");
+}
+
 async function updateSyncBadge() {
-  const pending = await window.pos.pendingSyncCount();
+  const { pending, error } = await window.pos.getPendingSyncStatus();
   const catalogAt = (await window.pos.getCatalog()).catalogSyncedAt;
   const online = isBrowserOnline();
 
+  setSyncErrorMessage("");
+
   if (!online) {
-    syncStatus.textContent =
-      pending > 0
-        ? `Offline · ${pending} order(s) queued`
-        : "Offline — will sync when connected";
-    syncStatus.classList.add("warn");
+    const queued =
+      pending === 1 ? "1 order queued" : `${pending} orders queued`;
+    syncStatusLabel.textContent =
+      pending > 0 ? `Offline · ${queued}` : "Offline — will sync when connected";
+    if (error) {
+      setSyncErrorMessage(error);
+    }
+    syncStatusLabel.classList.add("warn");
     return;
   }
 
   if (pending > 0) {
-    syncStatus.textContent = `Online · ${pending} order(s) waiting to sync`;
-    syncStatus.classList.add("warn");
+    const waiting =
+      pending === 1 ? "1 order waiting to sync" : `${pending} orders waiting to sync`;
+    syncStatusLabel.textContent = `Online · ${waiting}`;
+    if (error) {
+      setSyncErrorMessage(error);
+    }
+    syncStatusLabel.classList.add("warn");
     return;
   }
 
-  syncStatus.textContent = catalogAt
+  syncStatusLabel.textContent = catalogAt
     ? `Online · synced ${formatDate(catalogAt)}`
     : "Online · syncing…";
-  syncStatus.classList.remove("warn");
+  syncStatusLabel.classList.remove("warn");
 }
 
 cartItems.addEventListener("click", (e) => {
@@ -1184,7 +1741,7 @@ productGrid.addEventListener("click", (e) => {
 receiptOrdersList.addEventListener("click", (e) => {
   const card = e.target.closest(".receipt-order-card");
   if (!card) return;
-  selectedOrder = openOrders.find((o) => o.client_id === card.dataset.id) || null;
+  selectedOrder = receiptOpenOrders.find((o) => o.client_id === card.dataset.id) || null;
   renderOpenOrdersList();
   renderReceiptPanel();
 });
@@ -1192,6 +1749,10 @@ receiptOrdersList.addEventListener("click", (e) => {
 clearBtn.addEventListener("click", () => {
   cart.clear();
   renderCart();
+});
+
+cancelOrderBtn?.addEventListener("click", () => {
+  cancelSelectedOrder();
 });
 
 checkoutBtn.addEventListener("click", async () => {
@@ -1202,11 +1763,7 @@ checkoutBtn.addEventListener("click", async () => {
 syncBtn.addEventListener("click", async () => {
   syncBtn.disabled = true;
   const result = await runFullSyncIfOnline(session, { silent: false });
-  if (!result.synced && result.reason === "offline") {
-    showToast("No internet connection.", true);
-  } else if (!result.synced && result.reason === "server_unreachable") {
-    showToast("Cannot reach server. Check config.json and that the server is running.", true);
-  } else if (result.synced) {
+  if (result.synced) {
     await loadCatalog();
   }
   await updateSyncBadge();
@@ -1214,19 +1771,269 @@ syncBtn.addEventListener("click", async () => {
 });
 
 dayendBtn.addEventListener("click", async () => {
-  dayendBtn.disabled = true;
-  try {
-    const allowed = await ensureDailyStockTakeForDayEnd();
-    if (!allowed) return;
-    const report = await window.pos.getDayEndReport();
-    await printDayEndReport(session, report, { taxRate: inclusiveTaxRate });
-    const label = report.orderCount === 1 ? "1 order" : `${report.orderCount} orders`;
-    showToast(`Day end report printed · ${label}`);
-  } catch (err) {
-    showToast(`Day end report failed: ${err.message}`, true);
-  } finally {
-    dayendBtn.disabled = false;
+  if (!isBrowserOnline()) {
+    showToast("Day-end cash-up with expenses requires an online connection.", true);
+    return;
   }
+  const reachable = await checkServerReachable(session);
+  if (!reachable) {
+    showToast("Cannot reach server for day-end report.", true);
+    return;
+  }
+  await openDayEndModal(getTodayISO());
+});
+
+expenseBtn?.addEventListener("click", async () => {
+  if (!isBrowserOnline()) {
+    showToast("Recording expenses requires an online connection.", true);
+    return;
+  }
+  const reachable = await checkServerReachable(session);
+  if (!reachable) {
+    showToast("Cannot reach server to record expense.", true);
+    return;
+  }
+  await loadSuppliers();
+  openExpenseModal();
+});
+
+function getTodayISO() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function closeExpenseModal() {
+  if (expenseModal) expenseModal.hidden = true;
+}
+
+function openExpenseModal() {
+  const activeCurrencies = currencies.filter((c) => c.is_active);
+  const activeSuppliers = suppliers.filter((s) => s.is_active);
+  expenseDateInput.value = getTodayISO();
+  expenseDescriptionInput.value = "";
+  expenseAmountInput.value = "";
+  expenseSupplierSelect.innerHTML = activeSuppliers.length
+    ? `<option value="">None (optional)</option>${activeSuppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}`
+    : `<option value="">None (optional)</option>`;
+  expenseCurrencySelect.innerHTML = activeCurrencies
+    .map((currency) => {
+      const label = currency.code || currency.name || `Currency ${currency.id}`;
+      const symbol = currency.symbol ? ` (${currency.symbol})` : "";
+      return `<option value="${currency.id}">${label}${symbol}</option>`;
+    })
+    .join("");
+  if (baseCurrency) {
+    expenseCurrencySelect.value = String(baseCurrency.id);
+  } else if (activeCurrencies.length) {
+    expenseCurrencySelect.value = String(activeCurrencies[0].id);
+  }
+  expenseModal.hidden = false;
+  expenseDescriptionInput.focus();
+}
+
+async function saveExpense() {
+  const description = (expenseDescriptionInput.value || "").trim();
+  const amountRaw = (expenseAmountInput.value || "").trim();
+  const expenseDate = (expenseDateInput.value || "").trim() || getTodayISO();
+  const currencyId = expenseCurrencySelect.value;
+
+  if (!description) {
+    showToast("Enter a description", true);
+    expenseDescriptionInput.focus();
+    return;
+  }
+  if (!amountRaw) {
+    showToast("Enter an amount", true);
+    expenseAmountInput.focus();
+    return;
+  }
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    showToast("Amount must be a positive number", true);
+    expenseAmountInput.focus();
+    return;
+  }
+  if (!currencyId) {
+    showToast("Select a currency", true);
+    return;
+  }
+
+  expenseSaveBtn.disabled = true;
+  try {
+    const payload = {
+      branch: session.branch.id,
+      expense_date: expenseDate,
+      amount: amount.toFixed(2),
+      currency: Number(currencyId),
+      description,
+    };
+    if (expenseSupplierSelect.value) {
+      payload.supplier = Number(expenseSupplierSelect.value);
+    }
+    await createExpense(session, payload);
+    showToast("Expense recorded");
+    closeExpenseModal();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    expenseSaveBtn.disabled = false;
+  }
+}
+
+function closeDayEndModal() {
+  if (dayendModal) dayendModal.hidden = true;
+}
+
+function currencyCodeOf(currency) {
+  return String(currency?.code || "").trim().toUpperCase();
+}
+
+function isFiscalBranchSession() {
+  return Boolean(session?.branch?.fiscalization_enabled);
+}
+
+function dayEndCurrencyCodes(activeCurrencies) {
+  return [...new Set(activeCurrencies.map(currencyCodeOf).filter(Boolean))].sort();
+}
+
+function renderDayEndCurrencyFields() {
+  if (!dayendCurrencyFields) return;
+  const activeCurrencies = currencies.filter((c) => c.is_active);
+  const fiscal = isFiscalBranchSession();
+  let visible = activeCurrencies;
+  if (fiscal && dayendCurrencyCodeSelect) {
+    const selectedCode = String(dayendCurrencyCodeSelect.value || "").trim().toUpperCase();
+    visible = activeCurrencies.filter((c) => currencyCodeOf(c) === selectedCode);
+  }
+  dayendCurrencyFields.innerHTML = visible
+    .map((currency) => {
+      const label = currency.name || currency.code || `Currency ${currency.id}`;
+      return `
+        <div class="form-group" style="margin:0;">
+          <label for="dayend-counted-${currency.id}">${label}</label>
+          <input
+            type="number"
+            id="dayend-counted-${currency.id}"
+            class="report-input"
+            data-currency-id="${currency.id}"
+            data-currency-code="${currencyCodeOf(currency)}"
+            step="0.01"
+            min="0"
+            placeholder="Counted amount"
+          >
+        </div>`;
+    })
+    .join("") || `<p class="settings-hint" style="margin:0;">No currencies for this code.</p>`;
+}
+
+function setupDayEndCurrencyCodePicker(activeCurrencies) {
+  const fiscal = isFiscalBranchSession();
+  if (!dayendCodeGroup || !dayendCurrencyCodeSelect) {
+    renderDayEndCurrencyFields();
+    return;
+  }
+  if (!fiscal) {
+    dayendCodeGroup.hidden = true;
+    dayendCurrencyCodeSelect.innerHTML = "";
+    renderDayEndCurrencyFields();
+    return;
+  }
+  const codes = dayEndCurrencyCodes(activeCurrencies);
+  dayendCodeGroup.hidden = false;
+  const previous = String(dayendCurrencyCodeSelect.value || "").trim().toUpperCase();
+  dayendCurrencyCodeSelect.innerHTML = codes
+    .map((code) => `<option value="${code}">${code}</option>`)
+    .join("");
+  if (previous && codes.includes(previous)) {
+    dayendCurrencyCodeSelect.value = previous;
+  } else if (baseCurrency && codes.includes(currencyCodeOf(baseCurrency))) {
+    dayendCurrencyCodeSelect.value = currencyCodeOf(baseCurrency);
+  } else if (codes.length) {
+    dayendCurrencyCodeSelect.value = codes[0];
+  }
+  renderDayEndCurrencyFields();
+}
+
+async function openDayEndModal(date) {
+  const allowed = await ensureDailyStockTakeForDayEnd(date);
+  if (!allowed) return;
+
+  const activeCurrencies = currencies.filter((c) => c.is_active);
+  dayendDateInput.value = date;
+  setupDayEndCurrencyCodePicker(activeCurrencies);
+  dayendModal.hidden = false;
+  dayendDateInput.focus();
+}
+
+async function printDayEndCashUp() {
+  const reportDate = (dayendDateInput.value || "").trim() || getTodayISO();
+  const allowed = await ensureDailyStockTakeForDayEnd(reportDate);
+  if (!allowed) {
+    closeDayEndModal();
+    return;
+  }
+
+  const counted = {};
+  const countedCodes = new Set();
+  const inputs = dayendCurrencyFields.querySelectorAll("input[data-currency-id]");
+  for (const input of inputs) {
+    const raw = (input.value || "").trim();
+    if (!raw) continue;
+    const parsed = Number(raw);
+    const currencyId = input.dataset.currencyId;
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      showToast(`Invalid amount for currency ${currencyId}`, true);
+      return;
+    }
+    const code = String(input.dataset.currencyCode || "").trim().toUpperCase();
+    if (code) countedCodes.add(code);
+    counted[currencyId] = String(parsed);
+  }
+  if (isFiscalBranchSession() && countedCodes.size > 1) {
+    showToast(
+      `On fiscal branches, count only one currency code (${[...countedCodes].sort().join(" or ")}). Do not mix USD and ZWG.`,
+      true,
+    );
+    return;
+  }
+
+  dayendPrintBtn.disabled = true;
+  try {
+    const response = await fetchDayEndReport(session, { date: reportDate, counted });
+    const report = response.report || response;
+    await printDayEndReport(session, report, { taxRate: inclusiveTaxRate });
+    const orderCount = Number(report.order_count || report.orderCount || 0);
+    const label = orderCount === 1 ? "1 order" : `${orderCount} orders`;
+    showToast(`Day end report printed · ${label}`);
+    closeDayEndModal();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    dayendPrintBtn.disabled = false;
+  }
+}
+
+expenseCloseBtn?.addEventListener("click", closeExpenseModal);
+expenseCancelBtn?.addEventListener("click", closeExpenseModal);
+expenseSaveBtn?.addEventListener("click", saveExpense);
+expenseModal?.addEventListener("click", (event) => {
+  if (event.target === expenseModal) closeExpenseModal();
+});
+dayendCloseBtn?.addEventListener("click", closeDayEndModal);
+dayendCancelBtn?.addEventListener("click", closeDayEndModal);
+dayendPrintBtn?.addEventListener("click", printDayEndCashUp);
+dayendCurrencyCodeSelect?.addEventListener("change", () => renderDayEndCurrencyFields());
+dayendDateInput?.addEventListener("change", async () => {
+  if (dayendModal.hidden) return;
+  const date = (dayendDateInput.value || "").trim() || getTodayISO();
+  const allowed = await ensureDailyStockTakeForDayEnd(date);
+  if (!allowed) closeDayEndModal();
+});
+dayendModal?.addEventListener("click", (event) => {
+  if (event.target === dayendModal) closeDayEndModal();
 });
 
 stockTakeRequiredCloseBtn?.addEventListener("click", closeStockTakeRequiredModal);
@@ -1310,47 +2117,214 @@ async function placeOrder() {
   }
 }
 
+async function cancelSelectedOrder() {
+  if (!selectedOrder) return;
+  const label = orderDisplayLabel(selectedOrder);
+  if (!window.confirm(`Cancel unpaid order ${label}?`)) return;
+
+  cancelOrderBtn.disabled = true;
+  try {
+    if (shouldPayOrderOnline(selectedOrder)) {
+      if (!isBrowserOnline()) {
+        throw new Error("Cannot cancel this order while offline.");
+      }
+      const reachable = await checkServerReachable(session);
+      if (!reachable) {
+        throw new Error("Cannot reach server to cancel this order.");
+      }
+      await cancelServerOrder(session, selectedOrder.server_id);
+      if (!selectedOrder.is_remote) {
+        await window.pos.cancelOrder(selectedOrder.client_id);
+      } else if (selectedOrder.table_number) {
+        await window.pos.dismissLocalTableOrders(selectedOrder.table_number);
+      }
+    } else {
+      await window.pos.cancelOrder(selectedOrder.client_id);
+    }
+    showToast(`Order ${label} cancelled`);
+    selectedOrder = null;
+    await loadOpenOrders();
+    renderReceiptPanel();
+  } catch (err) {
+    showToast(err.message, true);
+    cancelOrderBtn.disabled = Boolean(selectedOrder);
+  }
+}
+
 async function paySelectedOrder() {
   if (!selectedOrder) return;
   const inclusiveTotal = getReceiptInclusiveTotal();
   const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
 
-  if (paymentMethod === "account") {
-    showToast("Customer account payment is not available on desktop POS yet", true);
-    return;
-  }
+  const payingFromAccount = paymentMethod === "account";
 
-  if (!selectedCurrencyId) {
+  if (payingFromAccount) {
+    const customer = getCustomerById(receiptCustomerSelect.value);
+    if (!customer) {
+      showToast("Select a customer to pay from account", true);
+      return;
+    }
+    if (Number(customer.account_balance) < orderTotal) {
+      showToast(`Insufficient balance. Available: ${money(customer.account_balance)}`, true);
+      return;
+    }
+    if (!shouldPayOrderOnline(selectedOrder) || !selectedOrder.server_id) {
+      showToast("Customer account payment requires a synced online order.", true);
+      return;
+    }
+  } else if (!selectedCurrencyId && !isSplitPaymentActive()) {
     showToast("Please select a payment currency", true);
     return;
   }
 
-  const { hasRate, currency, amountDue, rate } = computePaymentAmounts(orderTotal);
-  if (!hasRate) {
-    showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
-    return;
+  let currency = null;
+  let amountDue = null;
+  let rate = null;
+  let splitLines = [];
+
+  if (!payingFromAccount) {
+    if (isSplitPaymentActive()) {
+      splitLines = getSplitPaymentLines();
+      if (!splitLines.length) {
+        showToast("Enter at least one currency amount, or turn off split payment", true);
+        return;
+      }
+      const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
+      if (Math.abs(allocated - orderTotal) >= 0.005) {
+        showToast(
+          `Split payments must total ${money(orderTotal)} (now ${money(allocated)})`,
+          true,
+        );
+        return;
+      }
+      currency = baseCurrency || splitLines[0].currency;
+      amountDue = orderTotal;
+      rate = 1;
+    } else {
+      const paymentInfo = computePaymentAmounts(orderTotal);
+      ({ hasRate: rate, currency, amountDue, rate } = {
+        hasRate: paymentInfo.hasRate,
+        currency: paymentInfo.currency,
+        amountDue: paymentInfo.amountDue,
+        rate: paymentInfo.rate,
+      });
+      if (!paymentInfo.hasRate) {
+        showToast(`No exchange rate configured for ${currency?.name || "this currency"}`, true);
+        return;
+      }
+    }
+  } else {
+    currency = baseCurrency;
+    amountDue = orderTotal;
+    rate = 1;
   }
 
   checkoutBtn.disabled = true;
   try {
     const localReceipt = `LOC-${session.branch.code || "POS"}-${Date.now().toString(36).toUpperCase()}`;
-    const order = await window.pos.payOrder(selectedOrder.client_id, {
-      currencyId: selectedCurrencyId,
+    const payments = payingFromAccount
+      ? []
+      : splitLines.length
+        ? splitLines.map((line) => ({
+            currency_id: line.currency_id,
+            amount: Number(line.amount.toFixed(2)),
+          }))
+        : [{ currency_id: selectedCurrencyId, amount: Number(amountDue.toFixed(2)) }];
+    const paymentMethodValue = payingFromAccount
+      ? "account"
+      : payments.length > 1
+        ? "multi"
+        : "cash";
+    const paymentRecord = {
+      currencyId: payingFromAccount
+        ? baseCurrency?.id || null
+        : splitLines.length
+          ? baseCurrency?.id || payments[0].currency_id
+          : selectedCurrencyId,
       exchangeRate: rate,
       amountPaid: amountDue,
       receiptNumber: localReceipt,
       paidByName: session.user?.display_name || session.user?.username || "",
-    });
-    showToast(`Paid ${money(order.amount_paid, currency)} · ${localReceipt}`);
+      paymentMethod: paymentMethodValue,
+      payments,
+    };
+
+    let order;
+    if (payingFromAccount || shouldPayOrderOnline(selectedOrder)) {
+      if (!isBrowserOnline()) {
+        throw new Error("Connect to the server to collect payment for this order.");
+      }
+      const reachable = await checkServerReachable(session);
+      if (!reachable) {
+        throw new Error("Cannot reach server to collect payment for this order.");
+      }
+
+      let payPayload;
+      if (payingFromAccount) {
+        const customerId = Number(receiptCustomerSelect.value);
+        if (Number(selectedOrder.customer) !== customerId) {
+          await linkCustomerToOrder(selectedOrder.server_id, customerId);
+          selectedOrder.customer = customerId;
+        }
+        payPayload = { payment_method: "account" };
+      } else if (splitLines.length) {
+        payPayload = {
+          payment_method: paymentMethodValue,
+          payments: splitLines.map((line) => ({
+            currency_id: line.currency_id,
+            amount: line.amount.toFixed(2),
+          })),
+        };
+      } else {
+        payPayload = {
+          currency_id: selectedCurrencyId,
+          payment_method: "cash",
+        };
+      }
+
+      const apiOrder = await payServerOrder(session, selectedOrder.server_id, payPayload);
+      order =
+        (await window.pos.syncLocalPaymentFromServer(selectedOrder.server_id, {
+          ...paymentRecord,
+          receiptNumber: apiOrder.receipt_number || localReceipt,
+          amountPaid: Number(apiOrder.amount_paid || amountDue),
+          exchangeRate: apiOrder.exchange_rate || rate,
+        })) || mapApiOrderForPrint(apiOrder, paymentRecord);
+      if (selectedOrder.is_remote && selectedOrder.table_number) {
+        await window.pos.dismissLocalTableOrders(selectedOrder.table_number);
+      }
+      if (payingFromAccount) {
+        const customer = getCustomerById(receiptCustomerSelect.value);
+        if (customer && apiOrder.customer_account_balance != null) {
+          customer.account_balance = apiOrder.customer_account_balance;
+          renderCustomerSelect();
+          receiptCustomerSelect.value = String(customer.id);
+        }
+        showToast(
+          `Paid from account ${money(orderTotal)} · ${order.receipt_number || apiOrder.receipt_number || orderDisplayLabel(selectedOrder)}`
+        );
+      } else {
+        showToast(
+          `Paid ${money(order.amount_paid || apiOrder.amount_paid, currency)} · ${order.receipt_number || apiOrder.receipt_number || orderDisplayLabel(selectedOrder)}`
+        );
+      }
+    } else {
+      order = await window.pos.payOrder(selectedOrder.client_id, paymentRecord);
+      showToast(`Paid ${money(order.amount_paid, currency)} · ${localReceipt}`);
+    }
+
     try {
       await printSalesReceipt(session, order, {
         currency,
         taxRate: inclusiveTaxRate,
+        payments,
       });
     } catch (printErr) {
       showToast(`Payment saved but print failed: ${printErr.message}`, true);
     }
     selectedOrder = null;
+    receiptPaymentOrderKey = null;
+    setSplitPaymentEnabled(false);
     await loadOpenOrders();
     await updateSyncBadge();
     runFullSyncIfOnline(session, { silent: true }).then(async (result) => {
@@ -1363,6 +2337,22 @@ async function paySelectedOrder() {
     showToast(err.message, true);
   } finally {
     checkoutBtn.disabled = !selectedOrder;
+    if (selectedOrder) {
+      updateCheckoutButtonState(getReceiptInclusiveTotal());
+    }
+  }
+}
+
+async function loadSuppliers() {
+  if (!session?.serverUrl || !session?.token || !isBrowserOnline()) {
+    suppliers = [];
+    return;
+  }
+  try {
+    const data = await fetchSuppliers(session);
+    suppliers = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+  } catch {
+    suppliers = [];
   }
 }
 
@@ -1412,16 +2402,21 @@ async function init() {
   inclusiveTaxRate = Number(session.inclusiveTaxRate || inclusiveTaxRate);
   updateFiscalDayButtonVisibility();
   updateTableManageVisibility();
+  updateReceiptModeVisibility();
 
   await loadCatalog();
   await loadDiningTables();
+  await loadOpenOrders();
   renderCart();
   await updateSyncBadge();
   window.addEventListener("offline", updateSyncBadge);
   stopAutoSync = startAutoSync(session, {
     onSyncComplete: async () => {
       await loadCatalog();
+    },
+    onSyncFinished: async () => {
       await updateSyncBadge();
+      await loadOpenOrders();
     },
   });
 }

@@ -287,6 +287,21 @@ class EscPosPrinter {
       order.payment_currency_name?.takeIf { it.isNotBlank() }?.let { currencyName ->
         output.write(textLine("Paid in: $currencyName"))
       }
+      if (order.payments.isNotEmpty()) {
+        for (payment in order.payments) {
+          val label = payment.currency_name?.takeIf { it.isNotBlank() }
+            ?: payment.method_display?.takeIf { it.isNotBlank() }
+            ?: payment.method.replaceFirstChar { it.uppercase() }
+          val symbol = payment.currency_symbol?.takeIf { it.isNotBlank() }
+            ?: order.payment_currency_symbol.orEmpty()
+          val formatted = if (symbol.isNotBlank()) {
+            "$symbol${formatPlainAmount(payment.amount)}"
+          } else {
+            formatMoney(payment.amount)
+          }
+          output.write(textLine(label, suffix = formatted))
+        }
+      }
       order.amount_paid?.takeIf { it.isNotBlank() }?.let { amount ->
         val symbol = order.payment_currency_symbol.orEmpty()
         val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatMoney(amount)
@@ -407,14 +422,15 @@ class EscPosPrinter {
       output.write(ALIGN_LEFT)
       for (i in 0 until cashupRows.length()) {
         val row = cashupRows.getJSONObject(i)
+        val name = row.optString("payment_currency__name", "")
         val code = row.optString("payment_currency__code", "")
-          .ifBlank { row.optString("payment_currency__name", "") }
+          .ifBlank { name }
         val symbol = row.optString("payment_currency__symbol", "")
         fun money(value: String?): String {
           if (value.isNullOrBlank()) return "—"
           return if (symbol.isNotBlank()) "$symbol${formatPlainAmount(value)}" else formatMoney(value)
         }
-        output.write(textLine("$code expected", suffix = money(row.optString("expected_total"))))
+        output.write(textLine("${name.ifBlank { code }} expected", suffix = money(row.optString("expected_total"))))
         val expensesTotal = row.optString("expenses_total", "")
         if (expensesTotal.isNotBlank() && expensesTotal != "0" && expensesTotal != "0.00") {
           output.write(textLine("Less expenses", suffix = money(expensesTotal)))

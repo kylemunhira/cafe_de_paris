@@ -25,6 +25,18 @@ class SessionManager(context: Context) {
         get() = prefs.getString(KEY_USER_ROLE, null)
         set(value) = prefs.edit().putString(KEY_USER_ROLE, value).apply()
 
+    var canCollectPayment: Boolean
+        get() = prefs.getBoolean(KEY_CAN_COLLECT_PAYMENT, true)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_COLLECT_PAYMENT, value).apply()
+
+    var kitchenStation: String?
+        get() = prefs.getString(KEY_KITCHEN_STATION, null)
+        set(value) = prefs.edit().putString(KEY_KITCHEN_STATION, value?.trim()).apply()
+
+    var kitchenStationDisplay: String?
+        get() = prefs.getString(KEY_KITCHEN_STATION_DISPLAY, null)
+        set(value) = prefs.edit().putString(KEY_KITCHEN_STATION_DISPLAY, value?.trim()).apply()
+
     var canAccessKitchen: Boolean
         get() = prefs.getBoolean(KEY_CAN_ACCESS_KITCHEN, false)
         set(value) = prefs.edit().putBoolean(KEY_CAN_ACCESS_KITCHEN, value).apply()
@@ -51,7 +63,7 @@ class SessionManager(context: Context) {
     fun shouldOpenPos(): Boolean {
         if (!canAccessPos) return false
         return when (userRole) {
-            "cashier", "branch_manager" -> true
+            "cashier", "branch_manager", "waiter" -> true
             else -> canAccessPos && !canAccessKitchen
         }
     }
@@ -64,6 +76,9 @@ class SessionManager(context: Context) {
         userRole = response.user.role
         canAccessKitchen = response.can_access_kitchen
         canAccessPos = response.can_access_pos
+        canCollectPayment = response.user.can_collect_payment
+        kitchenStation = response.user.kitchen_station
+        kitchenStationDisplay = response.user.kitchen_station_display
         fiscalizationEnabled = response.branch.fiscalization_enabled
         canManageDiningTables = response.user.can_manage_dining_tables
     }
@@ -77,6 +92,9 @@ class SessionManager(context: Context) {
             .remove(KEY_USER_ROLE)
             .remove(KEY_CAN_ACCESS_KITCHEN)
             .remove(KEY_CAN_ACCESS_POS)
+            .remove(KEY_CAN_COLLECT_PAYMENT)
+            .remove(KEY_KITCHEN_STATION)
+            .remove(KEY_KITCHEN_STATION_DISPLAY)
             .remove(KEY_FISCALIZATION_ENABLED)
             .remove(KEY_CAN_MANAGE_DINING_TABLES)
             .apply()
@@ -108,6 +126,9 @@ class SessionManager(context: Context) {
         private const val KEY_USER_ROLE = "user_role"
         private const val KEY_CAN_ACCESS_KITCHEN = "can_access_kitchen"
         private const val KEY_CAN_ACCESS_POS = "can_access_pos"
+        private const val KEY_CAN_COLLECT_PAYMENT = "can_collect_payment"
+        private const val KEY_KITCHEN_STATION = "kitchen_station"
+        private const val KEY_KITCHEN_STATION_DISPLAY = "kitchen_station_display"
         private const val KEY_FISCALIZATION_ENABLED = "fiscalization_enabled"
         private const val KEY_CAN_MANAGE_DINING_TABLES = "can_manage_dining_tables"
         private const val KEY_PRINTER_ADDRESS = "printer_address"
@@ -129,6 +150,9 @@ object JsonParsers {
                 role = user.getString("role"),
                 can_manage_fiscal_day = user.optBoolean("can_manage_fiscal_day", false),
                 can_manage_dining_tables = user.optBoolean("can_manage_dining_tables", false),
+                can_collect_payment = user.optBoolean("can_collect_payment", true),
+                kitchen_station = user.optString("kitchen_station", null)?.takeIf { it.isNotBlank() },
+                kitchen_station_display = user.optString("kitchen_station_display", null)?.takeIf { it.isNotBlank() },
             ),
             branch = Branch(
                 id = branch.getInt("id"),
@@ -240,6 +264,17 @@ object JsonParsers {
                 addons = addons,
             )
         }
+        val paymentsJson = json.optJSONArray("payments") ?: org.json.JSONArray()
+        val payments = (0 until paymentsJson.length()).map { i ->
+            val payment = paymentsJson.getJSONObject(i)
+            OrderPaymentLine(
+                method = payment.optString("method", "cash"),
+                amount = payment.optString("amount", "0"),
+                method_display = payment.optString("method_display", null),
+                currency_name = payment.optString("currency_name", null),
+                currency_symbol = payment.optString("currency_symbol", null),
+            )
+        }
         return KitchenOrder(
             id = json.getInt("id"),
             branch = json.getInt("branch"),
@@ -263,7 +298,21 @@ object JsonParsers {
             fiscal_approval_status = json.optString("fiscal_approval_status", null),
             payment_method = json.optString("payment_method", null),
             customer_account_balance = json.optString("customer_account_balance", null),
+            payments = payments,
         )
+    }
+
+    fun parseSuppliers(body: String): List<Supplier> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            Supplier(
+                id = item.getInt("id"),
+                name = item.getString("name"),
+                is_active = item.optBoolean("is_active", true),
+            )
+        }
     }
 
     fun parseCustomers(body: String): List<Customer> {

@@ -18,12 +18,16 @@ from payments.models import Currency, CurrencyRate
 class OrderPayTests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="cashier", password="pass")
         self.branch = Branch.objects.create(
             name="Test Branch",
             code="TST",
             location="Harare",
             branch_type=BranchType.BRANCH,
         )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
         category = ProductCategory.objects.create(name="Coffee")
         self.product = Product.objects.create(
             name="Espresso",
@@ -86,7 +90,70 @@ class OrderPayTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.order.refresh_from_db()
         self.assertEqual(self.order.amount_paid, Decimal("7.00"))
+        self.assertEqual(self.order.payment_method, "cash")
+        self.assertEqual(self.order.payments.count(), 1)
+        payment = self.order.payments.get()
+        self.assertEqual(payment.method, "cash")
+        self.assertEqual(payment.amount, Decimal("7.00"))
 
+    def test_split_payment_on_non_fiscal_branch(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "payment_method": "multi",
+                "payments": [
+                    {"currency_id": self.usd.id, "amount": "5.00"},
+                    {"currency_id": self.zwl.id, "amount": "51.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertEqual(self.order.payment_method, "multi")
+        self.assertEqual(self.order.amount_paid, Decimal("7.00"))
+        amounts = {
+            payment.currency_id: payment.amount for payment in self.order.payments.all()
+        }
+        self.assertEqual(amounts, {
+            self.usd.id: Decimal("5.00"),
+            self.zwl.id: Decimal("51.00"),
+        })
+        self.assertEqual(len(response.data["payments"]), 2)
+
+    def test_split_payment_rejects_wrong_total(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "payments": [
+                    {"currency_id": self.usd.id, "amount": "5.00"},
+                    {"currency_id": self.zwl.id, "amount": "25.50"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.OPEN)
+
+    def test_split_payment_blocked_on_fiscal_branch(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "payments": [
+                    {"currency_id": self.usd.id, "amount": "5.00"},
+                    {"currency_id": self.zwl.id, "amount": "51.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("non-fiscal", response.data["detail"].lower())
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.OPEN)
 
 class KitchenOrderTests(TestCase):
     def setUp(self):
@@ -142,6 +209,85 @@ class KitchenOrderTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class KitchenStationFilterTests(TestCase):
+    def setUp(self):
+        from accounts.models import StaffProfile, StaffRole
+        from catalog.models import PosStation
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Test Branch",
+            code="TST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        self.bar_category = ProductCategory.objects.create(
+            name="Drinks",
+            pos_station=PosStation.BAR,
+        )
+        self.kitchen_category = ProductCategory.objects.create(
+            name="Mains",
+            pos_station=PosStation.KITCHEN,
+        )
+        self.bar_product = Product.objects.create(
+            name="Beer",
+            category=self.bar_category,
+            selling_price=Decimal("4.00"),
+        )
+        self.kitchen_product = Product.objects.create(
+            name="Burger",
+            category=self.kitchen_category,
+            selling_price=Decimal("8.00"),
+        )
+        self.mixed_order = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        self.mixed_order.items.create(
+            product=self.bar_product,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        self.mixed_order.items.create(
+            product=self.kitchen_product,
+            quantity=Decimal("1"),
+            price=Decimal("8.00"),
+        )
+        self.mixed_order.recalculate_total()
+
+        self.kitchen_user = User.objects.create_user(username="kitchenchef", password="pass")
+        StaffProfile.objects.create(
+            user=self.kitchen_user,
+            branch=self.branch,
+            role=StaffRole.STAFF,
+            kitchen_station=PosStation.KITCHEN,
+        )
+        self.bar_user = User.objects.create_user(username="barstaff", password="pass")
+        StaffProfile.objects.create(
+            user=self.bar_user,
+            branch=self.branch,
+            role=StaffRole.STAFF,
+            kitchen_station=PosStation.BAR,
+        )
+
+    def test_kitchen_staff_only_sees_kitchen_items(self):
+        self.client.force_authenticate(user=self.kitchen_user)
+        response = self.client.get("/api/orders/?status=open")
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"]
+        self.assertEqual(len(results), 1)
+        item_names = [item["product_name"] for item in results[0]["items"]]
+        self.assertEqual(item_names, ["Burger"])
+
+    def test_bar_staff_only_sees_bar_items(self):
+        self.client.force_authenticate(user=self.bar_user)
+        response = self.client.get("/api/orders/?status=open")
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"]
+        self.assertEqual(len(results), 1)
+        item_names = [item["product_name"] for item in results[0]["items"]]
+        self.assertEqual(item_names, ["Beer"])
 
 
 class InclusiveTaxBreakdownTests(TestCase):
@@ -487,6 +633,62 @@ class DayEndReportTests(TestCase):
         self.assertEqual(response.data["report"]["order_count"], 1)
         self.assertTrue(response.data["report"]["has_counted_entries"])
 
+    def test_fiscal_day_end_rejects_mixed_currency_codes(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        zwg = Currency.objects.create(code="ZWG", name="ZiG Cash", symbol="ZWG")
+        CurrencyRate.objects.create(
+            currency=zwg,
+            rate=Decimal("30"),
+            effective_from="2026-01-01",
+        )
+        self._complete_daily_stock_take()
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+
+        response = api.post(
+            "/api/reports/day-end/",
+            {
+                "branch": self.branch.id,
+                "date": self.today.isoformat(),
+                "counted": {
+                    str(self.usd.id): "10.00",
+                    str(zwg.id): "100.00",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("same currency code", response.data["detail"].lower())
+
+    def test_fiscal_day_end_allows_same_currency_code(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        bank_usd = Currency.objects.create(code="USD", name="BANKUSD", symbol="USD$")
+        CurrencyRate.objects.create(
+            currency=bank_usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+        self._complete_daily_stock_take()
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+
+        response = api.post(
+            "/api/reports/day-end/",
+            {
+                "branch": self.branch.id,
+                "date": self.today.isoformat(),
+                "counted": {
+                    str(self.usd.id): "10.00",
+                    str(bank_usd.id): "5.00",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("saved"))
+
 
 class ExpenseApiTests(TestCase):
     def setUp(self):
@@ -713,3 +915,185 @@ class TableOrderCombineTests(TestCase):
         self.assertEqual(first.total_amount, Decimal("7.50"))
         self.assertFalse(Order.objects.filter(pk=second.pk).exists())
         self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN, table_number="T2").count(), 0)
+
+
+class OrderCancelVoidTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        self.branch = Branch.objects.create(
+            name="Test Branch",
+            code="TST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=category,
+            selling_price=Decimal("3.50"),
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+
+    def _open_order(self):
+        order = Order.objects.create(branch=self.branch)
+        order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+        return order
+
+    def test_cancel_open_order(self):
+        order = self._open_order()
+        response = self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.CANCELLED)
+        self.assertIsNotNone(order.cancelled_at)
+        self.assertEqual(order.cancelled_by_id, self.user.id)
+
+    def test_cannot_pay_cancelled_order(self):
+        order = self._open_order()
+        self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_cancel_paid_order_rejected(self):
+        order = self._open_order()
+        self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        response = self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+
+    def test_void_paid_order(self):
+        order = self._open_order()
+        self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.CANCELLED)
+        self.assertIsNotNone(order.receipt_number)
+        self.assertIsNotNone(order.paid_at)
+        self.assertEqual(order.cancelled_by_id, self.user.id)
+
+    def test_void_open_order_rejected(self):
+        order = self._open_order()
+        response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+
+    def test_void_fiscalised_order_rejected(self):
+        order = self._open_order()
+        self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        order.fiscal_approval_status = FiscalApprovalStatus.APPROVED
+        order.save(update_fields=["fiscal_approval_status"])
+        response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Fiscalised", response.data["detail"])
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+
+    def test_void_account_paid_order_refunds_balance(self):
+        from customers.models import Customer, CustomerAccountTransactionType
+
+        customer = Customer.objects.create(
+            first_name="Ada",
+            last_name="Lovelace",
+            account_balance=Decimal("20.00"),
+        )
+        order = Order.objects.create(branch=self.branch, customer=customer)
+        order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+        pay_response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"payment_method": "account"},
+            format="json",
+        )
+        self.assertEqual(pay_response.status_code, 200, pay_response.data)
+        customer.refresh_from_db()
+        self.assertEqual(customer.account_balance, Decimal("13.00"))
+
+        response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        customer.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.CANCELLED)
+        self.assertEqual(customer.account_balance, Decimal("20.00"))
+        self.assertTrue(
+            customer.account_transactions.filter(
+                transaction_type=CustomerAccountTransactionType.REFUND,
+                order=order,
+            ).exists()
+        )
+
+    def test_void_restores_recipe_materials(self):
+        from bakery.models import Recipe
+        from inventory.models import BranchInventory
+
+        ingredients = ProductCategory.objects.create(name="Ingredients")
+        beans = Product.objects.create(
+            name="Coffee Beans",
+            category=ingredients,
+            selling_price=Decimal("0"),
+        )
+        Recipe.objects.create(
+            product=self.product,
+            ingredient=beans,
+            quantity_required=Decimal("0.02"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=beans,
+            quantity=Decimal("1.00"),
+        )
+        order = self._open_order()
+        pay_response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(pay_response.status_code, 200, pay_response.data)
+        stock = BranchInventory.objects.get(branch=self.branch, product=beans)
+        self.assertEqual(stock.quantity, Decimal("0.96"))
+
+        response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal("1.00"))

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -5,12 +7,16 @@ from catalog.models import MenuAddon
 
 from .models import (
     BranchReceiptSequence,
+    FiscalApprovalStatus,
     KitchenStatus,
     Order,
     OrderItem,
     OrderItemAddon,
+    OrderPayment,
     OrderStatus,
     OrderType,
+    PaymentMethod,
+    TenderMethod,
 )
 
 
@@ -192,3 +198,179 @@ def allocate_receipt_number(branch) -> str:
 
     date_part = today.strftime("%d%m%y")
     return f"{code}{date_part}{state.daily_count}"
+
+
+class PaymentValidationError(Exception):
+    """Raised when tender payment lines are invalid."""
+
+
+class OrderCancelError(Exception):
+    """Raised when an order cannot be cancelled or voided."""
+
+
+def cancel_order(order, *, cancelled_by=None):
+    """Cancel an unpaid (open) order. No inventory changes."""
+    if order.status != OrderStatus.OPEN:
+        raise OrderCancelError("Only open orders can be cancelled.")
+    order.status = OrderStatus.CANCELLED
+    order.cancelled_at = timezone.now()
+    order.cancelled_by = cancelled_by
+    order.save(update_fields=["status", "cancelled_at", "cancelled_by"])
+    return order
+
+
+def void_order(order, *, voided_by=None):
+    """
+    Void a paid order that has not been fiscalised.
+    Restores recipe materials and refunds account payments.
+    """
+    from customers.services import CustomerAccountError, refund_order_to_account
+    from inventory.services import restore_order_recipe_materials
+
+    if order.status != OrderStatus.PAID:
+        raise OrderCancelError("Only paid orders can be voided.")
+    if order.fiscal_approval_status == FiscalApprovalStatus.APPROVED:
+        raise OrderCancelError("Fiscalised orders cannot be voided.")
+
+    restore_order_recipe_materials(order)
+
+    if order.payment_method == PaymentMethod.ACCOUNT:
+        try:
+            refund_order_to_account(order=order, recorded_by=voided_by)
+        except CustomerAccountError as exc:
+            raise OrderCancelError(str(exc)) from exc
+
+    order.status = OrderStatus.CANCELLED
+    order.cancelled_at = timezone.now()
+    order.cancelled_by = voided_by
+    order.save(update_fields=["status", "cancelled_at", "cancelled_by"])
+    return order
+
+
+def infer_tender_method(currency) -> str:
+    label = f"{currency.name or ''} {currency.code or ''}".lower()
+    if "ecocash" in label or "eco cash" in label:
+        return TenderMethod.ECOCASH
+    if "bank" in label:
+        return TenderMethod.BANK
+    return TenderMethod.CASH
+
+
+def normalize_tender_lines(payment_lines):
+    """Validate and return tender lines as [{currency, method, amount, rate}, ...]."""
+    if not payment_lines:
+        raise PaymentValidationError("At least one payment line is required.")
+
+    seen = set()
+    normalized = []
+    for line in payment_lines:
+        currency = line["currency"]
+        if currency.id in seen:
+            raise PaymentValidationError(
+                "Each payment currency can only appear once on a split payment."
+            )
+        seen.add(currency.id)
+        amount = Decimal(line["amount"]).quantize(Decimal("0.01"))
+        if amount <= 0:
+            raise PaymentValidationError("Each payment amount must be greater than zero.")
+        rate = currency.get_current_rate()
+        if rate is None:
+            raise PaymentValidationError(
+                f'No exchange rate configured for "{currency.name}".'
+            )
+        method = line.get("method") or infer_tender_method(currency)
+        if method not in TenderMethod.values:
+            method = TenderMethod.CASH
+        normalized.append(
+            {
+                "currency": currency,
+                "method": method,
+                "amount": amount,
+                "rate": rate,
+                "base_amount": currency.convert_to_base(amount),
+            }
+        )
+    return normalized
+
+
+def validate_tender_total(payment_lines, order_total: Decimal):
+    total_base = sum((line["base_amount"] for line in payment_lines), Decimal("0"))
+    if total_base != order_total.quantize(Decimal("0.01")):
+        raise PaymentValidationError(
+            f"Payment lines total {total_base} in base currency but order total is {order_total}."
+        )
+
+
+def resolve_order_payment_method(payment_lines) -> str:
+    if len(payment_lines) == 1:
+        return payment_lines[0]["method"]
+    return PaymentMethod.MULTI
+
+
+def save_order_tender_payments(order, payment_lines):
+    """Replace tender lines on the order and set rollup payment fields."""
+    OrderPayment.objects.filter(order=order).delete()
+    for line in payment_lines:
+        OrderPayment.objects.create(
+            order=order,
+            method=line["method"],
+            currency=line["currency"],
+            amount=line["amount"],
+            exchange_rate=line["rate"],
+        )
+
+    primary = payment_lines[0]
+    if len(payment_lines) == 1:
+        order.payment_currency = primary["currency"]
+        order.exchange_rate = primary["rate"]
+        order.amount_paid = primary["amount"]
+    else:
+        # Rollup stays in base currency for multi-currency splits.
+        from payments.models import Currency
+
+        base = Currency.objects.filter(is_base=True).first()
+        order.payment_currency = base or primary["currency"]
+        order.exchange_rate = Decimal("1") if base else primary["rate"]
+        order.amount_paid = order.total_amount
+    order.payment_method = resolve_order_payment_method(payment_lines)
+
+
+def mark_order_paid_with_tenders(
+    order,
+    *,
+    payment_lines,
+    receipt_number,
+    paid_by=None,
+    paid_at=None,
+):
+    """Apply tender payment(s), allocate receipt fields, and mark the order paid."""
+    lines = normalize_tender_lines(payment_lines)
+    validate_tender_total(lines, order.total_amount)
+
+    if order.branch.fiscalization_enabled:
+        if len(lines) > 1:
+            raise PaymentValidationError(
+                "Split payments are only available on non-fiscal branches."
+            )
+
+    save_order_tender_payments(order, lines)
+    order.status = OrderStatus.PAID
+    order.receipt_number = receipt_number
+    order.paid_at = paid_at or timezone.now()
+    order.paid_by = paid_by
+    if order.branch.fiscalization_enabled:
+        order.fiscal_approval_status = FiscalApprovalStatus.PENDING
+    order.save(
+        update_fields=[
+            "payment_currency",
+            "exchange_rate",
+            "amount_paid",
+            "payment_method",
+            "status",
+            "receipt_number",
+            "paid_at",
+            "paid_by",
+            "fiscal_approval_status",
+        ]
+    )
+    return order

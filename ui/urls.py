@@ -83,6 +83,7 @@ urlpatterns = [
     ),
     path("users/", views.UsersView.as_view(), name="users"),
     path("reports/", views.ReportsView.as_view(), name="reports"),
+    path("reports/day-end/", views.DayEndReportPageView.as_view(), name="day-end-report"),
     path("reports/vat/", views.VATReportView.as_view(), name="vat-report"),
     path(
         "reports/ingredients/",

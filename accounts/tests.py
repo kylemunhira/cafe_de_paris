@@ -16,12 +16,15 @@ from .branch_access import (
     user_can_access_management_console,
     user_can_access_pos,
     user_can_access_stores_transfers,
+    user_can_collect_payment,
     user_can_manage_branches,
     user_can_manage_users,
+    user_can_use_desktop_pos,
     user_has_global_branch_access,
     user_is_cashier,
     user_is_branch_manager,
     user_is_grv_staff,
+    user_is_waiter,
 )
 from .models import StaffProfile, StaffRole
 
@@ -59,6 +62,27 @@ class StaffUserApiTests(APITestCase):
         user = User.objects.get(username="poscashier")
         self.assertTrue(user.staff_profile.pos_access)
         self.assertTrue(user_can_access_pos(user))
+
+    def test_create_waiter_grants_pos_access(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "username": "waiter1",
+                "email": "waiter@example.com",
+                "password": "securepass1",
+                "branch": self.branch.id,
+                "role": StaffRole.WAITER,
+                "pos_access": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["pos_access"])
+        user = User.objects.get(username="waiter1")
+        self.assertTrue(user.staff_profile.pos_access)
+        self.assertTrue(user_can_access_pos(user))
+        self.assertFalse(user_can_collect_payment(user))
 
     def test_create_staff_user_with_branch(self):
         response = self.client.post(
@@ -280,6 +304,14 @@ class TransferNavAccessTests(APITestCase):
             pos_access=True,
         )
 
+        self.waiter = User.objects.create_user(username="waiter", password="pass")
+        StaffProfile.objects.create(
+            user=self.waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+        )
+
         self.hq_staff = User.objects.create_user(username="hqstaff", password="pass")
         StaffProfile.objects.create(
             user=self.hq_staff,
@@ -332,10 +364,18 @@ class TransferNavAccessTests(APITestCase):
         self.assertFalse(user_can_access_dashboard(self.branch_manager))
         self.assertFalse(user_can_manage_users(self.branch_manager))
 
+    def test_waiter_access_flags(self):
+        self.assertTrue(user_can_access_pos(self.waiter))
+        self.assertTrue(user_is_waiter(self.waiter))
+        self.assertFalse(user_can_collect_payment(self.waiter))
+        self.assertFalse(user_can_access_management_console(self.waiter))
+        self.assertTrue(user_can_use_desktop_pos(self.waiter))
+
     def test_branch_staff_access_flags(self):
         self.assertFalse(user_can_access_bakery_transfers(self.cashier))
         self.assertFalse(user_can_access_grv(self.cashier))
         self.assertTrue(user_can_access_pos(self.cashier))
+        self.assertTrue(user_can_collect_payment(self.cashier))
         self.assertTrue(user_is_cashier(self.cashier))
         self.assertFalse(user_can_access_management_console(self.cashier))
 
@@ -386,6 +426,11 @@ class TransferNavAccessTests(APITestCase):
         self.client.force_login(self.cashier)
         response = self.client.get(reverse("ui:pos"))
         self.assertEqual(response.status_code, 200)
+
+        self.client.force_login(self.waiter)
+        response = self.client.get(reverse("ui:pos"))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["can_collect_payment"])
 
         self.client.force_login(self.hq_admin)
         response = self.client.get(reverse("ui:pos"))
@@ -812,9 +857,11 @@ class CashierConsoleAccessTests(APITestCase):
         self.client.force_login(self.cashier)
         self.assertEqual(self.client.get(reverse("ui:pos")).status_code, 200)
         self.assertEqual(self.client.get(reverse("ui:stock-take")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:customer-accounts")).status_code, 200)
         self.assertEqual(self.client.get(reverse("ui:orders")).status_code, 403)
         self.assertEqual(self.client.get(reverse("ui:products")).status_code, 403)
         self.assertEqual(self.client.get(reverse("ui:expenses")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:customers")).status_code, 403)
 
     def test_fiscal_cashier_can_access_invoices_and_receipts(self):
         self.assertTrue(user_can_access_cashier_invoices(self.cashier))
