@@ -22,6 +22,13 @@ class Branch(models.Model):
         default=BranchType.BRANCH,
     )
     is_active = models.BooleanField(default=True)
+    allow_negative_stock = models.BooleanField(
+        default=False,
+        help_text=(
+            "When enabled, POS sales may deduct stock below zero. "
+            "Transfers and production still require sufficient stock."
+        ),
+    )
     fiscalization_enabled = models.BooleanField(
         default=False,
         help_text="When enabled, sales from this branch are sent to the fiscal device.",

@@ -55,6 +55,22 @@ class RecipeApiTests(TestCase):
         self.assertEqual(results[0]["quantity_required"], "0.25")
         self.assertEqual(results[0]["line_cost"], Decimal("1.25"))
 
+    def test_accepts_small_fractional_quantities(self):
+        response = self.client.post(
+            "/api/recipes/",
+            {
+                "product": self.croissant.id,
+                "ingredient": self.flour.id,
+                "quantity_required": "0.005",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["quantity_required"], "0.0050")
+
+        recipe = Recipe.objects.get(pk=response.data["id"])
+        self.assertEqual(recipe.quantity_required, Decimal("0.0050"))
+
     def test_rejects_duplicate_ingredient_for_same_product(self):
         Recipe.objects.create(
             product=self.croissant,

@@ -9,8 +9,13 @@ from catalog.serializers import ProductCategorySerializer, ProductSerializer
 from branches.dining_tables import ensure_default_dining_tables
 from branches.models import DiningTable
 from branches.serializers import DiningTableSerializer
-from orders.models import FiscalApprovalStatus, Order, OrderItem, OrderStatus
-from orders.services import ReceiptNumberError, allocate_receipt_number
+from orders.models import FiscalApprovalStatus, Order, OrderStatus, OrderType
+from orders.services import (
+    ReceiptNumberError,
+    add_items_to_order,
+    allocate_receipt_number,
+    find_open_table_order,
+)
 from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 from payments.serializers import CurrencySerializer
 
@@ -51,21 +56,24 @@ def _existing_synced_order(client_id):
 
 def _create_order(branch, validated_data, user=None):
     items_data = validated_data["items"]
+    table_number = (validated_data.get("table_number") or "").strip()
+    order_type = validated_data.get("order_type")
+
+    existing = None
+    if order_type == OrderType.DINE_IN and table_number:
+        existing = find_open_table_order(branch=branch, table_number=table_number)
+
+    if existing:
+        add_items_to_order(existing, items_data)
+        return existing
+
     order = Order.objects.create(
         branch=branch,
         order_type=validated_data["order_type"],
         table_number=validated_data.get("table_number", ""),
         created_by=user,
     )
-    for item_data in items_data:
-        product = item_data["product"]
-        OrderItem.objects.create(
-            order=order,
-            product=product,
-            quantity=item_data["quantity"],
-            price=product.selling_price,
-        )
-    order.recalculate_total()
+    add_items_to_order(order, items_data)
     return order
 
 

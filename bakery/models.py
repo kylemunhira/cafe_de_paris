@@ -16,7 +16,7 @@ class Recipe(models.Model):
         on_delete=models.CASCADE,
         related_name="recipes_as_ingredient",
     )
-    quantity_required = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity_required = models.DecimalField(max_digits=12, decimal_places=4)
 
     class Meta:
         unique_together = ("product", "ingredient")

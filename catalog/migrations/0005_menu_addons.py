@@ -58,5 +58,13 @@ class Migration(migrations.Migration):
                 'constraints': [models.UniqueConstraint(fields=('product', 'group'), name='catalog_productmenuaddongroup_unique')],
             },
         ),
+        migrations.AddField(
+            model_name='product',
+            name='daily_stock_take',
+            field=models.BooleanField(
+                default=False,
+                help_text='Include this product in daily stock counts at branches that stock it.',
+            ),
+        ),
         migrations.RunPython(seed_addons, migrations.RunPython.noop),
     ]

@@ -85,6 +85,16 @@ function initDb() {
   ensureOrderColumn("kitchen_ready_at", "TEXT");
   ensureOrderColumn("created_by_name", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("paid_by_name", "TEXT NOT NULL DEFAULT ''");
+  ensureTableColumn("products", "addon_groups_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureTableColumn("order_items", "notes", "TEXT NOT NULL DEFAULT ''");
+  ensureTableColumn("order_items", "addons_json", "TEXT NOT NULL DEFAULT '[]'");
+}
+
+function ensureTableColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((row) => row.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 function ensureOrderColumn(column, definition) {
@@ -144,7 +154,7 @@ function replaceCatalog({ categories, products, currencies, dining_tables: dinin
     }
 
     const insertProduct = db.prepare(
-      "INSERT INTO products (id, name, category_id, category_name, selling_price, is_active) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO products (id, name, category_id, category_name, selling_price, is_active, addon_groups_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
     for (const product of products) {
       insertProduct.run(
@@ -153,7 +163,8 @@ function replaceCatalog({ categories, products, currencies, dining_tables: dinin
         product.category,
         product.category_name || "",
         Number(product.selling_price),
-        product.is_active ? 1 : 0
+        product.is_active ? 1 : 0,
+        JSON.stringify(product.addon_groups || [])
       );
     }
 
@@ -193,12 +204,47 @@ function listCategories() {
   return db.prepare("SELECT * FROM categories ORDER BY name").all();
 }
 
+function parseAddonGroups(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseOrderItemAddons(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function mapOrderItem(row) {
+  return {
+    product_id: row.product_id,
+    product_name: row.product_name,
+    quantity: row.quantity,
+    price: row.price,
+    notes: row.notes || "",
+    addons: parseOrderItemAddons(row.addons_json),
+  };
+}
+
 function listProducts() {
   return db
     .prepare(
-      "SELECT id, name, category_id AS category, category_name, selling_price, is_active FROM products WHERE is_active = 1 ORDER BY name"
+      "SELECT id, name, category_id AS category, category_name, selling_price, is_active, addon_groups_json FROM products WHERE is_active = 1 ORDER BY name"
     )
-    .all();
+    .all()
+    .map((row) => ({
+      ...row,
+      addon_groups: parseAddonGroups(row.addon_groups_json),
+    }));
 }
 
 function listCurrencies() {
@@ -231,6 +277,20 @@ function newClientId() {
 }
 
 function createOrder({ orderType, tableNumber, items, createdByName = "" }) {
+  const trimmedTable = (tableNumber || "").trim();
+  if (orderType === "dine_in" && trimmedTable) {
+    const existing = db
+      .prepare(
+        `SELECT client_id FROM orders
+         WHERE status = 'open' AND order_type = 'dine_in' AND table_number = ?
+         ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(trimmedTable);
+    if (existing) {
+      return addItemsToOrder(existing.client_id, items);
+    }
+  }
+
   const clientId = newClientId();
   const createdAt = new Date().toISOString();
   let total = 0;
@@ -248,7 +308,7 @@ function createOrder({ orderType, tableNumber, items, createdByName = "" }) {
     ).run(clientId, orderType, tableNumber || "", total, createdAt, createdByName || "");
 
     const insertItem = db.prepare(
-      "INSERT INTO order_items (order_client_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO order_items (order_client_id, product_id, product_name, quantity, price, notes, addons_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
     for (const item of items) {
       insertItem.run(
@@ -256,7 +316,9 @@ function createOrder({ orderType, tableNumber, items, createdByName = "" }) {
         item.product_id,
         item.product_name,
         item.quantity,
-        item.price
+        item.price,
+        item.notes || "",
+        JSON.stringify(item.addons || [])
       );
     }
   });
@@ -265,12 +327,92 @@ function createOrder({ orderType, tableNumber, items, createdByName = "" }) {
   return getOrder(clientId);
 }
 
+function addItemsToOrder(clientId, items) {
+  const order = db.prepare("SELECT * FROM orders WHERE client_id = ?").get(clientId);
+  if (!order || order.status !== "open") {
+    throw new Error("Only open orders can receive new items.");
+  }
+
+  const insertItem = db.prepare(
+    "INSERT INTO order_items (order_client_id, product_id, product_name, quantity, price, notes, addons_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  );
+  let addedTotal = 0;
+  const tx = db.transaction(() => {
+    for (const item of items) {
+      addedTotal += Number(item.price) * Number(item.quantity);
+      insertItem.run(
+        clientId,
+        item.product_id,
+        item.product_name,
+        item.quantity,
+        item.price,
+        item.notes || "",
+        JSON.stringify(item.addons || [])
+      );
+    }
+    db.prepare(
+      `UPDATE orders SET
+        total_amount = total_amount + ?,
+        kitchen_status = 'pending',
+        sync_status = 'pending'
+      WHERE client_id = ?`
+    ).run(addedTotal, clientId);
+  });
+  tx();
+  return getOrder(clientId);
+}
+
+function consolidateTableOrders(clientId) {
+  const order = db.prepare("SELECT * FROM orders WHERE client_id = ?").get(clientId);
+  if (
+    !order
+    || order.status !== "open"
+    || order.order_type !== "dine_in"
+    || !(order.table_number || "").trim()
+  ) {
+    return order;
+  }
+
+  const siblings = db
+    .prepare(
+      `SELECT client_id FROM orders
+       WHERE status = 'open' AND order_type = 'dine_in' AND table_number = ? AND client_id != ?`
+    )
+    .all(order.table_number, clientId);
+
+  if (!siblings.length) return getOrder(clientId);
+
+  const tx = db.transaction(() => {
+    for (const sibling of siblings) {
+      db.prepare(
+        "UPDATE order_items SET order_client_id = ? WHERE order_client_id = ?"
+      ).run(clientId, sibling.client_id);
+      db.prepare("DELETE FROM orders WHERE client_id = ?").run(sibling.client_id);
+    }
+    const total = db
+      .prepare(
+        `SELECT COALESCE(SUM(quantity * price), 0) AS total
+         FROM order_items WHERE order_client_id = ?`
+      )
+      .get(clientId).total;
+    db.prepare("UPDATE orders SET total_amount = ?, sync_status = 'pending' WHERE client_id = ?").run(
+      total,
+      clientId
+    );
+  });
+  tx();
+  return getOrder(clientId);
+}
+
 function getOrder(clientId) {
   const order = db.prepare("SELECT * FROM orders WHERE client_id = ?").get(clientId);
   if (!order) return null;
   const items = db
-    .prepare("SELECT product_id, product_name, quantity, price FROM order_items WHERE order_client_id = ?")
-    .all(clientId);
+    .prepare(
+      "SELECT product_id, product_name, quantity, price, notes, addons_json FROM order_items WHERE order_client_id = ?"
+    )
+    .all(clientId)
+    .map(mapOrderItem);
   return { ...order, items };
 }
 
@@ -282,13 +424,16 @@ function listOpenOrders() {
     ...order,
     items: db
       .prepare(
-        "SELECT product_id, product_name, quantity, price FROM order_items WHERE order_client_id = ?"
+        "SELECT product_id, product_name, quantity, price, notes, addons_json FROM order_items WHERE order_client_id = ?"
       )
-      .all(order.client_id),
+      .all(order.client_id)
+      .map(mapOrderItem),
   }));
 }
 
 function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumber, paidByName = "" }) {
+  const order = consolidateTableOrders(clientId);
+  const targetId = order.client_id;
   const paidAt = new Date().toISOString();
   db.prepare(
     `UPDATE orders SET
@@ -301,8 +446,8 @@ function payOrder(clientId, { currencyId, exchangeRate, amountPaid, receiptNumbe
       paid_by_name = ?,
       sync_status = 'pending'
     WHERE client_id = ?`
-  ).run(currencyId, exchangeRate, amountPaid, receiptNumber, paidAt, paidByName || "", clientId);
-  return getOrder(clientId);
+  ).run(currencyId, exchangeRate, amountPaid, receiptNumber, paidAt, paidByName || "", targetId);
+  return getOrder(targetId);
 }
 
 function listPendingSyncOrders() {
@@ -313,9 +458,10 @@ function listPendingSyncOrders() {
       ...order,
       items: db
         .prepare(
-          "SELECT product_id, product_name, quantity, price FROM order_items WHERE order_client_id = ?"
+          "SELECT product_id, product_name, quantity, price, notes, addons_json FROM order_items WHERE order_client_id = ?"
         )
-        .all(order.client_id),
+        .all(order.client_id)
+        .map(mapOrderItem),
     }));
 }
 

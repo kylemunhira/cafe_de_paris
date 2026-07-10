@@ -101,6 +101,16 @@ const receiptAccountBalance = document.getElementById("receipt-account-balance")
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const posModeToggle = document.getElementById("pos-mode-toggle");
+const addonPickerModal = document.getElementById("addon-picker-modal");
+const addonPickerTitle = document.getElementById("addon-picker-title");
+const addonPickerGroups = document.getElementById("addon-picker-groups");
+const addonNotesInput = document.getElementById("addon-notes-input");
+const addonPickerCloseBtn = document.getElementById("addon-picker-close-btn");
+const addonPickerCancelBtn = document.getElementById("addon-picker-cancel-btn");
+const addonPickerConfirmBtn = document.getElementById("addon-picker-confirm-btn");
+
+let addonPickerProduct = null;
+const addonPickerSelections = new Map();
 
 function closeStockTakeRequiredModal() {
   stockTakeRequiredModal.hidden = true;
@@ -279,6 +289,27 @@ function occupiedTableNames() {
     }
   }
   return names;
+}
+
+function openOrdersForTable(tableNumber) {
+  const table = (tableNumber || "").trim();
+  if (!table) return [];
+  return openOrders.filter(
+    (order) => order.order_type === "dine_in" && order.table_number === table
+  );
+}
+
+function getReceiptOrders() {
+  if (!selectedOrder) return [];
+  const tableOrders = openOrdersForTable(selectedOrder.table_number);
+  return tableOrders.length > 1 ? tableOrders : [selectedOrder];
+}
+
+function getReceiptInclusiveTotal() {
+  return getReceiptOrders().reduce(
+    (sum, order) => sum + getOrderInclusiveTotal(order),
+    0
+  );
 }
 
 async function loadDiningTables() {
@@ -484,7 +515,7 @@ function setPaymentMethod(method, { force = false } = {}) {
   });
   syncPaymentMethodUI();
   if (selectedOrder) {
-    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    const inclusiveTotal = getReceiptInclusiveTotal();
     renderReceiptTotals(inclusiveTotal);
     updateCheckoutButtonState(inclusiveTotal);
   }
@@ -502,7 +533,7 @@ function setPaymentCurrency(currencyId) {
     b.classList.toggle("active", Number(b.dataset.currencyId) === currencyId);
   });
   if (selectedOrder) {
-    const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+    const inclusiveTotal = getReceiptInclusiveTotal();
     renderReceiptTotals(inclusiveTotal);
     updateCheckoutButtonState(inclusiveTotal);
   }
@@ -560,7 +591,7 @@ function updateCheckoutButtonState(inclusiveTotal) {
 receiptCustomerSelect.addEventListener("change", () => {
   updateAccountBalanceHint();
   if (!selectedOrder) return;
-  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  const inclusiveTotal = getReceiptInclusiveTotal();
   renderReceiptTotals(inclusiveTotal);
   updateCheckoutButtonState(inclusiveTotal);
 });
@@ -671,6 +702,61 @@ function money(amount, currency = baseCurrency) {
   return formatCurrency(amount, currency?.symbol || "$");
 }
 
+function productHasActiveAddons(product) {
+  return (product.addon_groups || []).some((group) =>
+    (group.addons || []).some((addon) => addon.is_active !== false)
+  );
+}
+
+function cartLineKey(productId, addonIds, notes) {
+  const sorted = [...addonIds].sort((a, b) => a - b).join(",");
+  return `${productId}:${sorted}:${notes || ""}`;
+}
+
+function formatAddonChipLabel(addon) {
+  const price = Number(addon.selling_price);
+  return price > 0 ? `${addon.name} (+${money(price)})` : addon.name;
+}
+
+function cartLineDetailHtml(item) {
+  const parts = [];
+  if (item.addons?.length) {
+    parts.push(
+      `<div class="addon-line">${item.addons.map((addon) => addon.name).join(", ")}</div>`
+    );
+  }
+  if (item.notes) {
+    parts.push(`<div class="notes-line">${item.notes}</div>`);
+  }
+  return parts.join("");
+}
+
+function addProductToCart(product, addons = [], notes = "") {
+  const addonPrice = addons.reduce((sum, addon) => sum + Number(addon.price), 0);
+  const unitPrice = Number(product.selling_price) + addonPrice;
+  const lineKey = cartLineKey(
+    product.id,
+    addons.map((addon) => addon.id),
+    notes
+  );
+  const existing = cart.get(lineKey);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cart.set(lineKey, {
+      lineKey,
+      id: product.id,
+      name: product.name,
+      basePrice: Number(product.selling_price),
+      price: unitPrice,
+      quantity: 1,
+      addons,
+      notes,
+    });
+  }
+  renderCart();
+}
+
 function renderPaymentCurrencyToggle() {
   const active = currencies.filter((c) => c.is_active);
   if (!active.length) {
@@ -680,7 +766,9 @@ function renderPaymentCurrencyToggle() {
   }
 
   if (!selectedCurrencyId || !active.some((c) => c.id === selectedCurrencyId)) {
-    selectedCurrencyId = active[0].id;
+    selectedCurrencyId = (baseCurrency && active.some((c) => c.id === baseCurrency.id)
+      ? baseCurrency.id
+      : active[0].id);
   }
 
   paymentCurrencyToggle.innerHTML = active
@@ -698,7 +786,10 @@ function renderPaymentCurrencyToggle() {
 
 function renderReceiptTotals(inclusiveTotal) {
   const { subtotal, tax, total } = computeTaxBreakdown(inclusiveTotal);
-  const { rate, amountDue, currency, hasRate } = computePaymentAmounts(total);
+  const useFx = paymentMethod !== "account";
+  const { rate, amountDue, currency, hasRate } = useFx
+    ? computePaymentAmounts(total)
+    : { rate: null, amountDue: null, currency: null, hasRate: false };
   const rateRow =
     currency && !currency.is_base && hasRate
       ? `<div class="receipt-total-row"><span>Exchange rate</span><span>${rate}</span></div>`
@@ -707,6 +798,9 @@ function renderReceiptTotals(inclusiveTotal) {
     currency && !currency.is_base && !hasRate
       ? `<div class="receipt-total-row" style="color: #b45309;"><span>No rate set</span><span>Add under Rates</span></div>`
       : "";
+  const dueRow = useFx
+    ? `<div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? money(amountDue, currency) : "—"}</span></div>`
+    : `<div class="receipt-total-row receipt-total-due"><span>Amount due${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>`;
 
   receiptTotals.innerHTML = `
     <div class="receipt-total-row"><span>Subtotal${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(subtotal)}</span></div>
@@ -714,10 +808,15 @@ function renderReceiptTotals(inclusiveTotal) {
     <div class="receipt-total-row"><span>Total${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>
     ${rateRow}
     ${missingRate}
-    <div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? money(amountDue, currency) : "—"}</span></div>
+    ${dueRow}
   `;
-  cartTotal.textContent = hasRate ? money(amountDue, currency) : money(total);
-  cartTotalLabel.textContent = hasRate && currency && !currency.is_base ? "Amount due" : "Total";
+  if (useFx && hasRate) {
+    cartTotal.textContent = money(amountDue, currency);
+    cartTotalLabel.textContent = currency && !currency.is_base ? "Amount due" : "Total";
+  } else {
+    cartTotal.textContent = money(total);
+    cartTotalLabel.textContent = "Total";
+  }
 }
 
 function renderCart() {
@@ -738,15 +837,16 @@ function renderCart() {
   cartItems.innerHTML = [...cart.values()]
     .map(
       (item) => `
-    <div class="cart-item" data-id="${item.id}">
+    <div class="cart-item" data-line-key="${item.lineKey}">
       <div class="info">
         <div class="name">${item.name}</div>
         <div class="line-total">${money(item.price)} each</div>
+        ${cartLineDetailHtml(item)}
       </div>
       <div class="qty-control">
-        <button class="qty-btn" data-action="dec" data-id="${item.id}">−</button>
+        <button class="qty-btn" data-action="dec" data-line-key="${item.lineKey}">−</button>
         <span style="min-width: 1.5rem; text-align: center; font-weight: 600;">${item.quantity}</span>
-        <button class="qty-btn" data-action="inc" data-id="${item.id}">+</button>
+        <button class="qty-btn" data-action="inc" data-line-key="${item.lineKey}">+</button>
       </div>
     </div>`
     )
@@ -758,12 +858,9 @@ function renderCart() {
 }
 
 function renderReceiptPanel() {
-  panelTitle.textContent = selectedOrder
-    ? `Order ${selectedOrder.receipt_number || selectedOrder.client_id.slice(0, 8)}`
-    : "Receipt";
-  clearBtn.style.display = "none";
-
   if (!selectedOrder) {
+    panelTitle.textContent = "Receipt";
+    clearBtn.style.display = "none";
     cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to view details</p></div>`;
     cartTotal.textContent = money(0);
     cartTotalLabel.textContent = "Total";
@@ -773,6 +870,13 @@ function renderReceiptPanel() {
     return;
   }
 
+  const receiptOrders = getReceiptOrders();
+  const combined = receiptOrders.length > 1;
+  panelTitle.textContent = combined
+    ? `Table ${selectedOrder.table_number} — ${receiptOrders.length} orders`
+    : `Order ${selectedOrder.receipt_number || selectedOrder.client_id.slice(0, 8)}`;
+  clearBtn.style.display = "none";
+
   const typeLabel = selectedOrder.order_type.replace("_", " ");
   cartItems.innerHTML = `
     <div class="receipt-order-meta">
@@ -781,19 +885,30 @@ function renderReceiptPanel() {
         ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
       </div>
       <div class="receipt-meta">${typeLabel}</div>
-      ${selectedOrder.table_number ? `<div class="receipt-meta">Table ${selectedOrder.table_number}</div>` : ""}
+      ${selectedOrder.table_number && !combined ? `<div class="receipt-meta">Table ${selectedOrder.table_number}</div>` : ""}
+      ${combined ? `<div class="receipt-meta">Combined bill for table ${selectedOrder.table_number}</div>` : ""}
       <div class="receipt-meta">${formatDate(selectedOrder.created_at)}</div>
     </div>
-    ${selectedOrder.items
+    ${receiptOrders
       .map(
-        (item) => `
+        (order) => `
+      ${combined ? `<div class="receipt-meta" style="margin-top:0.75rem;font-weight:600;">Order ${order.server_id || order.client_id.slice(0, 8)}</div>` : ""}
+      ${order.items
+        .map(
+          (item) => `
       <div class="cart-item">
         <div class="info">
           <div class="name">${item.product_name}</div>
           <div class="line-total">${money(item.price)} × ${item.quantity}</div>
+          ${cartLineDetailHtml({
+            addons: item.addons,
+            notes: item.notes,
+          })}
         </div>
         <div class="line-total" style="font-weight: 600;">${money(item.price * item.quantity)}</div>
       </div>`
+        )
+        .join("")}`
       )
       .join("")}
   `;
@@ -803,9 +918,9 @@ function renderReceiptPanel() {
   receiptCustomerSelect.value = "";
   updateAccountBalanceHint();
   receiptPaymentSection.style.display = "";
-  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  const inclusiveTotal = getReceiptInclusiveTotal();
   renderReceiptTotals(inclusiveTotal);
-  checkoutBtn.textContent = "Collect Payment";
+  checkoutBtn.textContent = combined ? "Collect Table Payment" : "Collect Payment";
   updateCheckoutButtonState(inclusiveTotal);
 }
 
@@ -817,15 +932,22 @@ function renderOpenOrdersList() {
 
   receiptOrdersList.innerHTML = openOrders
     .map((o) => {
+      const tableOrders = o.table_number ? openOrdersForTable(o.table_number) : [];
+      const combinedLabel =
+        tableOrders.length > 1 ? ` · ${tableOrders.length} orders on table` : "";
+      const displayTotal =
+        tableOrders.length > 1
+          ? tableOrders.reduce((sum, order) => sum + Number(order.total_amount), 0)
+          : o.total_amount;
       const selected = selectedOrder?.client_id === o.client_id ? " selected" : "";
       const readyClass = o.kitchen_status === "ready" ? " receipt-order-ready" : "";
       return `
       <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.client_id}">
         <div class="receipt-order-card-top">
           <strong>${o.receipt_number || o.client_id.slice(0, 8)}</strong>
-          <span class="receipt-order-amount">${money(o.total_amount)}</span>
+          <span class="receipt-order-amount">${money(displayTotal)}</span>
         </div>
-        <div class="receipt-order-card-meta">${o.order_type.replace("_", " ")} · ${o.items.length} items</div>
+        <div class="receipt-order-card-meta">${o.order_type.replace("_", " ")}${o.table_number ? ` · Table ${o.table_number}` : ""}${combinedLabel} · ${o.items.length} items</div>
         <div class="receipt-order-card-meta" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
           <span>${formatDate(o.created_at)}</span>
           ${kitchenStatusBadge(o.kitchen_status || "pending")}
@@ -881,13 +1003,17 @@ function renderProducts() {
   }
 
   productGrid.innerHTML = filtered
-    .map(
-      (p) => `
+    .map((p) => {
+      const addonHint = productHasActiveAddons(p)
+        ? `<div class="addon-hint">Tap to choose add-ons</div>`
+        : "";
+      return `
     <div class="card product-card" data-id="${p.id}">
       <div class="name">${p.name}</div>
       <div class="price">${money(p.selling_price)}</div>
-    </div>`
-    )
+      ${addonHint}
+    </div>`;
+    })
     .join("");
 }
 
@@ -921,11 +1047,11 @@ cartItems.addEventListener("click", (e) => {
   if (posMode !== "order") return;
   const btn = e.target.closest(".qty-btn");
   if (!btn) return;
-  const id = Number(btn.dataset.id);
-  const item = cart.get(id);
+  const lineKey = btn.dataset.lineKey;
+  const item = cart.get(lineKey);
   if (!item) return;
   item.quantity += btn.dataset.action === "inc" ? 1 : -1;
-  if (item.quantity <= 0) cart.delete(id);
+  if (item.quantity <= 0) cart.delete(lineKey);
   renderCart();
 });
 
@@ -944,22 +1070,115 @@ productSearchInput.addEventListener("input", () => {
   renderProducts();
 });
 
+function closeAddonPickerModal() {
+  addonPickerModal.hidden = true;
+  addonPickerProduct = null;
+  addonPickerSelections.clear();
+  addonPickerGroups.innerHTML = "";
+  addonNotesInput.value = "";
+}
+
+function renderAddonPickerGroups(product) {
+  addonPickerGroups.innerHTML = "";
+  addonPickerSelections.clear();
+
+  for (const group of product.addon_groups || []) {
+    const activeAddons = (group.addons || []).filter((addon) => addon.is_active !== false);
+    if (!activeAddons.length) continue;
+
+    const section = document.createElement("div");
+    section.className = "addon-picker-group";
+    section.dataset.groupId = String(group.id);
+    section.dataset.selectionType = group.selection_type || "multiple";
+
+    const title = document.createElement("p");
+    title.className = "addon-picker-group-title";
+    title.textContent = group.name;
+    section.appendChild(title);
+
+    const chipGroup = document.createElement("div");
+    chipGroup.className = "addon-chip-group";
+    const groupSelections = new Set();
+    addonPickerSelections.set(group.id, groupSelections);
+
+    for (const addon of activeAddons) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "addon-chip";
+      chip.textContent = formatAddonChipLabel(addon);
+      chip.dataset.addonId = String(addon.id);
+      chip.addEventListener("click", () => {
+        const isSingle = section.dataset.selectionType === "single";
+        if (isSingle) {
+          groupSelections.clear();
+          chipGroup.querySelectorAll(".addon-chip").forEach((el) => el.classList.remove("active"));
+        }
+        if (groupSelections.has(addon.id)) {
+          groupSelections.delete(addon.id);
+          chip.classList.remove("active");
+        } else {
+          groupSelections.add(addon.id);
+          chip.classList.add("active");
+        }
+      });
+      chipGroup.appendChild(chip);
+    }
+
+    section.appendChild(chipGroup);
+    addonPickerGroups.appendChild(section);
+  }
+}
+
+function openAddonPickerModal(product) {
+  addonPickerProduct = product;
+  addonPickerTitle.textContent = `Add-ons — ${product.name}`;
+  addonNotesInput.value = "";
+  renderAddonPickerGroups(product);
+  addonPickerModal.hidden = false;
+}
+
+function collectSelectedAddons(product) {
+  const addons = [];
+  for (const group of product.addon_groups || []) {
+    const selectedIds = addonPickerSelections.get(group.id) || new Set();
+    for (const addon of group.addons || []) {
+      if (selectedIds.has(addon.id)) {
+        addons.push({
+          id: addon.id,
+          name: addon.name,
+          price: Number(addon.selling_price),
+        });
+      }
+    }
+  }
+  return addons;
+}
+
+function confirmAddonPicker() {
+  if (!addonPickerProduct) return;
+  const addons = collectSelectedAddons(addonPickerProduct);
+  const notes = addonNotesInput.value.trim();
+  addProductToCart(addonPickerProduct, addons, notes);
+  closeAddonPickerModal();
+}
+
+addonPickerCloseBtn?.addEventListener("click", closeAddonPickerModal);
+addonPickerCancelBtn?.addEventListener("click", closeAddonPickerModal);
+addonPickerConfirmBtn?.addEventListener("click", confirmAddonPicker);
+addonPickerModal?.addEventListener("click", (event) => {
+  if (event.target === addonPickerModal) closeAddonPickerModal();
+});
+
 productGrid.addEventListener("click", (e) => {
   const card = e.target.closest(".product-card");
   if (!card) return;
   const product = products.find((p) => p.id === Number(card.dataset.id));
   if (!product) return;
-  const existing = cart.get(product.id);
-  if (existing) existing.quantity += 1;
-  else {
-    cart.set(product.id, {
-      id: product.id,
-      name: product.name,
-      price: Number(product.selling_price),
-      quantity: 1,
-    });
+  if (productHasActiveAddons(product)) {
+    openAddonPickerModal(product);
+    return;
   }
-  renderCart();
+  addProductToCart(product);
 });
 
 receiptOrdersList.addEventListener("click", (e) => {
@@ -1048,24 +1267,31 @@ async function placeOrder() {
   if (cart.size === 0) return;
   checkoutBtn.disabled = true;
   try {
+    const table = orderType.value === "dine_in" ? tableNumber.value.trim() : "";
+    const existingTableOrder = table ? openOrdersForTable(table)[0] : null;
     const order = await window.pos.createOrder({
       orderType: orderType.value,
-      tableNumber: orderType.value === "dine_in" ? tableNumber.value.trim() : "",
+      tableNumber: table,
       createdByName: session.user?.display_name || session.user?.username || "",
       items: [...cart.values()].map((item) => ({
         product_id: item.id,
         product_name: item.name,
         quantity: item.quantity,
         price: item.price,
+        notes: item.notes || "",
+        addons: item.addons || [],
       })),
     });
     cart.clear();
-    if (orderType.value === "dine_in") {
-      setSelectedTable("");
-    }
     renderCart();
     await updateSyncBadge();
-    showToast(`Order placed — ${money(order.total_amount)}`);
+    const addedToExisting =
+      existingTableOrder && order.client_id === existingTableOrder.client_id;
+    showToast(
+      addedToExisting
+        ? `Items added to order — ${money(order.total_amount)}`
+        : `Order placed — ${money(order.total_amount)}`
+    );
     try {
       await printOrderSlip(session, order, { taxRate: inclusiveTaxRate });
     } catch (printErr) {
@@ -1086,7 +1312,7 @@ async function placeOrder() {
 
 async function paySelectedOrder() {
   if (!selectedOrder) return;
-  const inclusiveTotal = getOrderInclusiveTotal(selectedOrder);
+  const inclusiveTotal = getReceiptInclusiveTotal();
   const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
 
   if (paymentMethod === "account") {

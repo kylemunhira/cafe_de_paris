@@ -13,7 +13,7 @@
     </div>
     <div class="form-group" style="flex: 1; min-width: 280px;">
       <label for="product-select">Product to edit</label>
-      <select id="product-select">
+      <select id="product-select" class="searchable-select">
         <option value="">Select a product…</option>
       </select>
     </div>
@@ -54,13 +54,13 @@
     <form id="add-line-form" class="form-row" style="align-items: end; margin: 0;">
       <div class="form-group" style="flex: 1; min-width: 200px;">
         <label for="add-ingredient">Ingredient</label>
-        <select id="add-ingredient" required>
+        <select id="add-ingredient" class="searchable-select" required>
           <option value="">Select ingredient…</option>
         </select>
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
         <label for="add-quantity">Qty</label>
-        <input type="number" id="add-quantity" min="0.01" step="0.01" placeholder="0" required>
+        <input type="number" id="add-quantity" min="0.0001" step="0.001" placeholder="0" required>
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
         <button type="submit" class="btn btn-primary">Add</button>
@@ -94,6 +94,7 @@
 <script type="module">
 import { apiPost, apiPatch, apiDelete, fetchAllPages, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
 const KITCHEN_CATEGORY_NAMES = new Set([
   "Breakfast", "Mains", "Sandwiches", "Burgers", "Salads", "Seafood",
@@ -138,6 +139,9 @@ const noRecipeProducts = document.getElementById("no-recipe-products");
 const noRecipeList = document.getElementById("no-recipe-list");
 const recipeBrowser = document.getElementById("recipe-browser");
 const recipeBrowserList = document.getElementById("recipe-browser-list");
+
+initSearchableSelect(productSelect);
+initSearchableSelect(addIngredientSelect);
 
 function formatMoney(value) {
   const amount = Number(value);
@@ -263,6 +267,7 @@ function populateProductSelect() {
       productSelect.innerHTML += `<option value="${product.id}" selected>${product.name} (${product.category_name})</option>`;
     }
   }
+  syncSearchableSelect(productSelect);
 }
 
 function populateAddIngredientSelect() {
@@ -273,6 +278,7 @@ function populateAddIngredientSelect() {
   const options = availableIngredients(selectedProductId);
   addIngredientSelect.innerHTML = `<option value="">Select ingredient…</option>` +
     options.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+  syncSearchableSelect(addIngredientSelect);
 }
 
 function renderCategoryTabs() {
@@ -418,8 +424,8 @@ function renderEditor() {
                 class="qty-input report-input"
                 data-id="${line.id}"
                 value="${line.quantity_required}"
-                min="0.01"
-                step="0.01"
+                min="0.0001"
+                step="0.001"
                 style="width: 90px; text-align: right;"
               >
             </td>

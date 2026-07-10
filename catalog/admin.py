@@ -5,8 +5,8 @@ from .models import MenuAddon, MenuAddonGroup, Product, ProductCategory, Product
 
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "is_asset")
-    list_filter = ("is_asset",)
+    list_display = ("name", "is_asset", "pos_station")
+    list_filter = ("is_asset", "pos_station")
     search_fields = ("name",)
 
 
@@ -37,8 +37,9 @@ class ProductAdmin(admin.ModelAdmin):
         "remaining_qty",
         "tax_rate",
         "is_active",
+        "daily_stock_take",
         "created_at",
     )
-    list_filter = ("category", "is_active")
+    list_filter = ("category", "is_active", "daily_stock_take")
     search_fields = ("name",)
     inlines = [ProductMenuAddonGroupInline]

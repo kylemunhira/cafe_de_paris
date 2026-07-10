@@ -92,6 +92,20 @@ class InventoryTransferWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Insufficient stock", response.data["detail"])
 
+    def test_dispatch_still_blocks_negative_when_branch_allows_negative_sales(self):
+        self.hq.allow_negative_stock = True
+        self.hq.save(update_fields=["allow_negative_stock"])
+        transfer = StockTransfer.objects.create(
+            from_branch=self.hq,
+            to_branch=self.branch,
+            product=self.product,
+            quantity=Decimal("150"),
+            status=StockTransferStatus.APPROVED,
+        )
+        response = self.client.post(f"/api/transfers/{transfer.id}/dispatch/")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Insufficient stock", response.data["detail"])
+
     def test_cancel_only_allowed_before_dispatch(self):
         transfer = StockTransfer.objects.create(
             from_branch=self.hq,
@@ -979,6 +993,41 @@ class OrderRecipeConsumptionTests(TestCase):
         self.assertIn("Chicken Pie", response.data["detail"])
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.OPEN)
+
+    def test_pay_allows_negative_stock_when_branch_setting_enabled(self):
+        bakery_category = ProductCategory.objects.create(name="Breads & pastries")
+        brioche = Product.objects.create(
+            name="120G Brioche rolls",
+            category=bakery_category,
+            selling_price=Decimal("1.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=brioche,
+            quantity=Decimal("0.00"),
+        )
+        self.branch.allow_negative_stock = True
+        self.branch.save(update_fields=["allow_negative_stock"])
+
+        order = Order.objects.create(branch=self.branch)
+        order.items.create(
+            product=brioche,
+            quantity=Decimal("1.00"),
+            price=brioche.selling_price,
+        )
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        stock = BranchInventory.objects.get(branch=self.branch, product=brioche)
+        self.assertEqual(stock.quantity, Decimal("-1.00"))
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
 
     def test_pay_without_recipe_does_not_require_stock(self):
         latte = Product.objects.create(

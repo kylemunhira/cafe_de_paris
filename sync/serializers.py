@@ -14,6 +14,12 @@ class SyncOrderItemSerializer(serializers.Serializer):
     quantity = serializers.DecimalField(
         max_digits=10, decimal_places=2, min_value=Decimal("0.01")
     )
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    addon_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+    )
 
 
 class SyncOrderPaymentSerializer(serializers.Serializer):

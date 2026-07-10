@@ -35,7 +35,7 @@
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
         <label for="product">Product</label>
-        <select id="product">
+        <select id="product" class="searchable-select">
           <option value="">Select product…</option>
         </select>
       </div>
@@ -88,6 +88,7 @@
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
 const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
@@ -123,6 +124,8 @@ const linesWrap = document.getElementById("lines-wrap");
 const linesBody = document.getElementById("lines-body");
 const submitBtn = document.getElementById("submit-btn");
 const addLineBtn = document.getElementById("add-line-btn");
+
+initSearchableSelect(productSelect);
 
 function formatQty(value) {
   const qty = Number(value);
@@ -299,6 +302,7 @@ function populateFormOptions() {
       return `<option value="${p.id}">${p.name} (${stock} at bakery)</option>`;
     }).join("")}
   `;
+  syncSearchableSelect(productSelect);
 }
 
 async function loadData() {

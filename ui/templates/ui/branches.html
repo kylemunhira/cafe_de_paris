@@ -41,6 +41,15 @@
     <div id="fiscalization-fields" style="display: none;">
       <div class="form-group">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input type="checkbox" id="allow-negative-stock" name="allow_negative_stock">
+          Allow negative stock on sales
+        </label>
+        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">
+          When enabled, POS sales can sync even if stock goes below zero. Transfers and production still require stock.
+        </p>
+      </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
           <input type="checkbox" id="fiscalization-enabled" name="fiscalization_enabled">
           Fiscalization enabled
         </label>
@@ -81,6 +90,7 @@ const branchTypeSelect = document.getElementById("branch-type");
 const activeField = document.getElementById("active-field");
 const isActiveInput = document.getElementById("is-active");
 const fiscalizationFields = document.getElementById("fiscalization-fields");
+const allowNegativeStockInput = document.getElementById("allow-negative-stock");
 const fiscalizationEnabledInput = document.getElementById("fiscalization-enabled");
 const zimraDeviceIdInput = document.getElementById("zimra-device-id");
 const submitBtn = document.getElementById("submit-btn");
@@ -105,6 +115,7 @@ function setFormMode(mode) {
   if (!isEdit) {
     branchForm.reset();
     isActiveInput.checked = true;
+    allowNegativeStockInput.checked = false;
     fiscalizationEnabledInput.checked = false;
     zimraDeviceIdInput.value = "";
   }
@@ -119,6 +130,7 @@ function startEdit(branch) {
   locationInput.value = branch.location || "";
   branchTypeSelect.value = branch.branch_type;
   isActiveInput.checked = branch.is_active;
+  allowNegativeStockInput.checked = branch.allow_negative_stock;
   fiscalizationEnabledInput.checked = branch.fiscalization_enabled;
   zimraDeviceIdInput.value = branch.zimra_device_id || "";
   setFormMode("edit");
@@ -137,6 +149,7 @@ function renderBranches() {
         <h3>${b.name}</h3>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <span class="badge ${b.is_active ? "badge-active" : "badge-inactive"}">${b.is_active ? "Active" : "Inactive"}</span>
+          ${b.allow_negative_stock ? `<span class="badge badge-active">Negative stock allowed</span>` : ""}
           ${b.fiscalization_enabled ? `<span class="badge badge-active">Fiscal${b.zimra_device_id ? ` · ${b.zimra_device_id}` : ""}</span>` : ""}
           ${canManageBranches ? `<button type="button" class="btn btn-ghost btn-sm" data-edit="${b.id}">Edit</button>` : ""}
         </div>
@@ -182,6 +195,7 @@ if (canManageBranches) {
     try {
       if (editingBranchId) {
         payload.is_active = isActiveInput.checked;
+        payload.allow_negative_stock = allowNegativeStockInput.checked;
         payload.fiscalization_enabled = fiscalizationEnabledInput.checked;
         payload.zimra_device_id = zimraDeviceIdInput.value.trim();
         await apiPatch(`/branches/${editingBranchId}/`, payload);

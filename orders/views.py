@@ -34,6 +34,7 @@ from .services import (
     InvalidKitchenStateError,
     ReceiptNumberError,
     allocate_receipt_number,
+    consolidate_table_orders,
     mark_order_ready,
     start_preparing_order,
 )
@@ -120,6 +121,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         .select_related("branch")
                         .get(pk=order.pk)
                     )
+                    order = consolidate_table_orders(order)
                     pay_order_from_account(order=order, recorded_by=request.user)
             except InsufficientAccountBalance as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -147,6 +149,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 .select_related("branch")
                 .get(pk=order.pk)
             )
+            order = consolidate_table_orders(order)
             try:
                 receipt_number = allocate_receipt_number(order.branch)
             except ReceiptNumberError as exc:

@@ -448,7 +448,7 @@ h1, h2, h3, .font-display {
 .badge-approved { background: #dbeafe; color: #1e40af; }
 .badge-dispatched { background: #fef3c7; color: #92400e; }
 .badge-delivered { background: #d1fae5; color: #065f46; }
-.badge-unpaid { background: #fef3c7; color: #92400e; }
+.badge-daily-stock { background: #dbeafe; color: #1e40af; }
 
 .text-success { color: #065f46; }
 .text-danger { color: #991b1b; }
@@ -1075,6 +1075,61 @@ table.data-table tbody tr:hover {
   outline: none;
   border-color: var(--color-latte);
   box-shadow: 0 0 0 3px rgba(196, 167, 125, 0.25);
+}
+
+.searchable-select {
+  position: relative;
+  width: 100%;
+}
+
+.searchable-select-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.searchable-select-input {
+  width: 100%;
+}
+
+.searchable-select-list {
+  position: absolute;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid rgba(44, 24, 16, 0.15);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(44, 24, 16, 0.12);
+}
+
+.searchable-select-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.searchable-select-option:hover,
+.searchable-select-option.active {
+  background: rgba(196, 167, 125, 0.2);
+}
+
+.searchable-select-empty {
+  padding: 0.65rem 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
 }
 
 .product-grid-page {

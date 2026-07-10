@@ -214,6 +214,29 @@
     </div>
   </div>
 
+  <div id="addon-picker-modal" class="modal-overlay" hidden>
+    <div class="modal card addon-picker-card" role="dialog" aria-labelledby="addon-picker-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="addon-picker-title">Add-ons</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="addon-picker-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p class="settings-hint" style="margin-bottom:0.75rem;">
+          Choose add-ons and optional kitchen notes, then add to cart.
+        </p>
+        <div id="addon-picker-groups" class="addon-picker-groups"></div>
+        <div class="form-group">
+          <label for="addon-notes-input">Order notes (optional)</label>
+          <input type="text" id="addon-notes-input" class="report-input" maxlength="200" placeholder="e.g. extra hot">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+          <button type="button" class="btn btn-ghost" id="addon-picker-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="addon-picker-confirm-btn">Add to cart</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="settings-modal" class="modal-overlay" hidden>
     <div class="modal card" role="dialog" aria-labelledby="settings-title" aria-modal="true">
       <div class="modal-header">

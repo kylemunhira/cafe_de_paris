@@ -29,7 +29,7 @@
       </div>
       <div class="form-group" style="flex: 2;">
         <label for="product">Finished product</label>
-        <select id="product" required>
+        <select id="product" class="searchable-select" required>
           <option value="">Select product…</option>
         </select>
       </div>
@@ -73,6 +73,7 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
 let bakeryBranches = [];
 let products = [];
@@ -91,6 +92,8 @@ const previewMessage = document.getElementById("preview-message");
 const submitBtn = document.getElementById("submit-btn");
 const historyTable = document.getElementById("history-table");
 const productionStats = document.getElementById("production-stats");
+
+initSearchableSelect(productSelect);
 
 function formatQty(value) {
   const qty = Number(value);
@@ -134,6 +137,7 @@ function populateProductOptions() {
   if (!available.length) {
     productSelect.innerHTML = `<option value="">No products with recipes — add recipes first</option>`;
     productSelect.disabled = true;
+    syncSearchableSelect(productSelect);
     return;
   }
 
@@ -141,6 +145,7 @@ function populateProductOptions() {
   productSelect.innerHTML = `<option value="">Select product…</option>${available.map(p => `
     <option value="${p.id}">${p.name} (${p.category_name})</option>
   `).join("")}`;
+  syncSearchableSelect(productSelect);
 }
 
 function renderPreview() {

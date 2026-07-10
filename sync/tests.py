@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
+from inventory.models import BranchInventory
 from orders.models import Order, OrderStatus
 from payments.models import Currency
 
@@ -182,3 +183,39 @@ class DesktopSyncTests(TestCase):
 
         response = client.get("/api/sync/pull/")
         self.assertEqual(response.status_code, 403)
+
+    def test_push_paid_order_allows_negative_stock_when_branch_setting_enabled(self):
+        bakery_category = ProductCategory.objects.create(name="Breads & pastries")
+        brioche = Product.objects.create(
+            name="120G Brioche rolls",
+            category=bakery_category,
+            selling_price=Decimal("1.00"),
+            is_active=True,
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=brioche,
+            quantity=Decimal("0.00"),
+        )
+        self.branch.allow_negative_stock = True
+        self.branch.save(update_fields=["allow_negative_stock"])
+
+        client_id = "770e8400-e29b-41d4-a716-446655440002"
+        payload = {
+            "orders": [
+                {
+                    "client_id": client_id,
+                    "order_type": "takeaway",
+                    "items": [{"product_id": brioche.id, "quantity": "1"}],
+                    "payment": {"currency_id": self.base_currency.id},
+                }
+            ]
+        }
+        response = self.client.post("/api/sync/push/", payload, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["results"][0]["receipt_number"])
+
+        order = Order.objects.get()
+        self.assertEqual(order.status, OrderStatus.PAID)
+        stock = BranchInventory.objects.get(branch=self.branch, product=brioche)
+        self.assertEqual(stock.quantity, Decimal("-1.00"))

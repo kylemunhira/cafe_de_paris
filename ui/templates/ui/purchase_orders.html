@@ -20,7 +20,7 @@
       </div>
       <div class="form-group">
         <label for="po-supplier">Supplier</label>
-        <select id="po-supplier" required>
+        <select id="po-supplier" class="searchable-select" required>
           <option value="">Select supplier…</option>
         </select>
       </div>
@@ -44,7 +44,7 @@
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
         <label for="po-product" id="po-product-label">Product</label>
-        <select id="po-product">
+        <select id="po-product" class="searchable-select">
           <option value="">Select product…</option>
         </select>
       </div>
@@ -107,6 +107,7 @@
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
 let allOrders = [];
 let branches = [];
@@ -157,6 +158,9 @@ const poTable = document.getElementById("po-table");
 const poStats = document.getElementById("po-stats");
 const addLineBtn = document.getElementById("add-line-btn");
 const sortState = createSortState("created_at", "desc");
+
+initSearchableSelect(supplierSelect);
+initSearchableSelect(productSelect);
 
 const ORDER_SORT = {
   id: (o) => Number(o.id),
@@ -280,6 +284,7 @@ function populateProductSelect() {
   updatePurchaseTypeUi();
   productLabel.textContent = isIngredients ? "Raw material" : "POS product";
   productSelect.innerHTML = productSelectHtml(branch, available, purchaseType);
+  syncSearchableSelect(productSelect);
 }
 
 function renderDraftLines() {
@@ -409,6 +414,7 @@ async function loadData() {
     ? `<option value="">Select supplier…</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
     : `<option value="">No suppliers — ask HQ to add suppliers first</option>`;
   supplierSelect.disabled = !suppliers.length;
+  syncSearchableSelect(supplierSelect);
 
   populateProductSelect();
 

@@ -6,8 +6,8 @@
 
 {% block content %}
 <p class="products-page-description">
-  Add-on groups used at POS when ordering menu items. Edit a product under
-  <a href="{% url 'ui:products' %}">List Products</a> to choose which groups apply.
+  Add-on groups used at POS when ordering menu items. Deactivated options are hidden at the till but stay in history.
+  Edit a product under <a href="{% url 'ui:products' %}">List Products</a> to choose which groups apply.
 </p>
 <div id="addon-groups-list">
   <div class="skeleton" style="height: 120px; margin-bottom: 1rem;"></div>
@@ -17,29 +17,58 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPatch, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 
 const container = document.getElementById("addon-groups-list");
 
+function renderAddon(addon) {
+  const active = addon.is_active !== false;
+  const price = Number(addon.selling_price) > 0 ? ` · ${formatCurrency(addon.selling_price)}` : "";
+  return `
+    <span class="badge addon-chip ${active ? "" : "addon-chip--inactive"}" style="display: inline-flex; align-items: center; gap: 0.35rem; background: var(--color-cream); color: var(--color-espresso); font-weight: 500;">
+      <span>${addon.name}${price}</span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm addon-toggle"
+        data-addon-id="${addon.id}"
+        data-active="${active}"
+        title="${active ? "Deactivate" : "Activate"}"
+        style="padding: 0.1rem 0.35rem; min-height: 0; font-size: 0.72rem; line-height: 1.2;"
+      >${active ? "On" : "Off"}</button>
+    </span>
+  `;
+}
+
 function renderGroup(group) {
-  const addons = (group.addons || []).filter(addon => addon.is_active !== false);
+  const addons = group.addons || [];
+  const activeCount = addons.filter(addon => addon.is_active !== false).length;
   return `
     <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem;">
         <h3 style="margin: 0; font-size: 1rem;">${group.name}</h3>
-        <span class="badge badge-open">${group.selection_type === "single" ? "Choose one" : "Choose any"}</span>
+        <span class="badge badge-open">${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${activeCount}/${addons.length} active</span>
       </div>
       <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
         ${addons.length
-          ? addons.map(addon => `
-            <span class="badge" style="background: var(--color-cream); color: var(--color-espresso); font-weight: 500;">
-              ${addon.name}${Number(addon.selling_price) > 0 ? ` · ${formatCurrency(addon.selling_price)}` : ""}
-            </span>
-          `).join("")
+          ? addons.map(renderAddon).join("")
           : `<span style="color: var(--color-muted); font-size: 0.85rem;">No options</span>`}
       </div>
     </div>
   `;
+}
+
+async function toggleAddon(button) {
+  const addonId = Number(button.dataset.addonId);
+  const nextActive = button.dataset.active !== "true";
+  button.disabled = true;
+  try {
+    await apiPatch(`/menu-addons/${addonId}/`, { is_active: nextActive });
+    showToast(nextActive ? "Add-on activated" : "Add-on deactivated");
+    await load();
+  } catch (err) {
+    showToast(err.message, true);
+    button.disabled = false;
+  }
 }
 
 async function load() {
@@ -57,6 +86,9 @@ async function load() {
       return;
     }
     container.innerHTML = groups.map(renderGroup).join("");
+    container.querySelectorAll(".addon-toggle").forEach(button => {
+      button.addEventListener("click", () => toggleAddon(button));
+    });
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><p>Failed to load add-ons: ${err.message}</p></div>`;
     showToast(err.message, true);
@@ -65,4 +97,10 @@ async function load() {
 
 load();
 </script>
+<style>
+.addon-chip--inactive {
+  opacity: 0.65;
+  text-decoration: line-through;
+}
+</style>
 {% endblock %}

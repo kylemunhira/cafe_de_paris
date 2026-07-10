@@ -16,9 +16,14 @@ from .constants import (
     BAKERY_SELLABLE_CATEGORIES,
     ingredient_categories_for_branch_type,
 )
-from .models import MenuAddonGroup, Product, ProductCategory, ProductMenuAddonGroup
+from .models import MenuAddon, MenuAddonGroup, Product, ProductCategory, ProductMenuAddonGroup
 from .pos_catalog import pos_catalog_categories, pos_catalog_products
-from .serializers import MenuAddonGroupSerializer, ProductCategorySerializer, ProductSerializer
+from .serializers import (
+    MenuAddonGroupSerializer,
+    MenuAddonSerializer,
+    ProductCategorySerializer,
+    ProductSerializer,
+)
 
 PRODUCT_PROTECTED_RELATIONS = (
     "order_items",
@@ -59,9 +64,29 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
             archived_category, _ = ProductCategory.objects.get_or_create(
                 name=ARCHIVED_CATEGORY,
             )
+            reassign_target = (
+                None if archived_category.pk == category.pk else archived_category
+            )
+            blocked = [
+                product.name
+                for product in inactive_products
+                if product_has_protected_references(product) and reassign_target is None
+            ]
+            if blocked:
+                return Response(
+                    {
+                        "detail": (
+                            "Cannot delete this category while it contains inactive "
+                            "products with order or inventory history."
+                        ),
+                        "products": blocked,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             for product in inactive_products:
                 if product_has_protected_references(product):
-                    product.category = archived_category
+                    product.category = reassign_target
                     product.save(update_fields=["category"])
                 else:
                     product.delete()
@@ -73,6 +98,12 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
 class MenuAddonGroupViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = MenuAddonGroup.objects.prefetch_related("addons").all()
     serializer_class = MenuAddonGroupSerializer
+
+
+class MenuAddonViewSet(viewsets.ModelViewSet):
+    queryset = MenuAddon.objects.select_related("group").all()
+    serializer_class = MenuAddonSerializer
+    http_method_names = ["get", "patch", "head", "options"]
 
 
 class ProductViewSet(viewsets.ModelViewSet):

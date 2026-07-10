@@ -94,9 +94,9 @@ PRODUCT_NAME_ADDON_GROUPS = {
 }
 
 
-def _group_names_for_product(product):
-    names = set(CATEGORY_ADDON_GROUPS.get(product.category.name, []))
-    lowered = product.name.lower()
+def _group_names_for_product(*, name, category_name):
+    names = set(CATEGORY_ADDON_GROUPS.get(category_name, []))
+    lowered = name.lower()
     for keyword, groups in PRODUCT_NAME_ADDON_GROUPS.items():
         if keyword in lowered:
             names.update(groups)
@@ -135,19 +135,27 @@ def seed_menu_addons(*, link_products=True):
                     stats["addons_created"] += 1
 
         if link_products:
-            pos_products = Product.objects.filter(is_active=True).select_related("category")
+            pos_products = Product.objects.filter(is_active=True).values(
+                "id",
+                "name",
+                "category__name",
+            )
             for product in pos_products:
-                if product.category.name == "Extras":
+                category_name = product["category__name"]
+                if category_name == "Extras":
                     continue
-                if product.name.lower().startswith("add "):
+                if product["name"].lower().startswith("add "):
                     continue
 
-                for group_name in _group_names_for_product(product):
+                for group_name in _group_names_for_product(
+                    name=product["name"],
+                    category_name=category_name,
+                ):
                     group = group_by_name.get(group_name)
                     if not group:
                         continue
                     _, created = ProductMenuAddonGroup.objects.get_or_create(
-                        product=product,
+                        product_id=product["id"],
                         group=group,
                     )
                     if created:

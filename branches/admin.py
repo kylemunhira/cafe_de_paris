@@ -11,6 +11,7 @@ class BranchAdmin(admin.ModelAdmin):
         "branch_type",
         "location",
         "is_active",
+        "allow_negative_stock",
         "fiscalization_enabled",
         "created_at",
     )

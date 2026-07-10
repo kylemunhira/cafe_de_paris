@@ -41,6 +41,7 @@ class StockTakeWorkflowTests(TestCase):
             name="Flour",
             category=ingredient_cat,
             selling_price=Decimal("5.00"),
+            daily_stock_take=True,
         )
         self.blender = Product.objects.create(
             name="Blender",
@@ -64,7 +65,7 @@ class StockTakeWorkflowTests(TestCase):
             quantity=Decimal("2"),
         )
 
-    def test_daily_stock_take_includes_ingredients_only(self):
+    def test_daily_stock_take_includes_flagged_products_only(self):
         response = self.client.post(
             "/api/stock-takes/",
             {

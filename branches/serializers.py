@@ -23,6 +23,7 @@ class BranchSerializer(serializers.ModelSerializer):
             "location",
             "branch_type",
             "is_active",
+            "allow_negative_stock",
             "fiscalization_enabled",
             "zimra_device_id",
             "created_at",

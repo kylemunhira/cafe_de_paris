@@ -41,9 +41,20 @@ class ProductAdapter(
             override fun areContentsTheSame(oldItem: Product, newItem: Product) = oldItem == newItem
         }
 
-        fun formatMoney(value: String): String {
+        fun formatMoney(value: String, symbol: String? = null): String {
             val amount = value.toDoubleOrNull() ?: 0.0
-            return NumberFormat.getCurrencyInstance(Locale.US).format(amount)
+            return formatMoney(amount, symbol)
+        }
+
+        fun formatMoney(amount: Double, symbol: String? = null): String {
+            val formatted = NumberFormat.getNumberInstance(Locale.US).apply {
+                minimumFractionDigits = 2
+                maximumFractionDigits = 2
+            }.format(amount)
+            val prefix = symbol?.trim().orEmpty()
+            return if (prefix.isNotEmpty()) "$prefix$formatted" else {
+                NumberFormat.getCurrencyInstance(Locale.US).format(amount)
+            }
         }
     }
 }

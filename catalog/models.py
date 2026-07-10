@@ -4,11 +4,23 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
+class PosStation(models.TextChoices):
+    BAR = "bar", "Bar"
+    KITCHEN = "kitchen", "Kitchen"
+
+
 class ProductCategory(models.Model):
     name = models.CharField(max_length=100, unique=True)
     is_asset = models.BooleanField(
         default=False,
         help_text="Assets are included in monthly stock takes only, not daily counts.",
+    )
+    pos_station = models.CharField(
+        max_length=20,
+        choices=PosStation.choices,
+        blank=True,
+        default="",
+        help_text="Where POS items in this category are prepared (bar or kitchen).",
     )
 
     class Meta:
@@ -56,6 +68,10 @@ class Product(models.Model):
         help_text="ZIMRA tax ID for this product's tax category.",
     )
     is_active = models.BooleanField(default=True)
+    daily_stock_take = models.BooleanField(
+        default=False,
+        help_text="Include this product in daily stock counts at branches that stock it.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

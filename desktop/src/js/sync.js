@@ -52,10 +52,17 @@ export function buildPushPayload(order) {
     order_type: order.order_type,
     table_number: order.table_number || "",
     created_at: order.created_at,
-    items: order.items.map((item) => ({
-      product_id: item.product_id,
-      quantity: String(item.quantity),
-    })),
+    items: order.items.map((item) => {
+      const payload = {
+        product_id: item.product_id,
+        quantity: String(item.quantity),
+      };
+      if (item.notes) payload.notes = item.notes;
+      if (item.addons?.length) {
+        payload.addon_ids = item.addons.map((addon) => addon.id);
+      }
+      return payload;
+    }),
   };
   if (order.status === "paid" && order.payment_currency_id) {
     payload.payment = {

@@ -15,6 +15,13 @@ class ReceiptOrderAdapter(
 ) : ListAdapter<KitchenOrder, ReceiptOrderAdapter.ViewHolder>(Diff) {
 
     var selectedOrderId: Int? = null
+    var openOrders: List<KitchenOrder> = emptyList()
+
+    private fun tableOrdersFor(order: KitchenOrder): List<KitchenOrder> {
+        val table = order.table_number.trim()
+        if (table.isEmpty()) return listOf(order)
+        return openOrders.filter { it.order_type == "dine_in" && it.table_number == table }
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemReceiptOrderBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -29,11 +36,18 @@ class ReceiptOrderAdapter(
         private val binding: ItemReceiptOrderBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(order: KitchenOrder) {
+            val tableOrders = tableOrdersFor(order)
+            val displayTotal = if (tableOrders.size > 1) {
+                tableOrders.sumOf { it.total_amount.toDoubleOrNull() ?: 0.0 }
+            } else {
+                order.total_amount.toDoubleOrNull() ?: 0.0
+            }
             binding.orderId.text = "#${order.id}"
-            binding.orderTotal.text = ProductAdapter.formatMoney(order.total_amount)
+            binding.orderTotal.text = ProductAdapter.formatMoney(displayTotal.toString())
             val typeLabel = order.order_type.replace("_", " ").replaceFirstChar { it.uppercase() }
             val table = if (order.table_number.isNotBlank()) " · Table ${order.table_number}" else ""
-            binding.orderMeta.text = "$typeLabel$table · ${order.items.size} items"
+            val combined = if (tableOrders.size > 1) " · ${tableOrders.size} orders on table" else ""
+            binding.orderMeta.text = "$typeLabel$table$combined · ${order.items.size} items"
             binding.orderKitchenStatus.text = order.kitchen_status.replace("_", " ")
                 .replaceFirstChar { it.uppercase() }
 

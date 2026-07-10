@@ -186,6 +186,33 @@ class IngredientCsvTests(TestCase):
         self.assertEqual(product.category.name, BRANCH_INGREDIENTS_CATEGORY)
 
 
+class DailyStockTakeFieldTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=self.category,
+            selling_price="3.50",
+            daily_stock_take=True,
+        )
+
+    def test_product_api_includes_daily_stock_take(self):
+        response = self.client.get(f"/api/products/{self.product.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["daily_stock_take"])
+
+    def test_product_patch_daily_stock_take(self):
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {"daily_stock_take": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.daily_stock_take)
+
+
 class BranchIngredientFilterTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -319,6 +346,40 @@ class ProductDeleteTests(TestCase):
         self.assertTrue(Product.objects.filter(id=self.product.id).exists())
 
 
+class ProductCategoryPosStationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(
+            name="Coffee",
+            pos_station="bar",
+        )
+
+    def test_category_api_includes_pos_station(self):
+        response = self.client.get(f"/api/categories/{self.category.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pos_station"], "bar")
+        self.assertEqual(response.data["pos_station_display"], "Bar")
+
+    def test_category_patch_pos_station(self):
+        response = self.client.patch(
+            f"/api/categories/{self.category.id}/",
+            {"pos_station": "kitchen"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.category.refresh_from_db()
+        self.assertEqual(self.category.pos_station, "kitchen")
+
+    def test_category_create_with_pos_station(self):
+        response = self.client.post(
+            "/api/categories/",
+            {"name": "Mains", "pos_station": "kitchen"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["pos_station"], "kitchen")
+
+
 class ProductCategoryDeleteTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -384,3 +445,33 @@ class ProductCategoryDeleteTests(TestCase):
         self.assertFalse(ProductCategory.objects.filter(id=category_id).exists())
         product.refresh_from_db()
         self.assertEqual(product.category.name, "Archived")
+
+    def test_delete_archived_category_blocked_by_inactive_products_with_history(self):
+        from branches.models import Branch, BranchType
+        from orders.models import Order, OrderItem, OrderStatus, OrderType
+
+        archived = ProductCategory.objects.create(name="Archived")
+        product = Product.objects.create(
+            name="Espresso",
+            category=archived,
+            selling_price=Decimal("3.50"),
+            is_active=False,
+        )
+        branch = Branch.objects.create(name="Avondale", branch_type=BranchType.BRANCH)
+        order = Order.objects.create(
+            branch=branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("3.50"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+
+        response = self.client.delete(f"/api/categories/{archived.id}/")
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(ProductCategory.objects.filter(id=archived.id).exists())
+        self.assertIn("Espresso", response.data["products"])

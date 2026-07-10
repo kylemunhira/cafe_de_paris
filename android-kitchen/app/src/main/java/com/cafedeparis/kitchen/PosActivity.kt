@@ -354,6 +354,22 @@ class PosActivity : KeepScreenOnActivity() {
         }.map { it.table_number }.toSet()
     }
 
+    private fun openOrdersForTable(tableNumber: String): List<KitchenOrder> {
+        val table = tableNumber.trim()
+        if (table.isEmpty()) return emptyList()
+        return openOrders.filter { it.order_type == "dine_in" && it.table_number == table }
+    }
+
+    private fun receiptOrders(): List<KitchenOrder> {
+        val order = selectedOrder ?: return emptyList()
+        val tableOrders = openOrdersForTable(order.table_number)
+        return if (tableOrders.size > 1) tableOrders else listOf(order)
+    }
+
+    private fun receiptInclusiveTotal(): Double {
+        return receiptOrders().sumOf { it.total_amount.toDoubleOrNull() ?: 0.0 }
+    }
+
     private fun openTablePicker() {
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
@@ -514,14 +530,67 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun updateReceiptCheckoutState() {
         val order = selectedOrder ?: return
+        val total = receiptInclusiveTotal()
+        updatePaymentTotalDisplay(total)
         binding.checkoutButton.isEnabled = when (paymentMethod) {
             PaymentMethod.ACCOUNT -> {
                 val customer = selectedCustomer()
-                val total = order.total_amount.toDoubleOrNull() ?: 0.0
                 val balance = customer?.account_balance?.toDoubleOrNull() ?: 0.0
                 customer != null && balance >= total
             }
-            PaymentMethod.CASH -> selectedCurrency() != null
+            PaymentMethod.CASH -> {
+                val currency = selectedCurrency()
+                currency != null && paymentRate(currency) != null
+            }
+        }
+        val combined = receiptOrders().size > 1
+        binding.checkoutButton.text = getString(
+            if (combined) R.string.collect_table_payment else R.string.collect_payment,
+        )
+    }
+
+    private fun paymentRate(currency: Currency): Double? {
+        if (currency.is_base) return 1.0
+        val rate = currency.current_rate?.toDoubleOrNull()
+        return rate?.takeIf { it > 0.0 }
+    }
+
+    private fun roundMoney(amount: Double): Double {
+        return kotlin.math.round(amount * 100.0) / 100.0
+    }
+
+    private fun baseCurrencySymbol(): String? {
+        return currencies.firstOrNull { it.is_base }?.symbol?.takeIf { it.isNotBlank() }
+    }
+
+    private fun updatePaymentTotalDisplay(baseTotal: Double) {
+        if (posMode != PosMode.RECEIPT || paymentMethod == PaymentMethod.ACCOUNT) {
+            binding.totalCaption.setText(R.string.total)
+            binding.totalLabel.text = ProductAdapter.formatMoney(baseTotal, baseCurrencySymbol())
+            binding.exchangeRateLabel.visibility = View.GONE
+            return
+        }
+        val currency = selectedCurrency()
+        val rate = currency?.let(::paymentRate)
+        if (currency != null && rate != null) {
+            val amountDue = roundMoney(baseTotal * rate)
+            binding.totalCaption.setText(
+                if (currency.is_base) R.string.total else R.string.amount_due,
+            )
+            binding.totalLabel.text = ProductAdapter.formatMoney(
+                amountDue,
+                currency.symbol.takeIf { it.isNotBlank() } ?: baseCurrencySymbol(),
+            )
+            if (!currency.is_base) {
+                binding.exchangeRateLabel.text = getString(R.string.exchange_rate_label, rate.toString())
+                binding.exchangeRateLabel.visibility = View.VISIBLE
+            } else {
+                binding.exchangeRateLabel.visibility = View.GONE
+            }
+        } else {
+            binding.totalCaption.setText(R.string.total)
+            binding.totalLabel.text = ProductAdapter.formatMoney(baseTotal, baseCurrencySymbol())
+            binding.exchangeRateLabel.visibility = View.GONE
         }
     }
 
@@ -705,6 +774,7 @@ class PosActivity : KeepScreenOnActivity() {
                 val orders = withContext(Dispatchers.IO) { api.fetchOpenOrders() }
                     .sortedByDescending { it.created_at }
                 openOrders = orders
+                receiptAdapter.openOrders = orders
                 receiptAdapter.submitList(orders)
                 selectedOrder = selectedOrder?.let { current ->
                     orders.find { it.id == current.id }
@@ -780,7 +850,9 @@ class PosActivity : KeepScreenOnActivity() {
         binding.clearButton.isEnabled = hasLines
         binding.checkoutButton.isEnabled = hasLines
         val total = lines.sumOf { it.price * it.quantity }
-        binding.totalLabel.text = ProductAdapter.formatMoney(total.toString())
+        binding.totalCaption.setText(R.string.total)
+        binding.totalLabel.text = ProductAdapter.formatMoney(total, baseCurrencySymbol())
+        binding.exchangeRateLabel.visibility = View.GONE
     }
 
     private fun renderProducts() {
@@ -808,29 +880,37 @@ class PosActivity : KeepScreenOnActivity() {
             binding.paymentSection.visibility = View.GONE
             binding.clearButton.isEnabled = false
             binding.checkoutButton.isEnabled = false
-            binding.totalLabel.text = ProductAdapter.formatMoney("0")
+            binding.totalCaption.setText(R.string.total)
+            binding.totalLabel.text = ProductAdapter.formatMoney(0.0, baseCurrencySymbol())
+            binding.exchangeRateLabel.visibility = View.GONE
             return
         }
 
-        val lines = order.items.map { item ->
-            val qty = item.quantity.toDoubleOrNull() ?: 1.0
-            val price = item.price.toDoubleOrNull() ?: 0.0
-            val addonPrice = item.addons.sumOf { it.price.toDoubleOrNull() ?: 0.0 }
-            CartLine(
-                lineKey = "order-${item.id}",
-                productId = item.id,
-                name = item.product_name,
-                price = price + addonPrice,
-                quantity = qty,
-                addons = item.addons.map { addon ->
-                    com.cafedeparis.kitchen.data.CartAddon(
-                        id = 0,
-                        name = addon.name,
-                        price = addon.price.toDoubleOrNull() ?: 0.0,
-                    )
-                },
-                notes = item.notes,
-            )
+        val lines = receiptOrders().flatMap { tableOrder ->
+            tableOrder.items.map { item ->
+                val qty = item.quantity.toDoubleOrNull() ?: 1.0
+                val price = item.price.toDoubleOrNull() ?: 0.0
+                val addonPrice = item.addons.sumOf { it.price.toDoubleOrNull() ?: 0.0 }
+                CartLine(
+                    lineKey = "order-${tableOrder.id}-${item.id}",
+                    productId = item.id,
+                    name = if (receiptOrders().size > 1) {
+                        "#${tableOrder.id} · ${item.product_name}"
+                    } else {
+                        item.product_name
+                    },
+                    price = price + addonPrice,
+                    quantity = qty,
+                    addons = item.addons.map { addon ->
+                        com.cafedeparis.kitchen.data.CartAddon(
+                            id = 0,
+                            name = addon.name,
+                            price = addon.price.toDoubleOrNull() ?: 0.0,
+                        )
+                    },
+                    notes = item.notes,
+                )
+            }
         }
         binding.cartList.adapter = receiptCartAdapter
         receiptCartAdapter.submitList(lines)
@@ -844,7 +924,6 @@ class PosActivity : KeepScreenOnActivity() {
         syncPaymentMethodUi()
         renderCurrencyButtons()
         updateReceiptCheckoutState()
-        binding.totalLabel.text = ProductAdapter.formatMoney(order.total_amount)
     }
 
     private fun selectedCurrency(): Currency? {
@@ -862,16 +941,32 @@ class PosActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             try {
                 val tableNumber = if (currentOrderType() == "dine_in") selectedTableName else null
+                val existingTableOrderId = tableNumber?.trim()?.takeIf { it.isNotEmpty() }?.let { table ->
+                    openOrdersForTable(table).firstOrNull()?.id
+                }
                 val order = withContext(Dispatchers.IO) {
                     api.createOrder(currentOrderType(), tableNumber, cart.values.toList())
                 }
                 cart.clear()
-                setSelectedTable(null)
                 renderCart()
+                loadOpenOrders(silent = true)
                 printOrderTicket(order)
+                val addedToExisting = existingTableOrderId != null && order.id == existingTableOrderId
                 Toast.makeText(
                     this@PosActivity,
-                    getString(R.string.order_placed, order.id, ProductAdapter.formatMoney(order.total_amount)),
+                    if (addedToExisting) {
+                        getString(
+                            R.string.items_added_to_order,
+                            order.id,
+                            ProductAdapter.formatMoney(order.total_amount, baseCurrencySymbol()),
+                        )
+                    } else {
+                        getString(
+                            R.string.order_placed,
+                            order.id,
+                            ProductAdapter.formatMoney(order.total_amount, baseCurrencySymbol()),
+                        )
+                    },
                     Toast.LENGTH_LONG,
                 ).show()
             } catch (err: ApiException) {
@@ -886,6 +981,8 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun paySelectedOrder() {
         val order = selectedOrder ?: return
+        val total = receiptInclusiveTotal()
+        val combined = receiptOrders().size > 1
 
         if (paymentMethod == PaymentMethod.ACCOUNT) {
             val customer = selectedCustomer()
@@ -893,7 +990,6 @@ class PosActivity : KeepScreenOnActivity() {
                 Toast.makeText(this, R.string.select_customer_account, Toast.LENGTH_SHORT).show()
                 return
             }
-            val total = order.total_amount.toDoubleOrNull() ?: 0.0
             val balance = customer.account_balance.toDoubleOrNull() ?: 0.0
             if (balance < total) {
                 Toast.makeText(
@@ -944,15 +1040,27 @@ class PosActivity : KeepScreenOnActivity() {
                     getString(
                         R.string.order_paid_account,
                         paid.id,
-                        ProductAdapter.formatMoney(paid.total_amount),
+                        ProductAdapter.formatMoney(paid.total_amount, baseCurrencySymbol()),
                     )
                 } else {
-                    getString(
-                        R.string.order_paid,
-                        paid.id,
-                        paid.payment_currency_name ?: selectedCurrency()?.name.orEmpty(),
+                    val paidSymbol = paid.payment_currency_symbol
+                        ?.takeIf { it.isNotBlank() }
+                        ?: selectedCurrency()?.symbol?.takeIf { it.isNotBlank() }
+                        ?: baseCurrencySymbol()
+                    val paidAmount = ProductAdapter.formatMoney(
                         paid.amount_paid ?: paid.total_amount,
+                        paidSymbol,
                     )
+                    if (combined && !order.table_number.isNullOrBlank()) {
+                        getString(R.string.table_paid, order.table_number, paidAmount)
+                    } else {
+                        getString(
+                            R.string.order_paid,
+                            paid.id,
+                            paid.payment_currency_name ?: selectedCurrency()?.name.orEmpty(),
+                            paidAmount,
+                        )
+                    }
                 }
                 Toast.makeText(this@PosActivity, message, Toast.LENGTH_LONG).show()
                 selectedOrder = null

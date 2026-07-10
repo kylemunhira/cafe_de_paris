@@ -4,9 +4,14 @@ from .models import MenuAddon, MenuAddonGroup, Product, ProductCategory, Product
 
 
 class ProductCategorySerializer(serializers.ModelSerializer):
+    pos_station_display = serializers.CharField(
+        source="get_pos_station_display",
+        read_only=True,
+    )
+
     class Meta:
         model = ProductCategory
-        fields = ["id", "name", "is_asset"]
+        fields = ["id", "name", "is_asset", "pos_station", "pos_station_display"]
 
 
 class MenuAddonSerializer(serializers.ModelSerializer):
@@ -56,6 +61,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "remaining_qty",
             "tax_rate",
             "is_active",
+            "daily_stock_take",
             "created_at",
             "addon_groups",
             "addon_group_ids",

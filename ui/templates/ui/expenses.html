@@ -32,7 +32,7 @@
     </div>
     <div class="form-group">
       <label for="expense-supplier">Supplier</label>
-      <select id="expense-supplier">
+      <select id="expense-supplier" class="searchable-select">
         <option value="">None (optional)</option>
       </select>
     </div>
@@ -94,6 +94,7 @@
 import { apiGet, apiPost, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, effectiveBranchParam, setupBranchFilter, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
 const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
@@ -120,6 +121,8 @@ const expenseStats = document.getElementById("expense-stats");
 const expensesTable = document.getElementById("expenses-table");
 const searchInput = document.getElementById("expense-search");
 const sortState = createSortState("created_at", "desc");
+
+initSearchableSelect(expenseSupplier);
 
 const EXPENSE_SORT = {
   expense_date: (e) => e.expense_date || "",
@@ -263,6 +266,7 @@ function populateSupplierSelect() {
   expenseSupplier.innerHTML = active.length
     ? `<option value="">None (optional)</option>${active.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
     : `<option value="">None (optional)</option>`;
+  syncSearchableSelect(expenseSupplier);
 }
 
 function listParams() {

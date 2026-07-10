@@ -15,6 +15,7 @@ CSV_HEADERS = [
     "remaining_qty",
     "tax_rate",
     "is_active",
+    "daily_stock_take",
 ]
 
 INGREDIENT_CSV_HEADERS = [
@@ -23,6 +24,7 @@ INGREDIENT_CSV_HEADERS = [
     "unit_cost",
     "remaining_qty",
     "is_active",
+    "daily_stock_take",
 ]
 
 
@@ -40,6 +42,7 @@ def export_products_csv():
                 "remaining_qty": product.remaining_qty,
                 "tax_rate": product.tax_rate,
                 "is_active": "true" if product.is_active else "false",
+                "daily_stock_take": "true" if product.daily_stock_take else "false",
             }
         )
     return output.getvalue()
@@ -62,6 +65,7 @@ def export_ingredients_csv(*, category_name=None):
                 "unit_cost": product.selling_price,
                 "remaining_qty": product.remaining_qty,
                 "is_active": "true" if product.is_active else "false",
+                "daily_stock_take": "true" if product.daily_stock_take else "false",
             }
         )
     return output.getvalue()
@@ -158,6 +162,10 @@ def import_products_csv(file_obj):
                     max_value=Decimal("100"),
                 )
                 is_active = _parse_bool(row.get(normalized_headers.get("is_active", "is_active")))
+                daily_stock_take = _parse_bool(
+                    row.get(normalized_headers.get("daily_stock_take", "daily_stock_take")),
+                    default=False,
+                )
 
                 category, _ = ProductCategory.objects.get_or_create(name=category_name)
 
@@ -177,6 +185,7 @@ def import_products_csv(file_obj):
                     if tax_rate is not None:
                         product.tax_rate = tax_rate
                     product.is_active = is_active
+                    product.daily_stock_take = daily_stock_take
                     product.save()
                     updated += 1
                 else:
@@ -187,6 +196,7 @@ def import_products_csv(file_obj):
                         remaining_qty=remaining_qty or Decimal("0"),
                         tax_rate=tax_rate or Decimal("0"),
                         is_active=is_active,
+                        daily_stock_take=daily_stock_take,
                     )
                     created += 1
             except Exception as exc:
@@ -244,6 +254,10 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
                     min_value=Decimal("0"),
                 )
                 is_active = _parse_bool(row.get(normalized_headers.get("is_active", "is_active")))
+                daily_stock_take = _parse_bool(
+                    row.get(normalized_headers.get("daily_stock_take", "daily_stock_take")),
+                    default=False,
+                )
 
                 id_header = normalized_headers.get("id")
                 product_id = str(row.get(id_header, "")).strip() if id_header else ""
@@ -266,6 +280,7 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
                     if remaining_qty is not None:
                         product.remaining_qty = remaining_qty
                     product.is_active = is_active
+                    product.daily_stock_take = daily_stock_take
                     product.save()
                     updated += 1
                 else:
@@ -275,6 +290,7 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
                         selling_price=unit_cost,
                         remaining_qty=remaining_qty or Decimal("0"),
                         is_active=is_active,
+                        daily_stock_take=daily_stock_take,
                     )
                     created += 1
             except Exception as exc:

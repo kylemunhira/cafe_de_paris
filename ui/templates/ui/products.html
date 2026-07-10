@@ -58,6 +58,12 @@
         Active product
       </label>
     </div>
+    <div class="form-group">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="product-daily-stock" name="daily_stock_take">
+        Include in daily stock take
+      </label>
+    </div>
     <div id="addon-groups-section" class="form-group" style="display: none;">
       <label>Menu add-ons for this product</label>
       <p class="products-page-description" style="margin: 0 0 0.75rem;">
@@ -170,6 +176,7 @@ const PRODUCT_SORT = {
   branch_qty: (p) => Number(p.branch_qty || 0),
   tax_rate: (p) => Number(p.tax_rate || 0),
   is_active: (p) => (p.is_active ? 1 : 0),
+  daily_stock_take: (p) => (p.daily_stock_take ? 1 : 0),
 };
 
 function selectedBranch() {
@@ -277,6 +284,7 @@ function resetForm() {
   productForm.reset();
   document.getElementById("product-qty").value = "0";
   document.getElementById("product-active").checked = true;
+  document.getElementById("product-daily-stock").checked = false;
   updateQtyLabel();
 }
 
@@ -291,6 +299,7 @@ function startEdit(product) {
   document.getElementById("product-tax").value = product.tax_rate ?? "";
   document.getElementById("product-qty").value = product.branch_qty ?? "0";
   document.getElementById("product-active").checked = product.is_active;
+  document.getElementById("product-daily-stock").checked = product.daily_stock_take;
   setAddonGroupsForProduct(product);
   updateQtyLabel();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -319,6 +328,12 @@ function recipeLink(product) {
   return `<a href="/recipes/?product=${product.id}" class="btn btn-ghost btn-sm">Recipe</a>`;
 }
 
+function dailyStockBadge(product) {
+  return product.daily_stock_take
+    ? `<span class="badge badge-daily-stock" title="Counted in daily stock take">Daily count</span>`
+    : "";
+}
+
 function renderProductCard(p) {
   const addonLine = productListMode === "menu" && p.addon_groups?.length
     ? `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">Add-ons: ${p.addon_groups.map(group => group.name).join(", ")}</p>`
@@ -329,6 +344,7 @@ function renderProductCard(p) {
         <h3 class="product-mgmt-card__name">${p.name}</h3>
         <div class="product-mgmt-card__actions">
           <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
+          ${dailyStockBadge(p)}
           ${recipeLink(p)}
           <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
@@ -373,6 +389,7 @@ function renderProductTable(filtered) {
               ${sortTh(stockColumnLabel(), "branch_qty", sortState, { align: "right" })}
               ${sortTh("Tax", "tax_rate", sortState, { align: "right" })}
               ${sortTh("Status", "is_active", sortState)}
+              ${sortTh("Daily count", "daily_stock_take", sortState)}
               ${addonHeader}
               ${actionTh()}
             </tr>
@@ -386,6 +403,7 @@ function renderProductTable(filtered) {
                 <td style="text-align: right;">${formatQty(p.branch_qty)}</td>
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
                 <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
+                <td>${p.daily_stock_take ? `<span class="badge badge-daily-stock">Yes</span>` : "—"}</td>
                 ${addonCell(p)}
                 <td style="text-align: right;">
                   ${recipeLink(p)}
@@ -516,6 +534,7 @@ productForm.addEventListener("submit", async (e) => {
     category: Number(categorySelect.value),
     selling_price: document.getElementById("product-price").value,
     is_active: document.getElementById("product-active").checked,
+    daily_stock_take: document.getElementById("product-daily-stock").checked,
   };
   if (taxRaw) payload.tax_rate = taxRaw;
   const targetQty = qtyRaw || "0";

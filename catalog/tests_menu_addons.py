@@ -47,6 +47,32 @@ class PosCatalogAddonExclusionTests(TestCase):
         self.assertNotIn("Add Oat Milk", names)
 
 
+class MenuAddonActivationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        seed_menu_addons(link_products=False)
+        self.addon = MenuAddon.objects.get(name="Add Oat Milk")
+
+    def test_patch_can_deactivate_and_reactivate_addon(self):
+        response = self.client.patch(
+            f"/api/menu-addons/{self.addon.id}/",
+            {"is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["is_active"])
+        self.addon.refresh_from_db()
+        self.assertFalse(self.addon.is_active)
+
+        response = self.client.patch(
+            f"/api/menu-addons/{self.addon.id}/",
+            {"is_active": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["is_active"])
+
+
 class OrderAddonCreateTests(TestCase):
     def setUp(self):
         self.client = APIClient()

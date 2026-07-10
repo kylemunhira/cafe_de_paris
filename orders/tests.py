@@ -10,7 +10,7 @@ from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
 from inventory.models import StockTake, StockTakeStatus, StockTakeType
 from orders.day_end import build_day_end_report
-from orders.models import Expense, FiscalApprovalStatus, KitchenStatus, Order, OrderStatus
+from orders.models import Expense, FiscalApprovalStatus, KitchenStatus, Order, OrderStatus, OrderType
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
 from payments.models import Currency, CurrencyRate
 
@@ -622,3 +622,94 @@ class ExpensesPageTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get("/expenses/")
         self.assertEqual(response.status_code, 200)
+
+
+class TableOrderCombineTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        self.branch = Branch.objects.create(
+            name="Test Branch",
+            code="TST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=category,
+            selling_price=Decimal("3.50"),
+        )
+        self.latte = Product.objects.create(
+            name="Latte",
+            category=category,
+            selling_price=Decimal("4.00"),
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+
+    def _create_table_order(self, table_number, product=None, quantity=Decimal("1")):
+        product = product or self.product
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.DINE_IN,
+            table_number=table_number,
+            kitchen_status=KitchenStatus.READY,
+        )
+        order.items.create(product=product, quantity=quantity, price=product.selling_price)
+        order.recalculate_total()
+        return order
+
+    def test_adding_to_occupied_table_appends_items(self):
+        existing = self._create_table_order("T1")
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.DINE_IN,
+                "table_number": "T1",
+                "items": [{"product_id": self.latte.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["id"], existing.id)
+        self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN).count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.items.count(), 2)
+        self.assertEqual(existing.total_amount, Decimal("11.50"))
+        self.assertEqual(existing.kitchen_status, KitchenStatus.PENDING)
+
+    def test_paying_table_order_consolidates_siblings(self):
+        first = self._create_table_order("T2")
+        second = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.DINE_IN,
+            table_number="T2",
+        )
+        second.items.create(product=self.latte, quantity=Decimal("1"), price=self.latte.selling_price)
+        second.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{first.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        first.refresh_from_db()
+        self.assertEqual(first.status, OrderStatus.PAID)
+        self.assertEqual(first.total_amount, Decimal("7.50"))
+        self.assertFalse(Order.objects.filter(pk=second.pk).exists())
+        self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN, table_number="T2").count(), 0)

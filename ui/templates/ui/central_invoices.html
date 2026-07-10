@@ -26,7 +26,7 @@
       </div>
       <div class="form-group">
         <label for="customer">External customer</label>
-        <select id="customer" required>
+        <select id="customer" class="searchable-select" required>
           <option value="">Select customer…</option>
         </select>
       </div>
@@ -35,7 +35,7 @@
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
         <label for="product">Product</label>
-        <select id="product">
+        <select id="product" class="searchable-select">
           <option value="">Select product…</option>
         </select>
       </div>
@@ -94,6 +94,7 @@
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
 const CAN_MARK_PAID = "{{ can_mark_central_invoice_paid|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:central-invoice-print' 0 %}".replace("/0/", "/{id}/");
@@ -129,6 +130,9 @@ const linesWrap = document.getElementById("lines-wrap");
 const linesBody = document.getElementById("lines-body");
 const submitBtn = document.getElementById("submit-btn");
 const addLineBtn = document.getElementById("add-line-btn");
+
+initSearchableSelect(customerSelect);
+initSearchableSelect(productSelect);
 
 function formatQty(value) {
   const qty = Number(value);
@@ -324,6 +328,7 @@ async function loadData() {
     <option value="">Select customer…</option>
     ${customers.map(c => `<option value="${c.id}">${c.full_name || c.id}</option>`).join("")}
   `;
+  syncSearchableSelect(customerSelect);
 
   const storesId = storesBranches[0].id;
   const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
@@ -340,6 +345,7 @@ async function loadData() {
       return `<option value="${p.id}">${p.name} (${stock} in stock)</option>`;
     }).join("")}
   `;
+  syncSearchableSelect(productSelect);
 
   renderStats();
   renderInvoices();
@@ -433,6 +439,7 @@ invoiceForm.addEventListener("submit", async (e) => {
           return `<option value="${p.id}">${p.name} (${stock} in stock)</option>`;
         }).join("")}
       `;
+      syncSearchableSelect(productSelect);
     }
 
     renderStats();

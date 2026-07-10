@@ -35,9 +35,12 @@
     <string name="pos_mode_receipt">Receipt</string>
     <string name="current_order">Current order</string>
     <string name="collect_payment">Collect payment</string>
+    <string name="collect_table_payment">Collect table payment</string>
     <string name="place_order">Place order</string>
     <string name="clear_cart">Clear cart</string>
     <string name="total">Total</string>
+    <string name="amount_due">Amount due</string>
+    <string name="exchange_rate_label">Exchange rate: %1$s</string>
     <string name="tap_products_hint">Tap products to add items</string>
     <string name="search_products">Search products</string>
     <string name="category_all">All</string>
@@ -65,6 +68,8 @@
     <string name="select_currency">Select a payment currency</string>
     <string name="no_currencies_configured">No payment currencies configured</string>
     <string name="order_placed">Order #%1$d placed — %2$s</string>
+    <string name="items_added_to_order">Items added to order #%1$d — %2$s</string>
+    <string name="table_paid">Table %1$s paid — %2$s</string>
     <string name="order_paid">Order #%1$d paid in %2$s — %3$s</string>
     <string name="printer_not_configured">No printer configured — open Settings to pair one</string>
     <string name="day_end">Day end</string>

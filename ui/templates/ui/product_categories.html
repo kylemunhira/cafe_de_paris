@@ -13,6 +13,14 @@
         <label for="category-name">Name</label>
         <input type="text" id="category-name" required autocomplete="off">
       </div>
+      <div class="form-group">
+        <label for="category-pos-station">Prepared at (POS)</label>
+        <select id="category-pos-station">
+          <option value="">Not on POS / not set</option>
+          <option value="bar">Bar</option>
+          <option value="kitchen">Kitchen</option>
+        </select>
+      </div>
       <div class="form-group" style="display: flex; align-items: end;">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0.35rem;">
           <input type="checkbox" id="category-is-asset">
@@ -28,7 +36,7 @@
 </div>
 
 <div class="card" style="padding: 0;">
-  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
     <input
       type="search"
       id="category-search"
@@ -37,6 +45,12 @@
       style="max-width: 320px;"
       autocomplete="off"
     >
+    <div class="category-tabs" id="station-filter" style="margin: 0;">
+      <button type="button" class="category-tab active" data-station="all">All</button>
+      <button type="button" class="category-tab" data-station="bar">Bar</button>
+      <button type="button" class="category-tab" data-station="kitchen">Kitchen</button>
+      <button type="button" class="category-tab" data-station="unset">Not set</button>
+    </div>
   </div>
   <div class="table-wrap" id="categories-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -52,17 +66,25 @@ import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% 
 const categoryForm = document.getElementById("category-form");
 const formTitle = document.getElementById("form-title");
 const nameInput = document.getElementById("category-name");
+const posStationInput = document.getElementById("category-pos-station");
 const isAssetInput = document.getElementById("category-is-asset");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const categoriesTable = document.getElementById("categories-table");
 const searchInput = document.getElementById("category-search");
+const stationFilter = document.getElementById("station-filter");
+
+const POS_STATION_LABELS = {
+  bar: "Bar",
+  kitchen: "Kitchen",
+};
 
 let categories = [];
 let productCounts = new Map();
 let activeProductCounts = new Map();
 let editingId = null;
 let searchQuery = "";
+let activeStationFilter = "all";
 const sortState = createSortState("name");
 
 function setFormMode(mode) {
@@ -76,6 +98,7 @@ function setFormMode(mode) {
 function resetForm() {
   categoryForm.reset();
   isAssetInput.checked = false;
+  posStationInput.value = "";
   setFormMode("create");
 }
 
@@ -83,8 +106,19 @@ function startEdit(category) {
   editingId = category.id;
   nameInput.value = category.name;
   isAssetInput.checked = category.is_asset;
+  posStationInput.value = category.pos_station || "";
   setFormMode("edit");
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function stationLabel(category) {
+  return POS_STATION_LABELS[category.pos_station] || "—";
+}
+
+function matchesStationFilter(category) {
+  if (activeStationFilter === "all") return true;
+  if (activeStationFilter === "unset") return !category.pos_station;
+  return category.pos_station === activeStationFilter;
 }
 
 function matchesSearch(category) {
@@ -92,6 +126,7 @@ function matchesSearch(category) {
   const haystack = [
     category.name,
     category.is_asset ? "asset yes" : "asset no",
+    stationLabel(category),
   ]
     .filter(Boolean)
     .join(" ")
@@ -110,7 +145,8 @@ function render() {
       ...c,
       product_count: productCounts.get(c.id) ?? 0,
     }))
-    .filter(matchesSearch);
+    .filter(matchesSearch)
+    .filter(matchesStationFilter);
 
   if (!filtered.length) {
     categoriesTable.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p>No matching categories</p></div>`;
@@ -123,6 +159,7 @@ function render() {
     {
       name: c => c.name.toLowerCase(),
       is_asset: c => c.is_asset,
+      pos_station: c => c.pos_station || "",
       product_count: c => c.product_count,
     },
   );
@@ -133,6 +170,7 @@ function render() {
         <tr>
           ${sortTh("Name", "name", sortState)}
           ${sortTh("Asset", "is_asset", sortState)}
+          ${sortTh("POS station", "pos_station", sortState)}
           ${sortTh("Products", "product_count", sortState, { align: "right" })}
           ${actionTh()}
         </tr>
@@ -147,6 +185,7 @@ function render() {
           <tr>
             <td><strong>${c.name}</strong></td>
             <td>${c.is_asset ? "Yes" : "No"}</td>
+            <td>${stationLabel(c)}</td>
             <td style="text-align: right;">${c.product_count.toLocaleString()}</td>
             <td style="text-align: right;">
               <button type="button" class="btn btn-ghost btn-sm" data-edit="${c.id}">Edit</button>
@@ -190,6 +229,7 @@ categoryForm.addEventListener("submit", async (e) => {
   const payload = {
     name: nameInput.value.trim(),
     is_asset: isAssetInput.checked,
+    pos_station: posStationInput.value,
   };
 
   try {
@@ -238,6 +278,16 @@ categoriesTable.addEventListener("click", async (e) => {
 
 searchInput.addEventListener("input", () => {
   searchQuery = searchInput.value.trim().toLowerCase();
+  render();
+});
+
+stationFilter.addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-station]");
+  if (!tab) return;
+  activeStationFilter = tab.dataset.station;
+  stationFilter.querySelectorAll(".category-tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.station === activeStationFilter);
+  });
   render();
 });
 

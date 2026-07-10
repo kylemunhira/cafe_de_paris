@@ -1,8 +1,9 @@
 from decimal import Decimal
 
+from django.db import transaction
 from rest_framework import serializers
 
-from catalog.models import MenuAddon, Product
+from catalog.models import Product
 from payments.models import Currency
 
 from customers.models import Customer
@@ -14,8 +15,10 @@ from .models import (
     OrderItem,
     OrderItemAddon,
     OrderStatus,
+    OrderType,
     PaymentMethod,
 )
+from .services import add_items_to_order, find_open_table_order
 
 
 def staff_display_name(user):
@@ -200,63 +203,23 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop("items")
         request = self.context.get("request")
         user = request.user if request and request.user.is_authenticated else None
+
+        branch = validated_data["branch"]
+        table_number = (validated_data.get("table_number") or "").strip()
+        order_type = validated_data.get("order_type")
+
+        existing = None
+        if order_type == OrderType.DINE_IN and table_number:
+            existing = find_open_table_order(branch=branch, table_number=table_number)
+
+        if existing:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(pk=existing.pk)
+                add_items_to_order(order, items_data)
+            return order
+
         order = Order.objects.create(created_by=user, **validated_data)
-
-        for item_data in items_data:
-            product = item_data["product"]
-            addon_ids = item_data.get("addon_ids") or []
-            notes = (item_data.get("notes") or "").strip()
-
-            allowed_addon_ids = set(
-                MenuAddon.objects.filter(
-                    is_active=True,
-                    group__product_links__product=product,
-                ).values_list("id", flat=True)
-            )
-            selected_addons = []
-            if addon_ids:
-                addons = MenuAddon.objects.filter(
-                    id__in=addon_ids,
-                    is_active=True,
-                ).select_related("group")
-                by_group = {}
-                for addon in addons:
-                    if addon.id not in allowed_addon_ids:
-                        raise serializers.ValidationError(
-                            {
-                                "items": (
-                                    f'Add-on "{addon.name}" is not available for {product.name}.'
-                                )
-                            }
-                        )
-                    existing = by_group.get(addon.group_id)
-                    if existing and addon.group.selection_type == "single":
-                        raise serializers.ValidationError(
-                            {
-                                "items": (
-                                    f'Choose one option from "{addon.group.name}" for {product.name}.'
-                                )
-                            }
-                        )
-                    by_group[addon.group_id] = addon
-                    selected_addons.append(addon)
-
-            order_item = OrderItem.objects.create(
-                order=order,
-                product=product,
-                quantity=item_data["quantity"],
-                price=product.selling_price,
-                notes=notes,
-            )
-            for addon in selected_addons:
-                OrderItemAddon.objects.create(
-                    order_item=order_item,
-                    menu_addon=addon,
-                    name=addon.name,
-                    price=addon.selling_price,
-                )
-
-        order.recalculate_total()
+        add_items_to_order(order, items_data)
         return order
 
 

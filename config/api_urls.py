@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from accounts.auth_views import DesktopLoginView, KitchenLoginView, MobileAppLoginView
 from accounts.views import StaffUserViewSet
 from branches.views import BranchViewSet, DiningTableViewSet
-from catalog.views import MenuAddonGroupViewSet, ProductCategoryViewSet, ProductViewSet
+from catalog.views import MenuAddonGroupViewSet, MenuAddonViewSet, ProductCategoryViewSet, ProductViewSet
 from inventory.views import (
     BranchInventoryViewSet,
     CentralInvoiceViewSet,
@@ -36,6 +36,7 @@ router.register("branches", BranchViewSet)
 router.register("dining-tables", DiningTableViewSet, basename="dining-table")
 router.register("categories", ProductCategoryViewSet)
 router.register("menu-addon-groups", MenuAddonGroupViewSet, basename="menu-addon-group")
+router.register("menu-addons", MenuAddonViewSet, basename="menu-addon")
 router.register("products", ProductViewSet)
 router.register("orders", OrderViewSet)
 router.register("expenses", ExpenseViewSet, basename="expense")

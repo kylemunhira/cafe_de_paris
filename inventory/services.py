@@ -63,7 +63,7 @@ class InvalidDeliveryNoteStateError(Exception):
         )
 
 
-def adjust_inventory(branch, product, delta: Decimal) -> BranchInventory:
+def adjust_inventory(branch, product, delta: Decimal, *, allow_negative=False) -> BranchInventory:
     with transaction.atomic():
         inventory, _ = BranchInventory.objects.select_for_update().get_or_create(
             branch=branch,
@@ -71,7 +71,7 @@ def adjust_inventory(branch, product, delta: Decimal) -> BranchInventory:
             defaults={"quantity": Decimal("0")},
         )
         new_quantity = inventory.quantity + delta
-        if new_quantity < 0:
+        if new_quantity < 0 and not allow_negative:
             raise InsufficientStockError(
                 branch, product, inventory.quantity, abs(delta)
             )
@@ -148,35 +148,43 @@ def consume_order_recipe_materials(order) -> None:
         return
 
     branch = order.branch
+    allow_negative = branch.allow_negative_stock
     product_ids = list(requirements.keys())
     products = {
         row.id: row
         for row in Product.objects.filter(id__in=product_ids)
     }
-    inventory_rows = BranchInventory.objects.filter(
-        branch=branch,
-        product_id__in=product_ids,
-    )
-    available_by_product = {
-        row.product_id: row.quantity for row in inventory_rows
-    }
 
-    shortages = []
-    for product_id, required in requirements.items():
-        available = available_by_product.get(product_id, Decimal("0"))
-        if available < required:
-            shortages.append(
-                OrderMaterialShortage(
-                    products[product_id],
-                    required,
-                    available,
+    if not allow_negative:
+        inventory_rows = BranchInventory.objects.filter(
+            branch=branch,
+            product_id__in=product_ids,
+        )
+        available_by_product = {
+            row.product_id: row.quantity for row in inventory_rows
+        }
+
+        shortages = []
+        for product_id, required in requirements.items():
+            available = available_by_product.get(product_id, Decimal("0"))
+            if available < required:
+                shortages.append(
+                    OrderMaterialShortage(
+                        products[product_id],
+                        required,
+                        available,
+                    )
                 )
-            )
-    if shortages:
-        raise InsufficientOrderMaterialsError(shortages)
+        if shortages:
+            raise InsufficientOrderMaterialsError(shortages)
 
     for product_id, required in requirements.items():
-        adjust_inventory(branch, products[product_id], -required)
+        adjust_inventory(
+            branch,
+            products[product_id],
+            -required,
+            allow_negative=allow_negative,
+        )
 
 
 def approve_transfer(transfer: StockTransfer) -> StockTransfer:
@@ -410,17 +418,23 @@ class DayEndStockTakeRequiredError(Exception):
 
 
 def products_for_stock_take(stock_take_type: str, branch=None):
-    """Ingredients for the branch type — POS products are made per order, not held as branch stock."""
+    """Products flagged for counting — daily uses daily_stock_take; monthly uses ingredients + assets."""
     queryset = Product.objects.filter(is_active=True).select_related("category")
-    if branch is not None:
-        categories = ingredient_categories_for_branch_type(branch.branch_type)
-        ingredient_filter = Q(category__name__in=categories)
-    else:
-        ingredient_filter = Q(category__name__in=ALL_INGREDIENT_CATEGORIES)
     if stock_take_type == StockTakeType.MONTHLY:
+        if branch is not None:
+            categories = ingredient_categories_for_branch_type(branch.branch_type)
+            ingredient_filter = Q(category__name__in=categories)
+        else:
+            ingredient_filter = Q(category__name__in=ALL_INGREDIENT_CATEGORIES)
         queryset = queryset.filter(ingredient_filter | Q(category__is_asset=True))
     else:
-        queryset = queryset.filter(ingredient_filter)
+        queryset = queryset.filter(daily_stock_take=True)
+        if branch is not None:
+            categories = ingredient_categories_for_branch_type(branch.branch_type)
+            queryset = queryset.filter(
+                ~Q(category__name__in=ALL_INGREDIENT_CATEGORIES)
+                | Q(category__name__in=categories)
+            )
     return queryset.order_by("category__name", "name")
 
 

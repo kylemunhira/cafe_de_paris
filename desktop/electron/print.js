@@ -143,6 +143,15 @@ function renderItemsBlock(items) {
     const name = item.product_name || item.name || "Item";
     lines.push(itemColumns(name, item.quantity, lineTotal));
     lines.push(`  ${qty(item.quantity)} x ${money(price)}`);
+    for (const addon of item.addons || []) {
+      const addonPrice = Number(addon.price);
+      const addonLabel =
+        addonPrice > 0 ? `  + ${addon.name} (${money(addonPrice)})` : `  + ${addon.name}`;
+      lines.push(addonLabel);
+    }
+    if (item.notes) {
+      lines.push(`  Note: ${item.notes}`);
+    }
   }
 
   return `<pre class="lines">${esc(lines.join("\n"))}</pre>`;
