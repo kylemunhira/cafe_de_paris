@@ -2,6 +2,23 @@ function roundMoney(amount) {
   return Math.round(Number(amount) * 100) / 100;
 }
 
+function buildPaymentOptions(baseAmount, currencies) {
+  return (currencies || [])
+    .filter((c) => c.is_active !== false)
+    .map((c) => {
+      const rate = c.is_base ? 1 : Number(c.current_rate);
+      if (!Number.isFinite(rate) || rate <= 0) return null;
+      return {
+        name: c.name || "",
+        code: c.code || "",
+        symbol: c.symbol || "",
+        amount: roundMoney(Number(baseAmount) * rate),
+        isBase: !!c.is_base,
+      };
+    })
+    .filter(Boolean);
+}
+
 export function computeTaxBreakdown(inclusiveTotal, taxRate) {
   const total = roundMoney(inclusiveTotal);
   const divisor = 1 + Number(taxRate) / 100;
@@ -29,8 +46,8 @@ export async function printOrderSlip(session, order, { taxRate }) {
     : roundMoney(order.total_amount);
 
   const tax = computeTaxBreakdown(inclusiveTotal, taxRate);
-  const baseCurrency =
-    (await window.pos.getCatalog()).currencies.find((c) => c.is_base) || null;
+  const catalogCurrencies = (await window.pos.getCatalog()).currencies || [];
+  const baseCurrency = catalogCurrencies.find((c) => c.is_base) || null;
 
   await window.pos.print({
     type: "order",
@@ -41,6 +58,7 @@ export async function printOrderSlip(session, order, { taxRate }) {
     baseCurrency: baseCurrency
       ? { name: baseCurrency.name, code: baseCurrency.code }
       : null,
+    paymentOptions: buildPaymentOptions(tax.total, catalogCurrencies),
   });
 }
 
@@ -106,6 +124,7 @@ export async function printSalesReceipt(session, order, { currency, taxRate, pay
     baseCurrency: baseCurrency
       ? { name: baseCurrency.name, code: baseCurrency.code }
       : null,
+    paymentOptions: buildPaymentOptions(tax.total, catalogCurrencies),
     payment: currency
       ? {
           currencyName: currency.name,
@@ -113,6 +132,7 @@ export async function printSalesReceipt(session, order, { currency, taxRate, pay
           symbol: currency.symbol,
           exchangeRate: order.exchange_rate,
           amountPaid: order.amount_paid,
+          changeGiven: order.change_given ?? order.changeGiven ?? null,
           isBase: currency.is_base,
           lines: enrichedLines,
         }

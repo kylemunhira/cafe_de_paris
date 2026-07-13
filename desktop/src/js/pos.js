@@ -899,17 +899,21 @@ function updateSplitPaymentRemaining() {
   }
   const orderTotal = getOrderTotalBase();
   if (orderTotal == null) {
-    splitRemainingEl.textContent = "—";
+    splitRemainingEl.textContent = "Remaining: —";
     splitRemainingEl.className = "";
     return;
   }
   const remaining = roundMoney(orderTotal - getSplitPaymentAllocatedBase());
-  splitRemainingEl.textContent = money(remaining, baseCurrency);
-  splitRemainingEl.className = "";
-  if (Math.abs(remaining) < 0.005) {
-    splitRemainingEl.classList.add("split-balanced");
-  } else if (remaining < 0) {
-    splitRemainingEl.classList.add("split-over");
+  if (remaining < -0.005) {
+    const change = roundMoney(-remaining);
+    splitRemainingEl.textContent = `Change: ${money(change, baseCurrency)}`;
+    splitRemainingEl.className = "split-change";
+  } else {
+    splitRemainingEl.textContent = `Remaining: ${money(remaining, baseCurrency)}`;
+    splitRemainingEl.className = "";
+    if (Math.abs(remaining) < 0.005) {
+      splitRemainingEl.classList.add("split-balanced");
+    }
   }
 }
 
@@ -1062,7 +1066,7 @@ function updateCheckoutButtonState(inclusiveTotal) {
     const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
     const lines = getSplitPaymentLines();
     const allocated = roundMoney(lines.reduce((sum, line) => sum + line.base_amount, 0));
-    checkoutBtn.disabled = !lines.length || Math.abs(allocated - orderTotal) >= 0.005;
+    checkoutBtn.disabled = !lines.length || allocated + 0.005 < orderTotal;
     return;
   }
   const { hasRate } = computePaymentAmounts(computeTaxBreakdown(inclusiveTotal).total);
@@ -2190,9 +2194,9 @@ async function paySelectedOrder() {
         return;
       }
       const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
-      if (Math.abs(allocated - orderTotal) >= 0.005) {
+      if (allocated + 0.005 < orderTotal) {
         showToast(
-          `Split payments must total ${money(orderTotal)} (now ${money(allocated)})`,
+          `Split payments must cover ${money(orderTotal)} (now ${money(allocated)})`,
           true,
         );
         return;
@@ -2230,6 +2234,19 @@ async function paySelectedOrder() {
             amount: Number(line.amount.toFixed(2)),
           }))
         : [{ currency_id: selectedCurrencyId, amount: Number(amountDue.toFixed(2)) }];
+    const tenderedBase = payingFromAccount
+      ? orderTotal
+      : splitLines.length
+        ? roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0))
+        : orderTotal;
+    const changeBase =
+      !payingFromAccount && tenderedBase > orderTotal + 0.005
+        ? roundMoney(tenderedBase - orderTotal)
+        : 0;
+    const tenderedAmountPaid =
+      !payingFromAccount && splitLines.length === 1
+        ? Number(splitLines[0].amount.toFixed(2))
+        : amountDue;
     const paymentMethodValue = payingFromAccount
       ? "account"
       : payments.length > 1
@@ -2242,7 +2259,7 @@ async function paySelectedOrder() {
           ? baseCurrency?.id || payments[0].currency_id
           : selectedCurrencyId,
       exchangeRate: rate,
-      amountPaid: amountDue,
+      amountPaid: tenderedAmountPaid,
       receiptNumber: localReceipt,
       paidByName: session.user?.display_name || session.user?.username || "",
       paymentMethod: paymentMethodValue,
@@ -2290,6 +2307,9 @@ async function paySelectedOrder() {
           amountPaid: Number(apiOrder.amount_paid || amountDue),
           exchangeRate: apiOrder.exchange_rate || rate,
         })) || mapApiOrderForPrint(apiOrder, paymentRecord);
+      if (apiOrder.change_given != null) {
+        order = { ...order, change_given: Number(apiOrder.change_given) };
+      }
       if (selectedOrder.is_remote && selectedOrder.table_number) {
         await window.pos.dismissLocalTableOrders(selectedOrder.table_number);
       }
@@ -2304,13 +2324,31 @@ async function paySelectedOrder() {
           `Paid from account ${money(orderTotal)} · ${order.receipt_number || apiOrder.receipt_number || orderDisplayLabel(selectedOrder)}`
         );
       } else {
+        const changeLabel = apiOrder.change_given
+          ? ` · Change ${money(apiOrder.change_given, currency)}`
+          : "";
         showToast(
-          `Paid ${money(order.amount_paid || apiOrder.amount_paid, currency)} · ${order.receipt_number || apiOrder.receipt_number || orderDisplayLabel(selectedOrder)}`
+          `Paid ${money(order.amount_paid || apiOrder.amount_paid, currency)}${changeLabel} · ${order.receipt_number || apiOrder.receipt_number || orderDisplayLabel(selectedOrder)}`
         );
       }
     } else {
       order = await window.pos.payOrder(selectedOrder.client_id, paymentRecord);
-      showToast(`Paid ${money(order.amount_paid, currency)} · ${localReceipt}`);
+      if (changeBase > 0) {
+        let changeGiven = changeBase;
+        if (splitLines.length === 1) {
+          const lineRate = currencyRate(splitLines[0].currency);
+          const dueAmt =
+            lineRate != null ? roundMoney(orderTotal * lineRate) : orderTotal;
+          changeGiven = roundMoney(Number(splitLines[0].amount) - dueAmt);
+          currency = splitLines[0].currency || currency;
+        }
+        order = { ...order, change_given: changeGiven };
+        showToast(
+          `Paid ${money(order.amount_paid, currency)} · Change ${money(changeGiven, currency)} · ${localReceipt}`
+        );
+      } else {
+        showToast(`Paid ${money(order.amount_paid, currency)} · ${localReceipt}`);
+      }
     }
 
     try {

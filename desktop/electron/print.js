@@ -229,6 +229,25 @@ function renderTotalsSection(tax, baseCurrency, { showTaxBreakdown = true } = {}
   return renderSummaryBlock(rows);
 }
 
+function formatPaymentOptionAmount(opt) {
+  const amt = money(opt.amount);
+  if (opt.symbol) return `${opt.symbol}${amt}`;
+  const code = opt.code || opt.name || "";
+  return code ? `${code} ${amt}` : amt;
+}
+
+function renderPaymentOptions(options) {
+  if (!Array.isArray(options) || !options.length) return "";
+  const rows = options.map((opt) => [
+    opt.name || opt.code || "Currency",
+    formatPaymentOptionAmount(opt),
+  ]);
+  return `
+    <hr class="divider">
+    <div class="center meta"><p><strong>Payment options</strong></p></div>
+    ${renderSummaryBlock(rows, { boxed: true })}`;
+}
+
 function wrapDocument(title, body) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -278,7 +297,7 @@ function wrapDocument(title, body) {
 }
 
 function renderOrderSlipHtml(data) {
-  const { branch, order, tax, baseCurrency, salesperson } = data;
+  const { branch, order, tax, baseCurrency, salesperson, paymentOptions } = data;
   const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
 
   return wrapDocument(
@@ -297,6 +316,7 @@ function renderOrderSlipHtml(data) {
       ${renderItemsBlock(order.items)}
       <hr class="divider">
       ${renderTotalsSection(tax, baseCurrency, { showTaxBreakdown: !!branch?.fiscalization_enabled })}
+      ${renderPaymentOptions(paymentOptions)}
       <div class="center footer">
         <p>Present this ticket when paying.</p>
         <p>UNPAID</p>
@@ -311,30 +331,47 @@ function tenderMethodLabel(method) {
 }
 
 function renderReceiptHtml(data) {
-  const { branch, order, tax, payment, baseCurrency, fiscal, salesperson } = data;
+  const { branch, order, tax, payment, baseCurrency, fiscal, salesperson, paymentOptions } = data;
   const orderId = order.server_id || order.client_id?.slice(0, 8).toUpperCase() || "—";
   const receiptLine = order.receipt_number ? `<p>Receipt #${esc(order.receipt_number)}</p>` : "";
   const tenderLines = Array.isArray(payment?.lines) ? payment.lines : [];
+  const changeAmount = Number(payment?.changeGiven);
+  const hasChange = Number.isFinite(changeAmount) && changeAmount > 0.005;
   const paymentRows = payment
     ? [
         ["Paid in", payment.currencyCode || payment.currencyName || ""],
         ...(payment.exchangeRate && !payment.isBase
           ? [["Exchange rate", String(payment.exchangeRate)]]
           : []),
-        ...tenderLines.map((line) => [
-          line.currencyName || line.currency_name || tenderMethodLabel(line.method),
-          formatPaidAmount({
-            amountPaid: line.amount,
-            symbol: line.symbol || payment.symbol,
-            currencyCode: line.currencyCode || payment.currencyCode,
-            currencyName: line.currencyName || payment.currencyName,
-          }),
-        ]),
+        ...(hasChange
+          ? [
+              ["Amount tendered", formatPaidAmount(payment)],
+              [
+                "Change",
+                formatPaidAmount({
+                  amountPaid: changeAmount,
+                  symbol: payment.symbol,
+                  currencyCode: payment.currencyCode,
+                  currencyName: payment.currencyName,
+                }),
+              ],
+            ]
+          : tenderLines.map((line) => [
+              line.currencyName || line.currency_name || tenderMethodLabel(line.method),
+              formatPaidAmount({
+                amountPaid: line.amount,
+                symbol: line.symbol || payment.symbol,
+                currencyCode: line.currencyCode || payment.currencyCode,
+                currencyName: line.currencyName || payment.currencyName,
+              }),
+            ])),
       ]
     : [];
 
   const paymentBlock = payment
-    ? `
+    ? hasChange
+      ? `${renderSummaryBlock(paymentRows, { boxed: true })}`
+      : `
       ${renderSummaryBlock(paymentRows, { boxed: true })}
       ${renderSummaryBlock([["Amount paid", formatPaidAmount(payment)]], { grand: true })}`
     : "";
@@ -357,6 +394,7 @@ function renderReceiptHtml(data) {
       <hr class="divider">
       ${renderTotalsSection(tax, baseCurrency, { showTaxBreakdown: !!branch?.fiscalization_enabled })}
       ${paymentBlock}
+      ${renderPaymentOptions(paymentOptions)}
       ${renderFiscalBlock(fiscal)}
       <div class="center footer">
         <p>Thank you for your visit!</p>

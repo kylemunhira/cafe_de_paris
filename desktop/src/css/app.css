@@ -758,6 +758,10 @@ h1, h3 {
   color: #067647;
 }
 
+.split-payment-meta .split-change {
+  color: #067647;
+}
+
 .split-payment-meta .split-over {
   color: #b42318;
 }

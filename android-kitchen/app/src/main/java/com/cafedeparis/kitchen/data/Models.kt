@@ -166,6 +166,13 @@ data class DayEndStockTakeCheck(
 data class OrderSlipPrintOptions(
     val taxRate: Double = 15.5,
     val baseCurrencyCode: String? = null,
+    val paymentOptions: List<PaymentOptionLine> = emptyList(),
+)
+
+data class PaymentOptionLine(
+    val name: String,
+    val symbol: String = "",
+    val amount: Double,
 )
 
 data class DayEndReportResponse(

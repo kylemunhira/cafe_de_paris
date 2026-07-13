@@ -98,14 +98,26 @@
           <td class="col-label">Paid in</td>
           <td class="col-amt"><strong>{{ order.payment_currency.code|default:order.payment_currency.name }}</strong></td>
         </tr>
+        {% if change_given %}
+        <tr>
+          <td class="col-label">Amount tendered</td>
+          <td class="col-amt">{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }}</td>
+        </tr>
+        <tr>
+          <td class="col-label">Change</td>
+          <td class="col-amt">{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ change_given|floatformat:2 }}</td>
+        </tr>
+        {% else %}
         {% for payment in order.payments.all %}
         <tr>
           <td class="col-label">{{ payment.currency.name|default:payment.get_method_display }}</td>
           <td class="col-amt">{% if payment.currency.symbol %}{{ payment.currency.symbol }}{% endif %}{{ payment.amount|floatformat:2 }}</td>
         </tr>
         {% endfor %}
+        {% endif %}
       </table>
     </div>
+    {% if not change_given %}
     <table class="summary grand">
       <tr>
         <td class="col-label">Amount paid</td>
@@ -113,6 +125,9 @@
       </tr>
     </table>
     {% endif %}
+    {% endif %}
+
+    {% include "ui/includes/payment_options_block.html" %}
 
     {% if fiscal and not is_proforma %}
     <hr class="divider">

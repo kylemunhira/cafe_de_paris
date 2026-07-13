@@ -32,6 +32,31 @@ class PaymentModelsTests(TestCase):
         )
         self.assertEqual(zwl.convert_from_base(Decimal("10")), Decimal("255.00"))
 
+    def test_payment_options_for_amount(self):
+        from .services import payment_options_for_amount
+
+        usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        zwg = Currency.objects.create(code="ZWG", name="ZiG", symbol="ZiG")
+        Currency.objects.create(code="ZAR", name="Rand", symbol="R", is_active=False)
+        CurrencyRate.objects.create(
+            currency=zwg,
+            rate=Decimal("25.5"),
+            effective_from="2026-06-01",
+        )
+
+        options = payment_options_for_amount(Decimal("20"))
+        self.assertEqual(len(options), 2)
+        by_name = {opt["name"]: opt for opt in options}
+        self.assertEqual(by_name["US Dollar"]["amount"], Decimal("20.00"))
+        self.assertEqual(by_name["US Dollar"]["symbol"], "$")
+        self.assertEqual(by_name["ZiG"]["amount"], Decimal("510.00"))
+        self.assertNotIn("Rand", by_name)
+
 
 class PaymentApiTests(TestCase):
     def setUp(self):

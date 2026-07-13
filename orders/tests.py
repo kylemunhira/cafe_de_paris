@@ -122,7 +122,7 @@ class OrderPayTests(TestCase):
         })
         self.assertEqual(len(response.data["payments"]), 2)
 
-    def test_split_payment_rejects_wrong_total(self):
+    def test_split_payment_rejects_underpayment(self):
         response = self.client.post(
             f"/api/orders/{self.order.id}/pay/",
             {
@@ -136,6 +136,24 @@ class OrderPayTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, OrderStatus.OPEN)
+
+    def test_split_payment_allows_overpayment_as_change(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "payments": [
+                    {"currency_id": self.usd.id, "amount": "10.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertEqual(self.order.amount_paid, Decimal("10.00"))
+        self.assertEqual(self.order.payments.get().amount, Decimal("7.00"))
+        self.assertEqual(response.data.get("change_given"), "3.00")
+        self.assertEqual(response.data.get("change_given_base"), "3.00")
 
     def test_split_payment_blocked_on_fiscal_branch(self):
         self.branch.fiscalization_enabled = True
@@ -413,6 +431,30 @@ class ReceiptPrintTests(TestCase):
         self.assertNotContains(response, "Harare")
         self.assertNotContains(response, "Subtotal")
         self.assertNotContains(response, "Tax (")
+
+    def test_order_slip_print_shows_payment_options(self):
+        zwg = Currency.objects.create(code="ZWG", name="ZiG", symbol="ZiG")
+        CurrencyRate.objects.create(
+            currency=zwg,
+            rate=Decimal("25.5"),
+            effective_from="2026-06-01",
+        )
+        open_order = Order.objects.create(
+            branch=self.branch,
+            status=OrderStatus.OPEN,
+            created_by=self.user,
+        )
+        open_order.items.create(
+            product=Product.objects.get(name="Latte"),
+            quantity=Decimal("1"),
+            price=Decimal("20.00"),
+        )
+        response = self.client.get(f"/pos/order/{open_order.id}/print/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Payment options")
+        self.assertContains(response, "US Dollar")
+        self.assertContains(response, "ZiG")
+        self.assertContains(response, "510.00")
 
     def test_order_slip_print_shows_branch_branding_when_fiscalized(self):
         self.branch.fiscalization_enabled = True

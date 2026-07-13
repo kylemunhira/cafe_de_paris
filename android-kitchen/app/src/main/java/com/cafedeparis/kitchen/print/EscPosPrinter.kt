@@ -7,6 +7,7 @@ import com.cafedeparis.kitchen.data.DayEndReportResponse
 import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
+import com.cafedeparis.kitchen.data.PaymentOptionLine
 import org.json.JSONArray
 import java.io.OutputStream
 import java.nio.charset.Charset
@@ -34,9 +35,13 @@ class EscPosPrinter {
     }
   }
 
-  fun printReceipt(deviceAddress: String, order: KitchenOrder) {
+  fun printReceipt(
+    deviceAddress: String,
+    order: KitchenOrder,
+    paymentOptions: List<PaymentOptionLine> = emptyList(),
+  ) {
     print(deviceAddress) { output ->
-      writeSalesReceipt(output, order)
+      writeSalesReceipt(output, order, paymentOptions)
     }
   }
 
@@ -201,6 +206,8 @@ class EscPosPrinter {
       ),
     )
 
+    writePaymentOptions(output, options.paymentOptions)
+
     output.write(LF)
     output.write(ALIGN_CENTER)
     output.write(textLine("Present this ticket when paying."))
@@ -208,7 +215,11 @@ class EscPosPrinter {
     output.write(LF)
   }
 
-  private fun writeSalesReceipt(output: OutputStream, order: KitchenOrder) {
+  private fun writeSalesReceipt(
+    output: OutputStream,
+    order: KitchenOrder,
+    paymentOptions: List<PaymentOptionLine> = emptyList(),
+  ) {
     val isProforma = order.fiscal_approval_status == "pending"
 
     output.write(INIT)
@@ -287,27 +298,57 @@ class EscPosPrinter {
       order.payment_currency_name?.takeIf { it.isNotBlank() }?.let { currencyName ->
         output.write(textLine("Paid in: $currencyName"))
       }
-      if (order.payments.isNotEmpty()) {
-        for (payment in order.payments) {
-          val label = payment.currency_name?.takeIf { it.isNotBlank() }
-            ?: payment.method_display?.takeIf { it.isNotBlank() }
-            ?: payment.method.replaceFirstChar { it.uppercase() }
-          val symbol = payment.currency_symbol?.takeIf { it.isNotBlank() }
-            ?: order.payment_currency_symbol.orEmpty()
-          val formatted = if (symbol.isNotBlank()) {
-            "$symbol${formatPlainAmount(payment.amount)}"
-          } else {
-            formatMoney(payment.amount)
+      val paidAmount = order.amount_paid?.toDoubleOrNull()
+      val appliedAmount = if (order.payments.isNotEmpty()) {
+        roundMoney(order.payments.sumOf { it.amount.toDoubleOrNull() ?: 0.0 })
+      } else {
+        null
+      }
+      val changeAmount = if (paidAmount != null && appliedAmount != null && paidAmount > appliedAmount + 0.005) {
+        roundMoney(paidAmount - appliedAmount)
+      } else {
+        null
+      }
+
+      if (changeAmount != null && changeAmount > 0.005 && paidAmount != null) {
+        val symbol = order.payment_currency_symbol.orEmpty()
+        val tendered = if (symbol.isNotBlank()) {
+          "$symbol${formatPlainAmount(paidAmount.toString())}"
+        } else {
+          formatMoney(paidAmount)
+        }
+        val changeFormatted = if (symbol.isNotBlank()) {
+          "$symbol${formatPlainAmount(changeAmount.toString())}"
+        } else {
+          formatMoney(changeAmount)
+        }
+        output.write(textLine("Amount tendered", suffix = tendered))
+        output.write(textLine("Change", bold = true, suffix = changeFormatted))
+      } else {
+        if (order.payments.isNotEmpty()) {
+          for (payment in order.payments) {
+            val label = payment.currency_name?.takeIf { it.isNotBlank() }
+              ?: payment.method_display?.takeIf { it.isNotBlank() }
+              ?: payment.method.replaceFirstChar { it.uppercase() }
+            val symbol = payment.currency_symbol?.takeIf { it.isNotBlank() }
+              ?: order.payment_currency_symbol.orEmpty()
+            val formatted = if (symbol.isNotBlank()) {
+              "$symbol${formatPlainAmount(payment.amount)}"
+            } else {
+              formatMoney(payment.amount)
+            }
+            output.write(textLine(label, suffix = formatted))
           }
-          output.write(textLine(label, suffix = formatted))
+        }
+        order.amount_paid?.takeIf { it.isNotBlank() }?.let { amount ->
+          val symbol = order.payment_currency_symbol.orEmpty()
+          val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatMoney(amount)
+          output.write(textLine("Amount paid", bold = true, suffix = formatted))
         }
       }
-      order.amount_paid?.takeIf { it.isNotBlank() }?.let { amount ->
-        val symbol = order.payment_currency_symbol.orEmpty()
-        val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatMoney(amount)
-        output.write(textLine("Amount paid", bold = true, suffix = formatted))
-      }
     }
+
+    writePaymentOptions(output, paymentOptions)
 
     output.write(LF)
     output.write(ALIGN_CENTER)
@@ -317,6 +358,22 @@ class EscPosPrinter {
     }
     output.write(textLine("PAID", bold = true, doubleHeight = true))
     output.write(LF)
+  }
+
+  private fun writePaymentOptions(output: OutputStream, options: List<PaymentOptionLine>) {
+    if (options.isEmpty()) return
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Payment options", bold = true))
+    output.write(ALIGN_LEFT)
+    for (option in options) {
+      val formatted = if (option.symbol.isNotBlank()) {
+        "${option.symbol}${formatPlainAmount(option.amount.toString())}"
+      } else {
+        formatPlainAmount(option.amount.toString())
+      }
+      output.write(textLine(option.name, suffix = formatted))
+    }
   }
 
   private fun writeDayEndReport(output: OutputStream, payload: DayEndReportResponse) {

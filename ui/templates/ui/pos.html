@@ -126,7 +126,7 @@
           <div id="split-payment-fields" style="display: none; margin-top: 0.6rem;">
             <div class="split-payment-rows" id="split-payment-rows"></div>
             <div class="split-payment-meta">
-              <span>Remaining: <strong id="split-remaining">—</strong></span>
+              <span><strong id="split-remaining">Remaining: —</strong></span>
               <button type="button" class="btn btn-ghost btn-sm" id="split-fill-base-btn">Put rest on base</button>
             </div>
           </div>
@@ -983,17 +983,21 @@ function updateSplitPaymentRemaining() {
   }
   const orderTotal = getOrderTotalBase();
   if (orderTotal == null) {
-    splitRemainingEl.textContent = "—";
+    splitRemainingEl.textContent = "Remaining: —";
     splitRemainingEl.className = "";
     return;
   }
   const remaining = roundMoney(orderTotal - getSplitPaymentAllocatedBase());
-  splitRemainingEl.textContent = formatCurrencyAmount(remaining, baseCurrency);
-  splitRemainingEl.className = "";
-  if (Math.abs(remaining) < 0.005) {
-    splitRemainingEl.classList.add("split-balanced");
-  } else if (remaining < 0) {
-    splitRemainingEl.classList.add("split-over");
+  if (remaining < -0.005) {
+    const change = roundMoney(-remaining);
+    splitRemainingEl.textContent = `Change: ${formatCurrencyAmount(change, baseCurrency)}`;
+    splitRemainingEl.className = "split-change";
+  } else {
+    splitRemainingEl.textContent = `Remaining: ${formatCurrencyAmount(remaining, baseCurrency)}`;
+    splitRemainingEl.className = "";
+    if (Math.abs(remaining) < 0.005) {
+      splitRemainingEl.classList.add("split-balanced");
+    }
   }
 }
 
@@ -1155,7 +1159,7 @@ function updateCheckoutButtonState(inclusiveTotal) {
     const orderTotal = computeTaxBreakdown(inclusiveTotal).total;
     const lines = getSplitPaymentLines();
     const allocated = roundMoney(lines.reduce((sum, line) => sum + line.base_amount, 0));
-    checkoutBtn.disabled = !lines.length || Math.abs(allocated - orderTotal) >= 0.005;
+    checkoutBtn.disabled = !lines.length || allocated + 0.005 < orderTotal;
     return;
   }
   const { hasRate } = computePaymentAmounts(computeTaxBreakdown(inclusiveTotal).total);
@@ -1921,9 +1925,9 @@ async function paySelectedOrder() {
         return;
       }
       const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
-      if (Math.abs(allocated - orderTotal) >= 0.005) {
+      if (allocated + 0.005 < orderTotal) {
         showToast(
-          `Split payments must total ${formatCurrencyAmount(orderTotal, baseCurrency)} (now ${formatCurrencyAmount(allocated, baseCurrency)})`,
+          `Split payments must cover ${formatCurrencyAmount(orderTotal, baseCurrency)} (now ${formatCurrencyAmount(allocated, baseCurrency)})`,
           true,
         );
         return;
@@ -1976,9 +1980,9 @@ async function paySelectedOrder() {
       if (isProforma) {
         showToast(`${receiptLabel}Proforma printed — awaiting fiscal approval`);
       } else if (combined) {
-        showToast(`${receiptLabel}Table ${selectedOrder.table_number} paid — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}`);
+        showToast(`${receiptLabel}Table ${selectedOrder.table_number} paid — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}${order.change_given ? ` · Change ${formatCurrencyAmount(order.change_given, { symbol: order.payment_currency_symbol })}` : ""}`);
       } else {
-        showToast(`${receiptLabel}Order #${order.id} paid in ${currencyName} — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}`);
+        showToast(`${receiptLabel}Order #${order.id} paid in ${currencyName} — ${formatCurrencyAmount(order.amount_paid, { symbol: order.payment_currency_symbol })}${order.change_given ? ` · Change ${formatCurrencyAmount(order.change_given, { symbol: order.payment_currency_symbol })}` : ""}`);
       }
     }
     const printUrl = `/pos/receipt/${order.id}/print/?auto=1`;

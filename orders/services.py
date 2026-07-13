@@ -294,11 +294,51 @@ def normalize_tender_lines(payment_lines):
 
 
 def validate_tender_total(payment_lines, order_total: Decimal):
+    """Ensure tenders cover the bill. Overpayment is allowed (treated as change)."""
     total_base = sum((line["base_amount"] for line in payment_lines), Decimal("0"))
-    if total_base != order_total.quantize(Decimal("0.01")):
+    due = order_total.quantize(Decimal("0.01"))
+    if total_base < due:
         raise PaymentValidationError(
             f"Payment lines total {total_base} in base currency but order total is {order_total}."
         )
+    return (total_base - due).quantize(Decimal("0.01"))
+
+
+def apply_tender_change(payment_lines, order_total: Decimal):
+    """
+    If tendered base exceeds the bill, reduce line amounts so stored payments
+    equal the order total. Returns (applied_lines, change_base).
+    """
+    change_base = validate_tender_total(payment_lines, order_total)
+    if change_base == 0:
+        return payment_lines, Decimal("0.00")
+
+    remaining_change = change_base
+    applied = []
+    for line in reversed(payment_lines):
+        if remaining_change <= 0:
+            applied.append(dict(line))
+            continue
+        if line["base_amount"] <= remaining_change:
+            remaining_change = (remaining_change - line["base_amount"]).quantize(
+                Decimal("0.01")
+            )
+            continue
+        new_base = (line["base_amount"] - remaining_change).quantize(Decimal("0.01"))
+        currency = line["currency"]
+        applied.append(
+            {
+                **line,
+                "base_amount": new_base,
+                "amount": currency.convert_from_base(new_base),
+            }
+        )
+        remaining_change = Decimal("0.00")
+
+    applied.reverse()
+    if not applied:
+        raise PaymentValidationError("Payment lines total less than order total after change.")
+    return applied, change_base
 
 
 def resolve_order_payment_method(payment_lines) -> str:
@@ -343,9 +383,12 @@ def mark_order_paid_with_tenders(
     paid_by=None,
     paid_at=None,
 ):
-    """Apply tender payment(s), allocate receipt fields, and mark the order paid."""
+    """Apply tender payment(s), allocate receipt fields, and mark the order paid.
+
+    Returns (order, change_base) where change_base is tendered surplus in base currency.
+    """
     lines = normalize_tender_lines(payment_lines)
-    validate_tender_total(lines, order.total_amount)
+    applied_lines, change_base = apply_tender_change(lines, order.total_amount)
 
     if order.branch.fiscalization_enabled:
         if len(lines) > 1:
@@ -353,7 +396,10 @@ def mark_order_paid_with_tenders(
                 "Split payments are only available on non-fiscal branches."
             )
 
-    save_order_tender_payments(order, lines)
+    save_order_tender_payments(order, applied_lines)
+    # Keep amount_paid as the full amount tendered for single-currency change display.
+    if len(lines) == 1:
+        order.amount_paid = lines[0]["amount"]
     order.status = OrderStatus.PAID
     order.receipt_number = receipt_number
     order.paid_at = paid_at or timezone.now()
@@ -373,4 +419,4 @@ def mark_order_paid_with_tenders(
             "fiscal_approval_status",
         ]
     )
-    return order
+    return order, change_base

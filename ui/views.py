@@ -24,6 +24,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import DetailView, TemplateView
+from decimal import Decimal
 
 from branches.models import Branch
 from customers.models import Customer, CustomerAccountTransaction
@@ -38,6 +39,24 @@ from orders.tax import get_inclusive_tax_rate, order_receipt_tax_breakdown
 from purchasing.models import Supplier
 from purchasing.statement import build_supplier_statement_report
 from payments.models import Currency
+from payments.services import payment_options_for_amount
+
+
+def order_change_given(order):
+    """Return change in payment currency when amount tendered exceeds the bill."""
+    if (
+        order.amount_paid is None
+        or not order.payment_currency_id
+        or order.payment_method == PaymentMethod.ACCOUNT
+    ):
+        return None
+    currency = order.payment_currency
+    try:
+        due = currency.convert_from_base(order.total_amount)
+    except Exception:
+        return None
+    change = (order.amount_paid - due).quantize(Decimal("0.01"))
+    return change if change > 0 else None
 
 
 class CashierRestrictedAccessMixin(UserPassesTestMixin):
@@ -726,6 +745,10 @@ class PaidOrderPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, Detai
             self.object.fiscal_approval_status == FiscalApprovalStatus.PENDING
         )
         context["tax_breakdown"] = order_receipt_tax_breakdown(self.object)
+        context["payment_options"] = payment_options_for_amount(
+            context["tax_breakdown"]["total"]
+        )
+        context["change_given"] = order_change_given(self.object)
         context["salesperson_name"] = staff_display_name(
             self.object.paid_by or self.object.created_by
         )
@@ -763,6 +786,9 @@ class OrderSlipPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, Detai
         context["base_currency"] = Currency.objects.filter(is_base=True).first()
         context["auto_print"] = self.request.GET.get("auto") == "1"
         context["tax_breakdown"] = order_receipt_tax_breakdown(self.object)
+        context["payment_options"] = payment_options_for_amount(
+            context["tax_breakdown"]["total"]
+        )
         context["salesperson_name"] = staff_display_name(self.object.created_by)
         return context
 

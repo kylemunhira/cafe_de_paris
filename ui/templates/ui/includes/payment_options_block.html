@@ -1,0 +1,14 @@
+{% if payment_options %}
+<hr class="divider">
+<div class="payment-options">
+  <p class="payment-options-title">Payment options</p>
+  <table class="summary">
+    {% for opt in payment_options %}
+    <tr>
+      <td class="col-label">{{ opt.name }}{% if opt.code %} ({{ opt.code }}){% endif %}</td>
+      <td class="col-amt">{% if opt.symbol %}{{ opt.symbol }}{% endif %}{{ opt.amount|floatformat:2 }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}

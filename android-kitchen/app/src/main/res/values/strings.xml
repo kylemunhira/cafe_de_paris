@@ -67,8 +67,10 @@
     <string name="split_payment">Split payment</string>
     <string name="split_payment_enable">Split across payment currencies</string>
     <string name="split_remaining">Remaining: %1$s</string>
+    <string name="split_change">Change: %1$s</string>
     <string name="split_put_rest_cash">Put rest on base</string>
     <string name="split_must_total">Split payments must total %1$s (now %2$s)</string>
+    <string name="split_must_cover">Split payments must cover %1$s (now %2$s)</string>
     <string name="payment_customer">Customer</string>
     <string name="customer_walk_in">Walk-in (no account)</string>
     <string name="account_balance_hint">Account balance: %1$s</string>

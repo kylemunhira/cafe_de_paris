@@ -229,7 +229,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 ]
 
             try:
-                mark_order_paid_with_tenders(
+                order, change_base = mark_order_paid_with_tenders(
                     order,
                     payment_lines=payment_lines,
                     receipt_number=receipt_number,
@@ -253,6 +253,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             .get(pk=order.pk)
         )
         response_data = OrderSerializer(order).data
+        if change_base and change_base > 0:
+            response_data["change_given_base"] = str(change_base)
+            if order.payment_currency_id:
+                try:
+                    response_data["change_given"] = str(
+                        order.payment_currency.convert_from_base(change_base)
+                    )
+                except Exception:
+                    response_data["change_given"] = str(change_base)
         return Response(response_data)
 
     @action(detail=True, methods=["post"])

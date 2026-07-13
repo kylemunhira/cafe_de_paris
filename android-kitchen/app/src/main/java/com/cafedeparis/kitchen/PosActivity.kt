@@ -33,6 +33,7 @@ import com.cafedeparis.kitchen.data.Customer
 import com.cafedeparis.kitchen.data.DiningTable
 import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
+import com.cafedeparis.kitchen.data.PaymentOptionLine
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.data.Supplier
@@ -820,10 +821,17 @@ class PosActivity : KeepScreenOnActivity() {
         val orderTotal = receiptInclusiveTotal()
         val allocated = splitPaymentLines().sumOf { it.third }
         val remaining = roundMoney(orderTotal - allocated)
-        binding.splitRemainingLabel.text = getString(
-            R.string.split_remaining,
-            ProductAdapter.formatMoney(remaining, baseCurrencySymbol()),
-        )
+        binding.splitRemainingLabel.text = if (remaining < -0.005) {
+            getString(
+                R.string.split_change,
+                ProductAdapter.formatMoney(-remaining, baseCurrencySymbol()),
+            )
+        } else {
+            getString(
+                R.string.split_remaining,
+                ProductAdapter.formatMoney(remaining, baseCurrencySymbol()),
+            )
+        }
         updateSplitPaymentPlaceholders()
     }
 
@@ -929,7 +937,7 @@ class PosActivity : KeepScreenOnActivity() {
                 if (isSplitPaymentActive()) {
                     val lines = splitPaymentLines()
                     val allocated = lines.sumOf { it.third }
-                    lines.isNotEmpty() && kotlin.math.abs(allocated - total) < 0.005
+                    lines.isNotEmpty() && allocated + 0.005 >= total
                 } else {
                     val currency = selectedCurrency()
                     currency != null && paymentRate(currency) != null
@@ -1463,11 +1471,11 @@ class PosActivity : KeepScreenOnActivity() {
             if (isSplitPaymentActive()) {
                 val lines = splitPaymentLines()
                 val allocated = lines.sumOf { it.third }
-                if (lines.isEmpty() || kotlin.math.abs(allocated - total) >= 0.005) {
+                if (lines.isEmpty() || allocated + 0.005 < total) {
                     Toast.makeText(
                         this,
                         getString(
-                            R.string.split_must_total,
+                            R.string.split_must_cover,
                             ProductAdapter.formatMoney(total, baseCurrencySymbol()),
                             ProductAdapter.formatMoney(allocated, baseCurrencySymbol()),
                         ),
@@ -1577,6 +1585,17 @@ class PosActivity : KeepScreenOnActivity() {
         binding.errorBanner.visibility = View.VISIBLE
     }
 
+    private fun paymentOptionsForAmount(baseAmount: Double): List<PaymentOptionLine> {
+        return usableCurrencies().mapNotNull { currency ->
+            val rate = paymentRate(currency) ?: return@mapNotNull null
+            PaymentOptionLine(
+                name = currency.name.ifBlank { currency.code },
+                symbol = currency.symbol,
+                amount = roundMoney(baseAmount * rate),
+            )
+        }
+    }
+
     private suspend fun printOrderTicket(order: KitchenOrder) {
         val printerAddress = session.printerAddress
         if (printerAddress.isNullOrBlank()) {
@@ -1587,9 +1606,11 @@ class PosActivity : KeepScreenOnActivity() {
         }
 
         val baseCurrency = currencies.firstOrNull { it.is_base }
+        val total = order.total_amount.toDoubleOrNull() ?: 0.0
         val options = OrderSlipPrintOptions(
             baseCurrencyCode = baseCurrency?.code?.takeIf { it.isNotBlank() }
                 ?: baseCurrency?.name,
+            paymentOptions = paymentOptionsForAmount(total),
         )
 
         try {
@@ -1621,9 +1642,12 @@ class PosActivity : KeepScreenOnActivity() {
             return
         }
 
+        val total = order.total_amount.toDoubleOrNull() ?: 0.0
+        val paymentOptions = paymentOptionsForAmount(total)
+
         try {
             withContext(Dispatchers.IO) {
-                printer.printReceipt(printerAddress, order)
+                printer.printReceipt(printerAddress, order, paymentOptions)
             }
         } catch (err: PrinterException) {
             withContext(Dispatchers.Main) {
