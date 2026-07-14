@@ -111,6 +111,7 @@
         </div>
         <div id="account-balance-hint" style="display: none; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-muted);">
           Account balance: <strong id="receipt-account-balance">—</strong>
+          <span id="cost-price-hint" style="display: none;"> · Priced at cost</span>
         </div>
         <div class="form-group" id="payment-currency-group">
           <label>Payment currency</label>
@@ -329,7 +330,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
@@ -381,6 +382,7 @@ const orderCustomerSelect = document.getElementById("order-customer");
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const accountBalanceHint = document.getElementById("account-balance-hint");
 const receiptAccountBalance = document.getElementById("receipt-account-balance");
+const costPriceHint = document.getElementById("cost-price-hint");
 const paymentCurrencyGroup = document.getElementById("payment-currency-group");
 const splitPaymentGroup = document.getElementById("split-payment-group");
 const splitPaymentEnabledInput = document.getElementById("split-payment-enabled");
@@ -1132,6 +1134,10 @@ function getCustomerById(id) {
   return customers.find(c => c.id === Number(id)) || null;
 }
 
+function usesCostPrice(customer) {
+  return customer?.account_type === "family" || customer?.account_type === "staff";
+}
+
 function updateAccountBalanceHint() {
   if (paymentMethod !== "account") {
     accountBalanceHint.style.display = "none";
@@ -1145,6 +1151,9 @@ function updateAccountBalanceHint() {
   }
   accountBalanceHint.style.display = "";
   receiptAccountBalance.textContent = formatCurrency(customer.account_balance);
+  if (costPriceHint) {
+    costPriceHint.style.display = usesCostPrice(customer) ? "" : "none";
+  }
 }
 
 function updateCheckoutButtonState(inclusiveTotal) {
@@ -2339,6 +2348,7 @@ async function init() {
     currencies = unwrapList(currenciesData);
     suppliers = unwrapList(suppliersData);
     baseCurrency = currencies.find(c => c.is_base) || null;
+    setBaseCurrency(baseCurrency);
 
     const activeBranches = branchesForUser(
       branches.filter(

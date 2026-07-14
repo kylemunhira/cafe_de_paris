@@ -20,7 +20,7 @@ from .models import (
     PaymentMethod,
     TenderMethod,
 )
-from .services import add_items_to_order, find_open_table_order
+from .services import add_items_to_order, find_open_table_order, reprice_order_items
 
 
 def staff_display_name(user):
@@ -117,8 +117,18 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only=True,
         default=None,
     )
+    payment_currency_code = serializers.CharField(
+        source="payment_currency.code",
+        read_only=True,
+        default=None,
+    )
     payment_currency_symbol = serializers.CharField(
         source="payment_currency.symbol",
+        read_only=True,
+        default=None,
+    )
+    payment_method_display = serializers.CharField(
+        source="get_payment_method_display",
         read_only=True,
         default=None,
     )
@@ -153,10 +163,12 @@ class OrderSerializer(serializers.ModelSerializer):
             "total_amount",
             "payment_currency",
             "payment_currency_name",
+            "payment_currency_code",
             "payment_currency_symbol",
             "exchange_rate",
             "amount_paid",
             "payment_method",
+            "payment_method_display",
             "payments",
             "status",
             "kitchen_status",
@@ -282,6 +294,16 @@ class OrderUpdateSerializer(serializers.ModelSerializer):
         if self.instance.status != OrderStatus.OPEN:
             raise serializers.ValidationError("Only open orders can be updated.")
         return attrs
+
+    def update(self, instance, validated_data):
+        previous_customer_id = instance.customer_id
+        order = super().update(instance, validated_data)
+        if order.customer_id != previous_customer_id:
+            reprice_order_items(order)
+        return order
+
+    def to_representation(self, instance):
+        return OrderSerializer(instance, context=self.context).data
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):

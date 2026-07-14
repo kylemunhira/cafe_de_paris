@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from catalog.models import MenuAddon
+from customers.pricing import unit_price_for_customer
 
 from .models import (
     BranchReceiptSequence,
@@ -121,7 +122,7 @@ def add_items_to_order(order, items_data):
             order=order,
             product=product,
             quantity=item_data["quantity"],
-            price=product.selling_price,
+            price=unit_price_for_customer(product, order.customer),
             notes=notes,
         )
         for addon in selected_addons:
@@ -144,6 +145,23 @@ def add_items_to_order(order, items_data):
                 "kitchen_ready_at",
             ]
         )
+
+    order.recalculate_total()
+    return order
+
+
+def reprice_order_items(order):
+    """Set each line price from the current order customer (selling or cost)."""
+    if order.status != OrderStatus.OPEN:
+        raise ValidationError("Only open orders can be repriced.")
+
+    customer = order.customer
+    items = order.items.select_related("product")
+    for item in items:
+        new_price = unit_price_for_customer(item.product, customer)
+        if item.price != new_price:
+            item.price = new_price
+            item.save(update_fields=["price"])
 
     order.recalculate_total()
     return order

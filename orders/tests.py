@@ -492,6 +492,7 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "AVO0906261")
         self.assertContains(response, "Latte")
         self.assertContains(response, "Amount paid")
+        self.assertContains(response, "cafe-de-paris-logo.png")
 
     def test_invoice_print_shows_proforma_for_pending_fiscal(self):
         self.branch.fiscalization_enabled = True
@@ -1139,3 +1140,204 @@ class OrderCancelVoidTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         stock.refresh_from_db()
         self.assertEqual(stock.quantity, Decimal("1.00"))
+
+
+class FamilyStaffCostPriceTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="cashier2", password="pass")
+        self.branch = Branch.objects.create(
+            name="Cost Branch",
+            code="CST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
+
+        from bakery.models import Recipe
+        from catalog.constants import INGREDIENTS_CATEGORY
+        from customers.models import Customer, CustomerAccountType
+
+        coffee = ProductCategory.objects.create(name="Coffee")
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        self.product = Product.objects.create(
+            name="Latte",
+            category=coffee,
+            selling_price=Decimal("5.00"),
+        )
+        self.no_recipe_product = Product.objects.create(
+            name="Bottled Water",
+            category=coffee,
+            selling_price=Decimal("1.50"),
+        )
+        milk = Product.objects.create(
+            name="Milk",
+            category=ingredients,
+            selling_price=Decimal("2.00"),
+        )
+        Recipe.objects.create(
+            product=self.product,
+            ingredient=milk,
+            quantity_required=Decimal("0.50"),
+        )
+        # recipe cost = 0.50 * 2.00 = 1.00
+        self.expected_cost = Decimal("1.00")
+        self.milk = milk
+
+        from inventory.models import BranchInventory
+
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=milk,
+            quantity=Decimal("100.00"),
+        )
+
+        self.family = Customer.objects.create(
+            first_name="Fam",
+            last_name="Ily",
+            account_type=CustomerAccountType.FAMILY,
+            account_balance=Decimal("50.00"),
+        )
+        self.staff = Customer.objects.create(
+            first_name="Staff",
+            last_name="Member",
+            account_type=CustomerAccountType.STAFF,
+            account_balance=Decimal("50.00"),
+        )
+        self.regular = Customer.objects.create(
+            first_name="Reg",
+            last_name="Ular",
+            account_type=CustomerAccountType.REGULAR,
+            account_balance=Decimal("50.00"),
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+
+    def test_family_order_uses_recipe_cost(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "customer": self.family.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Decimal(response.data["items"][0]["price"]), self.expected_cost)
+        self.assertEqual(Decimal(response.data["total_amount"]), self.expected_cost)
+
+    def test_staff_order_uses_recipe_cost(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "customer": self.staff.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Decimal(response.data["items"][0]["price"]), self.expected_cost)
+        self.assertEqual(Decimal(response.data["total_amount"]), Decimal("2.00"))
+
+    def test_regular_customer_uses_selling_price(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "customer": self.regular.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Decimal(response.data["items"][0]["price"]), Decimal("5.00"))
+
+    def test_family_no_recipe_falls_back_to_selling_price(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "customer": self.family.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.no_recipe_product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Decimal(response.data["items"][0]["price"]), Decimal("1.50"))
+
+    def test_link_family_customer_reprices_open_order(self):
+        create = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201, create.data)
+        self.assertEqual(Decimal(create.data["items"][0]["price"]), Decimal("5.00"))
+        order_id = create.data["id"]
+
+        link = self.client.patch(
+            f"/api/orders/{order_id}/",
+            {"customer": self.family.id},
+            format="json",
+        )
+        self.assertEqual(link.status_code, 200, link.data)
+        self.assertEqual(Decimal(link.data["items"][0]["price"]), self.expected_cost)
+        self.assertEqual(Decimal(link.data["total_amount"]), self.expected_cost)
+
+        unlink = self.client.patch(
+            f"/api/orders/{order_id}/",
+            {"customer": None},
+            format="json",
+        )
+        self.assertEqual(unlink.status_code, 200, unlink.data)
+        self.assertEqual(Decimal(unlink.data["items"][0]["price"]), Decimal("5.00"))
+
+    def test_account_payment_deducts_cost_total(self):
+        create = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "customer": self.family.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201, create.data)
+        order_id = create.data["id"]
+
+        pay = self.client.post(
+            f"/api/orders/{order_id}/pay/",
+            {"payment_method": "account"},
+            format="json",
+        )
+        self.assertEqual(pay.status_code, 200, pay.data)
+        self.family.refresh_from_db()
+        self.assertEqual(self.family.account_balance, Decimal("49.00"))
+
+    def test_customer_serializer_includes_account_type(self):
+        response = self.client.get(f"/api/customers/{self.family.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["account_type"], "family")
+        self.assertEqual(response.data["account_type_display"], "Family")

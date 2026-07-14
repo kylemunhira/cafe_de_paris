@@ -7,6 +7,12 @@ from branches.models import Branch
 from payments.models import Currency
 
 
+class CustomerAccountType(models.TextChoices):
+    REGULAR = "regular", "Regular"
+    FAMILY = "family", "Family"
+    STAFF = "staff", "Staff"
+
+
 class Customer(models.Model):
     """Company-wide customer master data — shared across all branches."""
 
@@ -14,6 +20,12 @@ class Customer(models.Model):
     last_name = models.CharField(max_length=80, blank=True)
     phone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
+    account_type = models.CharField(
+        max_length=20,
+        choices=CustomerAccountType.choices,
+        default=CustomerAccountType.REGULAR,
+        help_text="Family and staff accounts are charged at recipe cost price.",
+    )
     loyalty_points = models.PositiveIntegerField(default=0)
     account_balance = models.DecimalField(
         max_digits=12,

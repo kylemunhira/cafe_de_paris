@@ -16,10 +16,18 @@
       <div class="form-group">
         <label for="category-pos-station">Prepared at (POS)</label>
         <select id="category-pos-station">
-          <option value="">Not on POS / not set</option>
+          <option value="">Not set</option>
           <option value="bar">Bar</option>
           <option value="kitchen">Kitchen</option>
         </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="display: flex; align-items: end;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0.35rem;">
+          <input type="checkbox" id="category-show-on-pos" checked>
+          Show on POS
+        </label>
       </div>
       <div class="form-group" style="display: flex; align-items: end;">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0.35rem;">
@@ -67,6 +75,7 @@ const categoryForm = document.getElementById("category-form");
 const formTitle = document.getElementById("form-title");
 const nameInput = document.getElementById("category-name");
 const posStationInput = document.getElementById("category-pos-station");
+const showOnPosInput = document.getElementById("category-show-on-pos");
 const isAssetInput = document.getElementById("category-is-asset");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
@@ -98,6 +107,7 @@ function setFormMode(mode) {
 function resetForm() {
   categoryForm.reset();
   isAssetInput.checked = false;
+  showOnPosInput.checked = true;
   posStationInput.value = "";
   setFormMode("create");
 }
@@ -106,6 +116,7 @@ function startEdit(category) {
   editingId = category.id;
   nameInput.value = category.name;
   isAssetInput.checked = category.is_asset;
+  showOnPosInput.checked = category.show_on_pos !== false;
   posStationInput.value = category.pos_station || "";
   setFormMode("edit");
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -126,6 +137,7 @@ function matchesSearch(category) {
   const haystack = [
     category.name,
     category.is_asset ? "asset yes" : "asset no",
+    category.show_on_pos !== false ? "pos yes" : "pos no",
     stationLabel(category),
   ]
     .filter(Boolean)
@@ -159,6 +171,7 @@ function render() {
     {
       name: c => c.name.toLowerCase(),
       is_asset: c => c.is_asset,
+      show_on_pos: c => c.show_on_pos ? 1 : 0,
       pos_station: c => c.pos_station || "",
       product_count: c => c.product_count,
     },
@@ -169,6 +182,7 @@ function render() {
       <thead>
         <tr>
           ${sortTh("Name", "name", sortState)}
+          ${sortTh("Show on POS", "show_on_pos", sortState)}
           ${sortTh("Asset", "is_asset", sortState)}
           ${sortTh("POS station", "pos_station", sortState)}
           ${sortTh("Products", "product_count", sortState, { align: "right" })}
@@ -184,6 +198,7 @@ function render() {
           return `
           <tr>
             <td><strong>${c.name}</strong></td>
+            <td>${c.show_on_pos !== false ? "Yes" : "No"}</td>
             <td>${c.is_asset ? "Yes" : "No"}</td>
             <td>${stationLabel(c)}</td>
             <td style="text-align: right;">${c.product_count.toLocaleString()}</td>
@@ -229,6 +244,7 @@ categoryForm.addEventListener("submit", async (e) => {
   const payload = {
     name: nameInput.value.trim(),
     is_asset: isAssetInput.checked,
+    show_on_pos: showOnPosInput.checked,
     pos_station: posStationInput.value,
   };
 

@@ -146,6 +146,7 @@ const receiptCustomerSelect = document.getElementById("receipt-customer");
 const receiptCustomerGroup = document.getElementById("receipt-customer-group");
 const accountBalanceHint = document.getElementById("account-balance-hint");
 const receiptAccountBalance = document.getElementById("receipt-account-balance");
+const costPriceHint = document.getElementById("cost-price-hint");
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const posModeToggle = document.getElementById("pos-mode-toggle");
@@ -1040,6 +1041,10 @@ function getCustomerById(id) {
   return customers.find((c) => c.id === Number(id)) || null;
 }
 
+function usesCostPrice(customer) {
+  return customer?.account_type === "family" || customer?.account_type === "staff";
+}
+
 function updateAccountBalanceHint() {
   if (paymentMethod !== "account") {
     accountBalanceHint.style.display = "none";
@@ -1052,6 +1057,9 @@ function updateAccountBalanceHint() {
   }
   accountBalanceHint.style.display = "";
   receiptAccountBalance.textContent = money(customer.account_balance);
+  if (costPriceHint) {
+    costPriceHint.style.display = usesCostPrice(customer) ? "" : "none";
+  }
 }
 
 function updateCheckoutButtonState(inclusiveTotal) {
@@ -1078,21 +1086,56 @@ async function linkCustomerToOrder(orderId, customerId) {
   return patchServerOrder(session, orderId, payload);
 }
 
+function applyLinkedCustomerOrder(apiOrder) {
+  if (!selectedOrder || !apiOrder) return;
+  const normalized = normalizeRemoteOrder(apiOrder);
+  selectedOrder.customer = normalized.customer;
+  selectedOrder.total_amount = normalized.total_amount;
+  selectedOrder.items = normalized.items;
+  const localIndex = openOrders.findIndex(
+    (order) => order.client_id === selectedOrder.client_id || order.server_id === selectedOrder.server_id
+  );
+  if (localIndex >= 0) {
+    openOrders[localIndex] = { ...openOrders[localIndex], ...selectedOrder };
+  }
+  const receiptIndex = receiptOpenOrders.findIndex(
+    (order) => order.client_id === selectedOrder.client_id || order.server_id === selectedOrder.server_id
+  );
+  if (receiptIndex >= 0) {
+    receiptOpenOrders[receiptIndex] = { ...receiptOpenOrders[receiptIndex], ...selectedOrder };
+  }
+}
+
 receiptCustomerSelect.addEventListener("change", async () => {
   updateAccountBalanceHint();
   if (!selectedOrder) return;
-  const inclusiveTotal = getReceiptInclusiveTotal();
-  renderReceiptTotals(inclusiveTotal);
-  updateCheckoutButtonState(inclusiveTotal);
-
   const customerId = receiptCustomerSelect.value;
   selectedOrder.customer = customerId ? Number(customerId) : null;
-  if (!shouldPayOrderOnline(selectedOrder) || !selectedOrder.server_id) return;
-  if (!isBrowserOnline()) return;
+  if (!shouldPayOrderOnline(selectedOrder) || !selectedOrder.server_id) {
+    const inclusiveTotal = getReceiptInclusiveTotal();
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+    return;
+  }
+  if (!isBrowserOnline()) {
+    const inclusiveTotal = getReceiptInclusiveTotal();
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
+    return;
+  }
   try {
     const reachable = await checkServerReachable(session);
-    if (!reachable) return;
-    await linkCustomerToOrder(selectedOrder.server_id, customerId);
+    if (!reachable) {
+      const inclusiveTotal = getReceiptInclusiveTotal();
+      renderReceiptTotals(inclusiveTotal);
+      updateCheckoutButtonState(inclusiveTotal);
+      return;
+    }
+    const updated = await linkCustomerToOrder(selectedOrder.server_id, customerId);
+    applyLinkedCustomerOrder(updated);
+    const inclusiveTotal = getReceiptInclusiveTotal();
+    renderReceiptTotals(inclusiveTotal);
+    updateCheckoutButtonState(inclusiveTotal);
   } catch (err) {
     showToast(err.message, true);
   }

@@ -676,8 +676,10 @@ class DeliveryNoteTests(TestCase):
         response = self.client.get(f"/transfers/delivery-note/{note.id}/print/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Delivery Note")
-        self.assertContains(response, "Flour")
+        self.assertContains(response, "Croissant")
         self.assertContains(response, "DN-")
+        self.assertContains(response, "cafe-de-paris-logo.png")
+        self.assertContains(response, "size: A4")
 
 
 class StoresTransferTests(TestCase):
@@ -845,6 +847,7 @@ class StoresTransferTests(TestCase):
         self.assertContains(response, "STRAVO00001")
         self.assertContains(response, "Flour")
         self.assertContains(response, "Unpaid")
+        self.assertContains(response, "cafe-de-paris-logo.png")
 
     def test_mark_transfer_invoice_paid(self):
         self.client.force_authenticate(user=self.stores_clerk)

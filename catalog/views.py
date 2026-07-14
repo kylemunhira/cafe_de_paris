@@ -95,15 +95,16 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class MenuAddonGroupViewSet(viewsets.ReadOnlyModelViewSet):
+class MenuAddonGroupViewSet(viewsets.ModelViewSet):
     queryset = MenuAddonGroup.objects.prefetch_related("addons").all()
     serializer_class = MenuAddonGroupSerializer
+    http_method_names = ["get", "post", "patch", "head", "options"]
 
 
 class MenuAddonViewSet(viewsets.ModelViewSet):
     queryset = MenuAddon.objects.select_related("group").all()
     serializer_class = MenuAddonSerializer
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "head", "options"]
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -198,7 +199,23 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export-ingredients-csv")
     def export_ingredients_csv(self, request):
-        response = HttpResponse(export_ingredients_csv(), content_type="text/csv; charset=utf-8")
+        branch = None
+        branch_id = request.query_params.get("branch")
+        if branch_id:
+            from branches.models import Branch
+
+            try:
+                branch = Branch.objects.get(pk=int(branch_id))
+            except (TypeError, ValueError, Branch.DoesNotExist):
+                return Response(
+                    {"detail": "Invalid branch."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        response = HttpResponse(
+            export_ingredients_csv(branch=branch),
+            content_type="text/csv; charset=utf-8",
+        )
         response["Content-Disposition"] = 'attachment; filename="ingredients.csv"'
         return response
 
@@ -216,7 +233,35 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        result = import_ingredients_csv(upload)
+        branch = None
+        branch_id = request.data.get("branch") or request.query_params.get("branch")
+        if branch_id:
+            from branches.models import Branch
+
+            try:
+                branch = Branch.objects.get(pk=int(branch_id))
+            except (TypeError, ValueError, Branch.DoesNotExist):
+                return Response(
+                    {"detail": "Invalid branch."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        from .constants import (
+            BRANCH_INGREDIENTS_CATEGORY,
+            INGREDIENTS_CATEGORY,
+        )
+        from branches.models import BranchType
+
+        category_name = INGREDIENTS_CATEGORY
+        if branch is not None and branch.branch_type == BranchType.BRANCH:
+            category_name = BRANCH_INGREDIENTS_CATEGORY
+
+        result = import_ingredients_csv(
+            upload,
+            category_name=category_name,
+            branch=branch,
+            user=request.user if request.user.is_authenticated else None,
+        )
         if result["errors"]:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
         return Response(result, status=status.HTTP_200_OK)

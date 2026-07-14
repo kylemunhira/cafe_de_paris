@@ -32,13 +32,14 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let allOrders = [];
 let activeFilter = "all";
 let searchQuery = "";
 let currencies = [];
+let baseCurrency = null;
 const container = document.getElementById("orders-table");
 const searchInput = document.getElementById("order-search");
 const sortState = createSortState("created_at", "desc");
@@ -49,10 +50,30 @@ const ORDER_SORT = {
   order_type: (o) => o.order_type || "",
   items: (o) => o.items?.length || 0,
   total_amount: (o) => Number(o.total_amount),
-  payment_currency_name: (o) => o.payment_currency_name || "",
+  payment_currency_name: (o) => paymentCurrencyLabel(o),
   status: (o) => o.status || "",
   created_at: (o) => o.created_at || "",
 };
+
+function paymentCurrencyLabel(order) {
+  if (order.status !== "paid") return "";
+  const parts = [];
+  if (order.payment_method === "account") {
+    parts.push(order.payment_method_display || "Customer account");
+  } else if (order.payment_method === "multi" && order.payments?.length) {
+    const codes = [...new Set(order.payments.map((p) => p.currency_code || p.currency_name).filter(Boolean))];
+    parts.push(codes.length ? codes.join(" + ") : (order.payment_method_display || "Split"));
+    return parts.join(" · ");
+  } else if (order.payment_method_display && order.payment_method !== "cash") {
+    parts.push(order.payment_method_display);
+  }
+  const currency =
+    order.payment_currency_code ||
+    order.payment_currency_name ||
+    (order.payments?.length === 1 ? (order.payments[0].currency_code || order.payments[0].currency_name) : "");
+  if (currency) parts.push(currency);
+  return parts.filter(Boolean).join(" · ") || "—";
+}
 
 function matchesSearch(order) {
   if (!searchQuery) return true;
@@ -64,6 +85,8 @@ function matchesSearch(order) {
     order.status,
     order.receipt_number,
     order.payment_currency_name,
+    order.payment_currency_code,
+    order.payment_method_display,
     order.table_number,
     order.created_by_name,
     order.paid_by_name,
@@ -113,8 +136,8 @@ function renderOrders() {
             <td>${o.branch_name}</td>
             <td>${o.order_type.replace("_", " ")}</td>
             <td>${o.items?.length || 0}</td>
-            <td>${formatCurrency(o.total_amount)}</td>
-            <td>${o.status === "paid" ? (o.payment_currency_name || "—") : "—"}</td>
+            <td>${formatCurrency(o.total_amount, baseCurrency)}</td>
+            <td>${o.status === "paid" ? (paymentCurrencyLabel(o) || "—") : "—"}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${formatDate(o.created_at)}</td>
             <td>
@@ -246,6 +269,8 @@ Promise.all([
 ]).then(([ordersData, currenciesData]) => {
   allOrders = unwrapList(ordersData);
   currencies = unwrapList(currenciesData);
+  baseCurrency = currencies.find((c) => c.is_base) || null;
+  setBaseCurrency(baseCurrency);
   renderOrders();
 }).catch(err => {
   container.innerHTML = `<div class="empty-state">Failed to load orders: ${err.message}</div>`;

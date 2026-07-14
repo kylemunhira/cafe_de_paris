@@ -15,6 +15,10 @@ class ProductCategory(models.Model):
         default=False,
         help_text="Assets are included in monthly stock takes only, not daily counts.",
     )
+    show_on_pos = models.BooleanField(
+        default=True,
+        help_text="When enabled, this category appears as a tab on POS terminals.",
+    )
     pos_station = models.CharField(
         max_length=20,
         choices=PosStation.choices,

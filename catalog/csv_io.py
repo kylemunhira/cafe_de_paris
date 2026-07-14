@@ -7,6 +7,30 @@ from django.db import transaction
 from .constants import ALL_INGREDIENT_CATEGORIES, INGREDIENTS_CATEGORY
 from .models import Product, ProductCategory
 
+
+def _branch_stock_map(branch):
+    """Map product_id -> quantity for a branch's inventory rows."""
+    from inventory.models import BranchInventory
+
+    return {
+        row.product_id: row.quantity
+        for row in BranchInventory.objects.filter(branch=branch).only("product_id", "quantity")
+    }
+
+
+def _set_branch_stock(branch, product, quantity, *, user=None):
+    from inventory.models import StockMovementReason
+    from inventory.services import set_inventory_quantity
+
+    set_inventory_quantity(
+        branch,
+        product,
+        quantity,
+        reason=StockMovementReason.MANUAL_SET,
+        note="CSV ingredient import",
+        user=user,
+    )
+
 CSV_HEADERS = [
     "id",
     "name",
@@ -48,7 +72,7 @@ def export_products_csv():
     return output.getvalue()
 
 
-def export_ingredients_csv(*, category_name=None):
+def export_ingredients_csv(*, category_name=None, branch=None):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=INGREDIENT_CSV_HEADERS)
     writer.writeheader()
@@ -57,13 +81,25 @@ def export_ingredients_csv(*, category_name=None):
     )
     if category_name:
         queryset = queryset.filter(category__name=category_name)
+    elif branch is not None:
+        from .constants import ingredient_categories_for_branch_type
+
+        queryset = queryset.filter(
+            category__name__in=ingredient_categories_for_branch_type(branch.branch_type),
+        )
+
+    stock_by_product = _branch_stock_map(branch) if branch is not None else None
     for product in queryset.order_by("name"):
+        if stock_by_product is not None:
+            remaining_qty = stock_by_product.get(product.id, Decimal("0"))
+        else:
+            remaining_qty = product.remaining_qty
         writer.writerow(
             {
                 "id": product.id,
                 "name": product.name,
                 "unit_cost": product.selling_price,
-                "remaining_qty": product.remaining_qty,
+                "remaining_qty": remaining_qty,
                 "is_active": "true" if product.is_active else "false",
                 "daily_stock_take": "true" if product.daily_stock_take else "false",
             }
@@ -209,7 +245,7 @@ def import_products_csv(file_obj):
     return {"created": created, "updated": updated, "errors": errors}
 
 
-def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
+def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY, branch=None, user=None):
     try:
         reader = _open_csv_reader(file_obj)
     except UnicodeDecodeError:
@@ -226,6 +262,14 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
             "updated": 0,
             "errors": [{"row": 0, "message": f"Missing required columns: {', '.join(missing)}"}],
         }
+
+    if branch is not None:
+        from .constants import ingredient_categories_for_branch_type
+
+        allowed = ingredient_categories_for_branch_type(branch.branch_type)
+        if category_name not in allowed:
+            # Prefer the branch's primary ingredient category when caller passed a mismatch.
+            category_name = next(iter(allowed)) if len(allowed) == 1 else category_name
 
     category, _ = ProductCategory.objects.get_or_create(name=category_name)
     created = 0
@@ -267,7 +311,7 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
                     try:
                         product = Product.objects.get(
                             pk=int(product_id),
-                            category=category,
+                            category__name__in=ALL_INGREDIENT_CATEGORIES,
                         )
                     except (ValueError, Product.DoesNotExist):
                         product = Product.objects.filter(category=category, name=name).first()
@@ -284,7 +328,7 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
                     product.save()
                     updated += 1
                 else:
-                    Product.objects.create(
+                    product = Product.objects.create(
                         name=name,
                         category=category,
                         selling_price=unit_cost,
@@ -293,6 +337,10 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY):
                         daily_stock_take=daily_stock_take,
                     )
                     created += 1
+
+                # Branch stock is what the Ingredients UI shows; sync it when a branch is provided.
+                if branch is not None and remaining_qty is not None:
+                    _set_branch_stock(branch, product, remaining_qty, user=user)
             except Exception as exc:
                 errors.append({"row": row_num, "message": str(exc)})
 

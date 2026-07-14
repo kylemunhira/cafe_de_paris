@@ -185,6 +185,50 @@ class IngredientCsvTests(TestCase):
         product = Product.objects.get(name="12 CM SAUCERS")
         self.assertEqual(product.category.name, BRANCH_INGREDIENTS_CATEGORY)
 
+    def test_import_ingredients_csv_sets_branch_stock(self):
+        from branches.models import Branch, BranchType
+        from inventory.models import BranchInventory
+
+        bakery = Branch.objects.create(name="Bakery", branch_type=BranchType.BAKERY)
+        csv_file = io.BytesIO(b"name,unit_cost,remaining_qty\nFlour,1.00,50\n")
+        result = import_ingredients_csv(csv_file, branch=bakery)
+        self.assertEqual(result["created"], 1)
+        product = Product.objects.get(name="Flour")
+        stock = BranchInventory.objects.get(branch=bakery, product=product)
+        self.assertEqual(stock.quantity, Decimal("50"))
+
+    def test_export_ingredients_csv_uses_branch_stock(self):
+        from branches.models import Branch, BranchType
+        from inventory.models import BranchInventory
+
+        bakery = Branch.objects.create(name="Bakery", branch_type=BranchType.BAKERY)
+        BranchInventory.objects.create(
+            branch=bakery,
+            product=self.ingredient,
+            quantity=Decimal("15"),
+        )
+        # Product.remaining_qty is still 12 — export with branch should show inventory qty
+        csv_text = export_ingredients_csv(branch=bakery)
+        self.assertIn("15", csv_text)
+        self.assertIn("Butter", csv_text)
+
+    def test_import_ingredients_endpoint_with_branch_sets_stock(self):
+        from branches.models import Branch, BranchType
+        from inventory.models import BranchInventory
+
+        bakery = Branch.objects.create(name="Bakery", branch_type=BranchType.BAKERY)
+        upload = io.BytesIO(b"name,unit_cost,remaining_qty\nSugar,1.00,20\n")
+        upload.name = "ingredients.csv"
+        response = self.client.post(
+            "/api/products/import-ingredients-csv/",
+            {"file": upload, "branch": bakery.id},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200)
+        product = Product.objects.get(name="Sugar")
+        stock = BranchInventory.objects.get(branch=bakery, product=product)
+        self.assertEqual(stock.quantity, Decimal("20"))
+
 
 class DailyStockTakeFieldTests(TestCase):
     def setUp(self):
@@ -352,6 +396,7 @@ class ProductCategoryPosStationTests(TestCase):
         self.category = ProductCategory.objects.create(
             name="Coffee",
             pos_station="bar",
+            show_on_pos=True,
         )
 
     def test_category_api_includes_pos_station(self):
@@ -359,6 +404,7 @@ class ProductCategoryPosStationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["pos_station"], "bar")
         self.assertEqual(response.data["pos_station_display"], "Bar")
+        self.assertTrue(response.data["show_on_pos"])
 
     def test_category_patch_pos_station(self):
         response = self.client.patch(
@@ -373,11 +419,22 @@ class ProductCategoryPosStationTests(TestCase):
     def test_category_create_with_pos_station(self):
         response = self.client.post(
             "/api/categories/",
-            {"name": "Mains", "pos_station": "kitchen"},
+            {"name": "Mains", "pos_station": "kitchen", "show_on_pos": True},
             format="json",
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["pos_station"], "kitchen")
+        self.assertTrue(response.data["show_on_pos"])
+
+    def test_category_patch_show_on_pos(self):
+        response = self.client.patch(
+            f"/api/categories/{self.category.id}/",
+            {"show_on_pos": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.category.refresh_from_db()
+        self.assertFalse(self.category.show_on_pos)
 
 
 class ProductCategoryDeleteTests(TestCase):

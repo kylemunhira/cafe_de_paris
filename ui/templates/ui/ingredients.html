@@ -6,7 +6,7 @@
 
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
-  <a href="/api/products/export-ingredients-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <button type="button" class="btn btn-ghost btn-sm" id="csv-download">Download CSV</button>
   <label class="btn btn-primary btn-sm" style="cursor: pointer;">
     Upload CSV
     <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
@@ -118,6 +118,7 @@ const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const ingredientsTable = document.getElementById("ingredients-table");
 const csvUpload = document.getElementById("csv-upload");
+const csvDownload = document.getElementById("csv-download");
 const branchSelect = document.getElementById("branch-select");
 const searchInput = document.getElementById("ingredient-search");
 const sortState = createSortState("name", "asc");
@@ -439,13 +440,27 @@ searchInput.addEventListener("input", () => {
   render();
 });
 
+csvDownload.addEventListener("click", () => {
+  if (!selectedBranchId) {
+    showToast("Select a branch before downloading CSV", true);
+    return;
+  }
+  window.location.href = `/api/products/export-ingredients-csv/?branch=${selectedBranchId}`;
+});
+
 csvUpload.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
 
+  if (!selectedBranchId) {
+    showToast("Select a branch before uploading CSV — remaining_qty is applied as stock at that branch", true);
+    return;
+  }
+
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("branch", String(selectedBranchId));
 
   try {
     const result = await apiUpload("/products/import-ingredients-csv/", formData);

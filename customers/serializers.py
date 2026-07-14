@@ -11,6 +11,10 @@ from .models import Customer, CustomerAccountTransaction
 
 class CustomerSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
+    account_type_display = serializers.CharField(
+        source="get_account_type_display",
+        read_only=True,
+    )
 
     class Meta:
         model = Customer
@@ -21,6 +25,8 @@ class CustomerSerializer(serializers.ModelSerializer):
             "full_name",
             "phone",
             "email",
+            "account_type",
+            "account_type_display",
             "loyalty_points",
             "account_balance",
             "created_at",
@@ -34,6 +40,7 @@ class CustomerSerializer(serializers.ModelSerializer):
 class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source="branch.name", read_only=True)
     currency_name = serializers.CharField(source="currency.name", read_only=True, default=None)
+    currency_code = serializers.CharField(source="currency.code", read_only=True, default=None)
     currency_symbol = serializers.CharField(source="currency.symbol", read_only=True, default=None)
     transaction_type_display = serializers.CharField(
         source="get_transaction_type_display",
@@ -56,6 +63,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
             "amount",
             "balance_after",
             "currency",
+            "currency_code",
             "currency_name",
             "currency_symbol",
             "amount_received",

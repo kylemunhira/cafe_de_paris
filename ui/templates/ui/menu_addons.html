@@ -6,9 +6,32 @@
 
 {% block content %}
 <p class="products-page-description">
-  Add-on groups used at POS when ordering menu items. Deactivated options are hidden at the till but stay in history.
-  Edit a product under <a href="{% url 'ui:products' %}">List Products</a> to choose which groups apply.
+  Create add-on groups and options for POS. Deactivated options stay in order history but are hidden at the till.
+  Attach groups to products under <a href="{% url 'ui:products' %}">List Products</a>.
 </p>
+
+<div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1rem;">New add-on group</h3>
+  <form id="group-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="group-name">Group name</label>
+        <input type="text" id="group-name" required autocomplete="off" placeholder="e.g. Coffee Extras">
+      </div>
+      <div class="form-group">
+        <label for="group-selection">Selection</label>
+        <select id="group-selection">
+          <option value="multiple">Choose any</option>
+          <option value="single">Choose one</option>
+        </select>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: flex-end;">
+      <button type="submit" class="btn btn-primary" id="group-submit">Create group</button>
+    </div>
+  </form>
+</div>
+
 <div id="addon-groups-list">
   <div class="skeleton" style="height: 120px; margin-bottom: 1rem;"></div>
   <div class="skeleton" style="height: 120px;"></div>
@@ -17,25 +40,61 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPatch, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 
 const container = document.getElementById("addon-groups-list");
+const groupForm = document.getElementById("group-form");
+const groupNameInput = document.getElementById("group-name");
+const groupSelectionInput = document.getElementById("group-selection");
+const groupSubmit = document.getElementById("group-submit");
 
-function renderAddon(addon) {
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function renderAddonRow(addon) {
   const active = addon.is_active !== false;
-  const price = Number(addon.selling_price) > 0 ? ` · ${formatCurrency(addon.selling_price)}` : "";
   return `
-    <span class="badge addon-chip ${active ? "" : "addon-chip--inactive"}" style="display: inline-flex; align-items: center; gap: 0.35rem; background: var(--color-cream); color: var(--color-espresso); font-weight: 500;">
-      <span>${addon.name}${price}</span>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm addon-toggle"
-        data-addon-id="${addon.id}"
-        data-active="${active}"
-        title="${active ? "Deactivate" : "Activate"}"
-        style="padding: 0.1rem 0.35rem; min-height: 0; font-size: 0.72rem; line-height: 1.2;"
-      >${active ? "On" : "Off"}</button>
-    </span>
+    <tr class="${active ? "" : "addon-row--inactive"}" data-addon-row="${addon.id}">
+      <td>
+        <input
+          type="text"
+          class="report-input addon-name-input"
+          data-addon-id="${addon.id}"
+          value="${escapeHtml(addon.name)}"
+          autocomplete="off"
+          style="width: 100%; min-width: 10rem;"
+        >
+      </td>
+      <td style="width: 8rem;">
+        <input
+          type="number"
+          class="report-input addon-price-input"
+          data-addon-id="${addon.id}"
+          value="${Number(addon.selling_price).toFixed(2)}"
+          min="0"
+          step="0.01"
+          style="width: 100%;"
+        >
+      </td>
+      <td style="white-space: nowrap; text-align: right;">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          data-save-addon="${addon.id}"
+        >Save</button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          data-toggle-addon="${addon.id}"
+          data-active="${active}"
+        >${active ? "On" : "Off"}</button>
+      </td>
+    </tr>
   `;
 }
 
@@ -43,22 +102,113 @@ function renderGroup(group) {
   const addons = group.addons || [];
   const activeCount = addons.filter(addon => addon.is_active !== false).length;
   return `
-    <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1rem;">
-      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem;">
-        <h3 style="margin: 0; font-size: 1rem;">${group.name}</h3>
+    <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1rem;" data-group-id="${group.id}">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+        <h3 style="margin: 0; font-size: 1rem;">${escapeHtml(group.name)}</h3>
         <span class="badge badge-open">${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${activeCount}/${addons.length} active</span>
       </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-        ${addons.length
-          ? addons.map(renderAddon).join("")
-          : `<span style="color: var(--color-muted); font-size: 0.85rem;">No options</span>`}
+
+      <div class="table-wrap" style="margin-bottom: 1rem;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Price</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${addons.length
+              ? addons.map(renderAddonRow).join("")
+              : `<tr><td colspan="3" style="color: var(--color-muted);">No options yet</td></tr>`}
+          </tbody>
+        </table>
       </div>
+
+      <form class="addon-create-form" data-group-id="${group.id}">
+        <div class="form-row" style="align-items: end;">
+          <div class="form-group" style="flex: 2;">
+            <label>New option</label>
+            <input type="text" name="name" required autocomplete="off" placeholder="e.g. Add Extra Shot">
+          </div>
+          <div class="form-group">
+            <label>Price</label>
+            <input type="number" name="price" min="0" step="0.01" value="0.00" placeholder="0.00">
+          </div>
+          <div class="form-group" style="flex: 0;">
+            <button type="submit" class="btn btn-primary btn-sm">Add option</button>
+          </div>
+        </div>
+      </form>
     </div>
   `;
 }
 
+async function createGroup(e) {
+  e.preventDefault();
+  groupSubmit.disabled = true;
+  try {
+    await apiPost("/menu-addon-groups/", {
+      name: groupNameInput.value.trim(),
+      selection_type: groupSelectionInput.value,
+    });
+    groupForm.reset();
+    groupSelectionInput.value = "multiple";
+    showToast("Add-on group created");
+    await load();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    groupSubmit.disabled = false;
+  }
+}
+
+async function createAddon(form) {
+  const groupId = Number(form.dataset.groupId);
+  const nameInput = form.querySelector('[name="name"]');
+  const priceInput = form.querySelector('[name="price"]');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    await apiPost("/menu-addons/", {
+      group: groupId,
+      name: nameInput.value.trim(),
+      selling_price: priceInput.value || "0",
+    });
+    form.reset();
+    priceInput.value = "0.00";
+    showToast("Add-on option created");
+    await load();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function saveAddon(addonId) {
+  const row = container.querySelector(`[data-addon-row="${addonId}"]`);
+  if (!row) return;
+  const name = row.querySelector(".addon-name-input")?.value.trim();
+  const price = row.querySelector(".addon-price-input")?.value || "0";
+  if (!name) {
+    showToast("Option name is required", true);
+    return;
+  }
+  try {
+    await apiPatch(`/menu-addons/${addonId}/`, {
+      name,
+      selling_price: price,
+    });
+    showToast("Add-on updated");
+    await load();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
 async function toggleAddon(button) {
-  const addonId = Number(button.dataset.addonId);
+  const addonId = Number(button.dataset.toggleAddon);
   const nextActive = button.dataset.active !== "true";
   button.disabled = true;
   try {
@@ -78,28 +228,45 @@ async function load() {
     if (!groups.length) {
       container.innerHTML = `
         <div class="empty-state">
-          <p>No add-on groups yet.</p>
-          <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-muted);">
-            Run <code>python manage.py seed_menu_addons</code> on the server.
-          </p>
+          <p>No add-on groups yet — create one above.</p>
         </div>`;
       return;
     }
     container.innerHTML = groups.map(renderGroup).join("");
-    container.querySelectorAll(".addon-toggle").forEach(button => {
-      button.addEventListener("click", () => toggleAddon(button));
-    });
   } catch (err) {
-    container.innerHTML = `<div class="empty-state"><p>Failed to load add-ons: ${err.message}</p></div>`;
+    container.innerHTML = `<div class="empty-state"><p>Failed to load add-ons: ${escapeHtml(err.message)}</p></div>`;
     showToast(err.message, true);
   }
 }
 
+groupForm.addEventListener("submit", createGroup);
+
+container.addEventListener("submit", async (e) => {
+  const form = e.target.closest(".addon-create-form");
+  if (!form) return;
+  e.preventDefault();
+  await createAddon(form);
+});
+
+container.addEventListener("click", async (e) => {
+  const saveBtn = e.target.closest("[data-save-addon]");
+  if (saveBtn) {
+    await saveAddon(Number(saveBtn.dataset.saveAddon));
+    return;
+  }
+  const toggleBtn = e.target.closest("[data-toggle-addon]");
+  if (toggleBtn) {
+    await toggleAddon(toggleBtn);
+  }
+});
+
 load();
 </script>
 <style>
-.addon-chip--inactive {
+.addon-row--inactive td {
   opacity: 0.65;
+}
+.addon-row--inactive .addon-name-input {
   text-decoration: line-through;
 }
 </style>

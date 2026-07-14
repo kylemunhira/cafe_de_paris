@@ -5,8 +5,8 @@ from .models import MenuAddon, MenuAddonGroup, Product, ProductCategory, Product
 
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "is_asset", "pos_station")
-    list_filter = ("is_asset", "pos_station")
+    list_display = ("name", "is_asset", "show_on_pos", "pos_station")
+    list_filter = ("is_asset", "show_on_pos", "pos_station")
     search_fields = ("name",)
 
 

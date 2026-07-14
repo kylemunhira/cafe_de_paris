@@ -11,13 +11,52 @@ class ProductCategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductCategory
-        fields = ["id", "name", "is_asset", "pos_station", "pos_station_display"]
+        fields = ["id", "name", "is_asset", "show_on_pos", "pos_station", "pos_station_display"]
 
 
 class MenuAddonSerializer(serializers.ModelSerializer):
     class Meta:
         model = MenuAddon
-        fields = ["id", "name", "selling_price", "tax_rate", "sort_order", "is_active"]
+        fields = [
+            "id",
+            "group",
+            "name",
+            "selling_price",
+            "tax_rate",
+            "sort_order",
+            "is_active",
+        ]
+        extra_kwargs = {
+            "group": {"required": True},
+            "name": {"required": True},
+            "selling_price": {"required": False},
+            "tax_rate": {"required": False},
+            "sort_order": {"required": False},
+            "is_active": {"required": False},
+        }
+
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Name is required.")
+        return name
+
+    def validate(self, attrs):
+        name = attrs.get("name")
+        if name is None and self.instance is not None:
+            name = self.instance.name
+        group = attrs.get("group")
+        if group is None and self.instance is not None:
+            group = self.instance.group
+        if name and group:
+            qs = MenuAddon.objects.filter(group=group, name=name)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"name": "An option with this name already exists in the group."}
+                )
+        return attrs
 
 
 class MenuAddonGroupSerializer(serializers.ModelSerializer):
@@ -26,6 +65,17 @@ class MenuAddonGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = MenuAddonGroup
         fields = ["id", "name", "selection_type", "sort_order", "addons"]
+        extra_kwargs = {
+            "name": {"required": True},
+            "selection_type": {"required": False},
+            "sort_order": {"required": False},
+        }
+
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Name is required.")
+        return name
 
 
 class ProductAddonGroupSerializer(serializers.ModelSerializer):

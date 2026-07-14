@@ -245,7 +245,7 @@ function renderCategoryOptions() {
 
 function renderAddonGroupOptions() {
   if (!addonGroups.length) {
-    addonGroupOptions.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">No add-on groups yet. Run <code>python manage.py seed_menu_addons</code>.</p>`;
+    addonGroupOptions.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">No add-on groups yet. Create them under <a href="{% url 'ui:menu-addons' %}">Menu Add-ons</a>.</p>`;
     return;
   }
 

@@ -10,6 +10,12 @@
     <label for="customer-search">Customer</label>
     <input type="search" id="customer-search" placeholder="Filter by name or phone…" autocomplete="off">
   </div>
+  <div class="category-tabs" id="account-type-filter" style="margin-top: 0.75rem;">
+    <button type="button" class="category-tab active" data-type="all">All</button>
+    <button type="button" class="category-tab" data-type="family">Family</button>
+    <button type="button" class="category-tab" data-type="staff">Staff</button>
+    <button type="button" class="category-tab" data-type="regular">Regular</button>
+  </div>
   <div id="customer-picker" class="customer-picker-list" style="margin-top: 0.75rem;"></div>
 </div>
 
@@ -103,7 +109,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let customers = [];
@@ -111,8 +117,15 @@ let currencies = [];
 let depositBranchId = null;
 let selectedCustomer = null;
 let searchQuery = "";
+let accountTypeFilter = "all";
 let cachedTransactions = [];
 const txnSortState = createSortState("created_at", "desc");
+
+const ACCOUNT_TYPE_LABELS = {
+  regular: "Regular",
+  family: "Family",
+  staff: "Staff",
+};
 
 const TXN_SORT = {
   created_at: (t) => t.created_at || "",
@@ -124,6 +137,7 @@ const TXN_SORT = {
 
 const customerSearch = document.getElementById("customer-search");
 const customerPicker = document.getElementById("customer-picker");
+const accountTypeFilterEl = document.getElementById("account-type-filter");
 const accountPanel = document.getElementById("account-panel");
 const emptyState = document.getElementById("empty-state");
 const selectedCustomerName = document.getElementById("selected-customer-name");
@@ -185,11 +199,30 @@ function displayName(customer) {
   return customer.full_name || `${customer.first_name} ${customer.last_name || ""}`.trim();
 }
 
+function accountTypeLabel(customer) {
+  return customer.account_type_display
+    || ACCOUNT_TYPE_LABELS[customer.account_type]
+    || "Regular";
+}
+
+function usesCostPrice(customer) {
+  return customer?.account_type === "family" || customer?.account_type === "staff";
+}
+
 function filteredCustomers() {
-  if (!searchQuery) return customers;
+  let list = customers;
+  if (accountTypeFilter !== "all") {
+    list = list.filter(c => (c.account_type || "regular") === accountTypeFilter);
+  }
+  if (!searchQuery) return list;
   const q = searchQuery.toLowerCase();
-  return customers.filter(c => {
-    const haystack = [displayName(c), c.phone, c.email].filter(Boolean).join(" ").toLowerCase();
+  return list.filter(c => {
+    const haystack = [
+      displayName(c),
+      c.phone,
+      c.email,
+      accountTypeLabel(c),
+    ].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(q);
   });
 }
@@ -197,16 +230,22 @@ function filteredCustomers() {
 function renderCustomerPicker() {
   const list = filteredCustomers();
   if (!list.length) {
-    const message = searchQuery ? "No matching customers" : "No customers yet";
+    const message = searchQuery || accountTypeFilter !== "all"
+      ? "No matching customers"
+      : "No customers yet";
     customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">${message}</p>`;
     return;
   }
-  customerPicker.innerHTML = list.map(c => `
+  customerPicker.innerHTML = list.map(c => {
+    const typeLabel = accountTypeLabel(c);
+    const costNote = usesCostPrice(c) ? " · Cost price" : "";
+    return `
     <button type="button" class="customer-picker-item${selectedCustomer?.id === c.id ? " selected" : ""}" data-id="${c.id}">
       <strong>${displayName(c)}</strong>
-      <span>${c.phone || "—"} · Balance ${formatCurrency(c.account_balance)}</span>
+      <span>${typeLabel}${costNote} · ${c.phone || "—"} · Balance ${formatCurrency(c.account_balance)}</span>
     </button>
-  `).join("");
+  `;
+  }).join("");
 }
 
 async function selectCustomer(customer) {
@@ -214,7 +253,10 @@ async function selectCustomer(customer) {
   emptyState.style.display = "none";
   accountPanel.style.display = "";
   selectedCustomerName.textContent = displayName(customer);
-  selectedCustomerMeta.textContent = [customer.phone, customer.email].filter(Boolean).join(" · ") || "No contact details";
+  const contact = [customer.phone, customer.email].filter(Boolean).join(" · ") || "No contact details";
+  const typePart = accountTypeLabel(customer);
+  const costPart = usesCostPrice(customer) ? " · Orders charged at recipe cost" : "";
+  selectedCustomerMeta.textContent = `${typePart}${costPart} · ${contact}`;
   accountBalance.textContent = formatCurrency(customer.account_balance);
   renderCustomerPicker();
   await loadTransactions();
@@ -268,7 +310,7 @@ function renderTransactions() {
           const amountClass = Number(t.amount) >= 0 ? "text-success" : "text-danger";
           const amountLabel = Number(t.amount) >= 0 ? `+${formatCurrency(t.amount)}` : formatCurrency(t.amount);
           const details = t.transaction_type === "deposit"
-            ? `${t.currency_name || ""} ${t.amount_received != null ? formatCurrency(t.amount_received) : ""}${t.notes ? ` · ${t.notes}` : ""}`
+            ? `Received in ${t.currency_code || t.currency_name || ""}${t.amount_received != null ? ` ${formatCurrency(t.amount_received, { code: t.currency_code, symbol: t.currency_symbol, name: t.currency_name })}` : ""}${t.notes ? ` · ${t.notes}` : ""}`.trim()
             : (t.order_id ? `Order #${t.order_id}` : (t.notes || "—"));
           return `
             <tr>
@@ -288,6 +330,15 @@ function renderTransactions() {
 
 customerSearch.addEventListener("input", () => {
   searchQuery = customerSearch.value.trim().toLowerCase();
+  renderCustomerPicker();
+});
+
+accountTypeFilterEl?.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  accountTypeFilter = tab.dataset.type || "all";
+  accountTypeFilterEl.querySelectorAll(".category-tab").forEach(t => t.classList.remove("active"));
+  tab.classList.add("active");
   renderCustomerPicker();
 });
 
@@ -369,6 +420,7 @@ async function init() {
     ]);
     customers = unwrapList(customerData);
     currencies = unwrapList(currencyData).filter(c => c.is_active);
+    setBaseCurrency(currencies.find((c) => c.is_base) || null);
 
     if (preferredBranchId) {
       depositBranchId = Number(preferredBranchId);

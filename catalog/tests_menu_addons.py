@@ -73,6 +73,50 @@ class MenuAddonActivationTests(TestCase):
         self.assertTrue(response.data["is_active"])
 
 
+class MenuAddonCreateTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_create_addon_group(self):
+        response = self.client.post(
+            "/api/menu-addon-groups/",
+            {"name": "Sauces", "selection_type": "multiple"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["name"], "Sauces")
+        self.assertTrue(MenuAddonGroup.objects.filter(name="Sauces").exists())
+
+    def test_create_addon_option(self):
+        group = MenuAddonGroup.objects.create(
+            name="Sauces",
+            selection_type="multiple",
+        )
+        response = self.client.post(
+            "/api/menu-addons/",
+            {
+                "group": group.id,
+                "name": "Pepper Sauce",
+                "selling_price": "3.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        addon = MenuAddon.objects.get(name="Pepper Sauce")
+        self.assertEqual(addon.group_id, group.id)
+        self.assertEqual(addon.selling_price, Decimal("3.00"))
+
+    def test_rejects_duplicate_option_name_in_group(self):
+        group = MenuAddonGroup.objects.create(name="Sauces", selection_type="multiple")
+        MenuAddon.objects.create(group=group, name="Pepper Sauce", selling_price=Decimal("3"))
+        response = self.client.post(
+            "/api/menu-addons/",
+            {"group": group.id, "name": "Pepper Sauce", "selling_price": "4.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+
 class OrderAddonCreateTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -149,9 +193,20 @@ class OrderAddonCreateTests(TestCase):
 class PosCatalogCategoryTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.drinks = ProductCategory.objects.create(name="Drinks")
-        self.ingredients = ProductCategory.objects.create(name="Ingredients")
-        self.assets = ProductCategory.objects.create(name="Cutlery", is_asset=True)
+        self.drinks = ProductCategory.objects.create(name="Drinks", show_on_pos=True)
+        self.ingredients = ProductCategory.objects.create(
+            name="Ingredients",
+            show_on_pos=False,
+        )
+        self.assets = ProductCategory.objects.create(
+            name="Cutlery",
+            is_asset=True,
+            show_on_pos=False,
+        )
+        self.hidden_menu = ProductCategory.objects.create(
+            name="Seasonal Specials",
+            show_on_pos=False,
+        )
         Product.objects.create(
             name="Espresso",
             category=self.drinks,
@@ -170,6 +225,12 @@ class PosCatalogCategoryTests(TestCase):
             selling_price=Decimal("1.00"),
             is_active=True,
         )
+        Product.objects.create(
+            name="Holiday Latte",
+            category=self.hidden_menu,
+            selling_price=Decimal("6.00"),
+            is_active=True,
+        )
 
     def test_categories_pos_catalog_filter_matches_sellable_categories(self):
         response = self.client.get("/api/categories/?pos_catalog=true")
@@ -181,4 +242,11 @@ class PosCatalogCategoryTests(TestCase):
         response = self.client.get("/api/categories/")
         self.assertEqual(response.status_code, 200)
         names = {item["name"] for item in response.data["results"]}
-        self.assertEqual(names, {"Cutlery", "Drinks", "Ingredients"})
+        self.assertEqual(names, {"Cutlery", "Drinks", "Ingredients", "Seasonal Specials"})
+
+    def test_unticked_show_on_pos_hides_category_from_pos_catalog(self):
+        response = self.client.get("/api/products/?pos_catalog=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertIn("Espresso", names)
+        self.assertNotIn("Holiday Latte", names)

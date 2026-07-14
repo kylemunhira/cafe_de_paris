@@ -98,14 +98,72 @@ export async function fetchAllPages(endpoint, params = {}) {
   return results;
 }
 
-export function formatCurrency(amount) {
-  const value = Number(amount);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
+let cachedBaseCurrency = null;
+
+/** Normalize a currency object or ISO code for formatting. */
+function resolveCurrency(currency) {
+  if (!currency) return null;
+  if (typeof currency === "string") {
+    return { code: currency.toUpperCase(), symbol: "" };
+  }
+  const code = (currency.code || "").toUpperCase();
+  return {
+    code: code || "",
+    symbol: currency.symbol || "",
+    name: currency.name || "",
+  };
+}
+
+/**
+ * Format an amount in the given currency (or base / USD fallback).
+ * @param {number|string} amount
+ * @param {object|string|null} [currency] - currency object `{code,symbol}` or ISO code
+ */
+export function formatCurrency(amount, currency = null) {
+  const value = Number.isFinite(Number(amount)) ? Number(amount) : 0;
+  const resolved = resolveCurrency(currency) || resolveCurrency(cachedBaseCurrency);
+  const formatted = value.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
+  });
+
+  if (resolved?.symbol) {
+    return `${resolved.symbol}${formatted}`;
+  }
+
+  const code = resolved?.code;
+  if (code && /^[A-Z]{3}$/.test(code)) {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
+    } catch {
+      return `${code} ${formatted}`;
+    }
+  }
+
+  if (code) return `${code} ${formatted}`;
+  return formatted;
+}
+
+/** Cache / return the configured base currency for list UIs. */
+export async function getBaseCurrency({ force = false } = {}) {
+  if (cachedBaseCurrency && !force) return cachedBaseCurrency;
+  try {
+    const data = await apiGet("/currencies/?page_size=500");
+    const currencies = unwrapList(data);
+    cachedBaseCurrency = currencies.find((c) => c.is_base) || currencies.find((c) => c.is_active) || null;
+  } catch {
+    cachedBaseCurrency = null;
+  }
+  return cachedBaseCurrency;
+}
+
+export function setBaseCurrency(currency) {
+  cachedBaseCurrency = currency || null;
 }
 
 export function formatDate(iso) {

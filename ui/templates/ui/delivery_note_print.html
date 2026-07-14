@@ -19,7 +19,7 @@
       margin: 0;
       font-family: "Segoe UI", system-ui, sans-serif;
       color: #2c1810;
-      background: #fff;
+      background: #f5f0ea;
       font-size: 11pt;
       line-height: 1.45;
     }
@@ -44,8 +44,10 @@
     .sheet {
       max-width: 210mm;
       min-height: 277mm;
-      margin: 0 auto;
+      margin: 1rem auto;
       padding: 18mm;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(44, 24, 16, 0.08);
     }
 
     .header {
@@ -58,14 +60,16 @@
       border-bottom: 2px solid #2c1810;
     }
 
-    .brand h1 {
-      margin: 0;
-      font-size: 1.6rem;
-      letter-spacing: -0.02em;
+    .brand-logo {
+      display: block;
+      height: 72px;
+      width: auto;
+      max-width: 180px;
+      object-fit: contain;
     }
 
     .brand p {
-      margin: 0.25rem 0 0;
+      margin: 0.35rem 0 0;
       color: #6b5c52;
       font-size: 0.85rem;
     }
@@ -87,14 +91,14 @@
       font-size: 0.85rem;
     }
 
-    .addresses {
+    .parties {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 1.5rem;
       margin-bottom: 1.5rem;
     }
 
-    .address-box h3 {
+    .party-box h3 {
       margin: 0 0 0.35rem;
       font-size: 0.72rem;
       text-transform: uppercase;
@@ -102,32 +106,35 @@
       color: #6b5c52;
     }
 
-    .address-box p {
-      margin: 0;
+    .party-box p {
+      margin: 0.15rem 0 0;
       font-size: 0.95rem;
     }
 
-    table {
+    table.items {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 1.5rem;
     }
 
-    th, td {
+    .items th,
+    .items td {
       border: 1px solid #d8cfc4;
       padding: 0.55rem 0.65rem;
       text-align: left;
     }
 
-    th {
+    .items th {
       background: #f5ebe0;
       font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
-    td.qty, th.qty {
+    .items td.qty,
+    .items th.qty {
       text-align: right;
+      white-space: nowrap;
       width: 90px;
     }
 
@@ -138,7 +145,7 @@
     }
 
     .summary-box {
-      min-width: 220px;
+      min-width: 260px;
       border: 1px solid #d8cfc4;
       padding: 0.75rem 1rem;
       background: #faf6f1;
@@ -169,18 +176,11 @@
       color: #6b5c52;
     }
 
-    .status {
-      display: inline-block;
-      padding: 0.15rem 0.5rem;
-      border-radius: 999px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      background: #e0e7ff;
-      color: #3730a3;
-    }
-
     @media print {
+      body {
+        background: #fff;
+      }
+
       .toolbar {
         display: none;
       }
@@ -190,6 +190,7 @@
         min-height: auto;
         margin: 0;
         padding: 0;
+        box-shadow: none;
       }
     }
   </style>
@@ -202,40 +203,42 @@
   <div class="sheet">
     <div class="header">
       <div class="brand">
-        <h1>Café de Paris</h1>
-        <p>{% if note.from_branch.branch_type == "stores" %}Central Stores — Stock Distribution{% else %}Central Bakery — Stock Distribution{% endif %}</p>
+        <img class="brand-logo" src="{% static 'ui/img/cafe-de-paris-logo.png' %}" alt="Café de Paris">
+        <p>
+          {% if note.from_branch.branch_type == "stores" %}
+            Central Stores — Stock Distribution
+          {% else %}
+            Central Bakery — Stock Distribution
+          {% endif %}
+        </p>
       </div>
       <div class="doc-meta">
         <h2>Delivery Note</h2>
-        <p><strong>No.</strong> DN-{{ note.id|stringformat:"05d" }}</p>
+        <p><strong>DN-</strong>{{ note.id|stringformat:"05d" }}</p>
         <p><strong>Date</strong> {{ note.created_at|date:"d M Y, H:i" }}</p>
-        <p><span class="status">{{ note.get_status_display }}</span></p>
+        <p><strong>Status</strong> {{ note.get_status_display }}</p>
       </div>
     </div>
 
-    <div class="addresses">
-      <div class="address-box">
-        <h3>From (Dispatch)</h3>
+    <div class="parties">
+      <div class="party-box">
+        <h3>From</h3>
         <p><strong>{{ note.from_branch.name }}</strong></p>
-        {% if note.from_branch.location %}
-          <p>{{ note.from_branch.location }}</p>
-        {% endif %}
+        {% if note.from_branch.location %}<p>{{ note.from_branch.location }}</p>{% endif %}
       </div>
-      <div class="address-box">
-        <h3>To (Deliver)</h3>
+      <div class="party-box">
+        <h3>To</h3>
         <p><strong>{{ note.to_branch.name }}</strong></p>
-        {% if note.to_branch.location %}
-          <p>{{ note.to_branch.location }}</p>
-        {% endif %}
+        {% if note.to_branch.location %}<p>{{ note.to_branch.location }}</p>{% endif %}
       </div>
     </div>
 
-    <table>
+    <table class="items">
       <thead>
         <tr>
           <th style="width: 40px;">#</th>
-          <th>Product</th>
-          <th class="qty">Quantity</th>
+          <th>Item</th>
+          <th class="qty">Qty</th>
         </tr>
       </thead>
       <tbody>
@@ -267,12 +270,8 @@
     </div>
 
     <div class="signatures">
-      <div>
-        <div class="signature-line">Dispatched by ({% if note.from_branch.branch_type == "stores" %}Central Stores{% else %}Bakery{% endif %})</div>
-      </div>
-      <div>
-        <div class="signature-line">Received by (Branch)</div>
-      </div>
+      <div><div class="signature-line">Dispatched by</div></div>
+      <div><div class="signature-line">Received by</div></div>
     </div>
   </div>
 </body>

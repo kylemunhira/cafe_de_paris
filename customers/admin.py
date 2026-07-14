@@ -9,10 +9,12 @@ class CustomerAdmin(admin.ModelAdmin):
         "first_name",
         "last_name",
         "phone",
+        "account_type",
         "account_balance",
         "loyalty_points",
         "created_at",
     )
+    list_filter = ("account_type",)
     search_fields = ("first_name", "last_name", "phone", "email")
 
 

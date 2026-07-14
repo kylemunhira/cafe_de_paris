@@ -48,8 +48,13 @@
       padding-bottom: 1rem;
       border-bottom: 2px solid #2c1810;
     }
-    .brand h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.02em; }
-    .brand p { margin: 0.25rem 0 0; color: #6b5c52; font-size: 0.85rem; }
+    .brand-logo {
+      display: block;
+      height: 87px;
+      width: auto;
+      max-width: 218px;
+      object-fit: contain;
+    }
     .doc-meta { text-align: right; }
     .doc-meta h2 {
       margin: 0;
@@ -151,8 +156,7 @@
   <div class="sheet">
     <div class="header">
       <div class="brand">
-        <h1>Café de Paris</h1>
-        <p>Central Stores — External customer invoice</p>
+        <img class="brand-logo" src="{% static 'ui/img/cafe-de-paris-logo.png' %}" alt="Café de Paris">
       </div>
       <div class="doc-meta">
         <h2>Tax Invoice</h2>
@@ -163,7 +167,6 @@
 
     <div class="parties">
       <div class="party-box">
-        <h3>From (Supplier)</h3>
         <p><strong>{{ invoice.from_branch.name }}</strong></p>
         {% if invoice.from_branch.location %}<p>{{ invoice.from_branch.location }}</p>{% endif %}
       </div>
@@ -217,10 +220,6 @@
         <div class="summary-row grand">
           <span>Invoice total</span>
           <strong>{% if base_currency %}{{ base_currency.symbol }}{% endif %}{{ invoice.total_amount }}</strong>
-        </div>
-        <div class="summary-row" style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #d8cfc4;">
-          <span>Payment status</span>
-          <strong>{% if invoice.payment_status == "paid" %}Paid{% else %}Unpaid{% endif %}</strong>
         </div>
       </div>
     </div>

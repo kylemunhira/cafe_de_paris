@@ -24,7 +24,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, unwrapList, formatCurrency, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, unwrapList, formatCurrency, formatDate, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const invoicePrintUrlTemplate = "{% url 'ui:invoice-print' 0 %}".replace("/0/", "/{id}/");
@@ -32,6 +32,7 @@ const receiptPrintUrlTemplate = "{% url 'ui:receipt-print' 0 %}".replace("/0/", 
 
 let fiscalReceipts = [];
 let searchQuery = "";
+let baseCurrency = null;
 const container = document.getElementById("receipts-table");
 const searchInput = document.getElementById("receipt-search");
 const sortState = createSortState("fiscal_approved_at", "desc");
@@ -44,8 +45,23 @@ const RECEIPT_SORT = {
   order_type: (o) => o.order_type || "",
   total_amount: (o) => Number(o.total_amount),
   amount_paid: (o) => Number(o.amount_paid),
+  payment_currency: (o) => paymentCurrencyLabel(o),
   fiscal_approved_at: (o) => o.fiscal_approved_at || o.created_at || "",
 };
+
+function paymentCurrencyLabel(order) {
+  if (order.payment_method === "account") {
+    const code = order.payment_currency_code || order.payment_currency_name || "";
+    return code
+      ? `${order.payment_method_display || "Customer account"} · ${code}`
+      : (order.payment_method_display || "Customer account");
+  }
+  if (order.payment_method === "multi" && order.payments?.length) {
+    const codes = [...new Set(order.payments.map((p) => p.currency_code || p.currency_name).filter(Boolean))];
+    return codes.length ? codes.join(" + ") : (order.payment_method_display || "Split");
+  }
+  return order.payment_currency_code || order.payment_currency_name || "—";
+}
 
 function matchesSearch(order) {
   if (!searchQuery) return true;
@@ -55,6 +71,8 @@ function matchesSearch(order) {
     order.id,
     order.branch_name,
     order.payment_currency_name,
+    order.payment_currency_code,
+    order.payment_method_display,
     order.order_type,
   ]
     .filter(Boolean)
@@ -65,10 +83,19 @@ function matchesSearch(order) {
 
 function formatPaidAmount(order) {
   if (order.amount_paid == null) return "—";
-  const symbol = order.payment_currency_symbol || "";
-  const value = Number(order.amount_paid);
-  if (!Number.isFinite(value)) return "—";
-  return `${symbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (order.payment_method === "multi" && order.payments?.length) {
+    return order.payments
+      .map((p) => formatCurrency(p.amount, {
+        code: p.currency_code,
+        symbol: p.currency_symbol,
+      }))
+      .join(" + ");
+  }
+  return formatCurrency(order.amount_paid, {
+    code: order.payment_currency_code,
+    symbol: order.payment_currency_symbol,
+    name: order.payment_currency_name,
+  });
 }
 
 function receiptActions(order) {
@@ -97,6 +124,7 @@ function renderReceipts() {
           ${sortTh("Type", "order_type", sortState)}
           ${sortTh("Total", "total_amount", sortState)}
           ${sortTh("Amount paid", "amount_paid", sortState)}
+          ${sortTh("Currency", "payment_currency", sortState)}
           ${sortTh("Fiscalized", "fiscal_approved_at", sortState)}
           ${actionTh()}
         </tr>
@@ -109,8 +137,9 @@ function renderReceipts() {
             <td>#${o.id}</td>
             <td>${o.branch_name}</td>
             <td>${o.order_type.replace("_", " ")}</td>
-            <td>${formatCurrency(o.total_amount)}</td>
-            <td>${formatPaidAmount(o)}${o.payment_currency_name ? ` <span style="color: var(--text-muted); font-size: 0.85em;">${o.payment_currency_name}</span>` : ""}</td>
+            <td>${formatCurrency(o.total_amount, baseCurrency)}</td>
+            <td>${formatPaidAmount(o)}</td>
+            <td>${paymentCurrencyLabel(o)}</td>
             <td>${o.fiscal_approved_at ? formatDate(o.fiscal_approved_at) : formatDate(o.created_at)}</td>
             <td style="white-space: nowrap;">${receiptActions(o)}</td>
           </tr>
@@ -127,9 +156,15 @@ searchInput.addEventListener("input", () => {
   renderReceipts();
 });
 
-apiGet("/orders/?status=paid&fiscal_only=1&fiscal_approval_status=approved&page_size=500")
-  .then((data) => {
+Promise.all([
+  apiGet("/orders/?status=paid&fiscal_only=1&fiscal_approval_status=approved&page_size=500"),
+  apiGet("/currencies/?page_size=500"),
+])
+  .then(([data, currenciesData]) => {
     fiscalReceipts = unwrapList(data);
+    const currencies = unwrapList(currenciesData);
+    baseCurrency = currencies.find((c) => c.is_base) || null;
+    setBaseCurrency(baseCurrency);
     renderReceipts();
   })
   .catch((err) => {
