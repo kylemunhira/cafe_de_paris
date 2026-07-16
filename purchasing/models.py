@@ -6,6 +6,8 @@ from django.db import models
 from branches.models import Branch
 from catalog.models import Product
 
+from .tax import purchase_order_amounts
+
 
 class Supplier(models.Model):
     """Company-wide supplier master data — shared across all branches."""
@@ -75,8 +77,16 @@ class PurchaseOrder(models.Model):
         return f"PO #{self.pk} — {self.supplier} ({self.branch})"
 
     @property
+    def subtotal_amount(self):
+        return purchase_order_amounts(self)["subtotal_amount"]
+
+    @property
+    def vat_amount(self):
+        return purchase_order_amounts(self)["vat_amount"]
+
+    @property
     def total_amount(self):
-        return sum(line.line_total for line in self.lines.all())
+        return purchase_order_amounts(self)["total_amount"]
 
     @property
     def line_count(self):
@@ -94,8 +104,8 @@ class PurchaseOrderLine(models.Model):
         on_delete=models.PROTECT,
         related_name="purchase_order_lines",
     )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2)
-    unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    quantity = models.DecimalField(max_digits=16, decimal_places=4)
+    unit_cost = models.DecimalField(max_digits=16, decimal_places=4, default=Decimal("0"))
 
     class Meta:
         unique_together = ("purchase_order", "product")

@@ -41,6 +41,11 @@
         <label for="customer-loyalty">Loyalty points</label>
         <input type="number" id="customer-loyalty" min="0" step="1" value="0">
       </div>
+      <div class="form-group" id="credit-limit-field" style="display: none;">
+        <label for="customer-credit-limit">Credit limit</label>
+        <input type="number" id="customer-credit-limit" min="0" step="0.01" value="0">
+        <p class="settings-hint" style="margin: 0.35rem 0 0; font-size: 0.8rem;">Max negative balance allowed on account (0 = prepaid only).</p>
+      </div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
       <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
@@ -73,6 +78,8 @@ const emailInput = document.getElementById("customer-email");
 const accountTypeInput = document.getElementById("customer-account-type");
 const loyaltyField = document.getElementById("loyalty-field");
 const loyaltyInput = document.getElementById("customer-loyalty");
+const creditLimitField = document.getElementById("credit-limit-field");
+const creditLimitInput = document.getElementById("customer-credit-limit");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const customersTable = document.getElementById("customers-table");
@@ -90,6 +97,7 @@ const CUSTOMER_SORT = {
   email: (c) => c.email || "",
   account_type: (c) => c.account_type || "regular",
   account_balance: (c) => Number(c.account_balance || 0),
+  credit_limit: (c) => Number(c.credit_limit || 0),
   loyalty_points: (c) => Number(c.loyalty_points || 0),
   created_at: (c) => c.created_at || "",
 };
@@ -100,9 +108,11 @@ function resetForm() {
   submitBtn.textContent = "Add customer";
   cancelBtn.style.display = "none";
   loyaltyField.style.display = "none";
+  creditLimitField.style.display = "none";
   customerForm.reset();
   accountTypeInput.value = "regular";
   loyaltyInput.value = "0";
+  creditLimitInput.value = "0";
 }
 
 function startEdit(customer) {
@@ -111,12 +121,14 @@ function startEdit(customer) {
   submitBtn.textContent = "Save changes";
   cancelBtn.style.display = "";
   loyaltyField.style.display = "";
+  creditLimitField.style.display = "";
   firstNameInput.value = customer.first_name;
   lastNameInput.value = customer.last_name || "";
   phoneInput.value = customer.phone || "";
   emailInput.value = customer.email || "";
   accountTypeInput.value = customer.account_type || "regular";
   loyaltyInput.value = customer.loyalty_points || 0;
+  creditLimitInput.value = customer.credit_limit || 0;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -147,6 +159,7 @@ function render() {
           ${sortTh("Email", "email", sortState)}
           ${sortTh("Type", "account_type", sortState)}
           ${sortTh("Account", "account_balance", sortState)}
+          ${sortTh("Credit limit", "credit_limit", sortState)}
           ${sortTh("Loyalty", "loyalty_points", sortState)}
           ${sortTh("Added", "created_at", sortState)}
           ${actionTh()}
@@ -160,6 +173,7 @@ function render() {
             <td>${c.email || "—"}</td>
             <td>${accountTypeLabel(c)}</td>
             <td>${formatCurrency(c.account_balance || 0)}</td>
+            <td>${formatCurrency(c.credit_limit || 0)}</td>
             <td>${c.loyalty_points}</td>
             <td>${formatDate(c.created_at)}</td>
             <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${c.id}">Edit</button></td>
@@ -191,6 +205,7 @@ customerForm.addEventListener("submit", async (e) => {
   try {
     if (editingId) {
       payload.loyalty_points = Number(loyaltyInput.value) || 0;
+      payload.credit_limit = Number(creditLimitInput.value) || 0;
       const updated = await apiPatch(`/customers/${editingId}/`, payload);
       const index = customers.findIndex(c => c.id === editingId);
       if (index >= 0) customers[index] = updated;

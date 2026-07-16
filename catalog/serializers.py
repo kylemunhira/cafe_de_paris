@@ -110,6 +110,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "unit_cost",
             "remaining_qty",
             "tax_rate",
+            "fiscal_tax_code",
             "is_active",
             "daily_stock_take",
             "created_at",

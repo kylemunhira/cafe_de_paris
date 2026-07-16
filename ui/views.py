@@ -646,6 +646,9 @@ class PurchaseOrdersView(BaseUIView):
         context["can_purchase_for_any_branch"] = user_has_global_branch_access(
             self.request.user
         )
+        from orders.tax import get_inclusive_tax_rate
+
+        context["inclusive_tax_rate"] = get_inclusive_tax_rate()
         return context
 
 

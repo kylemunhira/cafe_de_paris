@@ -1,5 +1,5 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static l10n %}
 
 {% block title %}Purchases — Café de Paris{% endblock %}
 {% block page_title %}Purchases{% endblock %}
@@ -50,11 +50,11 @@
       </div>
       <div class="form-group" style="flex: 0 0 100px;">
         <label for="po-qty">Qty</label>
-        <input type="number" id="po-qty" min="0.01" step="0.01" placeholder="0">
+        <input type="number" id="po-qty" min="0.0001" step="0.0001" placeholder="0">
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
         <label for="po-cost">Unit cost</label>
-        <input type="number" id="po-cost" min="0" step="0.01" placeholder="0.00">
+        <input type="number" id="po-cost" min="0" step="0.0001" placeholder="0.0000">
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
         <button type="button" id="add-line-btn" class="btn btn-ghost">Add line</button>
@@ -74,6 +74,16 @@
         </thead>
         <tbody id="lines-body"></tbody>
         <tfoot>
+          <tr>
+            <td colspan="3" style="text-align: right;">Subtotal</td>
+            <td style="text-align: right;" id="lines-subtotal">$0.00</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td colspan="3" style="text-align: right;">VAT</td>
+            <td style="text-align: right;" id="lines-vat">$0.00</td>
+            <td></td>
+          </tr>
           <tr>
             <td colspan="3" style="text-align: right; font-weight: 600;">Total</td>
             <td style="text-align: right; font-weight: 600;" id="lines-total">$0.00</td>
@@ -119,6 +129,7 @@ let purchaseType = "pos";
 
 const canPurchaseForAnyBranch = {{ can_purchase_for_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
+const INCLUSIVE_TAX_RATE = Number("{{ inclusive_tax_rate|unlocalize }}");
 
 const INGREDIENTS_CATEGORY = "Ingredients";
 const BRANCH_INGREDIENTS_CATEGORY = "Branch Ingredients";
@@ -152,6 +163,8 @@ const qtyInput = document.getElementById("po-qty");
 const costInput = document.getElementById("po-cost");
 const linesWrap = document.getElementById("lines-wrap");
 const linesBody = document.getElementById("lines-body");
+const linesSubtotal = document.getElementById("lines-subtotal");
+const linesVat = document.getElementById("lines-vat");
 const linesTotal = document.getElementById("lines-total");
 const submitBtn = document.getElementById("submit-btn");
 const poTable = document.getElementById("po-table");
@@ -175,7 +188,70 @@ const ORDER_SORT = {
 
 function formatQty(value) {
   const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+  return Number.isFinite(qty)
+    ? qty.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+    : "0";
+}
+
+function roundMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+function formatLineAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return formatCurrency(0);
+  const formatted = amount.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+  const base = formatCurrency(0);
+  const symbolMatch = base.match(/^[^\d\-]+/);
+  const symbol = symbolMatch ? symbolMatch[0] : "";
+  return symbol ? `${symbol}${formatted}` : formatted;
+}
+
+function isTaxableProduct(product) {
+  if (!product) return false;
+  if (Number(product.tax_rate) > 0) return true;
+  const code = (product.fiscal_tax_code || "").trim().toUpperCase();
+  return code !== "" && code !== "B";
+}
+
+function splitLineTotal(lineTotal, product) {
+  const total = Number(lineTotal);
+  if (!Number.isFinite(total) || total <= 0) {
+    return { subtotal: 0, tax: 0, total: 0 };
+  }
+  if (!isTaxableProduct(product)) {
+    return { subtotal: total, tax: 0, total };
+  }
+  const rate = Number(product.tax_rate) > 0 ? Number(product.tax_rate) : INCLUSIVE_TAX_RATE;
+  const divisor = 1 + rate / 100;
+  const subtotal = total / divisor;
+  return { subtotal, tax: total - subtotal, total };
+}
+
+function purchaseTotals(lines) {
+  let subtotal = 0;
+  let vat = 0;
+  let total = 0;
+
+  for (const line of lines) {
+    const lineTotal = Number(line.quantity) * Number(line.unit_cost);
+    const product = products.find(p => p.id === line.product);
+    const split = splitLineTotal(lineTotal, product);
+    subtotal += split.subtotal;
+    vat += split.tax;
+    total += split.total;
+  }
+
+  return {
+    subtotal_amount: roundMoney(subtotal),
+    vat_amount: roundMoney(vat),
+    total_amount: roundMoney(total),
+  };
 }
 
 function lineSummary(order) {
@@ -291,27 +367,32 @@ function renderDraftLines() {
   if (!draftLines.length) {
     linesWrap.style.display = "none";
     submitBtn.disabled = true;
+    linesSubtotal.textContent = formatCurrency(0);
+    linesVat.textContent = formatCurrency(0);
+    linesTotal.textContent = formatCurrency(0);
     return;
   }
 
   linesWrap.style.display = "";
   submitBtn.disabled = !branchSelect.value || !supplierSelect.value;
 
-  let total = 0;
+  let totals = { subtotal_amount: 0, vat_amount: 0, total_amount: 0 };
   linesBody.innerHTML = draftLines.map((line, index) => {
     const lineTotal = line.quantity * line.unit_cost;
-    total += lineTotal;
     return `
       <tr>
         <td>${line.product_name}</td>
         <td style="text-align: right;">${formatQty(line.quantity)}</td>
-        <td style="text-align: right;">${formatCurrency(line.unit_cost)}</td>
-        <td style="text-align: right;">${formatCurrency(lineTotal)}</td>
+        <td style="text-align: right;">${formatLineAmount(line.unit_cost)}</td>
+        <td style="text-align: right;">${formatLineAmount(lineTotal)}</td>
         <td><button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button></td>
       </tr>
     `;
   }).join("");
-  linesTotal.textContent = formatCurrency(total);
+  totals = purchaseTotals(draftLines);
+  linesSubtotal.textContent = formatCurrency(totals.subtotal_amount);
+  linesVat.textContent = formatCurrency(totals.vat_amount);
+  linesTotal.textContent = formatCurrency(totals.total_amount);
 }
 
 function renderStats() {

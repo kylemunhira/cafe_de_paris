@@ -29,6 +29,7 @@ class CustomerSerializer(serializers.ModelSerializer):
             "account_type_display",
             "loyalty_points",
             "account_balance",
+            "credit_limit",
             "created_at",
         ]
         read_only_fields = ["created_at", "account_balance"]

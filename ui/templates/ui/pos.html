@@ -110,7 +110,7 @@
           </select>
         </div>
         <div id="account-balance-hint" style="display: none; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-muted);">
-          Account balance: <strong id="receipt-account-balance">—</strong>
+          Credit limit: <strong id="receipt-credit-limit">—</strong>
           <span id="cost-price-hint" style="display: none;"> · Priced at cost</span>
         </div>
         <div class="form-group" id="payment-currency-group">
@@ -381,7 +381,7 @@ const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
 const orderCustomerSelect = document.getElementById("order-customer");
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const accountBalanceHint = document.getElementById("account-balance-hint");
-const receiptAccountBalance = document.getElementById("receipt-account-balance");
+const receiptCreditLimit = document.getElementById("receipt-credit-limit");
 const costPriceHint = document.getElementById("cost-price-hint");
 const paymentCurrencyGroup = document.getElementById("payment-currency-group");
 const splitPaymentGroup = document.getElementById("split-payment-group");
@@ -1114,8 +1114,8 @@ function renderCustomerSelects() {
   const previousOrder = orderCustomerSelect.value;
   const previousReceipt = receiptCustomerSelect.value;
   const options = customers.map(c => {
-    const balance = Number(c.account_balance) > 0 ? ` · ${formatCurrency(c.account_balance)}` : "";
-    return `<option value="${c.id}">${customerDisplayName(c)}${balance}</option>`;
+    const limit = Number(c.credit_limit) > 0 ? ` · Limit ${formatCurrency(c.credit_limit)}` : "";
+    return `<option value="${c.id}">${customerDisplayName(c)}${limit}</option>`;
   }).join("");
   orderCustomerSelect.innerHTML = `<option value="">Walk-in</option>${options}`;
   receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
@@ -1138,6 +1138,11 @@ function usesCostPrice(customer) {
   return customer?.account_type === "family" || customer?.account_type === "staff";
 }
 
+function customerAvailableCredit(customer) {
+  if (!customer) return 0;
+  return Number(customer.account_balance) + Number(customer.credit_limit || 0);
+}
+
 function updateAccountBalanceHint() {
   if (paymentMethod !== "account") {
     accountBalanceHint.style.display = "none";
@@ -1150,7 +1155,7 @@ function updateAccountBalanceHint() {
     return;
   }
   accountBalanceHint.style.display = "";
-  receiptAccountBalance.textContent = formatCurrency(customer.account_balance);
+  receiptCreditLimit.textContent = formatCurrency(customer.credit_limit || 0);
   if (costPriceHint) {
     costPriceHint.style.display = usesCostPrice(customer) ? "" : "none";
   }
@@ -1160,8 +1165,8 @@ function updateCheckoutButtonState(inclusiveTotal) {
   if (paymentMethod === "account") {
     const customer = getCustomerById(receiptCustomerSelect.value);
     const total = computeTaxBreakdown(inclusiveTotal).total;
-    const hasBalance = customer && Number(customer.account_balance) >= total;
-    checkoutBtn.disabled = !customer || !hasBalance;
+    const hasCredit = customer && customerAvailableCredit(customer) >= total;
+    checkoutBtn.disabled = !customer || !hasCredit;
     return;
   }
   if (isSplitPaymentActive()) {
@@ -1922,8 +1927,11 @@ async function paySelectedOrder() {
       showToast("Select a customer to pay from account", true);
       return;
     }
-    if (Number(customer.account_balance) < orderTotal) {
-      showToast(`Insufficient balance. Available: ${formatCurrency(customer.account_balance)}`, true);
+    if (customerAvailableCredit(customer) < orderTotal) {
+      showToast(
+        `Insufficient credit. Available: ${formatCurrencyAmount(customerAvailableCredit(customer), baseCurrency)}`,
+        true,
+      );
       return;
     }
   } else if (isSplitPaymentActive()) {

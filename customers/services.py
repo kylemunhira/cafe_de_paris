@@ -82,13 +82,14 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
         raise CustomerAccountError("Order total must be greater than zero.")
 
     customer = Customer.objects.select_for_update().get(pk=order.customer_id)
-    if customer.account_balance < charge_amount:
+    min_allowed = _quantize(-customer.credit_limit)
+    new_balance = _quantize(customer.account_balance - charge_amount)
+    if new_balance < min_allowed:
+        available = _quantize(customer.account_balance + customer.credit_limit)
         raise InsufficientAccountBalance(
-            f"Insufficient account balance. Available: {customer.account_balance}, "
+            f"Insufficient account credit. Available: {available}, "
             f"required: {charge_amount}."
         )
-
-    new_balance = _quantize(customer.account_balance - charge_amount)
     customer.account_balance = new_balance
     customer.save(update_fields=["account_balance"])
 

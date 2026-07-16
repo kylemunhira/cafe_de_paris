@@ -33,6 +33,12 @@ class Customer(models.Model):
         default=Decimal("0"),
         help_text="Prepaid balance in base currency.",
     )
+    credit_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="Maximum allowed negative balance (base currency).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

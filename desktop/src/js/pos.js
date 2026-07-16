@@ -145,7 +145,7 @@ let splitPaymentEnabled = false;
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const receiptCustomerGroup = document.getElementById("receipt-customer-group");
 const accountBalanceHint = document.getElementById("account-balance-hint");
-const receiptAccountBalance = document.getElementById("receipt-account-balance");
+const receiptCreditLimit = document.getElementById("receipt-credit-limit");
 const costPriceHint = document.getElementById("cost-price-hint");
 const receiptTotals = document.getElementById("receipt-totals");
 const cartTotalLabel = document.getElementById("cart-total-label");
@@ -1027,8 +1027,8 @@ function customerDisplayName(customer) {
 function renderCustomerSelect() {
   const previous = receiptCustomerSelect.value;
   const options = customers.map((c) => {
-    const balance = Number(c.account_balance) > 0 ? ` · ${money(c.account_balance)}` : "";
-    return `<option value="${c.id}">${customerDisplayName(c)}${balance}</option>`;
+    const limit = Number(c.credit_limit) > 0 ? ` · Limit ${money(c.credit_limit)}` : "";
+    return `<option value="${c.id}">${customerDisplayName(c)}${limit}</option>`;
   }).join("");
   receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
   if (previous && customers.some((c) => String(c.id) === previous)) {
@@ -1045,6 +1045,11 @@ function usesCostPrice(customer) {
   return customer?.account_type === "family" || customer?.account_type === "staff";
 }
 
+function customerAvailableCredit(customer) {
+  if (!customer) return 0;
+  return Number(customer.account_balance) + Number(customer.credit_limit || 0);
+}
+
 function updateAccountBalanceHint() {
   if (paymentMethod !== "account") {
     accountBalanceHint.style.display = "none";
@@ -1056,7 +1061,7 @@ function updateAccountBalanceHint() {
     return;
   }
   accountBalanceHint.style.display = "";
-  receiptAccountBalance.textContent = money(customer.account_balance);
+  receiptCreditLimit.textContent = money(customer.credit_limit || 0);
   if (costPriceHint) {
     costPriceHint.style.display = usesCostPrice(customer) ? "" : "none";
   }
@@ -1066,8 +1071,8 @@ function updateCheckoutButtonState(inclusiveTotal) {
   if (paymentMethod === "account") {
     const customer = getCustomerById(receiptCustomerSelect.value);
     const total = computeTaxBreakdown(inclusiveTotal).total;
-    const hasBalance = customer && Number(customer.account_balance) >= total;
-    checkoutBtn.disabled = !customer || !hasBalance;
+    const hasCredit = customer && customerAvailableCredit(customer) >= total;
+    checkoutBtn.disabled = !customer || !hasCredit;
     return;
   }
   if (isSplitPaymentActive()) {
@@ -2221,8 +2226,11 @@ async function paySelectedOrder() {
       showToast("Select a customer to pay from account", true);
       return;
     }
-    if (Number(customer.account_balance) < orderTotal) {
-      showToast(`Insufficient balance. Available: ${money(customer.account_balance)}`, true);
+    if (customerAvailableCredit(customer) < orderTotal) {
+      showToast(
+        `Insufficient credit. Available: ${money(customerAvailableCredit(customer))}`,
+        true,
+      );
       return;
     }
     if (!shouldPayOrderOnline(selectedOrder) || !selectedOrder.server_id) {

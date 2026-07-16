@@ -114,7 +114,7 @@ class BakeryProductionTests(TestCase):
         self.assertEqual(croissant_stock.quantity, Decimal("10"))
         self.assertEqual(ProductionOrder.objects.count(), 1)
 
-    def test_rejects_production_without_recipe(self):
+    def test_allows_production_without_recipe(self):
         pastries = ProductCategory.objects.get(name="Breads & pastries")
         baguette = Product.objects.create(
             name="Baguette",
@@ -131,8 +131,10 @@ class BakeryProductionTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("recipe", str(response.data).lower())
+        self.assertEqual(response.status_code, 201)
+        baguette_stock = BranchInventory.objects.get(branch=self.bakery, product=baguette)
+        self.assertEqual(baguette_stock.quantity, Decimal("5"))
+        self.assertEqual(ProductionOrder.objects.filter(product=baguette).count(), 1)
 
     def test_rejects_production_with_insufficient_ingredients(self):
         response = self.client.post(

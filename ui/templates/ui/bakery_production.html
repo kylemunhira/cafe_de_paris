@@ -17,7 +17,7 @@
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
   <h3 style="margin: 0 0 0.5rem; font-size: 1.05rem;">Record production</h3>
   <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
-    Ingredients are deducted from the bakery and finished goods are added to stock for transfers.
+    Finished goods are added to bakery stock. When a recipe exists, ingredients are deducted automatically.
   </p>
   <form id="production-form">
     <div class="form-row">
@@ -108,13 +108,9 @@ function getBakeryStock(productId) {
   return bakeryInventory.get(Number(productId)) ?? 0;
 }
 
-function productsWithRecipes() {
-  return products.filter(p => recipesByProduct.has(p.id));
-}
-
 function renderStats() {
-  const finishedSkus = productsWithRecipes().filter(p => getBakeryStock(p.id) > 0).length;
-  const totalUnits = productsWithRecipes().reduce((sum, p) => sum + getBakeryStock(p.id), 0);
+  const finishedSkus = products.filter(p => getBakeryStock(p.id) > 0).length;
+  const totalUnits = products.reduce((sum, p) => sum + getBakeryStock(p.id), 0);
   const today = new Date().toISOString().slice(0, 10);
   const todayCount = history.filter(row => row.created_at?.startsWith(today)).length;
 
@@ -122,7 +118,7 @@ function renderStats() {
     <div class="card stat-card">
       <div class="label">Finished goods in stock</div>
       <div class="value">${finishedSkus}</div>
-      <div class="sub">${formatQty(totalUnits)} units across recipes</div>
+      <div class="sub">${formatQty(totalUnits)} units across bakery products</div>
     </div>
     <div class="card stat-card">
       <div class="label">Batches today</div>
@@ -133,18 +129,18 @@ function renderStats() {
 }
 
 function populateProductOptions() {
-  const available = productsWithRecipes();
-  if (!available.length) {
-    productSelect.innerHTML = `<option value="">No products with recipes — add recipes first</option>`;
+  if (!products.length) {
+    productSelect.innerHTML = `<option value="">No bakery products found</option>`;
     productSelect.disabled = true;
     syncSearchableSelect(productSelect);
     return;
   }
 
   productSelect.disabled = false;
-  productSelect.innerHTML = `<option value="">Select product…</option>${available.map(p => `
-    <option value="${p.id}">${p.name} (${p.category_name})</option>
-  `).join("")}`;
+  productSelect.innerHTML = `<option value="">Select product…</option>${products.map(p => {
+    const hasRecipe = recipesByProduct.has(p.id);
+    return `<option value="${p.id}">${p.name} (${p.category_name})${hasRecipe ? "" : " — no recipe"}</option>`;
+  }).join("")}`;
   syncSearchableSelect(productSelect);
 }
 
@@ -170,23 +166,30 @@ function renderPreview() {
     quantity: String(quantity),
   }).then(data => {
     preview = data;
-    recipeWrap.style.display = "block";
-    recipeBody.innerHTML = data.lines.map(line => `
-      <tr>
-        <td>${line.ingredient_name}</td>
-        <td>${line.ingredient_category}</td>
-        <td style="text-align: right;">${formatQty(line.required)}</td>
-        <td style="text-align: right;">${formatQty(line.available)}</td>
-        <td style="text-align: right;">
-          <span class="badge ${line.sufficient ? "badge-active" : "badge-inactive"}">
-            ${line.sufficient ? "OK" : "Short"}
-          </span>
-        </td>
-      </tr>
-    `).join("");
+    if (data.lines?.length) {
+      recipeWrap.style.display = "block";
+      recipeBody.innerHTML = data.lines.map(line => `
+        <tr>
+          <td>${line.ingredient_name}</td>
+          <td>${line.ingredient_category}</td>
+          <td style="text-align: right;">${formatQty(line.required)}</td>
+          <td style="text-align: right;">${formatQty(line.available)}</td>
+          <td style="text-align: right;">
+            <span class="badge ${line.sufficient ? "badge-active" : "badge-inactive"}">
+              ${line.sufficient ? "OK" : "Short"}
+            </span>
+          </td>
+        </tr>
+      `).join("");
+    } else {
+      recipeWrap.style.display = "none";
+      recipeBody.innerHTML = "";
+    }
 
     if (data.can_produce) {
-      previewMessage.textContent = `Ready to produce ${formatQty(data.quantity)} × ${data.product_name}.`;
+      previewMessage.textContent = data.lines?.length
+        ? `Ready to produce ${formatQty(data.quantity)} × ${data.product_name}.`
+        : `No recipe — ready to add ${formatQty(data.quantity)} × ${data.product_name} to stock.`;
       submitBtn.disabled = false;
     } else {
       previewMessage.textContent = "Not enough ingredients at the bakery for this batch.";

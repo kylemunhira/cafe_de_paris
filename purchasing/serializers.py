@@ -72,7 +72,7 @@ class SupplierSerializer(serializers.ModelSerializer):
 class PurchaseOrderLineSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     line_total = serializers.DecimalField(
-        max_digits=14, decimal_places=2, read_only=True
+        max_digits=18, decimal_places=4, read_only=True
     )
 
     class Meta:
@@ -91,9 +91,9 @@ class PurchaseOrderLineCreateSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.filter(is_active=True).select_related("category")
     )
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+    quantity = serializers.DecimalField(max_digits=16, decimal_places=4)
     unit_cost = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False, default=Decimal("0")
+        max_digits=16, decimal_places=4, required=False, default=Decimal("0")
     )
 
     def validate_quantity(self, value):
@@ -115,6 +115,12 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     )
     created_by_name = serializers.SerializerMethodField()
     lines = PurchaseOrderLineSerializer(many=True, read_only=True)
+    subtotal_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
+    vat_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True
+    )
     total_amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True
     )
@@ -138,6 +144,8 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             "approved_at",
             "received_at",
             "lines",
+            "subtotal_amount",
+            "vat_amount",
             "total_amount",
             "line_count",
         ]

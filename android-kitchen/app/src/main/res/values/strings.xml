@@ -73,7 +73,7 @@
     <string name="split_must_cover">Split payments must cover %1$s (now %2$s)</string>
     <string name="payment_customer">Customer</string>
     <string name="customer_walk_in">Walk-in (no account)</string>
-    <string name="account_balance_hint">Account balance: %1$s</string>
+    <string name="account_balance_hint">Credit limit: %1$s</string>
     <string name="select_customer_account">Select a customer to pay from account</string>
     <string name="insufficient_account_balance">Insufficient balance. Available: %1$s</string>
     <string name="order_paid_account">Order #%1$d paid from account — %2$s</string>

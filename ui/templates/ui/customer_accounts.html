@@ -29,6 +29,7 @@
       <div style="text-align: right;">
         <div style="font-size: 0.8rem; color: var(--color-muted);">Account balance</div>
         <div id="account-balance" style="font-size: 1.5rem; font-weight: 700; color: var(--color-primary);">—</div>
+        <div id="credit-limit" style="font-size: 0.85rem; color: var(--color-muted); margin-top: 0.25rem;">Credit limit: —</div>
         <button type="button" class="btn btn-ghost btn-sm" id="print-full-statement-btn" style="margin-top: 0.5rem;">Print statement</button>
       </div>
     </div>
@@ -143,6 +144,7 @@ const emptyState = document.getElementById("empty-state");
 const selectedCustomerName = document.getElementById("selected-customer-name");
 const selectedCustomerMeta = document.getElementById("selected-customer-meta");
 const accountBalance = document.getElementById("account-balance");
+const creditLimitEl = document.getElementById("credit-limit");
 const depositForm = document.getElementById("deposit-form");
 const depositCurrency = document.getElementById("deposit-currency");
 const depositAmount = document.getElementById("deposit-amount");
@@ -258,6 +260,9 @@ async function selectCustomer(customer) {
   const costPart = usesCostPrice(customer) ? " · Orders charged at recipe cost" : "";
   selectedCustomerMeta.textContent = `${typePart}${costPart} · ${contact}`;
   accountBalance.textContent = formatCurrency(customer.account_balance);
+  if (creditLimitEl) {
+    creditLimitEl.textContent = `Credit limit: ${formatCurrency(customer.credit_limit || 0)}`;
+  }
   renderCustomerPicker();
   await loadTransactions();
 }

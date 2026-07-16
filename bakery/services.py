@@ -68,7 +68,15 @@ def ingredient_availability(branch, ingredient_ids) -> dict[int, Decimal]:
 def preview_production(branch, product, quantity: Decimal) -> dict:
     requirements = required_ingredients(product, quantity)
     if not requirements:
-        raise NoRecipeError(product)
+        # Products without a recipe can still be produced (stock in only).
+        return {
+            "product_id": product.id,
+            "product_name": product.name,
+            "quantity": quantity,
+            "lines": [],
+            "can_produce": True,
+            "shortages": [],
+        }
 
     ingredient_ids = list(requirements.keys())
     availability = ingredient_availability(branch, ingredient_ids)

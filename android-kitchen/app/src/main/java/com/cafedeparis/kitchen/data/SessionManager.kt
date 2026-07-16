@@ -324,6 +324,7 @@ object JsonParsers {
                 id = item.getInt("id"),
                 full_name = item.optString("full_name", item.optString("first_name", "Customer")),
                 account_balance = item.optString("account_balance", "0"),
+                credit_limit = item.optString("credit_limit", "0"),
             )
         }
     }

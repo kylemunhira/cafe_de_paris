@@ -170,6 +170,47 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Insufficient", response.data["detail"])
 
+    def test_pay_order_from_account_within_credit_limit(self):
+        self.customer.account_balance = Decimal("0.00")
+        self.customer.credit_limit = Decimal("5.00")
+        self.customer.save(update_fields=["account_balance", "credit_limit"])
+        order = Order.objects.create(branch=self.branch, customer=self.customer)
+        order.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+
+        pay_order_from_account(order=order, recorded_by=self.user)
+        order.refresh_from_db()
+        self.customer.refresh_from_db()
+
+        self.assertEqual(order.status, OrderStatus.PAID)
+        self.assertEqual(self.customer.account_balance, Decimal("-3.50"))
+
+    def test_pay_order_from_account_exceeds_credit_limit(self):
+        self.customer.account_balance = Decimal("0.00")
+        self.customer.credit_limit = Decimal("5.00")
+        self.customer.save(update_fields=["account_balance", "credit_limit"])
+        order = Order.objects.create(branch=self.branch, customer=self.customer)
+        order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"payment_method": "account"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Insufficient", response.data["detail"])
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.account_balance, Decimal("0.00"))
+
     def test_customer_accounts_page(self):
         response = self.ui_client.get("/customer-accounts/")
         self.assertEqual(response.status_code, 200)

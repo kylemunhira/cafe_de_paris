@@ -11,6 +11,7 @@ class CustomerAdmin(admin.ModelAdmin):
         "phone",
         "account_type",
         "account_balance",
+        "credit_limit",
         "loyalty_points",
         "created_at",
     )

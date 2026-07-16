@@ -4,6 +4,7 @@ from branches.models import Branch, BranchType
 from orders.models import FiscalApprovalStatus, Order, OrderItem, OrderStatus
 from orders.tax import split_inclusive_total
 from purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus
+from purchasing.tax import split_purchase_line_total
 from reports.services import parse_report_filters
 
 
@@ -118,7 +119,7 @@ def _aggregate_purchases(purchase_orders):
 
     for line in lines:
         line_total = line.line_total
-        split = _split_line_total(line_total, line.product)
+        split = split_purchase_line_total(line_total, line.product)
         is_raw = line.product.category.name == "Ingredients"
 
         total_incl += split["total"]

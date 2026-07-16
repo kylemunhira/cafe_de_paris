@@ -71,7 +71,14 @@ data class Customer(
     val id: Int,
     val full_name: String,
     val account_balance: String,
-)
+    val credit_limit: String = "0",
+) {
+    fun availableCredit(): Double {
+        val balance = account_balance.toDoubleOrNull() ?: 0.0
+        val limit = credit_limit.toDoubleOrNull() ?: 0.0
+        return balance + limit
+    }
+}
 
 data class Supplier(
     val id: Int,

@@ -868,13 +868,13 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun customerLabel(customer: Customer): String {
-        val balance = customer.account_balance.toDoubleOrNull() ?: 0.0
-        val balanceSuffix = if (balance > 0) {
-            " · ${ProductAdapter.formatMoney(customer.account_balance)}"
+        val limit = customer.credit_limit.toDoubleOrNull() ?: 0.0
+        val limitSuffix = if (limit > 0) {
+            " · Limit ${ProductAdapter.formatMoney(customer.credit_limit)}"
         } else {
             ""
         }
-        return customer.full_name + balanceSuffix
+        return customer.full_name + limitSuffix
     }
 
     private fun selectedCustomer(): Customer? {
@@ -895,7 +895,7 @@ class PosActivity : KeepScreenOnActivity() {
         binding.accountBalanceHint.visibility = View.VISIBLE
         binding.accountBalanceHint.text = getString(
             R.string.account_balance_hint,
-            ProductAdapter.formatMoney(customer.account_balance),
+            ProductAdapter.formatMoney(customer.credit_limit, baseCurrencySymbol()),
         )
     }
 
@@ -930,8 +930,7 @@ class PosActivity : KeepScreenOnActivity() {
         binding.checkoutButton.isEnabled = when (paymentMethod) {
             PaymentMethod.ACCOUNT -> {
                 val customer = selectedCustomer()
-                val balance = customer?.account_balance?.toDoubleOrNull() ?: 0.0
-                customer != null && balance >= total
+                customer != null && customer.availableCredit() >= total
             }
             PaymentMethod.CASH -> {
                 if (isSplitPaymentActive()) {
@@ -1455,13 +1454,13 @@ class PosActivity : KeepScreenOnActivity() {
                 Toast.makeText(this, R.string.select_customer_account, Toast.LENGTH_SHORT).show()
                 return
             }
-            val balance = customer.account_balance.toDoubleOrNull() ?: 0.0
-            if (balance < total) {
+            val available = customer.availableCredit()
+            if (available < total) {
                 Toast.makeText(
                     this,
                     getString(
                         R.string.insufficient_account_balance,
-                        ProductAdapter.formatMoney(customer.account_balance),
+                        ProductAdapter.formatMoney(available, baseCurrencySymbol()),
                     ),
                     Toast.LENGTH_LONG,
                 ).show()
