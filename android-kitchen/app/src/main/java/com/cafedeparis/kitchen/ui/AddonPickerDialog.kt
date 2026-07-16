@@ -34,11 +34,16 @@ object AddonPickerDialog {
         MaterialAlertDialogBuilder(activity)
             .setTitle(activity.getString(R.string.addon_picker_title, product.name))
             .setView(binding.root)
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                onConfirm(emptyList(), "")
+            }
             .setPositiveButton(R.string.add_to_cart) { _, _ ->
                 val addons = collectSelectedAddons(product, selections)
                 val notes = binding.addonNotesInput.text?.toString()?.trim().orEmpty()
                 onConfirm(addons, notes)
+            }
+            .setOnCancelListener {
+                onConfirm(emptyList(), "")
             }
             .show()
     }

@@ -196,9 +196,9 @@
         <tr>
           <td>{{ forloop.counter }}</td>
           <td>{{ line.product.name }}</td>
-          <td class="qty">{{ line.quantity }}</td>
-          <td class="price">{{ line.unit_price|default:"0.00" }}</td>
-          <td class="amt">{{ line.line_total }}</td>
+          <td class="qty">{{ line.quantity|floatformat:2 }}</td>
+          <td class="price">{{ line.unit_price|default_if_none:0|floatformat:2 }}</td>
+          <td class="amt">{{ line.line_total|floatformat:2 }}</td>
         </tr>
         {% empty %}
         <tr><td colspan="5">No line items</td></tr>
@@ -214,11 +214,11 @@
         </div>
         <div class="summary-row">
           <span>Total quantity</span>
-          <strong>{{ note.total_quantity }}</strong>
+          <strong>{{ note.total_quantity|floatformat:2 }}</strong>
         </div>
         <div class="summary-row grand">
           <span>Invoice total</span>
-          <strong>{% if base_currency %}{{ base_currency.symbol }}{% endif %}{{ note.total_amount }}</strong>
+          <strong>{% if base_currency %}{{ base_currency.symbol }}{% endif %}{{ note.total_amount|floatformat:2 }}</strong>
         </div>
         <div class="summary-row" style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #d8cfc4;">
           <span>Payment status</span>

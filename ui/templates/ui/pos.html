@@ -1600,9 +1600,19 @@ function mountAddonModal() {
   addonModal.dataset.mounted = "true";
 }
 
-function closeAddonModal() {
+function dismissAddonModal() {
   pendingAddonProduct = null;
   if (addonModal) addonModal.style.display = "none";
+}
+
+function closeAddonModalAndAddPlain() {
+  const product = pendingAddonProduct;
+  dismissAddonModal();
+  if (product) addToCart(product, { addons: [], notes: "" });
+}
+
+function closeAddonModal() {
+  dismissAddonModal();
 }
 
 function renderAddonModalGroups(product) {
@@ -1662,7 +1672,7 @@ function collectSelectedAddons() {
   return selected;
 }
 
-addonModalCloseBtn?.addEventListener("click", closeAddonModal);
+addonModalCloseBtn?.addEventListener("click", closeAddonModalAndAddPlain);
 addonModalCancelBtn?.addEventListener("click", closeAddonModal);
 addonModalAddBtn?.addEventListener("click", () => {
   if (!pendingAddonProduct) return;
@@ -2023,7 +2033,11 @@ dayendBtn?.addEventListener("click", async () => {
     showToast("Select a branch first", true);
     return;
   }
-  await openDayEndModal(getTodayISO());
+  try {
+    await openDayEndModal(getTodayISO());
+  } catch (err) {
+    showToast(err.message || "Day end failed.", true);
+  }
 });
 
 expenseBtn?.addEventListener("click", () => {
@@ -2163,7 +2177,7 @@ function currencyCodeOf(currency) {
 }
 
 function isFiscalBranchSelected() {
-  return Boolean(branch?.fiscalization_enabled);
+  return Boolean(selectedBranch()?.fiscalization_enabled);
 }
 
 function dayEndCurrencyCodes(activeCurrencies) {
@@ -2234,6 +2248,7 @@ async function openDayEndModal(reportDate) {
     return false;
   }
 
+  closeStockTakeRequiredModal();
   const activeCurrencies = currencies.filter(c => c.is_active);
   dayendDateInput.value = date;
   setupDayEndCurrencyCodePicker(activeCurrencies);
@@ -2383,6 +2398,8 @@ init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
 window.addEventListener("beforeunload", () => stopKitchenRefresh());
 
 window.addEventListener("pageshow", (event) => {
+  closeStockTakeRequiredModal();
+  closeDayEndModal();
   if (event.persisted) init().catch(err => showToast(`Failed to load POS: ${err.message}`, true));
 });
 </script>

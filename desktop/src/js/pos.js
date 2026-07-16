@@ -1674,12 +1674,22 @@ productSearchInput.addEventListener("input", () => {
   renderProducts();
 });
 
-function closeAddonPickerModal() {
+function dismissAddonPickerModal() {
   addonPickerModal.hidden = true;
   addonPickerProduct = null;
   addonPickerSelections.clear();
   addonPickerGroups.innerHTML = "";
   addonNotesInput.value = "";
+}
+
+function closeAddonPickerModalAndAddPlain() {
+  const product = addonPickerProduct;
+  dismissAddonPickerModal();
+  if (product) addProductToCart(product, [], "");
+}
+
+function closeAddonPickerModal() {
+  dismissAddonPickerModal();
 }
 
 function renderAddonPickerGroups(product) {
@@ -1766,7 +1776,7 @@ function confirmAddonPicker() {
   closeAddonPickerModal();
 }
 
-addonPickerCloseBtn?.addEventListener("click", closeAddonPickerModal);
+addonPickerCloseBtn?.addEventListener("click", closeAddonPickerModalAndAddPlain);
 addonPickerCancelBtn?.addEventListener("click", closeAddonPickerModal);
 addonPickerConfirmBtn?.addEventListener("click", confirmAddonPicker);
 addonPickerModal?.addEventListener("click", (event) => {
