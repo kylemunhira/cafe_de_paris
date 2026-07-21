@@ -170,6 +170,29 @@ data class DayEndStockTakeCheck(
     val draftInProgress: Boolean = false,
 )
 
+data class StockTakeLine(
+    val id: Int,
+    val productId: Int,
+    val productName: String,
+    val categoryName: String?,
+    val countedQuantity: String?,
+)
+
+data class StockTake(
+    val id: Int,
+    val stockTakeType: String,
+    val stockTakeTypeDisplay: String,
+    val status: String,
+    val countDate: String,
+    val lines: List<StockTakeLine> = emptyList(),
+)
+
+data class CustomerDepositResult(
+    val accountBalance: String,
+    val transactionId: Int,
+    val amount: String? = null,
+)
+
 data class OrderSlipPrintOptions(
     val taxRate: Double = 15.5,
     val baseCurrencyCode: String? = null,

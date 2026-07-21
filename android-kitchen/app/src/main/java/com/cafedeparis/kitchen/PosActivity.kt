@@ -36,11 +36,14 @@ import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.PaymentOptionLine
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.data.SessionManager
+import com.cafedeparis.kitchen.data.StockTake
 import com.cafedeparis.kitchen.data.Supplier
 import com.cafedeparis.kitchen.databinding.ActivityPosBinding
+import com.cafedeparis.kitchen.databinding.DialogCustomerPaymentBinding
 import com.cafedeparis.kitchen.databinding.DialogDayEndBinding
 import java.util.Locale
 import com.cafedeparis.kitchen.databinding.DialogExpenseBinding
+import com.cafedeparis.kitchen.databinding.DialogStockTakeBinding
 import com.cafedeparis.kitchen.databinding.DialogTablePickerBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
@@ -89,6 +92,10 @@ class PosActivity : KeepScreenOnActivity() {
     private var tablePickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var dayEndDialog: androidx.appcompat.app.AlertDialog? = null
     private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
+    private var stockTakeDialog: androidx.appcompat.app.AlertDialog? = null
+    private var customerPaymentDialog: androidx.appcompat.app.AlertDialog? = null
+    private var activeStockTake: StockTake? = null
+    private var stockTakeLineInputs: MutableMap<Int, TextInputEditText> = linkedMapOf()
     private var refreshJob: Job? = null
     private val printer = EscPosPrinter()
 
@@ -162,6 +169,8 @@ class PosActivity : KeepScreenOnActivity() {
         tablePickerDialog?.dismiss()
         dayEndDialog?.dismiss()
         expenseDialog?.dismiss()
+        stockTakeDialog?.dismiss()
+        customerPaymentDialog?.dismiss()
         super.onDestroy()
     }
 
@@ -293,6 +302,405 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
+    private fun openStockTakeDialog() {
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                showStockTakeDialog()
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun showStockTakeDialog() {
+        val dialogBinding = DialogStockTakeBinding.inflate(layoutInflater)
+        dialogBinding.stockTakeDateInput.setText(todayIso())
+        val types = listOf(
+            getString(R.string.stock_take_type_daily) to "daily",
+            getString(R.string.stock_take_type_monthly) to "monthly",
+        )
+        dialogBinding.stockTakeTypeSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            types.map { it.first },
+        )
+        activeStockTake = null
+        stockTakeLineInputs.clear()
+        dialogBinding.stockTakeLines.removeAllViews()
+        dialogBinding.stockTakeStatusLabel.text = getString(R.string.stock_take_start_hint)
+        dialogBinding.stockTakeStartButton.visibility = View.VISIBLE
+
+        fun selectedType(): String {
+            val index = dialogBinding.stockTakeTypeSpinner.selectedItemPosition.coerceAtLeast(0)
+            return types.getOrNull(index)?.second ?: "daily"
+        }
+
+        fun selectedDate(): String {
+            return dialogBinding.stockTakeDateInput.text?.toString()?.trim().orEmpty().ifBlank { todayIso() }
+        }
+
+        fun periodDate(type: String, date: String): String {
+            return if (type == "monthly" && date.length >= 7) "${date.take(7)}-01" else date
+        }
+
+        fun renderStockTake(stockTake: StockTake) {
+            activeStockTake = stockTake
+            dialogBinding.stockTakeStatusLabel.text =
+                "${stockTake.stockTakeTypeDisplay} · ${stockTake.countDate}"
+            dialogBinding.stockTakeStartButton.visibility = View.GONE
+            dialogBinding.stockTakeLines.removeAllViews()
+            stockTakeLineInputs.clear()
+            if (stockTake.lines.isEmpty()) {
+                dialogBinding.stockTakeLines.addView(
+                    TextView(this).apply {
+                        text = getString(R.string.stock_take_no_lines)
+                        setTextColor(getColor(R.color.text_muted))
+                        textSize = 13f
+                    },
+                )
+                return
+            }
+            for (line in stockTake.lines) {
+                val label = TextView(this).apply {
+                    text = buildString {
+                        append(line.productName)
+                        if (!line.categoryName.isNullOrBlank()) {
+                            append(" · ")
+                            append(line.categoryName)
+                        }
+                    }
+                    setTextColor(getColor(R.color.text_primary))
+                    textSize = 14f
+                    setPadding(0, 8, 0, 4)
+                }
+                val field = TextInputLayout(this).apply {
+                    hint = getString(R.string.stock_take_counted)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { bottomMargin = 8 }
+                }
+                val input = TextInputEditText(field.context).apply {
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    setText(line.countedQuantity.orEmpty())
+                }
+                field.addView(input)
+                dialogBinding.stockTakeLines.addView(label)
+                dialogBinding.stockTakeLines.addView(field)
+                stockTakeLineInputs[line.id] = input
+            }
+        }
+
+        fun loadDraft() {
+            lifecycleScope.launch {
+                binding.refreshProgress.visibility = View.VISIBLE
+                try {
+                    val type = selectedType()
+                    val date = periodDate(type, selectedDate())
+                    val drafts = withContext(Dispatchers.IO) {
+                        api.fetchStockTakes(type = type, status = "draft")
+                    }
+                    val draft = drafts.firstOrNull { it.countDate == date }
+                    if (draft != null) {
+                        val full = withContext(Dispatchers.IO) { api.fetchStockTake(draft.id) }
+                        renderStockTake(full)
+                    } else {
+                        activeStockTake = null
+                        stockTakeLineInputs.clear()
+                        dialogBinding.stockTakeLines.removeAllViews()
+                        dialogBinding.stockTakeStartButton.visibility = View.VISIBLE
+                        dialogBinding.stockTakeStatusLabel.text =
+                            getString(R.string.stock_take_start_hint)
+                    }
+                } catch (err: ApiException) {
+                    handleApiError(err)
+                } catch (err: Exception) {
+                    showError(getString(R.string.connection_failed, err.message ?: ""))
+                } finally {
+                    binding.refreshProgress.visibility = View.GONE
+                }
+            }
+        }
+
+        dialogBinding.stockTakeStartButton.setOnClickListener {
+            lifecycleScope.launch {
+                binding.refreshProgress.visibility = View.VISIBLE
+                try {
+                    val created = withContext(Dispatchers.IO) {
+                        api.createStockTake(selectedType(), selectedDate())
+                    }
+                    renderStockTake(created)
+                } catch (err: ApiException) {
+                    handleApiError(err)
+                } catch (err: Exception) {
+                    showError(getString(R.string.connection_failed, err.message ?: ""))
+                } finally {
+                    binding.refreshProgress.visibility = View.GONE
+                }
+            }
+        }
+
+        dialogBinding.stockTakeTypeSpinner.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long,
+                ) {
+                    loadDraft()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+
+        stockTakeDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.stock_take_title)
+            .setView(dialogBinding.root)
+            .setNeutralButton(R.string.stock_take_save, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.stock_take_complete, null)
+            .create()
+
+        stockTakeDialog?.setOnShowListener {
+            stockTakeDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+                ?.setOnClickListener { saveStockTake(complete = false) }
+            stockTakeDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+                ?.setOnClickListener { saveStockTake(complete = true) }
+        }
+        stockTakeDialog?.show()
+    }
+
+    private fun collectStockTakeLines(): List<Pair<Int, String?>> {
+        return stockTakeLineInputs.map { (lineId, input) ->
+            val raw = input.text?.toString()?.trim().orEmpty()
+            lineId to raw.ifBlank { null }
+        }
+    }
+
+    private fun saveStockTake(complete: Boolean) {
+        val stockTake = activeStockTake ?: run {
+            Toast.makeText(this, R.string.stock_take_start_hint, Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                val updated = withContext(Dispatchers.IO) {
+                    api.updateStockTakeLines(stockTake.id, collectStockTakeLines())
+                }
+                if (complete) {
+                    withContext(Dispatchers.IO) { api.completeStockTake(stockTake.id) }
+                    stockTakeDialog?.dismiss()
+                    activeStockTake = null
+                    Toast.makeText(this@PosActivity, R.string.stock_take_completed, Toast.LENGTH_SHORT).show()
+                } else {
+                    activeStockTake = updated
+                    Toast.makeText(this@PosActivity, R.string.stock_take_saved, Toast.LENGTH_SHORT).show()
+                }
+            } catch (err: ApiException) {
+                handleApiError(err)
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun openCustomerPaymentDialog() {
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                customers = withContext(Dispatchers.IO) { api.fetchCustomers() }
+                if (allCurrencies.isEmpty()) {
+                    allCurrencies = withContext(Dispatchers.IO) { api.fetchCurrencies() }
+                }
+                if (customers.isEmpty()) {
+                    Toast.makeText(
+                        this@PosActivity,
+                        R.string.customer_payment_no_customers,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return@launch
+                }
+                showCustomerPaymentDialog()
+            } catch (err: ApiException) {
+                handleApiError(err)
+                Toast.makeText(this@PosActivity, err.message, Toast.LENGTH_LONG).show()
+            } catch (err: Exception) {
+                val message = getString(R.string.connection_failed, err.message ?: "")
+                showError(message)
+                Toast.makeText(this@PosActivity, message, Toast.LENGTH_LONG).show()
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun showCustomerPaymentDialog() {
+        val dialogBinding = DialogCustomerPaymentBinding.inflate(layoutInflater)
+        val labels = mutableListOf(getString(R.string.customer_payment_select_hint))
+        labels.addAll(customers.map { it.full_name })
+        dialogBinding.customerPaymentCustomerSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            labels,
+        )
+
+        val paymentCurrencies = allCurrencies.filter { it.is_active }.ifEmpty { allCurrencies }
+        if (paymentCurrencies.isEmpty()) {
+            Toast.makeText(this, R.string.customer_payment_currency_required, Toast.LENGTH_LONG).show()
+            return
+        }
+        dialogBinding.customerPaymentCurrencySpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            paymentCurrencies.map { currency ->
+                val symbol = currency.symbol.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+                "${currency.name.ifBlank { currency.code }}$symbol"
+            },
+        )
+        val baseIndex = paymentCurrencies.indexOfFirst { it.is_base }.takeIf { it >= 0 } ?: 0
+        dialogBinding.customerPaymentCurrencySpinner.setSelection(baseIndex)
+
+        fun updateBalance() {
+            val index = dialogBinding.customerPaymentCustomerSpinner.selectedItemPosition - 1
+            val customer = customers.getOrNull(index)
+            dialogBinding.customerPaymentBalanceLabel.text = if (customer == null) {
+                getString(R.string.customer_payment_select_hint)
+            } else {
+                getString(
+                    R.string.customer_payment_balance,
+                    ProductAdapter.formatMoney(customer.account_balance),
+                )
+            }
+        }
+
+        dialogBinding.customerPaymentCustomerSpinner.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long,
+                ) {
+                    updateBalance()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        updateBalance()
+
+        customerPaymentDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.customer_payment_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.customer_payment_record, null)
+            .create()
+
+        customerPaymentDialog?.setOnShowListener {
+            customerPaymentDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+                ?.setOnClickListener {
+                    saveCustomerPayment(dialogBinding, paymentCurrencies)
+                }
+        }
+        customerPaymentDialog?.show()
+    }
+
+    private fun parseDepositAmount(raw: String): Double? {
+        val normalized = raw.trim().replace(',', '.')
+        return normalized.toDoubleOrNull()
+    }
+
+    private fun saveCustomerPayment(
+        dialogBinding: DialogCustomerPaymentBinding,
+        paymentCurrencies: List<Currency>,
+    ) {
+        val customerIndex = dialogBinding.customerPaymentCustomerSpinner.selectedItemPosition - 1
+        val customer = customers.getOrNull(customerIndex)
+        val amountRaw = dialogBinding.customerPaymentAmountInput.text?.toString()?.trim().orEmpty()
+        val currency = paymentCurrencies.getOrNull(
+            dialogBinding.customerPaymentCurrencySpinner.selectedItemPosition,
+        )
+        val notes = dialogBinding.customerPaymentNotesInput.text?.toString()?.trim().orEmpty()
+
+        if (customer == null) {
+            Toast.makeText(this, R.string.customer_payment_customer_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val amount = parseDepositAmount(amountRaw)
+        if (amount == null || amount <= 0.0) {
+            dialogBinding.customerPaymentAmountInput.error =
+                getString(R.string.customer_payment_amount_required)
+            dialogBinding.customerPaymentAmountInput.requestFocus()
+            return
+        }
+        if (currency == null) {
+            Toast.makeText(this, R.string.customer_payment_currency_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (session.branchId <= 0) {
+            Toast.makeText(this, R.string.customer_payment_branch_required, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val saveButton = customerPaymentDialog
+            ?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+        saveButton?.isEnabled = false
+
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val deposited = api.depositToCustomer(
+                        customerId = customer.id,
+                        currencyId = currency.id,
+                        amount = String.format(Locale.US, "%.2f", amount),
+                        notes = notes,
+                    )
+                    // Confirm against the portal API — never trust a redirect/false success.
+                    val confirmed = api.fetchCustomer(customer.id)
+                    deposited to confirmed
+                }
+                val (deposited, confirmed) = result
+                customers = customers.map {
+                    if (it.id == customer.id) {
+                        it.copy(account_balance = confirmed.account_balance)
+                    } else {
+                        it
+                    }
+                }
+                setupCustomerSpinner(customer.id)
+                updateAccountBalanceHint()
+                customerPaymentDialog?.dismiss()
+                Toast.makeText(
+                    this@PosActivity,
+                    getString(
+                        R.string.customer_payment_recorded_balance,
+                        ProductAdapter.formatMoney(confirmed.account_balance),
+                    ) + " (#${deposited.transactionId})",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } catch (err: ApiException) {
+                handleApiError(err)
+                Toast.makeText(this@PosActivity, err.message, Toast.LENGTH_LONG).show()
+                saveButton?.isEnabled = true
+            } catch (err: Exception) {
+                val message = getString(R.string.connection_failed, err.message ?: "")
+                showError(message)
+                Toast.makeText(this@PosActivity, message, Toast.LENGTH_LONG).show()
+                saveButton?.isEnabled = true
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
     private fun openDayEndDialog() {
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
@@ -303,7 +711,10 @@ class PosActivity : KeepScreenOnActivity() {
                     MaterialAlertDialogBuilder(this@PosActivity)
                         .setTitle(R.string.day_end_stock_take_required)
                         .setMessage(check.detail)
-                        .setPositiveButton(android.R.string.ok, null)
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(R.string.stock_take_open) { _, _ ->
+                            openStockTakeDialog()
+                        }
                         .show()
                     return@launch
                 }
@@ -477,7 +888,10 @@ class PosActivity : KeepScreenOnActivity() {
                     MaterialAlertDialogBuilder(this@PosActivity)
                         .setTitle(R.string.day_end_stock_take_required)
                         .setMessage(check.detail)
-                        .setPositiveButton(android.R.string.ok, null)
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(R.string.stock_take_open) { _, _ ->
+                            openStockTakeDialog()
+                        }
                         .show()
                     return@launch
                 }
@@ -492,7 +906,10 @@ class PosActivity : KeepScreenOnActivity() {
                     MaterialAlertDialogBuilder(this@PosActivity)
                         .setTitle(R.string.day_end_stock_take_required)
                         .setMessage(err.message ?: getString(R.string.day_end_stock_take_required))
-                        .setPositiveButton(android.R.string.ok, null)
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(R.string.stock_take_open) { _, _ ->
+                            openStockTakeDialog()
+                        }
                         .show()
                 } else {
                     handleApiError(err)
@@ -659,6 +1076,8 @@ class PosActivity : KeepScreenOnActivity() {
     private fun updateReceiptModeVisibility() {
         val showReceipt = session.canCollectPayment
         binding.receiptModeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
+        binding.stockTakeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
+        binding.customerPaymentButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         if (!showReceipt && posMode == PosMode.RECEIPT) {
             setPosMode(PosMode.ORDER)
         }
@@ -1010,6 +1429,8 @@ class PosActivity : KeepScreenOnActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         binding.expenseButton.setOnClickListener { openExpenseDialog() }
+        binding.stockTakeButton.setOnClickListener { openStockTakeDialog() }
+        binding.customerPaymentButton.setOnClickListener { openCustomerPaymentDialog() }
         binding.dayEndButton.setOnClickListener { openDayEndDialog() }
         binding.clearButton.setOnClickListener {
             if (posMode == PosMode.ORDER) {

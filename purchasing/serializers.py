@@ -166,7 +166,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
 class PurchaseOrderCreateSerializer(serializers.Serializer):
     branch = serializers.PrimaryKeyRelatedField(
-        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.STORES)
+        queryset=Branch.objects.filter(is_active=True)
     )
     supplier = serializers.PrimaryKeyRelatedField(
         queryset=Supplier.objects.filter(is_active=True)
@@ -183,10 +183,6 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
         return value
 
     def validate_branch(self, branch):
-        if branch.branch_type != BranchType.STORES:
-            raise serializers.ValidationError(
-                "Purchases can only be recorded for central stores."
-            )
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return branch

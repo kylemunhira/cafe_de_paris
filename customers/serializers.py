@@ -49,6 +49,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
     )
     statement_label = serializers.CharField(read_only=True)
     recorded_by_name = serializers.SerializerMethodField()
+    recorded_by_username = serializers.SerializerMethodField()
     order_id = serializers.IntegerField(source="order.id", read_only=True, default=None)
 
     class Meta:
@@ -72,6 +73,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
             "notes",
             "recorded_by",
             "recorded_by_name",
+            "recorded_by_username",
             "created_at",
         ]
         read_only_fields = fields
@@ -80,6 +82,11 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
         if not obj.recorded_by:
             return None
         return obj.recorded_by.get_full_name() or obj.recorded_by.username
+
+    def get_recorded_by_username(self, obj):
+        if not obj.recorded_by:
+            return None
+        return obj.recorded_by.username
 
 
 class CustomerDepositSerializer(serializers.Serializer):

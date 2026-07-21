@@ -8,7 +8,7 @@
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
   <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record purchase</h3>
   <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted);">
-    Supplier purchases are recorded at central stores only. Stock is added immediately when you save.
+    Record a supplier purchase for any branch. Stock is added immediately when you save.
   </p>
   <form id="po-form">
     <div class="form-row">
@@ -53,8 +53,8 @@
         <input type="number" id="po-qty" min="0.0001" step="0.0001" placeholder="0">
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
-        <label for="po-cost">Unit cost</label>
-        <input type="number" id="po-cost" min="0" step="0.0001" placeholder="0.0000">
+        <label for="po-line-total">Line total</label>
+        <input type="number" id="po-line-total" min="0" step="0.01" placeholder="0.00">
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
         <button type="button" id="add-line-btn" class="btn btn-ghost">Add line</button>
@@ -160,7 +160,7 @@ const poTypeHint = document.getElementById("po-type-hint");
 const productSelect = document.getElementById("po-product");
 const productLabel = document.getElementById("po-product-label");
 const qtyInput = document.getElementById("po-qty");
-const costInput = document.getElementById("po-cost");
+const lineTotalInput = document.getElementById("po-line-total");
 const linesWrap = document.getElementById("lines-wrap");
 const linesBody = document.getElementById("lines-body");
 const linesSubtotal = document.getElementById("lines-subtotal");
@@ -271,6 +271,7 @@ function branchTypeLabel(branch) {
   if (branch.branch_type === "bakery") return " (Bakery)";
   if (branch.branch_type === "stores") return " (Central Stores)";
   if (branch.branch_type === "hq") return " (HQ)";
+  if (branch.branch_type === "branch") return " (Branch)";
   return "";
 }
 
@@ -279,10 +280,10 @@ function isIngredientsOnlyBranch(branch) {
 }
 
 function branchesForPurchase(allBranches) {
-  const centralStores = allBranches.filter(b => b.branch_type === "stores");
-  if (canPurchaseForAnyBranch) return centralStores;
+  const activeBranches = allBranches.filter(b => b.is_active);
+  if (canPurchaseForAnyBranch) return activeBranches;
   if (!staffBranchId) return [];
-  return centralStores.filter(b => String(b.id) === staffBranchId);
+  return activeBranches.filter(b => String(b.id) === staffBranchId);
 }
 
 async function fetchAllProducts(params = {}) {
@@ -473,9 +474,7 @@ async function loadData() {
     apiGet("/purchase-orders/?page_size=500"),
   ]);
 
-  branches = branchesForPurchase(
-    unwrapList(branchesData).filter(b => b.is_active && b.branch_type === "stores")
-  );
+  branches = branchesForPurchase(unwrapList(branchesData));
   suppliers = unwrapList(suppliersData);
   products = [...ingredientProducts, ...posProducts].filter(p => p.is_active);
   allOrders = unwrapList(ordersData);
@@ -507,7 +506,7 @@ async function loadData() {
 addLineBtn.addEventListener("click", () => {
   const productId = productSelect.value;
   const quantity = Number(qtyInput.value);
-  const unitCost = Number(costInput.value) || 0;
+  const lineTotal = Number(lineTotalInput.value);
 
   if (!productId) {
     const branch = selectedBranch();
@@ -519,12 +518,17 @@ addLineBtn.addEventListener("click", () => {
     showToast("Enter a valid quantity", true);
     return;
   }
+  if (!Number.isFinite(lineTotal) || lineTotal < 0) {
+    showToast("Enter a valid line total", true);
+    return;
+  }
   if (draftLines.some(l => String(l.product) === productId)) {
     showToast("Product already added", true);
     return;
   }
 
   const product = products.find(p => String(p.id) === productId);
+  const unitCost = lineTotal / quantity;
   draftLines.push({
     product: Number(productId),
     product_name: product.name,
@@ -534,7 +538,7 @@ addLineBtn.addEventListener("click", () => {
 
   productSelect.value = "";
   qtyInput.value = "";
-  costInput.value = "";
+  lineTotalInput.value = "";
   renderDraftLines();
 });
 

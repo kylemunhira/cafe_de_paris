@@ -249,13 +249,27 @@ def user_is_grv_staff(user):
     return profile.role == StaffRole.STAFF
 
 
+def user_is_baker(user):
+    """Bakery staff — limited web console (stock take, production, transfers)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.BAKER
+
+
 def user_can_access_management_console(user):
-    """Full management console — not cashiers, waiters, or GRV-only staff."""
+    """Full management console — not cashiers, waiters, bakers, or GRV-only staff."""
     if not user or not user.is_authenticated:
         return False
     return (
         not user_is_cashier(user)
         and not user_is_waiter(user)
+        and not user_is_baker(user)
         and not user_is_grv_staff(user)
     )
 

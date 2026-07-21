@@ -8,6 +8,12 @@
 {% if can_manage_fiscal_day %}
 <button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-btn" style="display: none;">Fiscal day</button>
 {% endif %}
+{% if can_stock_take %}
+<button type="button" class="btn btn-ghost btn-sm" id="stock-take-btn">Stock take</button>
+{% endif %}
+{% if can_record_customer_payment %}
+<button type="button" class="btn btn-ghost btn-sm" id="customer-payment-btn">Customer payment</button>
+{% endif %}
 <button type="button" class="btn btn-ghost btn-sm" id="expense-btn">Add expense</button>
 <button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">Day end</button>
 {% endblock %}
@@ -147,6 +153,46 @@
       <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>
         Clear Cart
       </button>
+    </div>
+  </div>
+</div>
+
+<div id="pos-stock-take-modal" class="pos-operation-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
+  <div class="card" style="width:min(760px, 100%); max-height:92vh; overflow:auto; padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
+      <h3 id="pos-stock-title" style="margin:0;">Start stock take</h3>
+      <button type="button" class="btn btn-ghost btn-sm" data-close-pos-modal>Close</button>
+    </div>
+    <div class="form-row" style="margin-top:1rem;">
+      <div class="form-group"><label for="pos-stock-date">Count date</label><input type="date" id="pos-stock-date"></div>
+      <div class="form-group"><label for="pos-stock-type">Count type</label><select id="pos-stock-type"><option value="daily">Daily</option><option value="monthly">Monthly</option></select></div>
+      <div class="form-group" style="flex:0 0 auto; align-self:end;"><button type="button" class="btn btn-primary" id="pos-stock-start">Start count</button></div>
+    </div>
+    <p style="font-size:0.82rem; color:var(--color-muted);">Enter the physical quantity for every item. System quantities remain hidden while counting.</p>
+    <div id="pos-stock-lines" style="margin-top:0.5rem;"><p class="empty-state">Choose the count type and start a count.</p></div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+      <button type="button" class="btn btn-ghost" id="pos-stock-save" style="display:none;">Save progress</button>
+      <button type="button" class="btn btn-primary" id="pos-stock-complete" style="display:none;">Complete &amp; post variances</button>
+    </div>
+  </div>
+</div>
+
+<div id="pos-customer-payment-modal" class="pos-operation-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
+  <div class="card" style="width:min(500px, 100%); max-height:92vh; overflow:auto; padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
+      <h3 style="margin:0;">Record customer payment</h3>
+      <button type="button" class="btn btn-ghost btn-sm" data-close-pos-modal>Close</button>
+    </div>
+    <div class="form-group" style="margin-top:1rem;"><label for="pos-payment-customer">Customer</label><select id="pos-payment-customer"></select></div>
+    <p id="pos-payment-balance" style="font-size:0.85rem; color:var(--color-muted);">Select a customer</p>
+    <div class="form-row">
+      <div class="form-group"><label for="pos-payment-currency">Currency</label><select id="pos-payment-currency"></select></div>
+      <div class="form-group"><label for="pos-payment-amount">Amount received</label><input type="number" id="pos-payment-amount" min="0.01" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div class="form-group"><label for="pos-payment-notes">Notes (optional)</label><input type="text" id="pos-payment-notes" maxlength="200"></div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+      <button type="button" class="btn btn-ghost" data-close-pos-modal>Cancel</button>
+      <button type="button" class="btn btn-primary" id="pos-payment-save">Record payment</button>
     </div>
   </div>
 </div>
@@ -333,6 +379,7 @@
 import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+import { initPosOperations } from "{% static 'ui/js/pos-operations.js' %}?v=1";
 
 const canFilterAnyBranch = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
 const preferredBranchId = "{{ staff_branch_id|default:'' }}";
@@ -360,6 +407,7 @@ let receiptPaymentOrderKey = null;
 let kitchenRefreshTimer = null;
 let diningTables = [];
 let tablePickerManageMode = false;
+let posOperations = null;
 
 const branchSelect = document.getElementById("branch-select");
 const orderType = document.getElementById("order-type");
@@ -437,6 +485,7 @@ const stockTakeRequiredModal = document.getElementById("stock-take-required-moda
 const stockTakeRequiredMessage = document.getElementById("stock-take-required-message");
 const stockTakeRequiredCloseBtn = document.getElementById("stock-take-required-close-btn");
 const stockTakeRequiredCancelBtn = document.getElementById("stock-take-required-cancel-btn");
+const stockTakeRequiredGoBtn = document.getElementById("stock-take-required-go-btn");
 
 const canManageFiscalDay = "{{ can_manage_fiscal_day|yesno:'true,false' }}" === "true";
 const canManageDiningTables = "{{ can_manage_dining_tables|yesno:'true,false' }}" === "true";
@@ -2344,6 +2393,12 @@ dayendDateInput?.addEventListener("change", async () => {
 });
 stockTakeRequiredCloseBtn?.addEventListener("click", closeStockTakeRequiredModal);
 stockTakeRequiredCancelBtn?.addEventListener("click", closeStockTakeRequiredModal);
+stockTakeRequiredGoBtn?.addEventListener("click", (event) => {
+  if (!posOperations) return;
+  event.preventDefault();
+  closeStockTakeRequiredModal();
+  posOperations.openStockTake();
+});
 stockTakeRequiredModal?.addEventListener("click", (event) => {
   if (event.target === stockTakeRequiredModal) closeStockTakeRequiredModal();
 });
@@ -2356,6 +2411,18 @@ dayendModal?.addEventListener("keydown", (event) => {
 
 async function init() {
   mountAddonModal();
+  if (!posOperations) {
+    posOperations = initPosOperations({
+      branchId: () => branchSelect.value,
+      customers: () => customers,
+      currencies: () => currencies,
+      onCustomerUpdated: (customerId, balance) => {
+        const customer = customers.find((item) => item.id === customerId);
+        if (customer) customer.account_balance = balance;
+        renderCustomerSelects();
+      },
+    });
+  }
   try {
     const [branchesData, productsData, categoriesData, currenciesData, customersData, suppliersData] = await Promise.all([
       apiGet("/branches/?page_size=500").then(data => unwrapList(data)),

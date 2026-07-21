@@ -1,4 +1,4 @@
-from accounts.branch_access import user_can_access_pos
+from accounts.branch_access import user_can_access_pos, user_can_collect_payment
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -81,7 +81,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def deposit(self, request, pk=None):
-        self._require_customer_access()
+        if not user_can_collect_payment(request.user):
+            raise PermissionDenied("Only payment staff can record customer deposits.")
         customer = self.get_object()
         serializer = CustomerDepositSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)

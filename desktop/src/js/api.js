@@ -72,6 +72,45 @@ export function createExpense(session, payload) {
   });
 }
 
+export function fetchStockTakes(session, { branchId, type, status = "draft" }) {
+  const query = new URLSearchParams({
+    branch: String(branchId),
+    stock_take_type: type,
+    status,
+    page_size: "100",
+  });
+  return authedRequest(session, `/stock-takes/?${query.toString()}`);
+}
+
+export function fetchStockTake(session, stockTakeId) {
+  return authedRequest(session, `/stock-takes/${stockTakeId}/`);
+}
+
+export function createStockTake(session, payload) {
+  return authedRequest(session, "/stock-takes/", { method: "POST", body: payload });
+}
+
+export function updateStockTakeLines(session, stockTakeId, lines) {
+  return authedRequest(session, `/stock-takes/${stockTakeId}/lines/`, {
+    method: "PATCH",
+    body: { lines },
+  });
+}
+
+export function completeStockTake(session, stockTakeId) {
+  return authedRequest(session, `/stock-takes/${stockTakeId}/complete/`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export function recordCustomerDeposit(session, customerId, payload) {
+  return authedRequest(session, `/customers/${customerId}/deposit/`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export function fetchDayEndReport(session, { date, counted = {} }) {
   return authedRequest(session, "/reports/day-end/", {
     method: "POST",

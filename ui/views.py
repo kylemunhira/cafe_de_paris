@@ -12,6 +12,7 @@ from accounts.branch_access import (
     user_can_access_stores_transfers,
     user_can_create_purchase_orders,
     user_can_manage_users,
+    user_is_baker,
     user_is_branch_manager,
     user_is_cashier,
     user_is_grv_staff,
@@ -60,10 +61,11 @@ def order_change_given(order):
 
 
 class CashierRestrictedAccessMixin(UserPassesTestMixin):
-    """Cashiers, waiters, and GRV-only staff may only open explicitly allowed views."""
+    """Cashiers, waiters, bakers, and GRV-only staff may only open explicitly allowed views."""
 
     allow_cashier = False
     allow_waiter = False
+    allow_baker = False
     allow_grv_staff = False
 
     def test_func(self):
@@ -76,6 +78,10 @@ class CashierRestrictedAccessMixin(UserPassesTestMixin):
             if not self.allow_cashier:
                 return False
             return self.cashier_access_allowed(user)
+        if user_is_baker(user):
+            if not self.allow_baker:
+                return False
+            return self.baker_access_allowed(user)
         if user_is_grv_staff(user):
             if not self.allow_grv_staff:
                 return False
@@ -88,6 +94,9 @@ class CashierRestrictedAccessMixin(UserPassesTestMixin):
     def cashier_access_allowed(self, user):
         return True
 
+    def baker_access_allowed(self, user):
+        return True
+
     def grv_staff_access_allowed(self, user):
         return True
 
@@ -98,6 +107,8 @@ class CashierRestrictedAccessMixin(UserPassesTestMixin):
 def default_console_url(user):
     if user_is_cashier(user) or user_is_waiter(user):
         return reverse("ui:pos")
+    if user_is_baker(user):
+        return reverse("ui:bakery-production")
     if user_is_grv_staff(user):
         return reverse("ui:grv")
     if user_is_branch_manager(user):
@@ -188,6 +199,10 @@ class POSView(BaseUIView):
             self.request.user
         )
         context["can_collect_payment"] = user_can_collect_payment(self.request.user)
+        context["can_stock_take"] = user_can_collect_payment(self.request.user)
+        context["can_record_customer_payment"] = user_can_collect_payment(
+            self.request.user
+        )
         return context
 
 
@@ -351,6 +366,10 @@ class PaymentCurrencyView(BaseUIView):
 class TransfersView(BaseUIView):
     template_name = "ui/transfers.html"
     active_nav = "transfers"
+    allow_baker = True
+
+    def baker_access_allowed(self, user):
+        return user_can_access_bakery_transfers(user)
 
     def access_allowed(self, user):
         return user_can_access_bakery_transfers(user)
@@ -359,6 +378,10 @@ class TransfersView(BaseUIView):
 class BakeryProductionView(BaseUIView):
     template_name = "ui/bakery_production.html"
     active_nav = "bakery_production"
+    allow_baker = True
+
+    def baker_access_allowed(self, user):
+        return user_can_access_bakery_transfers(user)
 
     def access_allowed(self, user):
         return user_can_access_bakery_transfers(user)
@@ -401,6 +424,7 @@ class StockTakeView(BaseUIView):
     template_name = "ui/stock_take.html"
     active_nav = "stock_take"
     allow_cashier = True
+    allow_baker = True
 
     def access_allowed(self, user):
         from accounts.branch_access import user_can_access_management_console
@@ -409,6 +433,9 @@ class StockTakeView(BaseUIView):
 
     def cashier_access_allowed(self, user):
         return user_can_access_pos(user)
+
+    def baker_access_allowed(self, user):
+        return user_can_access_bakery_transfers(user)
 
     def get_context_data(self, **kwargs):
         from accounts.branch_access import (
@@ -656,7 +683,11 @@ class DeliveryNotePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, De
     model = DeliveryNote
     template_name = "ui/delivery_note_print.html"
     context_object_name = "note"
+    allow_baker = True
     allow_grv_staff = True
+
+    def baker_access_allowed(self, user):
+        return user_can_access_bakery_transfers(user)
 
     def grv_staff_access_allowed(self, user):
         return user_can_access_grv(user)

@@ -4,7 +4,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -101,6 +100,101 @@ class ApiClient(
         val url = "${config.serverUrl}/api/stock-takes/day-end-check/?branch=$branchId&date=$date"
         val body = getJson(url, token)
         return JsonParsers.parseDayEndStockTakeCheck(body)
+    }
+
+    fun fetchStockTakes(type: String, status: String = "draft"): List<StockTake> {
+        val token = requireToken()
+        val branchId = session.branchId
+        val url =
+            "${config.serverUrl}/api/stock-takes/?branch=$branchId&stock_take_type=$type&status=$status&page_size=100"
+        val body = getJson(url, token)
+        return JsonParsers.parseStockTakes(body)
+    }
+
+    fun fetchStockTake(stockTakeId: Int): StockTake {
+        val token = requireToken()
+        val body = getJson("${config.serverUrl}/api/stock-takes/$stockTakeId/", token)
+        return JsonParsers.parseStockTake(body)
+    }
+
+    fun createStockTake(type: String, countDate: String): StockTake {
+        val token = requireToken()
+        val payload = JSONObject()
+            .put("branch", session.branchId)
+            .put("stock_take_type", type)
+            .put("count_date", countDate)
+        val body = postJson("${config.serverUrl}/api/stock-takes/", payload, token)
+        return JsonParsers.parseStockTake(body)
+    }
+
+    fun updateStockTakeLines(
+        stockTakeId: Int,
+        lines: List<Pair<Int, String?>>,
+    ): StockTake {
+        val token = requireToken()
+        val linesJson = JSONArray()
+        for ((lineId, counted) in lines) {
+            val line = JSONObject().put("id", lineId)
+            if (counted == null) {
+                line.put("counted_quantity", JSONObject.NULL)
+            } else {
+                line.put("counted_quantity", counted)
+            }
+            linesJson.put(line)
+        }
+        val payload = JSONObject().put("lines", linesJson)
+        val body = patchJson("${config.serverUrl}/api/stock-takes/$stockTakeId/lines/", payload, token)
+        return JsonParsers.parseStockTake(body)
+    }
+
+    fun completeStockTake(stockTakeId: Int): StockTake {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/stock-takes/$stockTakeId/complete/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseStockTake(body)
+    }
+
+    fun depositToCustomer(
+        customerId: Int,
+        currencyId: Int,
+        amount: String,
+        notes: String = "",
+    ): CustomerDepositResult {
+        val token = requireToken()
+        val branchId = session.branchId
+        if (branchId <= 0) {
+            throw ApiException(400, "Branch is not configured for this session.")
+        }
+        if (customerId <= 0) {
+            throw ApiException(400, "Select a customer.")
+        }
+        if (currencyId <= 0) {
+            throw ApiException(400, "Select a currency.")
+        }
+        val payload = JSONObject()
+            .put("branch", branchId)
+            .put("currency_id", currencyId)
+            .put("amount", amount)
+            .put("notes", notes)
+        val body = postJson(
+            "${config.serverUrl}/api/customers/$customerId/deposit/",
+            payload,
+            token,
+        )
+        return try {
+            JsonParsers.parseCustomerDeposit(body)
+        } catch (err: IllegalArgumentException) {
+            throw ApiException(502, err.message ?: "Deposit was not confirmed by the server.")
+        }
+    }
+
+    fun fetchCustomer(customerId: Int): Customer {
+        val token = requireToken()
+        val body = getJson("${config.serverUrl}/api/customers/$customerId/", token)
+        return JsonParsers.parseCustomer(body)
     }
 
     fun fetchDayEndReport(date: String, countedByCurrency: Map<Int, String>): DayEndReportResponse {
@@ -205,29 +299,67 @@ class ApiClient(
         return session.token ?: throw ApiException(401, "Not logged in")
     }
 
-    private fun getJson(urlString: String, token: String): String {
-        val connection = openConnection(urlString, "GET", token)
-        return readResponse(connection)
-    }
-
     private fun postJson(urlString: String, payload: JSONObject, authToken: String?): String {
-        val connection = openConnection(urlString, "POST", authToken)
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json")
-        OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-            writer.write(payload.toString())
-        }
-        return readResponse(connection)
+        return sendJsonWithBody(urlString, "POST", payload, authToken, redirectCount = 0)
     }
 
     private fun patchJson(urlString: String, payload: JSONObject, token: String): String {
-        val connection = openConnection(urlString, "PATCH", token)
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json")
-        OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-            writer.write(payload.toString())
+        // Prefer real PATCH; fall back handled by sendJsonWithBody redirect logic.
+        return sendJsonWithBody(urlString, "PATCH", payload, token, redirectCount = 0)
+    }
+
+    private fun sendJsonWithBody(
+        urlString: String,
+        method: String,
+        payload: JSONObject,
+        authToken: String?,
+        redirectCount: Int,
+    ): String {
+        if (redirectCount > 3) {
+            throw ApiException(502, "Too many redirects talking to the server.")
         }
-        return readResponse(connection)
+        val connection = openConnection(urlString, method, authToken)
+        connection.doOutput = true
+        connection.instanceFollowRedirects = false
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        val bytes = payload.toString().toByteArray(Charsets.UTF_8)
+        connection.setFixedLengthStreamingMode(bytes.size)
+        connection.outputStream.use { stream ->
+            stream.write(bytes)
+            stream.flush()
+        }
+        return try {
+            val code = connection.responseCode
+            if (code in REDIRECT_CODES) {
+                val location = connection.getHeaderField("Location")
+                    ?: throw ApiException(code, "Redirect without Location header.")
+                val nextUrl = resolveRedirectUrl(urlString, location)
+                connection.disconnect()
+                // Re-send the same method+body. Never convert POST into GET.
+                return sendJsonWithBody(nextUrl, method, payload, authToken, redirectCount + 1)
+            }
+            readResponse(connection, code)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun resolveRedirectUrl(currentUrl: String, location: String): String {
+        return if (location.startsWith("http://") || location.startsWith("https://")) {
+            location
+        } else {
+            URL(URL(currentUrl), location).toString()
+        }
+    }
+
+    private fun getJson(urlString: String, token: String): String {
+        val connection = openConnection(urlString, "GET", token)
+        connection.instanceFollowRedirects = true
+        return try {
+            readResponse(connection)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun openConnection(urlString: String, method: String, token: String?): HttpURLConnection {
@@ -242,19 +374,58 @@ class ApiClient(
         return connection
     }
 
-    private fun readResponse(connection: HttpURLConnection): String {
-        val code = connection.responseCode
+    private fun readResponse(connection: HttpURLConnection, knownCode: Int? = null): String {
+        val code = knownCode ?: connection.responseCode
         val stream = if (code in 200..299) {
             connection.inputStream
         } else {
-            connection.errorStream
+            connection.errorStream ?: connection.inputStream
         }
-        val body = BufferedReader(InputStreamReader(stream ?: connection.inputStream, Charsets.UTF_8))
+        val body = BufferedReader(InputStreamReader(stream, Charsets.UTF_8))
             .use { it.readText() }
         if (code !in 200..299) {
-            val detail = runCatching { JSONObject(body).optString("detail", body) }.getOrDefault(body)
-            throw ApiException(code, detail.ifBlank { "Request failed ($code)" })
+            throw ApiException(code, extractErrorMessage(body, code))
         }
         return body
+    }
+
+    private fun extractErrorMessage(body: String, code: Int): String {
+        if (body.isBlank()) return "Request failed ($code)"
+        return try {
+            val json = JSONObject(body)
+            when {
+                json.has("detail") -> {
+                    when (val detail = json.get("detail")) {
+                        is String -> detail
+                        is JSONArray -> (0 until detail.length()).joinToString("\n") {
+                            detail.optString(it)
+                        }
+                        else -> detail.toString()
+                    }
+                }
+                else -> {
+                    val parts = mutableListOf<String>()
+                    val keys = json.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val value = json.get(key)
+                        val message = when (value) {
+                            is JSONArray -> (0 until value.length()).joinToString(", ") {
+                                value.optString(it)
+                            }
+                            else -> value.toString()
+                        }
+                        parts.add("$key: $message")
+                    }
+                    parts.joinToString("\n").ifBlank { "Request failed ($code)" }
+                }
+            }
+        } catch (_: Exception) {
+            body
+        }
+    }
+
+    companion object {
+        private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
     }
 }

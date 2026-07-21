@@ -21,6 +21,7 @@ from .branch_access import (
     user_can_manage_users,
     user_can_use_desktop_pos,
     user_has_global_branch_access,
+    user_is_baker,
     user_is_cashier,
     user_is_branch_manager,
     user_is_grv_staff,
@@ -351,8 +352,29 @@ class TransferNavAccessTests(APITestCase):
 
     def test_bakery_staff_access_flags(self):
         self.assertTrue(user_can_access_bakery_transfers(self.baker))
+        self.assertTrue(user_is_baker(self.baker))
+        self.assertFalse(user_can_access_management_console(self.baker))
         self.assertFalse(user_can_access_grv(self.baker))
         self.assertFalse(user_can_access_pos(self.baker))
+
+    def test_baker_can_access_bakery_pages_only(self):
+        self.client.force_login(self.baker)
+        self.assertEqual(self.client.get(reverse("ui:stock-take")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:bakery-production")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:transfers")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:orders")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:products")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:recipes")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:pos")).status_code, 403)
+
+        response = self.client.get(reverse("ui:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("ui:bakery-production"))
+
+        production = self.client.get(reverse("ui:bakery-production"))
+        self.assertTrue(production.context["show_stock_take_nav"])
+        self.assertTrue(production.context["show_bakery_transfers_nav"])
+        self.assertFalse(production.context["show_management_nav"])
 
     def test_stores_staff_access_flags(self):
         self.assertFalse(user_can_access_stores_transfers(self.stores_clerk))
@@ -426,11 +448,15 @@ class TransferNavAccessTests(APITestCase):
         self.client.force_login(self.cashier)
         response = self.client.get(reverse("ui:pos"))
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["can_stock_take"])
+        self.assertTrue(response.context["can_record_customer_payment"])
 
         self.client.force_login(self.waiter)
         response = self.client.get(reverse("ui:pos"))
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["can_collect_payment"])
+        self.assertFalse(response.context["can_stock_take"])
+        self.assertFalse(response.context["can_record_customer_payment"])
 
         self.client.force_login(self.hq_admin)
         response = self.client.get(reverse("ui:pos"))
@@ -692,12 +718,12 @@ class PurchaseOrderBranchAccessTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["branch"], self.stores_branch.id)
 
-    def test_cannot_create_purchase_for_non_stores_branch(self):
+    def test_hq_admin_can_create_purchase_for_retail_branch(self):
         self.client.force_authenticate(user=self.hq_admin)
         payload = {**self.po_payload, "branch": self.branch_b.id}
         response = self.client.post("/api/purchase-orders/", payload, format="json")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("branch", response.data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["branch"], self.branch_b.id)
 
     def test_stores_staff_only_sees_own_purchase_orders(self):
         self.client.force_authenticate(user=self.stores_staff)

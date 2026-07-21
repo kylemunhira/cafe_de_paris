@@ -319,13 +319,32 @@ object JsonParsers {
         val json = org.json.JSONObject(body)
         val results = json.optJSONArray("results") ?: org.json.JSONArray()
         return (0 until results.length()).map { index ->
-            val item = results.getJSONObject(index)
-            Customer(
-                id = item.getInt("id"),
-                full_name = item.optString("full_name", item.optString("first_name", "Customer")),
-                account_balance = item.optString("account_balance", "0"),
-                credit_limit = item.optString("credit_limit", "0"),
-            )
+            parseCustomerObject(results.getJSONObject(index))
+        }
+    }
+
+    fun parseCustomer(body: String): Customer {
+        return parseCustomerObject(org.json.JSONObject(body))
+    }
+
+    private fun parseCustomerObject(item: org.json.JSONObject): Customer {
+        return Customer(
+            id = item.getInt("id"),
+            full_name = item.optString("full_name", item.optString("first_name", "Customer")),
+            account_balance = jsonNumberAsString(item, "account_balance", "0"),
+            credit_limit = jsonNumberAsString(item, "credit_limit", "0"),
+        )
+    }
+
+    private fun jsonNumberAsString(
+        json: org.json.JSONObject,
+        key: String,
+        fallback: String,
+    ): String {
+        if (!json.has(key) || json.isNull(key)) return fallback
+        return when (val raw = json.get(key)) {
+            is Number -> raw.toString()
+            else -> raw.toString().ifBlank { fallback }
         }
     }
 
@@ -363,6 +382,85 @@ object JsonParsers {
             baseCurrencyCode = base?.optString("code", null),
             printedAt = json.optString("printed_at", ""),
             report = json.getJSONObject("report"),
+        )
+    }
+
+    fun parseStockTakes(body: String): List<StockTake> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            parseStockTakeObject(results.getJSONObject(index))
+        }
+    }
+
+    fun parseStockTake(body: String): StockTake {
+        return parseStockTakeObject(org.json.JSONObject(body))
+    }
+
+    private fun parseStockTakeObject(json: org.json.JSONObject): StockTake {
+        val linesJson = json.optJSONArray("lines") ?: org.json.JSONArray()
+        val lines = (0 until linesJson.length()).map { index ->
+            val line = linesJson.getJSONObject(index)
+            val counted = if (line.isNull("counted_quantity")) {
+                null
+            } else {
+                line.optString("counted_quantity", null)
+            }
+            StockTakeLine(
+                id = line.getInt("id"),
+                productId = line.optInt("product", 0),
+                productName = line.optString("product_name", "Product"),
+                categoryName = line.optString("category_name", null),
+                countedQuantity = counted,
+            )
+        }
+        return StockTake(
+            id = json.getInt("id"),
+            stockTakeType = json.optString("stock_take_type", "daily"),
+            stockTakeTypeDisplay = json.optString(
+                "stock_take_type_display",
+                json.optString("stock_take_type", "Daily"),
+            ),
+            status = json.optString("status", "draft"),
+            countDate = json.optString("count_date", ""),
+            lines = lines,
+        )
+    }
+
+    fun parseCustomerDeposit(body: String): CustomerDepositResult {
+        val json = org.json.JSONObject(body)
+        val transaction = json.optJSONObject("transaction")
+            ?: throw IllegalArgumentException(
+                "Server did not confirm the deposit. Check the app server URL matches the portal.",
+            )
+        val transactionId = transaction.optInt("id", 0)
+        if (transactionId <= 0) {
+            throw IllegalArgumentException(
+                "Server did not confirm the deposit. Check the app server URL matches the portal.",
+            )
+        }
+        val balance = when {
+            json.isNull("account_balance") -> transaction.optString("balance_after", "0")
+            else -> {
+                val raw = json.get("account_balance")
+                when (raw) {
+                    is Number -> raw.toString()
+                    else -> raw.toString()
+                }
+            }
+        }
+        val amount = if (transaction.isNull("amount")) {
+            null
+        } else {
+            when (val raw = transaction.get("amount")) {
+                is Number -> raw.toString()
+                else -> raw.toString()
+            }
+        }
+        return CustomerDepositResult(
+            accountBalance = balance,
+            transactionId = transactionId,
+            amount = amount,
         )
     }
 }

@@ -133,6 +133,7 @@ const TXN_SORT = {
   type: (t) => t.statement_label || t.transaction_type_display || "",
   amount: (t) => Number(t.amount),
   balance_after: (t) => Number(t.balance_after),
+  user: (t) => t.recorded_by_username || t.recorded_by_name || "",
   details: (t) => t.notes || t.order_id || "",
 };
 
@@ -306,6 +307,7 @@ function renderTransactions() {
           ${sortTh("Type", "type", txnSortState)}
           ${sortTh("Amount", "amount", txnSortState)}
           ${sortTh("Balance", "balance_after", txnSortState)}
+          ${sortTh("User", "user", txnSortState)}
           ${sortTh("Details", "details", txnSortState)}
           ${actionTh()}
         </tr>
@@ -314,6 +316,7 @@ function renderTransactions() {
         ${sorted.map(t => {
           const amountClass = Number(t.amount) >= 0 ? "text-success" : "text-danger";
           const amountLabel = Number(t.amount) >= 0 ? `+${formatCurrency(t.amount)}` : formatCurrency(t.amount);
+          const userLabel = t.recorded_by_username || t.recorded_by_name || "—";
           const details = t.transaction_type === "deposit"
             ? `Received in ${t.currency_code || t.currency_name || ""}${t.amount_received != null ? ` ${formatCurrency(t.amount_received, { code: t.currency_code, symbol: t.currency_symbol, name: t.currency_name })}` : ""}${t.notes ? ` · ${t.notes}` : ""}`.trim()
             : (t.order_id ? `Order #${t.order_id}` : (t.notes || "—"));
@@ -323,6 +326,7 @@ function renderTransactions() {
               <td>${t.statement_label || t.transaction_type_display}</td>
               <td class="${amountClass}" style="font-weight: 600;">${amountLabel}</td>
               <td>${formatCurrency(t.balance_after)}</td>
+              <td>${userLabel}</td>
               <td>${details}</td>
               <td><button type="button" class="btn btn-ghost btn-sm" data-print-txn="${t.id}">Print</button></td>
             </tr>

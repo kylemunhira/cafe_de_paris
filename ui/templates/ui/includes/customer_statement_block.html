@@ -153,6 +153,7 @@
             {% if txn.transaction_type == "deposit" and txn.currency %} · Received in {{ txn.currency.code|default:txn.currency.name }}{% if txn.amount_received %} {% if txn.currency.symbol %}{{ txn.currency.symbol }}{% endif %}{{ txn.amount_received|floatformat:2 }}{% endif %}{% endif %}
             {% if txn.order_id %} · Order #{{ txn.order_id }}{% endif %}
             {% if txn.notes %} · {{ txn.notes }}{% endif %}
+            {% if txn.recorded_by %} · By {{ txn.recorded_by.username }}{% endif %}
           </div>
         </td>
       </tr>

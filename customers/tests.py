@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from rest_framework.test import APIClient
 
-from accounts.models import StaffProfile
+from accounts.models import StaffProfile, StaffRole
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
 from customers.models import Customer, CustomerAccountTransaction, CustomerAccountTransactionType
@@ -104,6 +104,30 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(response.data["account_balance"], Decimal("50.00"))
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.account_balance, Decimal("50.00"))
+
+    def test_waiter_cannot_record_deposit(self):
+        waiter = User.objects.create_user(username="waiter", password="pass")
+        StaffProfile.objects.create(
+            user=waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+        )
+        self.client.force_authenticate(user=waiter)
+
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/deposit/",
+            {
+                "branch": self.branch.id,
+                "currency_id": self.usd.id,
+                "amount": "50.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.account_balance, Decimal("0.00"))
 
     def test_pay_order_from_account(self):
         self.customer.account_balance = Decimal("20.00")

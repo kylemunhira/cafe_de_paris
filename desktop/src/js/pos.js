@@ -1,13 +1,17 @@
 import {
   cancelServerOrder,
   closeFiscalDay,
+  completeStockTake,
   createDiningTable,
   createExpense,
+  createStockTake,
   fetchDayEndReport,
   fetchDiningTables,
   fetchFiscalDayStatus,
   fetchOpenOrders,
+  fetchStockTake,
   fetchStockTakeDayEndCheck,
+  fetchStockTakes,
   fetchSuppliers,
   formatCurrency,
   formatDate,
@@ -15,8 +19,10 @@ import {
   openFiscalDay,
   patchServerOrder,
   payServerOrder,
+  recordCustomerDeposit,
   showToast,
   updateDiningTable,
+  updateStockTakeLines,
 } from "./api.js";
 import { printDayEndReport, printOrderSlip, printSalesReceipt } from "./print-client.js";
 import {
@@ -68,6 +74,8 @@ const syncStatusError = document.getElementById("sync-status-error");
 const syncBtn = document.getElementById("sync-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const fiscalDayBtn = document.getElementById("fiscal-day-btn");
+const stockTakeBtn = document.getElementById("stock-take-btn");
+const customerPaymentBtn = document.getElementById("customer-payment-btn");
 const expenseBtn = document.getElementById("expense-btn");
 const dayendBtn = document.getElementById("dayend-btn");
 const expenseModal = document.getElementById("expense-modal");
@@ -102,6 +110,24 @@ const stockTakeRequiredMessage = document.getElementById("stock-take-required-me
 const stockTakeRequiredCloseBtn = document.getElementById("stock-take-required-close-btn");
 const stockTakeRequiredCancelBtn = document.getElementById("stock-take-required-cancel-btn");
 const stockTakeRequiredOpenBtn = document.getElementById("stock-take-required-open-btn");
+const stockTakeModal = document.getElementById("stock-take-modal");
+const stockTakeCloseBtn = document.getElementById("stock-take-close-btn");
+const stockTakeTitle = document.getElementById("stock-take-title");
+const stockTakeDate = document.getElementById("stock-take-date");
+const stockTakeType = document.getElementById("stock-take-type");
+const stockTakeStartBtn = document.getElementById("stock-take-start-btn");
+const stockTakeSaveBtn = document.getElementById("stock-take-save-btn");
+const stockTakeCompleteBtn = document.getElementById("stock-take-complete-btn");
+const stockTakeLines = document.getElementById("stock-take-lines");
+const customerPaymentModal = document.getElementById("customer-payment-modal");
+const customerPaymentCloseBtn = document.getElementById("customer-payment-close-btn");
+const customerPaymentCancelBtn = document.getElementById("customer-payment-cancel-btn");
+const customerPaymentSaveBtn = document.getElementById("customer-payment-save-btn");
+const customerPaymentCustomer = document.getElementById("customer-payment-customer");
+const customerPaymentCurrency = document.getElementById("customer-payment-currency");
+const customerPaymentAmount = document.getElementById("customer-payment-amount");
+const customerPaymentNotes = document.getElementById("customer-payment-notes");
+const customerPaymentBalance = document.getElementById("customer-payment-balance");
 const categoryTabs = document.getElementById("category-tabs");
 const productSearchInput = document.getElementById("product-search");
 const productGrid = document.getElementById("product-grid");
@@ -159,6 +185,7 @@ const addonPickerCancelBtn = document.getElementById("addon-picker-cancel-btn");
 const addonPickerConfirmBtn = document.getElementById("addon-picker-confirm-btn");
 
 let addonPickerProduct = null;
+let activeStockTake = null;
 const addonPickerSelections = new Map();
 
 function closeStockTakeRequiredModal() {
@@ -186,6 +213,174 @@ async function ensureDailyStockTakeForDayEnd(reportDate) {
   } catch (err) {
     showToast(err.message, true);
     return false;
+  }
+}
+
+function escapeOperationHtml(value) {
+  const div = document.createElement("div");
+  div.textContent = value ?? "";
+  return div.innerHTML;
+}
+
+async function requireOperationsOnline(label) {
+  if (!isBrowserOnline()) {
+    showToast(`${label} requires an online connection.`, true);
+    return false;
+  }
+  if (!(await checkServerReachable(session))) {
+    showToast(`Cannot reach server for ${label.toLowerCase()}.`, true);
+    return false;
+  }
+  return true;
+}
+
+function renderStockTake(stockTake) {
+  activeStockTake = stockTake;
+  stockTakeTitle.textContent = `${stockTake.stock_take_type_display || stockTake.stock_take_type} count · ${stockTake.count_date}`;
+  stockTakeLines.innerHTML = (stockTake.lines || []).map((line) => `
+    <div style="display:grid; grid-template-columns:minmax(180px,1fr) 130px; gap:0.75rem; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(44,24,16,0.08);">
+      <div><strong>${escapeOperationHtml(line.product_name)}</strong><small class="settings-hint" style="display:block;">${escapeOperationHtml(line.category_name || "")}</small></div>
+      <input type="number" min="0" step="0.01" class="report-input" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
+    </div>
+  `).join("") || `<div class="empty-state"><p>No products are configured for this count.</p></div>`;
+  stockTakeStartBtn.hidden = true;
+  stockTakeSaveBtn.hidden = false;
+  stockTakeCompleteBtn.hidden = false;
+}
+
+function stockTakeLinePayload() {
+  return Array.from(stockTakeLines.querySelectorAll("[data-stock-line]")).map((input) => ({
+    id: Number(input.dataset.stockLine),
+    counted_quantity: input.value === "" ? null : input.value,
+    notes: "",
+  }));
+}
+
+async function loadStockTakeDraft() {
+  const type = stockTakeType.value;
+  const data = await fetchStockTakes(session, {
+    branchId: session.branch.id,
+    type,
+  });
+  const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+  const selectedDate = stockTakeDate.value;
+  const periodDate = type === "monthly" ? `${selectedDate.slice(0, 7)}-01` : selectedDate;
+  const draft = items.find((item) => item.count_date === periodDate);
+  if (draft) {
+    renderStockTake(await fetchStockTake(session, draft.id));
+    return;
+  }
+  activeStockTake = null;
+  stockTakeTitle.textContent = "Start stock take";
+  stockTakeLines.innerHTML = `<div class="empty-state"><p>Choose the type and start a count.</p></div>`;
+  stockTakeStartBtn.hidden = false;
+  stockTakeSaveBtn.hidden = true;
+  stockTakeCompleteBtn.hidden = true;
+}
+
+async function openStockTakeModal() {
+  if (!(await requireOperationsOnline("Stock take"))) return;
+  closeStockTakeRequiredModal();
+  stockTakeDate.value = getTodayISO();
+  stockTakeModal.hidden = false;
+  try {
+    await loadStockTakeDraft();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function closeStockTakeModal() {
+  stockTakeModal.hidden = true;
+}
+
+async function startStockTake() {
+  stockTakeStartBtn.disabled = true;
+  try {
+    renderStockTake(await createStockTake(session, {
+      branch: session.branch.id,
+      stock_take_type: stockTakeType.value,
+      count_date: stockTakeDate.value,
+    }));
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    stockTakeStartBtn.disabled = false;
+  }
+}
+
+async function saveStockTake(complete = false) {
+  if (!activeStockTake) return;
+  const button = complete ? stockTakeCompleteBtn : stockTakeSaveBtn;
+  button.disabled = true;
+  try {
+    const updated = await updateStockTakeLines(session, activeStockTake.id, stockTakeLinePayload());
+    if (complete) {
+      await completeStockTake(session, activeStockTake.id);
+      showToast("Stock take completed and variances posted");
+      closeStockTakeModal();
+      activeStockTake = null;
+    } else {
+      renderStockTake(updated);
+      showToast("Stock count saved");
+    }
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function updateCustomerPaymentBalance() {
+  const customer = customers.find((item) => item.id === Number(customerPaymentCustomer.value));
+  customerPaymentBalance.textContent = customer
+    ? `Current balance: ${Number(customer.account_balance || 0).toFixed(2)}`
+    : "Select a customer";
+}
+
+async function openCustomerPaymentModal() {
+  if (!(await requireOperationsOnline("Customer payment"))) return;
+  await loadCustomers();
+  customerPaymentCustomer.innerHTML = `<option value="">Select customer…</option>${customers.map((customer) =>
+    `<option value="${customer.id}">${escapeOperationHtml(customerDisplayName(customer))}</option>`
+  ).join("")}`;
+  const activeCurrencies = currencies.filter((currency) => currency.is_active);
+  customerPaymentCurrency.innerHTML = activeCurrencies.map((currency) =>
+    `<option value="${currency.id}">${escapeOperationHtml(currency.code || currency.name)}</option>`
+  ).join("");
+  if (baseCurrency) customerPaymentCurrency.value = String(baseCurrency.id);
+  customerPaymentAmount.value = "";
+  customerPaymentNotes.value = "";
+  updateCustomerPaymentBalance();
+  customerPaymentModal.hidden = false;
+}
+
+function closeCustomerPaymentModal() {
+  customerPaymentModal.hidden = true;
+}
+
+async function saveCustomerPayment() {
+  const customerId = Number(customerPaymentCustomer.value);
+  const amount = Number(customerPaymentAmount.value);
+  if (!customerId) return showToast("Select a customer", true);
+  if (!Number.isFinite(amount) || amount <= 0) return showToast("Enter a valid amount", true);
+  customerPaymentSaveBtn.disabled = true;
+  try {
+    const result = await recordCustomerDeposit(session, customerId, {
+      branch: session.branch.id,
+      currency_id: Number(customerPaymentCurrency.value),
+      amount: amount.toFixed(2),
+      notes: customerPaymentNotes.value.trim(),
+    });
+    const customer = customers.find((item) => item.id === customerId);
+    if (customer) customer.account_balance = result.account_balance;
+    renderCustomerSelect();
+    showToast("Customer payment recorded");
+    closeCustomerPaymentModal();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    customerPaymentSaveBtn.disabled = false;
   }
 }
 
@@ -1859,6 +2054,9 @@ expenseBtn?.addEventListener("click", async () => {
   openExpenseModal();
 });
 
+stockTakeBtn?.addEventListener("click", openStockTakeModal);
+customerPaymentBtn?.addEventListener("click", openCustomerPaymentModal);
+
 function getTodayISO() {
   const now = new Date();
   const y = now.getFullYear();
@@ -2100,17 +2298,25 @@ dayendModal?.addEventListener("click", (event) => {
 
 stockTakeRequiredCloseBtn?.addEventListener("click", closeStockTakeRequiredModal);
 stockTakeRequiredCancelBtn?.addEventListener("click", closeStockTakeRequiredModal);
-stockTakeRequiredOpenBtn?.addEventListener("click", async () => {
-  const base = session?.serverUrl?.replace(/\/$/, "");
-  if (!base) {
-    showToast("Server URL is not configured.", true);
-    return;
-  }
-  await window.pos.openExternal(`${base}/stock-take/`);
-  closeStockTakeRequiredModal();
-});
+stockTakeRequiredOpenBtn?.addEventListener("click", openStockTakeModal);
 stockTakeRequiredModal?.addEventListener("click", (event) => {
   if (event.target === stockTakeRequiredModal) closeStockTakeRequiredModal();
+});
+stockTakeCloseBtn?.addEventListener("click", closeStockTakeModal);
+stockTakeStartBtn?.addEventListener("click", startStockTake);
+stockTakeSaveBtn?.addEventListener("click", () => saveStockTake(false));
+stockTakeCompleteBtn?.addEventListener("click", () => saveStockTake(true));
+stockTakeDate?.addEventListener("change", () => loadStockTakeDraft().catch((err) => showToast(err.message, true)));
+stockTakeType?.addEventListener("change", () => loadStockTakeDraft().catch((err) => showToast(err.message, true)));
+stockTakeModal?.addEventListener("click", (event) => {
+  if (event.target === stockTakeModal) closeStockTakeModal();
+});
+customerPaymentCloseBtn?.addEventListener("click", closeCustomerPaymentModal);
+customerPaymentCancelBtn?.addEventListener("click", closeCustomerPaymentModal);
+customerPaymentSaveBtn?.addEventListener("click", saveCustomerPayment);
+customerPaymentCustomer?.addEventListener("change", updateCustomerPaymentBalance);
+customerPaymentModal?.addEventListener("click", (event) => {
+  if (event.target === customerPaymentModal) closeCustomerPaymentModal();
 });
 
 if (fiscalDayBtn) {
@@ -2502,6 +2708,8 @@ async function init() {
   updateFiscalDayButtonVisibility();
   updateTableManageVisibility();
   updateReceiptModeVisibility();
+  stockTakeBtn.hidden = !canCollectPayment();
+  customerPaymentBtn.hidden = !canCollectPayment();
 
   await loadCatalog();
   await loadDiningTables();
