@@ -21,6 +21,7 @@
     >
     <button class="category-tab active" data-filter="all">All</button>
     <button class="category-tab" data-filter="open">Open</button>
+    <button class="category-tab" data-filter="unpaid">Unpaid</button>
     <button class="category-tab" data-filter="paid">Paid</button>
     <button class="category-tab" data-filter="cancelled">Cancelled</button>
   </div>
@@ -141,8 +142,10 @@ function renderOrders() {
             <td>${statusBadge(o.status)}</td>
             <td>${formatDate(o.created_at)}</td>
             <td>
-              ${o.status === "open" ? `
+              ${o.status === "open" || o.status === "unpaid" ? `
                 <button class="btn btn-accent btn-sm pay-btn" data-id="${o.id}">Pay</button>
+              ` : ""}
+              ${o.status === "open" ? `
                 <button class="btn btn-ghost btn-sm cancel-btn" data-id="${o.id}">Cancel</button>
               ` : ""}
               ${o.status === "paid" && o.fiscal_approval_status !== "approved" ? `
@@ -184,7 +187,7 @@ container.addEventListener("click", async (e) => {
   const voidBtn = e.target.closest(".void-btn");
   if (voidBtn) {
     const id = voidBtn.dataset.id;
-    if (!window.confirm(`Void paid order #${id}? Stock and account charges will be reversed.`)) return;
+    if (!window.confirm(`Reverse payment for order #${id}? The order will be marked unpaid so it can be paid again.`)) return;
     voidBtn.disabled = true;
     try {
       const updated = await apiPost(`/orders/${id}/void/`, {});
@@ -195,7 +198,7 @@ container.addEventListener("click", async (e) => {
         order.cancelled_by_name = updated.cancelled_by_name;
       }
       renderOrders();
-      showToast(`Order #${id} voided`);
+      showToast(`Payment reversed for order #${id}; it is now unpaid`);
     } catch (err) {
       showToast(err.message, true);
       voidBtn.disabled = false;

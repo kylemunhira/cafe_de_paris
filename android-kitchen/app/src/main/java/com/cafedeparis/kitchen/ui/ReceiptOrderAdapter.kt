@@ -18,9 +18,12 @@ class ReceiptOrderAdapter(
     var openOrders: List<KitchenOrder> = emptyList()
 
     private fun tableOrdersFor(order: KitchenOrder): List<KitchenOrder> {
+        if (order.status != "open") return listOf(order)
         val table = order.table_number.trim()
         if (table.isEmpty()) return listOf(order)
-        return openOrders.filter { it.order_type == "dine_in" && it.table_number == table }
+        return openOrders.filter {
+            it.status == "open" && it.order_type == "dine_in" && it.table_number == table
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -48,8 +51,12 @@ class ReceiptOrderAdapter(
             val table = if (order.table_number.isNotBlank()) " · Table ${order.table_number}" else ""
             val combined = if (tableOrders.size > 1) " · ${tableOrders.size} orders on table" else ""
             binding.orderMeta.text = "$typeLabel$table$combined · ${order.items.size} items"
-            binding.orderKitchenStatus.text = order.kitchen_status.replace("_", " ")
-                .replaceFirstChar { it.uppercase() }
+            binding.orderKitchenStatus.text = if (order.status == "unpaid") {
+                binding.root.context.getString(R.string.status_unpaid)
+            } else {
+                order.kitchen_status.replace("_", " ")
+                    .replaceFirstChar { it.uppercase() }
+            }
 
             val selected = order.id == selectedOrderId
             val stroke = if (selected) R.color.accent else android.R.color.transparent

@@ -6,7 +6,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.branch_access import (
+    get_staff_branch_type,
     get_staff_kitchen_station,
+    user_can_access_bakery_transfers,
     user_can_access_kitchen,
     user_can_access_pos,
     user_can_collect_payment,
@@ -15,6 +17,7 @@ from accounts.branch_access import (
     user_can_use_desktop_pos,
 )
 from accounts.models import StaffProfile
+from branches.models import BranchType
 from branches.serializers import BranchSerializer
 
 User = get_user_model()
@@ -122,7 +125,11 @@ class MobileAppLoginView(APIView):
 
         can_kitchen = user_can_access_kitchen(user)
         can_pos = user_can_access_pos(user)
-        if not can_kitchen and not can_pos:
+        can_bakery = (
+            get_staff_branch_type(user) == BranchType.BAKERY
+            and user_can_access_bakery_transfers(user)
+        )
+        if not can_kitchen and not can_pos and not can_bakery:
             return Response(
                 {"detail": "This account cannot use the mobile app."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -159,6 +166,7 @@ class MobileAppLoginView(APIView):
                 "branch": BranchSerializer(profile.branch).data,
                 "can_access_kitchen": can_kitchen,
                 "can_access_pos": can_pos,
+                "can_access_bakery": can_bakery,
             }
         )
 

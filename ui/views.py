@@ -699,6 +699,14 @@ class DeliveryNotePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, De
         ).prefetch_related("lines__product")
         return filter_by_branch_participation(queryset, self.request.user)
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["is_80mm"] = (
+            self.object.from_branch.branch_type == "bakery"
+            and self.request.GET.get("paper") == "80mm"
+        )
+        return context
+
 
 class TransferInvoicePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, DetailView):
     model = DeliveryNote
@@ -836,7 +844,14 @@ class DayEndPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, Template
     allow_cashier = True
 
     def access_allowed(self, user):
-        return user_can_access_pos(user)
+        from accounts.branch_access import user_can_collect_payment
+
+        return user_can_collect_payment(user)
+
+    def cashier_access_allowed(self, user):
+        from accounts.branch_access import user_can_collect_payment
+
+        return user_can_collect_payment(user)
 
     def get_branch(self):
         requested = self.request.GET.get("branch")

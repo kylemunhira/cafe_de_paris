@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import com.cafedeparis.kitchen.data.DayEndReportResponse
+import com.cafedeparis.kitchen.data.DeliveryNote
 import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
@@ -48,6 +49,12 @@ class EscPosPrinter {
   fun printDayEnd(deviceAddress: String, payload: DayEndReportResponse) {
     print(deviceAddress) { output ->
       writeDayEndReport(output, payload)
+    }
+  }
+
+  fun printDeliveryNote(deviceAddress: String, note: DeliveryNote) {
+    print(deviceAddress) { output ->
+      writeDeliveryNote(output, note)
     }
   }
 
@@ -532,6 +539,78 @@ class EscPosPrinter {
     output.write(LF)
   }
 
+  private fun writeDeliveryNote(output: OutputStream, note: DeliveryNote) {
+    output.write(INIT)
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Cafe de Paris", bold = true, doubleHeight = true))
+    output.write(textLine("Central Bakery - Distribution"))
+    output.write(LF)
+    output.write(textLine("DELIVERY NOTE", bold = true, doubleHeight = true))
+    output.write(textLine("DN-${note.id.toString().padStart(5, '0')}", bold = true))
+    output.write(textLine(formatDateTime(note.createdAt)))
+    output.write(textLine(note.status.uppercase(Locale.US)))
+    output.write(textLine("-".repeat(DELIVERY_NOTE_LINE_WIDTH)))
+
+    output.write(ALIGN_LEFT)
+    output.write(textLine("FROM", bold = true))
+    output.write(textLine(note.sourceName))
+    note.sourceLocation?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine(it))
+    }
+    output.write(LF)
+    output.write(textLine("TO", bold = true))
+    output.write(textLine(note.destinationName))
+    note.destinationLocation?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine(it))
+    }
+
+    output.write(textLine("-".repeat(DELIVERY_NOTE_LINE_WIDTH)))
+    output.write(
+      textLine(
+        "Item",
+        bold = true,
+        suffix = "Qty",
+        width = DELIVERY_NOTE_LINE_WIDTH,
+      ),
+    )
+    output.write(textLine("-".repeat(DELIVERY_NOTE_LINE_WIDTH)))
+    note.lines.forEachIndexed { index, line ->
+      output.write(
+        textLine(
+          "${index + 1}. ${line.productName}",
+          suffix = formatQty(line.quantity),
+          width = DELIVERY_NOTE_LINE_WIDTH,
+        ),
+      )
+    }
+    output.write(textLine("-".repeat(DELIVERY_NOTE_LINE_WIDTH)))
+    output.write(
+      textLine(
+        "Line items",
+        suffix = note.lines.size.toString(),
+        width = DELIVERY_NOTE_LINE_WIDTH,
+      ),
+    )
+    output.write(
+      textLine(
+        "Total quantity",
+        bold = true,
+        suffix = formatQty(note.totalQuantity),
+        width = DELIVERY_NOTE_LINE_WIDTH,
+      ),
+    )
+
+    output.write(LF)
+    output.write(LF)
+    output.write(textLine("_".repeat(40)))
+    output.write(textLine("Dispatched by"))
+    output.write(LF)
+    output.write(LF)
+    output.write(textLine("_".repeat(40)))
+    output.write(textLine("Received by"))
+    output.write(LF)
+  }
+
   private fun formatReportDate(value: String): String {
     return try {
       val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -554,11 +633,12 @@ class EscPosPrinter {
     doubleHeight: Boolean = false,
     large: Boolean = false,
     suffix: String? = null,
+    width: Int = LINE_WIDTH,
   ): ByteArray {
     val line = if (suffix.isNullOrBlank()) {
       text
     } else {
-      padColumns(text, suffix, LINE_WIDTH)
+      padColumns(text, suffix, width)
     }
     val bytes = mutableListOf<ByteArray>()
     if (bold) bytes.add(BOLD_ON)
@@ -683,6 +763,7 @@ class EscPosPrinter {
 
   companion object {
     private const val LINE_WIDTH = 32
+    private const val DELIVERY_NOTE_LINE_WIDTH = 48
     private const val ITEM_NAME_W = 16
     private const val ITEM_QTY_W = 5
     private const val ITEM_AMT_W = 8

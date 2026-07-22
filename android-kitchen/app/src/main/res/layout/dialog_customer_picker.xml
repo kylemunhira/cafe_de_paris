@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:hint="@string/search_customers">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/customerPickerSearchInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:singleLine="true" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <ListView
+        android:id="@+id/customerPickerList"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:divider="?android:attr/listDivider"
+        android:dividerHeight="1dp" />
+
+    <TextView
+        android:id="@+id/customerPickerEmptyLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="24dp"
+        android:text="@string/customer_payment_no_customers"
+        android:textColor="@color/text_muted"
+        android:visibility="gone" />
+</LinearLayout>

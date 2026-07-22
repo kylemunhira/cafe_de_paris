@@ -148,7 +148,7 @@
             android:id="@+id/orderModePanel"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="1.4"
+            android:layout_weight="2"
             android:orientation="vertical"
             android:paddingEnd="8dp">
 
@@ -176,40 +176,80 @@
                     android:visibility="gone" />
             </LinearLayout>
 
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:hint="@string/search_products">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/productSearchInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="text" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/categoryList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:clipToPadding="false"
-                android:orientation="horizontal" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/productList"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:clipToPadding="false" />
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingEnd="8dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="@string/pos_categories"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/categoryList"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:clipToPadding="false" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingStart="8dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="@string/pos_products"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:hint="@string/search_products">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/productSearchInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="text" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/productList"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:clipToPadding="false" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/receiptModePanel"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="1.4"
+            android:layout_weight="2"
             android:orientation="vertical"
             android:paddingEnd="8dp"
             android:visibility="gone">
@@ -268,13 +308,22 @@
                     android:textColor="@color/text_muted"
                     android:visibility="gone" />
 
-                <LinearLayout
+                <androidx.core.widget.NestedScrollView
                     android:id="@+id/paymentSection"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="0dp"
                     android:layout_marginTop="8dp"
-                    android:orientation="vertical"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:fillViewport="true"
+                    android:overScrollMode="ifContentScrolls"
+                    android:paddingEnd="4dp"
                     android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
 
                     <TextView
                         android:layout_width="match_parent"
@@ -317,17 +366,24 @@
                         android:orientation="vertical"
                         android:visibility="gone">
 
-                        <TextView
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/customerInputLayout"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginBottom="4dp"
-                            android:text="@string/payment_customer"
-                            android:textColor="@color/text_muted" />
+                            android:hint="@string/payment_customer"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            app:endIconMode="custom"
+                            app:endIconDrawable="@android:drawable/arrow_down_float">
 
-                        <Spinner
-                            android:id="@+id/customerSpinner"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content" />
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/customerInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:cursorVisible="false"
+                                android:focusable="false"
+                                android:inputType="none"
+                                android:singleLine="true" />
+                        </com.google.android.material.textfield.TextInputLayout>
 
                         <TextView
                             android:id="@+id/accountBalanceHint"
@@ -421,7 +477,8 @@
                             </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
-                </LinearLayout>
+                    </LinearLayout>
+                </androidx.core.widget.NestedScrollView>
 
                 <LinearLayout
                     android:layout_width="match_parent"

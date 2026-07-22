@@ -2,6 +2,7 @@ from accounts.branch_access import (
     effective_branch_id,
     user_can_access_fiscal_receipts,
     user_can_access_pos,
+    user_can_collect_payment,
     user_can_create_purchase_orders,
 )
 from django.http import HttpResponse
@@ -225,8 +226,10 @@ class DayEndReportView(APIView):
     """
 
     def get(self, request):
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to view day-end reports.")
+        if not user_can_collect_payment(request.user):
+            raise PermissionDenied(
+                "Only authorized staff can view day-end reports."
+            )
 
         branch, error = _day_end_branch_or_error(
             request, request.query_params.get("branch")
@@ -253,8 +256,10 @@ class DayEndReportView(APIView):
         return Response(_day_end_payload(branch, report))
 
     def post(self, request):
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to save day-end reports.")
+        if not user_can_collect_payment(request.user):
+            raise PermissionDenied(
+                "Only authorized staff can save day-end reports."
+            )
 
         data = request.data if isinstance(request.data, dict) else {}
         branch, error = _day_end_branch_or_error(
@@ -293,8 +298,10 @@ class DayEndCloseListView(APIView):
     """Saved day-end closes for the Reports → Day End menu."""
 
     def get(self, request):
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to view day-end closes.")
+        if not user_can_collect_payment(request.user):
+            raise PermissionDenied(
+                "Only authorized staff can view day-end closes."
+            )
 
         try:
             branch_id = effective_branch_id(
@@ -334,8 +341,10 @@ class DayEndCloseDetailView(APIView):
     """Single saved day-end close with full activity snapshot."""
 
     def get(self, request, pk):
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to view day-end closes.")
+        if not user_can_collect_payment(request.user):
+            raise PermissionDenied(
+                "Only authorized staff can view day-end closes."
+            )
 
         close = (
             DayEndClose.objects.select_related("branch", "closed_by")

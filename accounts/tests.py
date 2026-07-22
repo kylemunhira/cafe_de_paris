@@ -450,6 +450,8 @@ class TransferNavAccessTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["can_stock_take"])
         self.assertTrue(response.context["can_record_customer_payment"])
+        self.assertContains(response, 'id="expense-btn"')
+        self.assertContains(response, 'id="dayend-btn"')
 
         self.client.force_login(self.waiter)
         response = self.client.get(reverse("ui:pos"))
@@ -457,6 +459,8 @@ class TransferNavAccessTests(APITestCase):
         self.assertFalse(response.context["can_collect_payment"])
         self.assertFalse(response.context["can_stock_take"])
         self.assertFalse(response.context["can_record_customer_payment"])
+        self.assertNotContains(response, 'id="expense-btn"')
+        self.assertNotContains(response, 'id="dayend-btn"')
 
         self.client.force_login(self.hq_admin)
         response = self.client.get(reverse("ui:pos"))
@@ -474,6 +478,20 @@ class TransferNavAccessTests(APITestCase):
         self.client.force_login(self.hq_admin)
         response = self.client.get(reverse("ui:transfers"))
         self.assertEqual(response.status_code, 200)
+
+    def test_baker_can_list_transfer_destinations(self):
+        self.client.force_authenticate(user=self.baker)
+        response = self.client.get("/api/branches/transfer-destinations/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        destination_ids = {row["id"] for row in response.data}
+        self.assertTrue({self.branch.id, self.stores.id}.issubset(destination_ids))
+        self.assertNotIn(self.bakery.id, destination_ids)
+        self.assertNotIn(self.hq.id, destination_ids)
+
+    def test_cashier_cannot_list_transfer_destinations(self):
+        self.client.force_authenticate(user=self.cashier)
+        response = self.client.get("/api/branches/transfer-destinations/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_bakery_production_page_requires_bakery_access(self):
         self.client.force_login(self.cashier)
@@ -797,6 +815,10 @@ class MobileAppLoginTests(APITestCase):
             name="Main Street",
             branch_type=BranchType.BRANCH,
         )
+        self.bakery = Branch.objects.create(
+            name="Central Bakery",
+            branch_type=BranchType.BAKERY,
+        )
         self.cashier = User.objects.create_user(username="cashier", password="secret")
         StaffProfile.objects.create(
             user=self.cashier,
@@ -809,6 +831,12 @@ class MobileAppLoginTests(APITestCase):
             user=self.kitchen_staff,
             branch=self.branch,
             role=StaffRole.STAFF,
+        )
+        self.baker = User.objects.create_user(username="baker", password="secret")
+        StaffProfile.objects.create(
+            user=self.baker,
+            branch=self.bakery,
+            role=StaffRole.BAKER,
         )
         self.login_url = "/api/auth/mobile-login/"
 
@@ -832,6 +860,18 @@ class MobileAppLoginTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["can_access_pos"])
         self.assertTrue(response.data["can_access_kitchen"])
+
+    def test_baker_gets_bakery_only(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "baker", "password": "secret"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["can_access_bakery"])
+        self.assertFalse(response.data["can_access_pos"])
+        self.assertFalse(response.data["can_access_kitchen"])
+        self.assertEqual(response.data["branch"]["id"], self.bakery.id)
 
 
 class CashierConsoleAccessTests(APITestCase):

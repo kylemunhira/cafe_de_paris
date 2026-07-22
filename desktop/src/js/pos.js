@@ -2710,6 +2710,8 @@ async function init() {
   updateReceiptModeVisibility();
   stockTakeBtn.hidden = !canCollectPayment();
   customerPaymentBtn.hidden = !canCollectPayment();
+  if (expenseBtn) expenseBtn.hidden = !canCollectPayment();
+  if (dayendBtn) dayendBtn.hidden = !canCollectPayment();
 
   await loadCatalog();
   await loadDiningTables();

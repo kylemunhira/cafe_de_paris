@@ -291,14 +291,17 @@ class OrderUpdateSerializer(serializers.ModelSerializer):
         return customer
 
     def validate(self, attrs):
-        if self.instance.status != OrderStatus.OPEN:
-            raise serializers.ValidationError("Only open orders can be updated.")
+        if self.instance.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+            raise serializers.ValidationError("Only open or unpaid orders can be updated.")
         return attrs
 
     def update(self, instance, validated_data):
         previous_customer_id = instance.customer_id
         order = super().update(instance, validated_data)
-        if order.customer_id != previous_customer_id:
+        if (
+            order.status == OrderStatus.OPEN
+            and order.customer_id != previous_customer_id
+        ):
             reprice_order_items(order)
         return order
 

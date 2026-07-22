@@ -680,6 +680,14 @@ class DeliveryNoteTests(TestCase):
         self.assertContains(response, "DN-")
         self.assertContains(response, "cafe-de-paris-logo.png")
         self.assertContains(response, "size: A4")
+        self.assertContains(response, "Print 80mm")
+
+        thermal_response = self.client.get(
+            f"/transfers/delivery-note/{note.id}/print/?paper=80mm"
+        )
+        self.assertEqual(thermal_response.status_code, 200)
+        self.assertContains(thermal_response, "size: 80mm auto")
+        self.assertContains(thermal_response, 'class="paper-80mm"')
 
 
 class StoresTransferTests(TestCase):

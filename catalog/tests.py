@@ -42,6 +42,19 @@ class ProductCsvTests(TestCase):
         self.assertEqual(result["errors"], [])
         self.assertTrue(Product.objects.filter(name="Latte").exists())
 
+    def test_import_updates_case_insensitive_name_match(self):
+        csv_file = io.BytesIO(
+            b"name,category,selling_price,is_active\nESPRESSO,Coffee,4.00,true\n"
+        )
+        result = import_products_csv(csv_file)
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(Product.objects.filter(name__iexact="espresso").count(), 1)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, "ESPRESSO")
+        self.assertEqual(self.product.selling_price, Decimal("4.00"))
+
     def test_import_updates_by_id(self):
         csv_file = io.BytesIO(
             f"id,name,category,selling_price,is_active\n"
@@ -134,6 +147,107 @@ class BakeryTransferProductFilterTests(TestCase):
         self.assertEqual(response.status_code, 200)
         names = {item["name"] for item in response.data["results"]}
         self.assertNotIn("Pastry Cream", names)
+
+    def test_pos_catalog_excludes_inactive_products(self):
+        self.croissant.is_active = False
+        self.croissant.save(update_fields=["is_active"])
+        response = self.client.get("/api/products/?pos_catalog=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Espresso"})
+
+    def test_bakery_manufactured_excludes_inactive_products(self):
+        self.croissant.is_active = False
+        self.croissant.save(update_fields=["is_active"])
+        response = self.client.get("/api/products/?bakery_manufactured=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Pastry Cream"})
+
+    def test_exclude_bakery_excludes_inactive_products(self):
+        Product.objects.filter(name="Espresso").update(is_active=False)
+        response = self.client.get("/api/products/?exclude_bakery=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, set())
+
+
+class ProductNameUniquenessTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=self.category,
+            selling_price=Decimal("3.50"),
+        )
+
+    def test_create_rejects_case_insensitive_duplicate(self):
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "ESPRESSO",
+                "category": self.category.id,
+                "selling_price": "4.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+        self.assertEqual(Product.objects.filter(name__iexact="espresso").count(), 1)
+
+    def test_create_reactivates_inactive_case_insensitive_match(self):
+        self.product.is_active = False
+        self.product.save(update_fields=["is_active"])
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "espresso",
+                "category": self.category.id,
+                "selling_price": "4.25",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Product.objects.filter(name__iexact="espresso").count(), 1)
+        self.product.refresh_from_db()
+        self.assertTrue(self.product.is_active)
+        self.assertEqual(self.product.name, "espresso")
+        self.assertEqual(self.product.selling_price, Decimal("4.25"))
+
+    def test_update_rejects_case_insensitive_duplicate(self):
+        other = Product.objects.create(
+            name="Latte",
+            category=self.category,
+            selling_price=Decimal("4.00"),
+        )
+        response = self.client.patch(
+            f"/api/products/{other.id}/",
+            {"name": "ESPRESSO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_deactivate_allows_existing_case_insensitive_duplicate(self):
+        Product.objects.create(
+            name="ESPRESSO",
+            category=self.category,
+            selling_price=Decimal("4.00"),
+        )
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {
+                "name": self.product.name,
+                "category": self.category.id,
+                "selling_price": "3.50",
+                "is_active": False,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.is_active)
 
 
 class IngredientCsvTests(TestCase):

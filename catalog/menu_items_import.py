@@ -73,10 +73,10 @@ def _normalize_menu_item(item, *, default_tax_rate):
 
 
 def _dedupe_menu_items(items):
-    """Keep the last row for each category + name pair."""
+    """Keep the last row for each category + name pair (case-insensitive)."""
     by_key = {}
     for item in items:
-        by_key[(item["category"], item["name"])] = item
+        by_key[(item["category"].casefold(), item["name"].casefold())] = item
     return list(by_key.values())
 
 
@@ -182,9 +182,17 @@ def import_menu_items_from_list(items, *, replace=False):
                 try:
                     product = Product.objects.get(pk=int(product_id))
                 except (ValueError, Product.DoesNotExist):
-                    product = Product.objects.filter(category=category, name=item["name"]).first()
+                    product = (
+                        Product.objects.filter(category=category, name__iexact=item["name"])
+                        .order_by("id")
+                        .first()
+                    )
             else:
-                product = Product.objects.filter(category=category, name=item["name"]).first()
+                product = (
+                    Product.objects.filter(category=category, name__iexact=item["name"])
+                    .order_by("id")
+                    .first()
+                )
 
             if product:
                 updates = []
@@ -221,7 +229,10 @@ def import_menu_items_from_list(items, *, replace=False):
                 stats["products_created"] += 1
 
         if replace:
-            keys_in_csv = {(item["category"], item["name"]) for item in normalized_items}
+            keys_in_csv = {
+                (item["category"].casefold(), item["name"].casefold())
+                for item in normalized_items
+            }
             pos_products = (
                 Product.objects.filter(is_active=True, category__is_asset=False)
                 .exclude(category__name__in=POS_EXCLUDED_CATEGORIES)
@@ -230,7 +241,8 @@ def import_menu_items_from_list(items, *, replace=False):
             to_deactivate = [
                 product.id
                 for product in pos_products
-                if (product.category.name, product.name) not in keys_in_csv
+                if (product.category.name.casefold(), product.name.casefold())
+                not in keys_in_csv
             ]
             if to_deactivate:
                 stats["deactivated"] = Product.objects.filter(id__in=to_deactivate).update(

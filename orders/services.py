@@ -226,6 +226,52 @@ class OrderCancelError(Exception):
     """Raised when an order cannot be cancelled or voided."""
 
 
+class OrderItemRemoveError(Exception):
+    """Raised when an order line cannot be decremented or removed."""
+
+
+def remove_one_order_item(order, item):
+    """
+    Decrement one unit from an open order line, deleting the line at zero.
+    Keeps at least one unit across all remaining lines on the order.
+    """
+    if order.status != OrderStatus.OPEN:
+        raise OrderItemRemoveError("Only open orders can have items removed.")
+    if item.order_id != order.pk:
+        raise OrderItemRemoveError("This item does not belong to the order.")
+
+    total_units = sum(
+        line.quantity for line in order.items.only("quantity")
+    )
+    if total_units <= Decimal("1"):
+        raise OrderItemRemoveError(
+            "Cannot remove the last item. Cancel the order instead."
+        )
+
+    if item.quantity > Decimal("1"):
+        item.quantity = (item.quantity - Decimal("1")).quantize(Decimal("0.01"))
+        item.save(update_fields=["quantity"])
+    else:
+        item.delete()
+
+    kitchen_needs_reset = order.kitchen_status != KitchenStatus.PENDING
+    if kitchen_needs_reset:
+        order.kitchen_status = KitchenStatus.PENDING
+        order.kitchen_started_at = None
+        order.kitchen_ready_at = None
+        order.save(
+            update_fields=[
+                "kitchen_status",
+                "kitchen_started_at",
+                "kitchen_ready_at",
+            ]
+        )
+    else:
+        order.recalculate_total()
+
+    return order
+
+
 def cancel_order(order, *, cancelled_by=None):
     """Cancel an unpaid (open) order. No inventory changes."""
     if order.status != OrderStatus.OPEN:
@@ -240,7 +286,7 @@ def cancel_order(order, *, cancelled_by=None):
 def void_order(order, *, voided_by=None):
     """
     Void a paid order that has not been fiscalised.
-    Restores recipe materials and refunds account payments.
+    Reverses the payment, restores recipe materials, and leaves the order unpaid.
     """
     from customers.services import CustomerAccountError, refund_order_to_account
     from inventory.services import restore_order_recipe_materials
@@ -249,6 +295,8 @@ def void_order(order, *, voided_by=None):
         raise OrderCancelError("Only paid orders can be voided.")
     if order.fiscal_approval_status == FiscalApprovalStatus.APPROVED:
         raise OrderCancelError("Fiscalised orders cannot be voided.")
+    if hasattr(order, "fiscal_receipt"):
+        raise OrderCancelError("Orders already submitted for fiscalisation cannot be voided.")
 
     restore_order_recipe_materials(order)
 
@@ -258,10 +306,38 @@ def void_order(order, *, voided_by=None):
         except CustomerAccountError as exc:
             raise OrderCancelError(str(exc)) from exc
 
-    order.status = OrderStatus.CANCELLED
+    OrderPayment.objects.filter(order=order).delete()
+
+    order.status = OrderStatus.UNPAID
+    order.payment_currency = None
+    order.exchange_rate = None
+    order.amount_paid = None
+    order.payment_method = ""
+    order.receipt_number = None
+    order.paid_at = None
+    order.paid_by = None
+    order.fiscal_approval_status = ""
+    order.fiscal_approved_at = None
+    order.fiscal_approved_by = None
     order.cancelled_at = timezone.now()
     order.cancelled_by = voided_by
-    order.save(update_fields=["status", "cancelled_at", "cancelled_by"])
+    order.save(
+        update_fields=[
+            "status",
+            "payment_currency",
+            "exchange_rate",
+            "amount_paid",
+            "payment_method",
+            "receipt_number",
+            "paid_at",
+            "paid_by",
+            "fiscal_approval_status",
+            "fiscal_approved_at",
+            "fiscal_approved_by",
+            "cancelled_at",
+            "cancelled_by",
+        ]
+    )
     return order
 
 

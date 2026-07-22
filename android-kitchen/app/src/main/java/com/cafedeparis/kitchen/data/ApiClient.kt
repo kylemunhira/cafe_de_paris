@@ -23,10 +23,18 @@ class ApiClient(
     }
 
     fun fetchOpenOrders(): List<KitchenOrder> {
+        return fetchOrdersByStatus("open")
+    }
+
+    fun fetchPayableOrders(): List<KitchenOrder> {
+        return fetchOrdersByStatus("open,unpaid")
+    }
+
+    private fun fetchOrdersByStatus(status: String): List<KitchenOrder> {
         val token = session.token ?: throw ApiException(401, "Not logged in")
         val branchId = session.branchId
         val url =
-            "${config.serverUrl}/api/orders/?status=open&branch=$branchId&page_size=500"
+            "${config.serverUrl}/api/orders/?status=$status&branch=$branchId&page_size=500"
         val body = getJson(url, token)
         return JsonParsers.parseOrders(body)
     }
@@ -36,6 +44,98 @@ class ApiClient(
         val url = "${config.serverUrl}/api/products/?pos_catalog=true&page_size=1000"
         val body = getJson(url, token)
         return JsonParsers.parseProducts(body)
+    }
+
+    fun fetchBakeryProducts(): List<Product> {
+        val token = requireToken()
+        val url = "${config.serverUrl}/api/products/?bakery_transfer=true&page_size=1000"
+        return JsonParsers.parseProducts(getJson(url, token))
+    }
+
+    fun previewProduction(productId: Int, quantity: String): ProductionPreview {
+        val token = requireToken()
+        val payload = JSONObject()
+            .put("branch", session.branchId)
+            .put("product", productId)
+            .put("quantity", quantity)
+        val body = postJson(
+            "${config.serverUrl}/api/production-orders/preview/",
+            payload,
+            token,
+        )
+        return JsonParsers.parseProductionPreview(body)
+    }
+
+    fun createProduction(productId: Int, quantity: String): ProductionOrder {
+        val token = requireToken()
+        val payload = JSONObject()
+            .put("branch", session.branchId)
+            .put("product", productId)
+            .put("quantity", quantity)
+        val body = postJson("${config.serverUrl}/api/production-orders/", payload, token)
+        return JsonParsers.parseProductionOrder(body)
+    }
+
+    fun fetchProductionOrders(): List<ProductionOrder> {
+        val token = requireToken()
+        val url =
+            "${config.serverUrl}/api/production-orders/?branch=${session.branchId}&page_size=500"
+        return JsonParsers.parseProductionOrders(getJson(url, token))
+    }
+
+    fun fetchBakeryInventory(): List<InventoryItem> {
+        val token = requireToken()
+        val url = "${config.serverUrl}/api/inventory/?branch=${session.branchId}&page_size=2000"
+        return JsonParsers.parseInventory(getJson(url, token))
+    }
+
+    fun fetchBakeryTransferDestinations(): List<Branch> {
+        val token = requireToken()
+        val url = "${config.serverUrl}/api/branches/transfer-destinations/"
+        return JsonParsers.parseBranches(getJson(url, token))
+    }
+
+    fun fetchBakeryDeliveryNotes(status: String? = null): List<DeliveryNote> {
+        val token = requireToken()
+        val statusQuery = status?.takeIf { it.isNotBlank() }?.let { "&status=$it" }.orEmpty()
+        val url =
+            "${config.serverUrl}/api/delivery-notes/?bakery_only=true&page_size=500$statusQuery"
+        return JsonParsers.parseDeliveryNotes(getJson(url, token))
+    }
+
+    fun createBakeryDeliveryNote(
+        destinationId: Int,
+        lines: List<Pair<Int, String>>,
+    ): DeliveryNote {
+        val token = requireToken()
+        val linesJson = JSONArray()
+        lines.forEach { (productId, quantity) ->
+            linesJson.put(
+                JSONObject()
+                    .put("product", productId)
+                    .put("quantity", quantity),
+            )
+        }
+        val payload = JSONObject()
+            .put("from_branch", session.branchId)
+            .put("to_branch", destinationId)
+            .put("lines", linesJson)
+        val body = postJson(
+            "${config.serverUrl}/api/delivery-notes/from-bakery/",
+            payload,
+            token,
+        )
+        return JsonParsers.parseDeliveryNote(body)
+    }
+
+    fun cancelBakeryDeliveryNote(noteId: Int): DeliveryNote {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/delivery-notes/$noteId/cancel/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseDeliveryNote(body)
     }
 
     fun fetchCategories(): List<ProductCategory> {
@@ -255,6 +355,16 @@ class ApiClient(
     fun cancelOrder(orderId: Int): KitchenOrder {
         val token = requireToken()
         val body = postJson("${config.serverUrl}/api/orders/$orderId/cancel/", JSONObject(), token)
+        return JsonParsers.parseOrder(body)
+    }
+
+    fun removeOneOrderItem(orderId: Int, itemId: Int): KitchenOrder {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/orders/$orderId/items/$itemId/remove-one/",
+            JSONObject(),
+            token,
+        )
         return JsonParsers.parseOrder(body)
     }
 

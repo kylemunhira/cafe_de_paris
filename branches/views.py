@@ -2,6 +2,7 @@ from accounts.branch_access import (
     NO_BRANCH_ACCESS,
     filter_by_branch_field,
     resolve_branch_filter,
+    user_can_access_bakery_transfers,
     user_can_access_pos,
     user_can_manage_branches,
     user_can_manage_dining_tables,
@@ -19,7 +20,7 @@ from zimra_fiscal.fiscal_day import (
 )
 
 from .dining_tables import ensure_default_dining_tables
-from .models import Branch, DiningTable
+from .models import Branch, BranchType, DiningTable
 from .serializers import BranchSerializer, DiningTableSerializer
 
 
@@ -43,6 +44,19 @@ class BranchViewSet(viewsets.ModelViewSet):
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             if not user_can_manage_branches(request.user):
                 raise PermissionDenied("You do not have permission to manage branches.")
+
+    @action(detail=False, methods=["get"], url_path="transfer-destinations")
+    def transfer_destinations(self, request):
+        if not user_can_access_bakery_transfers(request.user):
+            raise PermissionDenied(
+                "Only central bakery staff can list bakery transfer destinations."
+            )
+        queryset = Branch.objects.filter(
+            is_active=True,
+            branch_type__in=(BranchType.STORES, BranchType.BRANCH),
+        ).order_by("name")
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def _assert_fiscal_day_access(self, request, branch):
         if not user_can_manage_fiscal_day(request.user):

@@ -161,11 +161,19 @@ def _find_bakery_product(name, category_name, legacy_id=None):
         except (ValueError, Product.DoesNotExist):
             pass
 
-    product = Product.objects.filter(category__name=category_name, name=name).first()
+    product = (
+        Product.objects.filter(category__name=category_name, name__iexact=name)
+        .order_by("id")
+        .first()
+    )
     if product:
         return product
 
-    return Product.objects.filter(category__name__in=BAKERY_CATEGORIES, name=name).first()
+    return (
+        Product.objects.filter(category__name__in=BAKERY_CATEGORIES, name__iexact=name)
+        .order_by("id")
+        .first()
+    )
 
 
 def import_bakery_products_from_list(items, *, replace=False):

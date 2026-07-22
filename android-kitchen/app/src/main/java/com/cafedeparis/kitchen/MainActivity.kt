@@ -35,6 +35,7 @@ class MainActivity : KeepScreenOnActivity() {
     private lateinit var api: ApiClient
     private val adapter = OrderAdapter()
     private var pollJob: Job? = null
+    private var errorHideJob: Job? = null
     private val printer = EscPosPrinter()
 
     private val bluetoothPermissionLauncher = registerForActivityResult(
@@ -75,7 +76,9 @@ class MainActivity : KeepScreenOnActivity() {
         super.onResume()
         config.reload()
         if (session.isLoggedIn) {
-            if (session.shouldOpenPos()) {
+            if (session.canAccessBakery) {
+                openBakeryAndFinish()
+            } else if (session.shouldOpenPos()) {
                 openPosAndFinish()
             } else {
                 refreshOrders(manual = true)
@@ -87,6 +90,7 @@ class MainActivity : KeepScreenOnActivity() {
 
     override fun onDestroy() {
         pollJob?.cancel()
+        errorHideJob?.cancel()
         super.onDestroy()
     }
 
@@ -125,6 +129,10 @@ class MainActivity : KeepScreenOnActivity() {
     }
 
     private fun routeAfterLogin() {
+        if (session.canAccessBakery) {
+            openBakeryAndFinish()
+            return
+        }
         if (session.shouldOpenPos()) {
             openPosAndFinish()
             return
@@ -145,6 +153,11 @@ class MainActivity : KeepScreenOnActivity() {
         finish()
     }
 
+    private fun openBakeryAndFinish() {
+        startActivity(Intent(this, BakeryProductionActivity::class.java))
+        finish()
+    }
+
     private fun logout() {
         pollJob?.cancel()
         session.clearLogin()
@@ -155,7 +168,6 @@ class MainActivity : KeepScreenOnActivity() {
     private fun showLogin() {
         binding.loginPanel.visibility = View.VISIBLE
         binding.kitchenPanel.visibility = View.GONE
-        binding.configServerLabel.text = getString(R.string.config_server_label, config.serverUrl)
     }
 
     private fun showKitchen() {
@@ -250,6 +262,11 @@ class MainActivity : KeepScreenOnActivity() {
         binding.errorBanner.text = message
         binding.errorBanner.visibility = View.VISIBLE
         updateStatus(message)
+        errorHideJob?.cancel()
+        errorHideJob = lifecycleScope.launch {
+            delay(ERROR_BANNER_MS)
+            binding.errorBanner.visibility = View.GONE
+        }
     }
 
     private fun updateStatus(message: String) {
@@ -268,5 +285,6 @@ class MainActivity : KeepScreenOnActivity() {
 
     companion object {
         private const val POLL_INTERVAL_MS = 5_000L
+        private const val ERROR_BANNER_MS = 6_000L
     }
 }

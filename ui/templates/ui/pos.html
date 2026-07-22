@@ -14,8 +14,10 @@
 {% if can_record_customer_payment %}
 <button type="button" class="btn btn-ghost btn-sm" id="customer-payment-btn">Customer payment</button>
 {% endif %}
+{% if can_collect_payment %}
 <button type="button" class="btn btn-ghost btn-sm" id="expense-btn">Add expense</button>
 <button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">Day end</button>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -376,7 +378,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
+import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, formatDate, kitchenStatusBadge, statusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 import { initPosOperations } from "{% static 'ui/js/pos-operations.js' %}?v=1";
@@ -654,7 +656,11 @@ function setSelectedTable(name) {
 function occupiedTableNames() {
   const names = new Set();
   for (const order of openOrders) {
-    if (order.order_type === "dine_in" && order.table_number) {
+    if (
+      order.status === "open" &&
+      order.order_type === "dine_in" &&
+      order.table_number
+    ) {
       names.add(order.table_number);
     }
   }
@@ -665,12 +671,16 @@ function openOrdersForTable(tableNumber) {
   const table = (tableNumber || "").trim();
   if (!table) return [];
   return openOrders.filter(
-    order => order.order_type === "dine_in" && order.table_number === table
+    order =>
+      order.status === "open" &&
+      order.order_type === "dine_in" &&
+      order.table_number === table
   );
 }
 
 function getReceiptOrders() {
   if (!selectedOrder) return [];
+  if (selectedOrder.status === "unpaid") return [selectedOrder];
   const tableOrders = openOrdersForTable(selectedOrder.table_number);
   return tableOrders.length > 1 ? tableOrders : [selectedOrder];
 }
@@ -1505,21 +1515,30 @@ function renderReceiptPanel() {
     : `Order #${selectedOrder.id}`;
   clearBtn.style.display = "none";
   if (cancelOrderBtn) {
-    cancelOrderBtn.style.display = "";
-    cancelOrderBtn.disabled = false;
+    const canCancel = selectedOrder.status === "open";
+    cancelOrderBtn.style.display = canCancel ? "" : "none";
+    cancelOrderBtn.disabled = !canCancel;
   }
 
   const typeLabel = selectedOrder.order_type.replace("_", " ");
   const tableInfo = selectedOrder.table_number && !combined
     ? `<div class="receipt-meta">Table ${selectedOrder.table_number}</div>`
     : "";
+  const statusMeta = selectedOrder.status === "unpaid"
+    ? `<div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+        <span>Status</span>
+        ${statusBadge("unpaid")}
+      </div>`
+    : `<div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+        <span>Kitchen</span>
+        ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
+      </div>`;
+
+  const canRemoveItems = selectedOrder.status === "open";
 
   cartItems.innerHTML = `
     <div class="receipt-order-meta">
-      <div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-        <span>Kitchen</span>
-        ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
-      </div>
+      ${statusMeta}
       <div class="receipt-meta">${typeLabel}</div>
       ${tableInfo}
       ${combined ? `<div class="receipt-meta">Combined bill for table ${selectedOrder.table_number}</div>` : ""}
@@ -1533,6 +1552,11 @@ function renderReceiptPanel() {
             <div class="name">${item.product_name}</div>
             <div class="line-total">${formatCurrency(item.price)} × ${item.quantity}</div>
           </div>
+          ${canRemoveItems ? `
+            <div class="qty-control">
+              <button type="button" class="qty-btn remove-item-btn" data-order-id="${order.id}" data-item-id="${item.id}" title="Remove one">−</button>
+            </div>
+          ` : ""}
           <div class="line-total" style="font-weight: 600;">${formatCurrency(item.price * item.quantity)}</div>
         </div>
       `).join("")}
@@ -1557,22 +1581,29 @@ function renderReceiptPanel() {
 
 function renderOpenOrdersList() {
   if (!openOrders.length) {
-    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders for this branch</p></div>`;
+    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open or unpaid orders for this branch</p></div>`;
     return;
   }
 
   receiptOrdersList.innerHTML = openOrders.map(o => {
     const typeLabel = o.order_type.replace("_", " ");
     const tableLabel = o.table_number ? ` · Table ${o.table_number}` : "";
-    const tableOrders = o.table_number ? openOrdersForTable(o.table_number) : [];
+    const tableOrders = o.status === "open" && o.table_number
+      ? openOrdersForTable(o.table_number)
+      : [];
     const combinedLabel = tableOrders.length > 1
       ? ` · ${tableOrders.length} orders on table`
       : "";
     const selected = selectedOrder?.id === o.id ? " selected" : "";
-    const readyClass = o.kitchen_status === "ready" ? " receipt-order-ready" : "";
+    const readyClass = o.status === "open" && o.kitchen_status === "ready"
+      ? " receipt-order-ready"
+      : "";
     const displayTotal = tableOrders.length > 1
       ? tableOrders.reduce((sum, order) => sum + Number(order.total_amount), 0)
       : o.total_amount;
+    const statusLabel = o.status === "unpaid"
+      ? statusBadge("unpaid")
+      : kitchenStatusBadge(o.kitchen_status || "pending");
     return `
       <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.id}">
         <div class="receipt-order-card-top">
@@ -1582,7 +1613,7 @@ function renderOpenOrdersList() {
         <div class="receipt-order-card-meta">${typeLabel}${tableLabel}${combinedLabel} · ${o.items?.length || 0} items</div>
         <div class="receipt-order-card-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
           <span>${formatDate(o.created_at)}</span>
-          ${kitchenStatusBadge(o.kitchen_status || "pending")}
+          ${statusLabel}
         </div>
       </button>
     `;
@@ -1601,7 +1632,7 @@ async function loadOpenOrders({ notifyReady = false } = {}) {
     : null;
 
   try {
-    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}&page_size=500`);
+    const data = await apiGet(`/orders/?status=open,unpaid&branch=${branchSelect.value}&page_size=500`);
     openOrders = unwrapList(data);
     if (selectedOrder) {
       const refreshed = openOrders.find(o => o.id === selectedOrder.id);
@@ -1613,6 +1644,7 @@ async function loadOpenOrders({ notifyReady = false } = {}) {
     }
     if (notifyReady && previousStatuses) {
       for (const order of openOrders) {
+        if (order.status !== "open") continue;
         const previous = previousStatuses.get(order.id);
         if (previous === "preparing" && order.kitchen_status === "ready") {
           showToast(`Order #${order.id} is ready for pickup`);
@@ -1780,10 +1812,17 @@ function updateQty(lineKey, delta) {
 }
 
 cartItems.addEventListener("click", (e) => {
-  if (posMode !== "order") return;
-  const btn = e.target.closest(".qty-btn");
-  if (!btn) return;
-  updateQty(btn.dataset.lineKey, btn.dataset.action === "inc" ? 1 : -1);
+  if (posMode === "order") {
+    const btn = e.target.closest(".qty-btn");
+    if (!btn || btn.classList.contains("remove-item-btn")) return;
+    updateQty(btn.dataset.lineKey, btn.dataset.action === "inc" ? 1 : -1);
+    return;
+  }
+  if (posMode === "receipt") {
+    const btn = e.target.closest(".remove-item-btn");
+    if (!btn) return;
+    removeOneOrderItem(Number(btn.dataset.orderId), Number(btn.dataset.itemId));
+  }
 });
 
 function renderCategories() {
@@ -1872,6 +1911,10 @@ cancelOrderBtn?.addEventListener("click", () => {
 
 async function cancelSelectedOrder() {
   if (!selectedOrder) return;
+  if (selectedOrder.status !== "open") {
+    showToast("Only open orders can be cancelled", true);
+    return;
+  }
   const orderId = selectedOrder.id;
   if (!window.confirm(`Cancel unpaid order #${orderId}?`)) return;
 
@@ -1885,6 +1928,33 @@ async function cancelSelectedOrder() {
   } catch (err) {
     showToast(err.message, true);
     cancelOrderBtn.disabled = false;
+  }
+}
+
+async function removeOneOrderItem(orderId, itemId) {
+  if (!selectedOrder || selectedOrder.status !== "open") {
+    showToast("Only open orders can be edited", true);
+    return;
+  }
+  const sourceOrder = openOrders.find(o => o.id === orderId);
+  const item = sourceOrder?.items?.find(i => i.id === itemId);
+  const label = item?.product_name || "item";
+  if (!window.confirm(`Remove one ${label} from order #${orderId}?`)) return;
+
+  try {
+    const updated = await apiPost(`/orders/${orderId}/items/${itemId}/remove-one/`, {});
+    const idx = openOrders.findIndex(o => o.id === orderId);
+    if (idx >= 0) {
+      openOrders[idx] = updated;
+    }
+    if (selectedOrder.id === orderId) {
+      selectedOrder = updated;
+    }
+    renderOpenOrdersList();
+    renderReceiptPanel();
+    showToast(`Removed one ${label}`);
+  } catch (err) {
+    showToast(err.message, true);
   }
 }
 

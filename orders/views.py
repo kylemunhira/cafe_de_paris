@@ -22,7 +22,15 @@ from customers.services import (
 from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 
 from .kitchen_station import filter_orders_for_kitchen_station, resolve_kitchen_station_filter
-from .models import Expense, FiscalApprovalStatus, Order, OrderStatus, PaymentMethod, TenderMethod
+from .models import (
+    Expense,
+    FiscalApprovalStatus,
+    Order,
+    OrderItem,
+    OrderStatus,
+    PaymentMethod,
+    TenderMethod,
+)
 from .serializers import (
     ExpenseCreateSerializer,
     ExpenseSerializer,
@@ -34,6 +42,7 @@ from .serializers import (
 from .services import (
     InvalidKitchenStateError,
     OrderCancelError,
+    OrderItemRemoveError,
     PaymentValidationError,
     ReceiptNumberError,
     allocate_receipt_number,
@@ -41,6 +50,7 @@ from .services import (
     consolidate_table_orders,
     mark_order_paid_with_tenders,
     mark_order_ready,
+    remove_one_order_item,
     start_preparing_order,
     void_order,
 )
@@ -69,7 +79,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         fiscal_only = self.request.query_params.get("fiscal_only")
         branch = self.request.query_params.get("branch")
         if status_filter:
-            qs = qs.filter(status=status_filter)
+            statuses = [value.strip() for value in status_filter.split(",") if value.strip()]
+            if len(statuses) == 1:
+                qs = qs.filter(status=statuses[0])
+            elif statuses:
+                qs = qs.filter(status__in=statuses)
         if kitchen_status:
             qs = qs.filter(kitchen_status=kitchen_status)
         if fiscal_approval_status:
@@ -119,14 +133,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not user_can_collect_payment(request.user):
             raise PermissionDenied("This account cannot collect payment.")
         order = self.get_object()
-        if order.status == OrderStatus.CANCELLED:
+        if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
             return Response(
-                {"detail": "Cancelled orders cannot be paid."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if order.status == OrderStatus.PAID:
-            return Response(
-                {"detail": "Order is already paid."},
+                {"detail": "Only open or unpaid orders can be paid."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -142,6 +151,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                         .select_related("branch")
                         .get(pk=order.pk)
                     )
+                    if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+                        raise CustomerAccountError(
+                            "Only open or unpaid orders can be paid."
+                        )
                     order = consolidate_table_orders(order)
                     pay_order_from_account(order=order, recorded_by=request.user)
             except InsufficientAccountBalance as exc:
@@ -187,6 +200,11 @@ class OrderViewSet(viewsets.ModelViewSet):
                 .select_related("branch")
                 .get(pk=order.pk)
             )
+            if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+                return Response(
+                    {"detail": "Only open or unpaid orders can be paid."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             order = consolidate_table_orders(order)
             try:
                 receipt_number = allocate_receipt_number(order.branch)
@@ -263,6 +281,44 @@ class OrderViewSet(viewsets.ModelViewSet):
                 except Exception:
                     response_data["change_given"] = str(change_base)
         return Response(response_data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"items/(?P<item_id>[^/.]+)/remove-one",
+    )
+    def remove_one_item(self, request, pk=None, item_id=None):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to update orders.")
+        order = self.get_object()
+        try:
+            with transaction.atomic():
+                order = (
+                    Order.objects.select_for_update()
+                    .prefetch_related("items")
+                    .get(pk=order.pk)
+                )
+                item = OrderItem.objects.select_for_update().get(pk=item_id)
+                order = remove_one_order_item(order, item)
+        except OrderItem.DoesNotExist:
+            return Response(
+                {"detail": "Order item not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except OrderItemRemoveError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        order = (
+            Order.objects.select_related(
+                "branch",
+                "customer",
+                "payment_currency",
+                "created_by",
+                "paid_by",
+            )
+            .prefetch_related("items__product", "payments__currency", "fiscal_receipt")
+            .get(pk=order.pk)
+        )
+        return Response(OrderSerializer(order, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
@@ -399,12 +455,14 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
     http_method_names = ["get", "post", "head", "options"]
 
-    def _require_pos_access(self):
-        if not user_can_access_pos(self.request.user):
-            raise PermissionDenied("POS access is required to manage expenses.")
+    def _require_expense_access(self):
+        if not user_can_collect_payment(self.request.user):
+            raise PermissionDenied(
+                "Only authorized staff can manage expenses."
+            )
 
     def get_queryset(self):
-        self._require_pos_access()
+        self._require_expense_access()
         qs = super().get_queryset()
         branch = self.request.query_params.get("branch")
         expense_date = self.request.query_params.get("date")
@@ -425,7 +483,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         return ExpenseSerializer
 
     def create(self, request, *args, **kwargs):
-        self._require_pos_access()
+        self._require_expense_access()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         expense = serializer.save()

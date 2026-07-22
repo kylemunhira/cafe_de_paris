@@ -1,9 +1,12 @@
+from django.http import HttpResponse
+
 from accounts.branch_access import user_can_access_pos, user_can_collect_payment
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from .csv_io import export_customers_csv, import_customers_csv
 from .models import Customer, CustomerAccountTransaction
 from .serializers import (
     CustomerAccountTransactionSerializer,
@@ -37,6 +40,33 @@ class CustomerViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         self._require_customer_access()
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="export-csv")
+    def export_csv(self, request):
+        self._require_customer_access()
+        response = HttpResponse(export_customers_csv(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="customers.csv"'
+        return response
+
+    @action(detail=False, methods=["post"], url_path="import-csv")
+    def import_csv(self, request):
+        self._require_customer_access()
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "No file uploaded. Use form field name 'file'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not upload.name.lower().endswith(".csv"):
+            return Response(
+                {"detail": "Only .csv files are supported."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = import_customers_csv(upload)
+        if result["errors"]:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="transactions")
     def transactions(self, request, pk=None):

@@ -10,8 +10,17 @@ import com.cafedeparis.kitchen.databinding.ItemCartLineBinding
 
 class CartLineAdapter(
     private val editable: Boolean,
+    removable: Boolean = false,
+    private val onRemove: ((CartLine) -> Unit)? = null,
     private val onQuantityChange: (String, Double) -> Unit,
 ) : ListAdapter<CartLine, CartLineAdapter.ViewHolder>(Diff) {
+
+    var removable: Boolean = removable
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemCartLineBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -35,12 +44,20 @@ class CartLineAdapter(
             }
             binding.lineQty.text = formatQty(line.quantity)
             binding.increaseButton.visibility = if (editable) android.view.View.VISIBLE else android.view.View.GONE
-            binding.decreaseButton.visibility = if (editable) android.view.View.VISIBLE else android.view.View.GONE
+            binding.decreaseButton.visibility = when {
+                editable -> android.view.View.VISIBLE
+                removable -> android.view.View.VISIBLE
+                else -> android.view.View.GONE
+            }
             binding.increaseButton.setOnClickListener {
                 onQuantityChange(line.lineKey, line.quantity + 1)
             }
             binding.decreaseButton.setOnClickListener {
-                onQuantityChange(line.lineKey, line.quantity - 1)
+                if (removable) {
+                    onRemove?.invoke(line)
+                } else {
+                    onQuantityChange(line.lineKey, line.quantity - 1)
+                }
             }
             binding.root.contentDescription = "${line.name} ${formatQty(line.quantity)}"
         }

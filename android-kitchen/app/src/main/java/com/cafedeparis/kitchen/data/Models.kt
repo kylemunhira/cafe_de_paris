@@ -5,6 +5,8 @@ data class Branch(
     val name: String,
     val location: String? = null,
     val fiscalization_enabled: Boolean = false,
+    val branch_type: String? = null,
+    val is_active: Boolean = true,
 )
 
 data class UserInfo(
@@ -92,6 +94,7 @@ data class LoginResponse(
     val branch: Branch,
     val can_access_kitchen: Boolean = false,
     val can_access_pos: Boolean = false,
+    val can_access_bakery: Boolean = false,
 )
 
 data class ProductCategory(
@@ -125,6 +128,52 @@ data class Product(
         addon_groups.any { group -> group.addons.any { addon -> addon.is_active } }
 }
 
+data class ProductionPreviewLine(
+    val ingredientName: String,
+    val ingredientCategory: String,
+    val required: String,
+    val available: String,
+    val sufficient: Boolean,
+)
+
+data class ProductionPreview(
+    val productName: String,
+    val quantity: String,
+    val canProduce: Boolean,
+    val lines: List<ProductionPreviewLine>,
+)
+
+data class ProductionOrder(
+    val id: Int,
+    val productName: String,
+    val quantity: String,
+    val createdByName: String?,
+    val createdAt: String,
+)
+
+data class InventoryItem(
+    val productId: Int,
+    val quantity: String,
+)
+
+data class DeliveryNoteLine(
+    val productId: Int,
+    val productName: String,
+    val quantity: String,
+)
+
+data class DeliveryNote(
+    val id: Int,
+    val sourceName: String,
+    val sourceLocation: String?,
+    val destinationName: String,
+    val destinationLocation: String?,
+    val status: String,
+    val createdAt: String,
+    val totalQuantity: String,
+    val lines: List<DeliveryNoteLine>,
+)
+
 data class Currency(
     val id: Int,
     val code: String,
@@ -157,6 +206,8 @@ data class CartLine(
     var quantity: Double,
     val addons: List<CartAddon> = emptyList(),
     val notes: String = "",
+    val orderId: Int? = null,
+    val orderItemId: Int? = null,
 )
 
 fun cartLineKey(productId: Int, addonIds: List<Int>, notes: String): String {

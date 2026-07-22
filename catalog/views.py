@@ -155,9 +155,14 @@ class ProductViewSet(viewsets.ModelViewSet):
                 category__name__in=BAKERY_SELLABLE_CATEGORIES,
             )
         if bakery_manufactured and bakery_manufactured.lower() in ("1", "true", "yes"):
-            queryset = queryset.filter(category__name__in=BAKERY_CATEGORIES)
+            queryset = queryset.filter(
+                is_active=True,
+                category__name__in=BAKERY_CATEGORIES,
+            )
         if exclude_bakery and exclude_bakery.lower() in ("1", "true", "yes"):
-            queryset = queryset.exclude(category__name__in=BAKERY_CATEGORIES)
+            queryset = queryset.filter(is_active=True).exclude(
+                category__name__in=BAKERY_CATEGORIES
+            )
         if pos_catalog and pos_catalog.lower() in ("1", "true", "yes"):
             queryset = pos_catalog_products(queryset)
         return queryset

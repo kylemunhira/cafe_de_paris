@@ -20,6 +20,7 @@ import android.view.ViewGroup
 import android.util.TypedValue
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -40,6 +41,7 @@ import com.cafedeparis.kitchen.data.StockTake
 import com.cafedeparis.kitchen.data.Supplier
 import com.cafedeparis.kitchen.databinding.ActivityPosBinding
 import com.cafedeparis.kitchen.databinding.DialogCustomerPaymentBinding
+import com.cafedeparis.kitchen.databinding.DialogCustomerPickerBinding
 import com.cafedeparis.kitchen.databinding.DialogDayEndBinding
 import java.util.Locale
 import com.cafedeparis.kitchen.databinding.DialogExpenseBinding
@@ -68,6 +70,13 @@ import kotlinx.coroutines.withContext
 
 class PosActivity : KeepScreenOnActivity() {
 
+    private data class CustomerPaymentChoice<T>(
+        val label: String,
+        val value: T,
+    ) {
+        override fun toString(): String = label
+    }
+
     private lateinit var binding: ActivityPosBinding
     private lateinit var session: SessionManager
     private lateinit var config: AppConfig
@@ -79,6 +88,7 @@ class PosActivity : KeepScreenOnActivity() {
     private var currencies: List<Currency> = emptyList()
     private var suppliers: List<Supplier> = emptyList()
     private var customers: List<Customer> = emptyList()
+    private var selectedAccountCustomer: Customer? = null
     private var diningTables: List<DiningTable> = emptyList()
     private var openOrders: List<KitchenOrder> = emptyList()
     private var selectedOrder: KitchenOrder? = null
@@ -94,9 +104,11 @@ class PosActivity : KeepScreenOnActivity() {
     private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
     private var stockTakeDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPaymentDialog: androidx.appcompat.app.AlertDialog? = null
+    private var customerPickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var activeStockTake: StockTake? = null
     private var stockTakeLineInputs: MutableMap<Int, TextInputEditText> = linkedMapOf()
     private var refreshJob: Job? = null
+    private var errorHideJob: Job? = null
     private val printer = EscPosPrinter()
 
     private val bluetoothPermissionLauncher = registerForActivityResult(
@@ -111,7 +123,11 @@ class PosActivity : KeepScreenOnActivity() {
     private val cartAdapter = CartLineAdapter(editable = true) { lineKey, qty ->
         updateCartQuantity(lineKey, qty)
     }
-    private val receiptCartAdapter = CartLineAdapter(editable = false) { _, _ -> }
+    private val receiptCartAdapter = CartLineAdapter(
+        editable = false,
+        removable = true,
+        onRemove = { line -> removeOneFromPlacedOrder(line) },
+    ) { _, _ -> }
     private val receiptAdapter = ReceiptOrderAdapter(::onReceiptOrderSelected)
     private val categoryAdapter = CategoryChipAdapter { categoryId ->
         activeCategoryId = categoryId
@@ -142,9 +158,9 @@ class PosActivity : KeepScreenOnActivity() {
         binding.branchLabel.text = getString(R.string.pos_branch_label, session.branchName ?: "")
         binding.staffLabel.text = session.displayName ?: ""
 
-        binding.productList.layoutManager = GridLayoutManager(this, 3)
+        binding.productList.layoutManager = GridLayoutManager(this, 2)
         binding.productList.adapter = productAdapter
-        binding.categoryList.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.categoryList.layoutManager = GridLayoutManager(this, 2)
         binding.categoryList.adapter = categoryAdapter
         binding.cartList.layoutManager = LinearLayoutManager(this)
         binding.cartList.adapter = cartAdapter
@@ -166,11 +182,13 @@ class PosActivity : KeepScreenOnActivity() {
 
     override fun onDestroy() {
         refreshJob?.cancel()
+        errorHideJob?.cancel()
         tablePickerDialog?.dismiss()
         dayEndDialog?.dismiss()
         expenseDialog?.dismiss()
         stockTakeDialog?.dismiss()
         customerPaymentDialog?.dismiss()
+        customerPickerDialog?.dismiss()
         super.onDestroy()
     }
 
@@ -544,12 +562,9 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun showCustomerPaymentDialog() {
         val dialogBinding = DialogCustomerPaymentBinding.inflate(layoutInflater)
-        val labels = mutableListOf(getString(R.string.customer_payment_select_hint))
-        labels.addAll(customers.map { it.full_name })
-        dialogBinding.customerPaymentCustomerSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            labels,
+        var selectedCustomer: Customer? = null
+        dialogBinding.customerPaymentCustomerInput.setText(
+            getString(R.string.customer_payment_select_hint),
         )
 
         val paymentCurrencies = allCurrencies.filter { it.is_active }.ifEmpty { allCurrencies }
@@ -557,20 +572,27 @@ class PosActivity : KeepScreenOnActivity() {
             Toast.makeText(this, R.string.customer_payment_currency_required, Toast.LENGTH_LONG).show()
             return
         }
-        dialogBinding.customerPaymentCurrencySpinner.adapter = ArrayAdapter(
+        val currencyChoices = paymentCurrencies.map { currency ->
+            val symbol = currency.symbol.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+            CustomerPaymentChoice(
+                "${currency.name.ifBlank { currency.code }}$symbol",
+                currency,
+            )
+        }
+        dialogBinding.customerPaymentCurrencyInput.setAdapter(ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
-            paymentCurrencies.map { currency ->
-                val symbol = currency.symbol.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
-                "${currency.name.ifBlank { currency.code }}$symbol"
-            },
-        )
+            currencyChoices,
+        ))
         val baseIndex = paymentCurrencies.indexOfFirst { it.is_base }.takeIf { it >= 0 } ?: 0
-        dialogBinding.customerPaymentCurrencySpinner.setSelection(baseIndex)
+        var selectedCurrencyChoice: CustomerPaymentChoice<Currency>? = currencyChoices[baseIndex]
+        dialogBinding.customerPaymentCurrencyInput.setText(
+            selectedCurrencyChoice?.label,
+            false,
+        )
 
         fun updateBalance() {
-            val index = dialogBinding.customerPaymentCustomerSpinner.selectedItemPosition - 1
-            val customer = customers.getOrNull(index)
+            val customer = selectedCustomer
             dialogBinding.customerPaymentBalanceLabel.text = if (customer == null) {
                 getString(R.string.customer_payment_select_hint)
             } else {
@@ -581,19 +603,28 @@ class PosActivity : KeepScreenOnActivity() {
             }
         }
 
-        dialogBinding.customerPaymentCustomerSpinner.onItemSelectedListener =
-            object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: AdapterView<*>?,
-                    view: View?,
-                    position: Int,
-                    id: Long,
-                ) {
+        dialogBinding.customerPaymentCustomerInput.setOnClickListener {
+            openCustomerPickerDialog(
+                includeWalkIn = false,
+                onSelected = { customer ->
+                    selectedCustomer = customer
+                    dialogBinding.customerPaymentCustomerInput.setText(
+                        customer?.full_name
+                            ?: getString(R.string.customer_payment_select_hint),
+                    )
                     updateBalance()
-                }
-
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            }
+                },
+            )
+        }
+        dialogBinding.customerPaymentCustomerLayout.setEndIconOnClickListener {
+            dialogBinding.customerPaymentCustomerInput.performClick()
+        }
+        dialogBinding.customerPaymentCurrencyInput.setOnItemClickListener {
+                parent, _, position, _ ->
+            @Suppress("UNCHECKED_CAST")
+            selectedCurrencyChoice =
+                parent.getItemAtPosition(position) as CustomerPaymentChoice<Currency>
+        }
         updateBalance()
 
         customerPaymentDialog = MaterialAlertDialogBuilder(this)
@@ -606,7 +637,11 @@ class PosActivity : KeepScreenOnActivity() {
         customerPaymentDialog?.setOnShowListener {
             customerPaymentDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
                 ?.setOnClickListener {
-                    saveCustomerPayment(dialogBinding, paymentCurrencies)
+                    saveCustomerPayment(
+                        dialogBinding,
+                        selectedCustomer,
+                        selectedCurrencyChoice?.value,
+                    )
                 }
         }
         customerPaymentDialog?.show()
@@ -619,14 +654,10 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun saveCustomerPayment(
         dialogBinding: DialogCustomerPaymentBinding,
-        paymentCurrencies: List<Currency>,
+        customer: Customer?,
+        currency: Currency?,
     ) {
-        val customerIndex = dialogBinding.customerPaymentCustomerSpinner.selectedItemPosition - 1
-        val customer = customers.getOrNull(customerIndex)
         val amountRaw = dialogBinding.customerPaymentAmountInput.text?.toString()?.trim().orEmpty()
-        val currency = paymentCurrencies.getOrNull(
-            dialogBinding.customerPaymentCurrencySpinner.selectedItemPosition,
-        )
         val notes = dialogBinding.customerPaymentNotesInput.text?.toString()?.trim().orEmpty()
 
         if (customer == null) {
@@ -675,7 +706,7 @@ class PosActivity : KeepScreenOnActivity() {
                         it
                     }
                 }
-                setupCustomerSpinner(customer.id)
+                setupCustomerSearch(customer.id)
                 updateAccountBalanceHint()
                 customerPaymentDialog?.dismiss()
                 Toast.makeText(
@@ -988,18 +1019,23 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun occupiedTableNames(orders: List<KitchenOrder>): Set<String> {
         return orders.filter { order ->
-            order.order_type == "dine_in" && order.table_number.isNotBlank()
+            order.status == "open" &&
+                order.order_type == "dine_in" &&
+                order.table_number.isNotBlank()
         }.map { it.table_number }.toSet()
     }
 
     private fun openOrdersForTable(tableNumber: String): List<KitchenOrder> {
         val table = tableNumber.trim()
         if (table.isEmpty()) return emptyList()
-        return openOrders.filter { it.order_type == "dine_in" && it.table_number == table }
+        return openOrders.filter {
+            it.status == "open" && it.order_type == "dine_in" && it.table_number == table
+        }
     }
 
     private fun receiptOrders(): List<KitchenOrder> {
         val order = selectedOrder ?: return emptyList()
+        if (order.status == "unpaid") return listOf(order)
         val tableOrders = openOrdersForTable(order.table_number)
         return if (tableOrders.size > 1) tableOrders else listOf(order)
     }
@@ -1013,7 +1049,7 @@ class PosActivity : KeepScreenOnActivity() {
             binding.refreshProgress.visibility = View.VISIBLE
             try {
                 val (tables, orders) = withContext(Dispatchers.IO) {
-                    Pair(api.fetchDiningTables(), api.fetchOpenOrders())
+                    Pair(api.fetchDiningTables(), api.fetchPayableOrders())
                 }
                 diningTables = tables.filter { it.is_active }.sortedBy { it.sort_order }
                 openOrders = orders
@@ -1078,6 +1114,8 @@ class PosActivity : KeepScreenOnActivity() {
         binding.receiptModeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         binding.stockTakeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         binding.customerPaymentButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
+        binding.expenseButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
+        binding.dayEndButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         if (!showReceipt && posMode == PosMode.RECEIPT) {
             setPosMode(PosMode.ORDER)
         }
@@ -1095,14 +1133,23 @@ class PosActivity : KeepScreenOnActivity() {
             syncPaymentMethodUi()
             updateReceiptCheckoutState()
         }
-        binding.customerSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                updateAccountBalanceHint()
-                updateReceiptCheckoutState()
-                linkSelectedCustomerToOrder()
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        binding.customerInput.setOnClickListener {
+            openCustomerPickerDialog(
+                includeWalkIn = true,
+                onSelected = { customer ->
+                    selectedAccountCustomer = customer
+                    binding.customerInput.setText(
+                        customer?.let(::customerLabel)
+                            ?: getString(R.string.customer_walk_in),
+                    )
+                    updateAccountBalanceHint()
+                    updateReceiptCheckoutState()
+                    linkSelectedCustomerToOrder()
+                },
+            )
+        }
+        binding.customerInputLayout.setEndIconOnClickListener {
+            binding.customerInput.performClick()
         }
         val splitWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -1275,15 +1322,78 @@ class PosActivity : KeepScreenOnActivity() {
         updateAccountBalanceHint()
     }
 
-    private fun setupCustomerSpinner(preselectCustomerId: Int? = null) {
-        val labels = mutableListOf(getString(R.string.customer_walk_in))
-        labels.addAll(customers.map(::customerLabel))
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
-        binding.customerSpinner.adapter = adapter
-        val index = preselectCustomerId?.let { customerId ->
-            customers.indexOfFirst { it.id == customerId }.takeIf { it >= 0 }?.plus(1)
-        } ?: 0
-        binding.customerSpinner.setSelection(index)
+    private fun setupCustomerSearch(preselectCustomerId: Int? = null) {
+        selectedAccountCustomer = customers.firstOrNull { it.id == preselectCustomerId }
+        binding.customerInput.setText(
+            selectedAccountCustomer?.let(::customerLabel)
+                ?: getString(R.string.customer_walk_in),
+        )
+    }
+
+    private fun openCustomerPickerDialog(
+        includeWalkIn: Boolean = true,
+        onSelected: (Customer?) -> Unit,
+    ) {
+        val dialogBinding = DialogCustomerPickerBinding.inflate(layoutInflater)
+        val walkInLabel = getString(R.string.customer_walk_in)
+        val allChoices = mutableListOf<CustomerPaymentChoice<Customer?>>()
+        if (includeWalkIn) {
+            allChoices.add(CustomerPaymentChoice(walkInLabel, null))
+        }
+        allChoices.addAll(
+            customers.map { customer ->
+                CustomerPaymentChoice(customerLabel(customer), customer)
+            },
+        )
+        val visibleChoices = allChoices.toMutableList()
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_list_item_1,
+            visibleChoices,
+        )
+        dialogBinding.customerPickerList.adapter = adapter
+
+        fun refreshList(query: String) {
+            val needle = query.trim().lowercase(Locale.getDefault())
+            visibleChoices.clear()
+            if (needle.isEmpty()) {
+                visibleChoices.addAll(allChoices)
+            } else {
+                visibleChoices.addAll(
+                    allChoices.filter { choice ->
+                        choice.label.lowercase(Locale.getDefault()).contains(needle)
+                    },
+                )
+            }
+            adapter.notifyDataSetChanged()
+            val empty = visibleChoices.isEmpty()
+            dialogBinding.customerPickerList.visibility = if (empty) View.GONE else View.VISIBLE
+            dialogBinding.customerPickerEmptyLabel.visibility = if (empty) View.VISIBLE else View.GONE
+        }
+
+        dialogBinding.customerPickerSearchInput.doAfterTextChanged { text ->
+            refreshList(text?.toString().orEmpty())
+        }
+
+        customerPickerDialog?.dismiss()
+        customerPickerDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.select_customer_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialogBinding.customerPickerList.setOnItemClickListener { _, _, position, _ ->
+            val choice = visibleChoices.getOrNull(position) ?: return@setOnItemClickListener
+            onSelected(choice.value)
+            customerPickerDialog?.dismiss()
+        }
+
+        customerPickerDialog?.show()
+        dialogBinding.customerPickerSearchInput.requestFocus()
+        customerPickerDialog?.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+        )
     }
 
     private fun customerLabel(customer: Customer): String {
@@ -1297,8 +1407,7 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun selectedCustomer(): Customer? {
-        val index = binding.customerSpinner.selectedItemPosition - 1
-        return customers.getOrNull(index)
+        return selectedAccountCustomer
     }
 
     private fun updateAccountBalanceHint() {
@@ -1544,7 +1653,9 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun usableCurrencies(): List<Currency> {
-        return currencies.filter { it.is_base || !it.current_rate.isNullOrBlank() }
+        return currencies
+            .filter { it.is_base || !it.current_rate.isNullOrBlank() }
+            .sortedByDescending { it.is_base }
     }
 
     private fun setupCurrencyButtons() {
@@ -1607,7 +1718,7 @@ class PosActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             if (!silent) binding.refreshProgress.visibility = View.VISIBLE
             try {
-                val orders = withContext(Dispatchers.IO) { api.fetchOpenOrders() }
+                val orders = withContext(Dispatchers.IO) { api.fetchPayableOrders() }
                     .sortedByDescending { it.created_at }
                 openOrders = orders
                 receiptAdapter.openOrders = orders
@@ -1728,6 +1839,7 @@ class PosActivity : KeepScreenOnActivity() {
         val orderChanged = receiptPaymentOrderId != order.id
         receiptPaymentOrderId = order.id
 
+        val canRemoveItems = order.status == "open"
         val lines = receiptOrders().flatMap { tableOrder ->
             tableOrder.items.map { item ->
                 val qty = item.quantity.toDoubleOrNull() ?: 1.0
@@ -1751,23 +1863,29 @@ class PosActivity : KeepScreenOnActivity() {
                         )
                     },
                     notes = item.notes,
+                    orderId = if (canRemoveItems) tableOrder.id else null,
+                    orderItemId = if (canRemoveItems) item.id else null,
                 )
             }
         }
         binding.cartList.adapter = receiptCartAdapter
+        receiptCartAdapter.removable = canRemoveItems
         receiptCartAdapter.submitList(lines)
         binding.emptyCartLabel.visibility = View.GONE
         binding.cartList.visibility = View.VISIBLE
         binding.paymentSection.visibility = View.VISIBLE
         binding.clearButton.isEnabled = false
-        binding.cancelOrderButton.visibility = View.VISIBLE
-        binding.cancelOrderButton.isEnabled = true
+        val canCancel = order.status == "open"
+        binding.cancelOrderButton.visibility = if (canCancel) View.VISIBLE else View.GONE
+        binding.cancelOrderButton.isEnabled = canCancel
         if (orderChanged) {
             paymentMethod = PaymentMethod.CASH
             binding.paymentMethodToggle.check(binding.cashPaymentButton.id)
-            setupCustomerSpinner(order.customer)
+            setupCustomerSearch(order.customer)
             binding.splitPaymentEnabled.isChecked = false
             clearSplitPaymentInputs()
+            // Always start collect-payment on the base currency; user can change if needed.
+            selectedCurrencyId = usableCurrencies().firstOrNull { it.is_base }?.id
         }
         syncPaymentMethodUi()
         renderCurrencyButtons()
@@ -1827,8 +1945,60 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
+    private fun removeOneFromPlacedOrder(line: CartLine) {
+        val orderId = line.orderId ?: return
+        val itemId = line.orderItemId ?: return
+        val order = selectedOrder ?: return
+        if (order.status != "open") {
+            Toast.makeText(this, R.string.only_open_orders_edit, Toast.LENGTH_SHORT).show()
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setMessage(getString(R.string.remove_order_item_confirm, line.name, orderId))
+            .setPositiveButton(R.string.remove_item) { _, _ ->
+                performRemoveOneOrderItem(orderId, itemId, line.name)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun performRemoveOneOrderItem(orderId: Int, itemId: Int, itemName: String) {
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                val updated = withContext(Dispatchers.IO) {
+                    api.removeOneOrderItem(orderId, itemId)
+                }
+                openOrders = openOrders.map { existing ->
+                    if (existing.id == updated.id) updated else existing
+                }
+                if (selectedOrder?.id == updated.id) {
+                    selectedOrder = updated
+                }
+                receiptAdapter.openOrders = openOrders
+                receiptAdapter.submitList(openOrders)
+                renderReceiptPanel()
+                Toast.makeText(
+                    this@PosActivity,
+                    getString(R.string.order_item_removed, itemName),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (err: ApiException) {
+                handleApiError(err)
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
     private fun cancelSelectedOrder() {
         val order = selectedOrder ?: return
+        if (order.status != "open") {
+            Toast.makeText(this, R.string.only_open_orders_cancel, Toast.LENGTH_SHORT).show()
+            return
+        }
         MaterialAlertDialogBuilder(this)
             .setMessage(getString(R.string.cancel_order_confirm, order.id))
             .setPositiveButton(R.string.cancel_order) { _, _ ->
@@ -2003,6 +2173,11 @@ class PosActivity : KeepScreenOnActivity() {
     private fun showError(message: String) {
         binding.errorBanner.text = message
         binding.errorBanner.visibility = View.VISIBLE
+        errorHideJob?.cancel()
+        errorHideJob = lifecycleScope.launch {
+            delay(ERROR_BANNER_MS)
+            binding.errorBanner.visibility = View.GONE
+        }
     }
 
     private fun paymentOptionsForAmount(baseAmount: Double): List<PaymentOptionLine> {
@@ -2114,5 +2289,6 @@ class PosActivity : KeepScreenOnActivity() {
 
     companion object {
         private const val RECEIPT_REFRESH_MS = 10_000L
+        private const val ERROR_BANNER_MS = 6_000L
     }
 }

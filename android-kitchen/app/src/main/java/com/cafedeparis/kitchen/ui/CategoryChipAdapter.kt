@@ -3,7 +3,7 @@ package com.cafedeparis.kitchen.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.cafedeparis.kitchen.databinding.ItemCategoryChipBinding
+import com.cafedeparis.kitchen.databinding.ItemCategoryCardBinding
 
 class CategoryChipAdapter(
     private val onCategorySelected: (Int?) -> Unit,
@@ -26,7 +26,7 @@ class CategoryChipAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val binding = ItemCategoryChipBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        val binding = ItemCategoryCardBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding)
     }
 
@@ -37,10 +37,10 @@ class CategoryChipAdapter(
     override fun getItemCount() = items.size
 
     inner class ViewHolder(
-        private val binding: ItemCategoryChipBinding,
+        private val binding: ItemCategoryCardBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(chip: Chip) {
-            binding.root.text = chip.name
+            binding.categoryName.text = chip.name
             binding.root.isChecked = chip.id == selectedId
             binding.root.setOnClickListener {
                 selectedId = chip.id

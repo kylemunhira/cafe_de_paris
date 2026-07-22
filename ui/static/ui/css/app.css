@@ -200,13 +200,26 @@ h1, h2, h3, .font-display {
   text-decoration: underline;
 }
 
+.sidebar-footer-copy {
+  margin: 0;
+  line-height: 1.4;
+}
+
 .login-page {
   align-items: center;
   background: var(--color-cream);
   display: flex;
+  flex-direction: column;
   justify-content: center;
   min-height: 100vh;
   padding: 1.5rem;
+}
+
+.login-footer {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  margin-top: 1.5rem;
+  text-align: center;
 }
 
 .login-card {

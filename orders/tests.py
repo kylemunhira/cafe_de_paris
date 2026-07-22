@@ -5,12 +5,20 @@ from django.test import Client, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import StaffProfile
+from accounts.models import StaffProfile, StaffRole
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
 from inventory.models import StockTake, StockTakeStatus, StockTakeType
 from orders.day_end import build_day_end_report
-from orders.models import Expense, FiscalApprovalStatus, KitchenStatus, Order, OrderStatus, OrderType
+from orders.models import (
+    Expense,
+    FiscalApprovalStatus,
+    KitchenStatus,
+    Order,
+    OrderStatus,
+    OrderType,
+    PaymentMethod,
+)
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
 from payments.models import Currency, CurrencyRate
 
@@ -732,6 +740,32 @@ class DayEndReportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data.get("saved"))
 
+    def test_waiter_cannot_access_day_end_api(self):
+        waiter = User.objects.create_user(username="waiter", password="pass")
+        StaffProfile.objects.create(
+            user=waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+        )
+        self._complete_daily_stock_take()
+        api = APIClient()
+        api.force_authenticate(user=waiter)
+        response = api.get(
+            f"/api/reports/day-end/?branch={self.branch.id}&date={self.today.isoformat()}"
+        )
+        self.assertEqual(response.status_code, 403)
+        post_response = api.post(
+            "/api/reports/day-end/",
+            {
+                "branch": self.branch.id,
+                "date": self.today.isoformat(),
+                "counted": {str(self.usd.id): "8.00"},
+            },
+            format="json",
+        )
+        self.assertEqual(post_response.status_code, 403)
+
 
 class ExpenseApiTests(TestCase):
     def setUp(self):
@@ -846,6 +880,33 @@ class ExpenseApiTests(TestCase):
         results = response.data.get("results", response.data)
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["description"], "In range")
+
+    def test_waiter_cannot_manage_expenses(self):
+        waiter = User.objects.create_user(username="waiter", password="pass")
+        StaffProfile.objects.create(
+            user=waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+        )
+        self.client.force_authenticate(user=waiter)
+        create_response = self.client.post(
+            "/api/expenses/",
+            {
+                "branch": self.branch.id,
+                "expense_date": "2026-06-17",
+                "amount": "10.00",
+                "currency": self.usd.id,
+                "description": "Should be denied",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 403)
+        list_response = self.client.get(
+            f"/api/expenses/?branch={self.branch.id}&date=2026-06-17"
+        )
+        self.assertEqual(list_response.status_code, 403)
+        self.assertEqual(Expense.objects.count(), 0)
 
 
 class ExpensesPageTests(TestCase):
@@ -1039,13 +1100,56 @@ class OrderCancelVoidTests(TestCase):
             {"currency_id": self.usd.id},
             format="json",
         )
+        order.refresh_from_db()
+        original_receipt = order.receipt_number
+        self.assertTrue(order.payments.exists())
+
         response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.CANCELLED)
-        self.assertIsNotNone(order.receipt_number)
-        self.assertIsNotNone(order.paid_at)
+        self.assertEqual(order.status, OrderStatus.UNPAID)
+        self.assertIsNone(order.receipt_number)
+        self.assertIsNone(order.paid_at)
+        self.assertIsNone(order.paid_by)
+        self.assertIsNone(order.payment_currency)
+        self.assertIsNone(order.exchange_rate)
+        self.assertIsNone(order.amount_paid)
+        self.assertEqual(order.payment_method, "")
+        self.assertFalse(order.payments.exists())
         self.assertEqual(order.cancelled_by_id, self.user.id)
+
+        repay_response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(repay_response.status_code, 200, repay_response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+        self.assertIsNotNone(order.receipt_number)
+        self.assertNotEqual(order.receipt_number, original_receipt)
+        self.assertIsNotNone(order.paid_at)
+        self.assertEqual(order.paid_by_id, self.user.id)
+        self.assertTrue(order.payments.exists())
+
+    def test_list_orders_supports_comma_separated_status(self):
+        open_order = self._open_order()
+        unpaid_order = self._open_order()
+        unpaid_order.status = OrderStatus.UNPAID
+        unpaid_order.save(update_fields=["status"])
+        paid_order = self._open_order()
+        self.client.post(
+            f"/api/orders/{paid_order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+
+        response = self.client.get("/api/orders/?status=open,unpaid")
+        self.assertEqual(response.status_code, 200)
+        ids = {order["id"] for order in response.data["results"]}
+        self.assertIn(open_order.id, ids)
+        self.assertIn(unpaid_order.id, ids)
+        self.assertNotIn(paid_order.id, ids)
 
     def test_void_open_order_rejected(self):
         order = self._open_order()
@@ -1097,13 +1201,33 @@ class OrderCancelVoidTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         customer.refresh_from_db()
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.CANCELLED)
+        self.assertEqual(order.status, OrderStatus.UNPAID)
+        self.assertEqual(order.payment_method, "")
         self.assertEqual(customer.account_balance, Decimal("20.00"))
         self.assertTrue(
             customer.account_transactions.filter(
                 transaction_type=CustomerAccountTransactionType.REFUND,
                 order=order,
             ).exists()
+        )
+
+        repay_response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"payment_method": "account"},
+            format="json",
+        )
+        self.assertEqual(repay_response.status_code, 200, repay_response.data)
+        customer.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+        self.assertEqual(order.payment_method, PaymentMethod.ACCOUNT)
+        self.assertEqual(customer.account_balance, Decimal("13.00"))
+        self.assertEqual(
+            customer.account_transactions.filter(
+                transaction_type=CustomerAccountTransactionType.PAYMENT,
+                order=order,
+            ).count(),
+            2,
         )
 
     def test_void_restores_recipe_materials(self):
@@ -1140,6 +1264,154 @@ class OrderCancelVoidTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         stock.refresh_from_db()
         self.assertEqual(stock.quantity, Decimal("1.00"))
+
+
+class OrderItemRemoveTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="cashier", password="pass")
+        self.other_user = User.objects.create_user(username="other", password="pass")
+        self.branch = Branch.objects.create(
+            name="Test Branch",
+            code="TST",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=category,
+            selling_price=Decimal("3.50"),
+        )
+        self.latte = Product.objects.create(
+            name="Latte",
+            category=category,
+            selling_price=Decimal("4.00"),
+        )
+
+    def _open_order_with_items(self):
+        order = Order.objects.create(branch=self.branch)
+        first = order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        second = order.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        order.recalculate_total()
+        return order, first, second
+
+    def test_remove_one_decrements_quantity(self):
+        order, first, _second = self._open_order_with_items()
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        first.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(first.quantity, Decimal("1"))
+        self.assertEqual(order.total_amount, Decimal("7.50"))
+        self.assertEqual(order.items.count(), 2)
+
+    def test_remove_one_deletes_line_when_quantity_is_one(self):
+        order, _first, second = self._open_order_with_items()
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{second.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertFalse(order.items.filter(pk=second.pk).exists())
+        self.assertEqual(order.total_amount, Decimal("7.00"))
+        self.assertEqual(order.items.count(), 1)
+
+    def test_remove_last_item_rejected(self):
+        order = Order.objects.create(branch=self.branch)
+        item = order.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{item.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("last item", response.data["detail"].lower())
+        order.refresh_from_db()
+        self.assertEqual(order.items.count(), 1)
+
+    def test_remove_item_resets_kitchen_status(self):
+        order, first, _second = self._open_order_with_items()
+        order.kitchen_status = KitchenStatus.READY
+        order.save(update_fields=["kitchen_status"])
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.kitchen_status, KitchenStatus.PENDING)
+        self.assertIsNone(order.kitchen_started_at)
+        self.assertIsNone(order.kitchen_ready_at)
+
+    def test_remove_item_rejects_paid_order(self):
+        order, first, _second = self._open_order_with_items()
+        order.status = OrderStatus.PAID
+        order.save(update_fields=["status"])
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("open orders", response.data["detail"].lower())
+
+    def test_remove_item_rejects_unpaid_order(self):
+        order, first, _second = self._open_order_with_items()
+        order.status = OrderStatus.UNPAID
+        order.save(update_fields=["status"])
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_remove_item_rejects_wrong_order(self):
+        order_a, first_a, _ = self._open_order_with_items()
+        order_b, _, _ = self._open_order_with_items()
+        response = self.client.post(
+            f"/api/orders/{order_b.id}/items/{first_a.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("does not belong", response.data["detail"].lower())
+        order_a.refresh_from_db()
+        self.assertEqual(order_a.items.get(pk=first_a.pk).quantity, Decimal("2"))
+
+    def test_remove_item_requires_pos_access(self):
+        order, first, _second = self._open_order_with_items()
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class FamilyStaffCostPriceTests(TestCase):

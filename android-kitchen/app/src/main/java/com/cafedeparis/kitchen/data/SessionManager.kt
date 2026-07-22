@@ -45,6 +45,10 @@ class SessionManager(context: Context) {
         get() = prefs.getBoolean(KEY_CAN_ACCESS_POS, false)
         set(value) = prefs.edit().putBoolean(KEY_CAN_ACCESS_POS, value).apply()
 
+    var canAccessBakery: Boolean
+        get() = prefs.getBoolean(KEY_CAN_ACCESS_BAKERY, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_ACCESS_BAKERY, value).apply()
+
     var fiscalizationEnabled: Boolean
         get() = prefs.getBoolean(KEY_FISCALIZATION_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_FISCALIZATION_ENABLED, value).apply()
@@ -76,6 +80,7 @@ class SessionManager(context: Context) {
         userRole = response.user.role
         canAccessKitchen = response.can_access_kitchen
         canAccessPos = response.can_access_pos
+        canAccessBakery = response.can_access_bakery
         canCollectPayment = response.user.can_collect_payment
         kitchenStation = response.user.kitchen_station
         kitchenStationDisplay = response.user.kitchen_station_display
@@ -92,6 +97,7 @@ class SessionManager(context: Context) {
             .remove(KEY_USER_ROLE)
             .remove(KEY_CAN_ACCESS_KITCHEN)
             .remove(KEY_CAN_ACCESS_POS)
+            .remove(KEY_CAN_ACCESS_BAKERY)
             .remove(KEY_CAN_COLLECT_PAYMENT)
             .remove(KEY_KITCHEN_STATION)
             .remove(KEY_KITCHEN_STATION_DISPLAY)
@@ -126,6 +132,7 @@ class SessionManager(context: Context) {
         private const val KEY_USER_ROLE = "user_role"
         private const val KEY_CAN_ACCESS_KITCHEN = "can_access_kitchen"
         private const val KEY_CAN_ACCESS_POS = "can_access_pos"
+        private const val KEY_CAN_ACCESS_BAKERY = "can_access_bakery"
         private const val KEY_CAN_COLLECT_PAYMENT = "can_collect_payment"
         private const val KEY_KITCHEN_STATION = "kitchen_station"
         private const val KEY_KITCHEN_STATION_DISPLAY = "kitchen_station_display"
@@ -159,9 +166,12 @@ object JsonParsers {
                 name = branch.getString("name"),
                 location = branch.optString("location", null),
                 fiscalization_enabled = branch.optBoolean("fiscalization_enabled", false),
+                branch_type = branch.optString("branch_type", null),
+                is_active = branch.optBoolean("is_active", true),
             ),
             can_access_kitchen = json.optBoolean("can_access_kitchen", false),
             can_access_pos = json.optBoolean("can_access_pos", false),
+            can_access_bakery = json.optBoolean("can_access_bakery", false),
         )
     }
 
@@ -181,6 +191,123 @@ object JsonParsers {
         return (0 until results.length()).map { index ->
             parseProduct(results.getJSONObject(index))
         }
+    }
+
+    fun parseProductionPreview(body: String): ProductionPreview {
+        val json = org.json.JSONObject(body)
+        val linesJson = json.optJSONArray("lines") ?: org.json.JSONArray()
+        val lines = (0 until linesJson.length()).map { index ->
+            val line = linesJson.getJSONObject(index)
+            ProductionPreviewLine(
+                ingredientName = line.optString("ingredient_name", "Ingredient"),
+                ingredientCategory = line.optString("ingredient_category", ""),
+                required = jsonNumberAsString(line, "required", "0"),
+                available = jsonNumberAsString(line, "available", "0"),
+                sufficient = line.optBoolean("sufficient", false),
+            )
+        }
+        return ProductionPreview(
+            productName = json.optString("product_name", "Product"),
+            quantity = jsonNumberAsString(json, "quantity", "0"),
+            canProduce = json.optBoolean("can_produce", false),
+            lines = lines,
+        )
+    }
+
+    fun parseProductionOrders(body: String): List<ProductionOrder> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            ProductionOrder(
+                id = item.getInt("id"),
+                productName = item.optString("product_name", "Product"),
+                quantity = jsonNumberAsString(item, "quantity", "0"),
+                createdByName = item.optString("created_by_name", null)
+                    ?.takeIf { it.isNotBlank() && it != "null" },
+                createdAt = item.optString("created_at", ""),
+            )
+        }
+    }
+
+    fun parseProductionOrder(body: String): ProductionOrder {
+        val item = org.json.JSONObject(body)
+        return ProductionOrder(
+            id = item.getInt("id"),
+            productName = item.optString("product_name", "Product"),
+            quantity = jsonNumberAsString(item, "quantity", "0"),
+            createdByName = item.optString("created_by_name", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            createdAt = item.optString("created_at", ""),
+        )
+    }
+
+    fun parseInventory(body: String): List<InventoryItem> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            InventoryItem(
+                productId = item.getInt("product"),
+                quantity = jsonNumberAsString(item, "quantity", "0"),
+            )
+        }
+    }
+
+    fun parseBranches(body: String): List<Branch> {
+        val results = if (body.trimStart().startsWith("[")) {
+            org.json.JSONArray(body)
+        } else {
+            org.json.JSONObject(body).optJSONArray("results") ?: org.json.JSONArray()
+        }
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            Branch(
+                id = item.getInt("id"),
+                name = item.getString("name"),
+                location = item.optString("location", null),
+                fiscalization_enabled = item.optBoolean("fiscalization_enabled", false),
+                branch_type = item.optString("branch_type", null),
+                is_active = item.optBoolean("is_active", true),
+            )
+        }
+    }
+
+    fun parseDeliveryNotes(body: String): List<DeliveryNote> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            parseDeliveryNoteObject(results.getJSONObject(index))
+        }
+    }
+
+    fun parseDeliveryNote(body: String): DeliveryNote {
+        return parseDeliveryNoteObject(org.json.JSONObject(body))
+    }
+
+    private fun parseDeliveryNoteObject(item: org.json.JSONObject): DeliveryNote {
+        val linesJson = item.optJSONArray("lines") ?: org.json.JSONArray()
+        val lines = (0 until linesJson.length()).map { index ->
+            val line = linesJson.getJSONObject(index)
+            DeliveryNoteLine(
+                productId = line.getInt("product"),
+                productName = line.optString("product_name", "Product"),
+                quantity = jsonNumberAsString(line, "quantity", "0"),
+            )
+        }
+        return DeliveryNote(
+            id = item.getInt("id"),
+            sourceName = item.optString("from_branch_name", "Central Bakery"),
+            sourceLocation = item.optString("from_branch_location", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            destinationName = item.optString("to_branch_name", "Destination"),
+            destinationLocation = item.optString("to_branch_location", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            status = item.optString("status", "requested"),
+            createdAt = item.optString("created_at", ""),
+            totalQuantity = jsonNumberAsString(item, "total_quantity", "0"),
+            lines = lines,
+        )
     }
 
     private fun parseProduct(item: org.json.JSONObject): Product {

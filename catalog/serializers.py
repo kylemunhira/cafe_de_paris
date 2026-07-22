@@ -119,6 +119,32 @@ class ProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_at"]
 
+    def validate_name(self, value):
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("Name is required.")
+        return name
+
+    def validate(self, attrs):
+        name = attrs.get("name")
+        if name is None and self.instance is not None:
+            name = self.instance.name
+        is_active = attrs.get("is_active")
+        if is_active is None:
+            is_active = True if self.instance is None else self.instance.is_active
+
+        # Only active products must have unique names. Deactivating a duplicate
+        # must always be allowed so existing case-variant rows can be cleaned up.
+        if name and is_active:
+            qs = Product.objects.filter(name__iexact=name, is_active=True)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"name": "A product with this name already exists."}
+                )
+        return attrs
+
     def get_unit_cost(self, obj):
         costs = self.context.get("unit_costs")
         if costs is not None:
@@ -158,7 +184,20 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
-        product = super().create(validated_data)
+        name = validated_data["name"]
+        inactive = (
+            Product.objects.filter(name__iexact=name, is_active=False)
+            .order_by("id")
+            .first()
+        )
+        if inactive:
+            for attr, value in validated_data.items():
+                setattr(inactive, attr, value)
+            inactive.is_active = validated_data.get("is_active", True)
+            inactive.save()
+            product = inactive
+        else:
+            product = super().create(validated_data)
         if group_ids is not None:
             self._save_addon_groups(product, group_ids)
         return product

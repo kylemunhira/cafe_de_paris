@@ -4,6 +4,16 @@
 {% block title %}List Customer — Café de Paris{% endblock %}
 {% block page_title %}List Customer{% endblock %}
 
+{% block topbar_actions %}
+<div style="display: flex; align-items: center; gap: 0.5rem;">
+  <a href="/api/customers/export-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+    Import CSV
+    <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
+  </label>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
   <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add customer</h3>
@@ -63,7 +73,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let customers = [];
@@ -83,6 +93,7 @@ const creditLimitInput = document.getElementById("customer-credit-limit");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const customersTable = document.getElementById("customers-table");
+const csvUpload = document.getElementById("csv-upload");
 const sortState = createSortState("created_at", "desc");
 
 const ACCOUNT_TYPE_LABELS = {
@@ -226,6 +237,39 @@ customerForm.addEventListener("submit", async (e) => {
 });
 
 cancelBtn.addEventListener("click", resetForm);
+
+async function handleCustomerImport(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const result = await apiUpload("/customers/import-csv/", formData);
+    const parts = [];
+    if (result.created) parts.push(`${result.created} created`);
+    if (result.updated) parts.push(`${result.updated} updated`);
+    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    await loadCustomers();
+  } catch (err) {
+    let message = err.message;
+    try {
+      const data = JSON.parse(err.message);
+      if (data?.errors?.length) {
+        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
+        message = `Import failed — ${preview}`;
+      }
+    } catch {
+      // use raw message
+    }
+    showToast(message, true);
+  }
+}
+
+csvUpload.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  await handleCustomerImport(file);
+});
 
 customersTable.addEventListener("click", (e) => {
   const btn = e.target.closest(".edit-btn");

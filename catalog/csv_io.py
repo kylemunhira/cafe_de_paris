@@ -225,16 +225,32 @@ def import_products_csv(file_obj):
                     product.save()
                     updated += 1
                 else:
-                    Product.objects.create(
-                        name=name,
-                        category=category,
-                        selling_price=price,
-                        remaining_qty=remaining_qty or Decimal("0"),
-                        tax_rate=tax_rate or Decimal("0"),
-                        is_active=is_active,
-                        daily_stock_take=daily_stock_take,
+                    product = (
+                        Product.objects.filter(name__iexact=name).order_by("id").first()
                     )
-                    created += 1
+                    if product:
+                        product.name = name
+                        product.category = category
+                        product.selling_price = price
+                        if remaining_qty is not None:
+                            product.remaining_qty = remaining_qty
+                        if tax_rate is not None:
+                            product.tax_rate = tax_rate
+                        product.is_active = is_active
+                        product.daily_stock_take = daily_stock_take
+                        product.save()
+                        updated += 1
+                    else:
+                        Product.objects.create(
+                            name=name,
+                            category=category,
+                            selling_price=price,
+                            remaining_qty=remaining_qty or Decimal("0"),
+                            tax_rate=tax_rate or Decimal("0"),
+                            is_active=is_active,
+                            daily_stock_take=daily_stock_take,
+                        )
+                        created += 1
             except Exception as exc:
                 errors.append({"row": row_num, "message": str(exc)})
 
@@ -314,9 +330,17 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY, bran
                             category__name__in=ALL_INGREDIENT_CATEGORIES,
                         )
                     except (ValueError, Product.DoesNotExist):
-                        product = Product.objects.filter(category=category, name=name).first()
+                        product = (
+                            Product.objects.filter(category=category, name__iexact=name)
+                            .order_by("id")
+                            .first()
+                        )
                 else:
-                    product = Product.objects.filter(category=category, name=name).first()
+                    product = (
+                        Product.objects.filter(category=category, name__iexact=name)
+                        .order_by("id")
+                        .first()
+                    )
 
                 if product:
                     product.name = name

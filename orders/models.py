@@ -11,6 +11,7 @@ from payments.models import Currency
 
 class OrderStatus(models.TextChoices):
     OPEN = "open", "Open"
+    UNPAID = "unpaid", "Unpaid"
     PAID = "paid", "Paid"
     CANCELLED = "cancelled", "Cancelled"
 

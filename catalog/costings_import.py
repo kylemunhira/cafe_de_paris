@@ -23,7 +23,7 @@ def ensure_categories(product_categories):
 def get_or_create_product(name, category_name, *, selling_price=None):
     category = ProductCategory.objects.get(name=category_name)
     normalized = normalize_name(name)
-    product = Product.objects.filter(name=normalized).first()
+    product = Product.objects.filter(name__iexact=normalized).order_by("id").first()
     created = False
     if product is None:
         product = Product.objects.create(
@@ -35,6 +35,9 @@ def get_or_create_product(name, category_name, *, selling_price=None):
         return product, created
 
     updates = []
+    if product.name != normalized:
+        product.name = normalized
+        updates.append("name")
     if product.category_id != category.id:
         product.category = category
         updates.append("category")
@@ -101,14 +104,32 @@ def import_costings(rows, *, product_categories, classify_product):
                     continue
 
                 cost = ingredient_costs.get(key)
-                ingredient, created = Product.objects.get_or_create(
-                    name=normalize_name(line["name"]),
-                    category=ingredient_category,
-                    defaults={"selling_price": cost or Decimal("0")},
+                ingredient_name = normalize_name(line["name"])
+                ingredient = (
+                    Product.objects.filter(
+                        name__iexact=ingredient_name,
+                        category=ingredient_category,
+                    )
+                    .order_by("id")
+                    .first()
                 )
-                if not created and cost is not None and ingredient.selling_price != cost:
+                created = False
+                if ingredient is None:
+                    ingredient = Product.objects.create(
+                        name=ingredient_name,
+                        category=ingredient_category,
+                        selling_price=cost or Decimal("0"),
+                    )
+                    created = True
+                updates = []
+                if ingredient.name != ingredient_name:
+                    ingredient.name = ingredient_name
+                    updates.append("name")
+                if cost is not None and ingredient.selling_price != cost:
                     ingredient.selling_price = cost
-                    ingredient.save(update_fields=["selling_price"])
+                    updates.append("selling_price")
+                if updates:
+                    ingredient.save(update_fields=updates)
                     stats["ingredients_updated"] += 1
                 elif created:
                     stats["ingredients_created"] += 1

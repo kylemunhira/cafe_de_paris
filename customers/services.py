@@ -69,14 +69,14 @@ def deposit_to_account(
 
 @transaction.atomic
 def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccountTransaction:
-    if order.status == OrderStatus.CANCELLED:
-        raise CustomerAccountError("Cancelled orders cannot be paid.")
-    if order.status == OrderStatus.PAID:
-        raise CustomerAccountError("Order is already paid.")
+    if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+        raise CustomerAccountError("Only open or unpaid orders can be paid.")
     if not order.customer_id:
         raise CustomerAccountError("Link a customer to this order before paying from account.")
 
     order = Order.objects.select_for_update().select_related("branch").get(pk=order.pk)
+    if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+        raise CustomerAccountError("Only open or unpaid orders can be paid.")
     charge_amount = _quantize(order.total_amount)
     if charge_amount <= Decimal("0"):
         raise CustomerAccountError("Order total must be greater than zero.")

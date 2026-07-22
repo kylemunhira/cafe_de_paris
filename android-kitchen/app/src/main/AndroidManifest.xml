@@ -10,9 +10,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_launcher_foreground"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.CafeDeParisKitchen"
         android:usesCleartextTraffic="true">
@@ -30,6 +30,19 @@
 
         <activity
             android:name=".PosActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:keepScreenOn="true"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".BakeryProductionActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:keepScreenOn="true" />
+
+        <activity
+            android:name=".BakeryTransferActivity"
             android:exported="false"
             android:screenOrientation="landscape"
             android:keepScreenOn="true" />
