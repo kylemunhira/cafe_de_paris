@@ -11,30 +11,32 @@
   <link rel="stylesheet" href="{% static 'ui/css/app.css' %}">
 </head>
 <body class="login-page">
-  <div class="login-card card">
-    <div class="login-brand">
-      <h1>Café de Paris</h1>
-      <p>Sign in to continue</p>
+  <div class="login-shell">
+    <div class="login-card card">
+      <div class="login-brand">
+        <h1>Café de Paris</h1>
+        <p>Sign in to continue</p>
+      </div>
+
+      {% if form.errors %}
+        <div class="login-error">Invalid username or password.</div>
+      {% endif %}
+
+      <form method="post" class="login-form">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="form-group">
+          <label for="id_username">Username</label>
+          <input type="text" name="username" id="id_username" required autofocus autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="id_password">Password</label>
+          <input type="password" name="password" id="id_password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">Sign in</button>
+      </form>
     </div>
-
-    {% if form.errors %}
-      <div class="login-error">Invalid username or password.</div>
-    {% endif %}
-
-    <form method="post" class="login-form">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ next }}">
-      <div class="form-group">
-        <label for="id_username">Username</label>
-        <input type="text" name="username" id="id_username" required autofocus autocomplete="username">
-      </div>
-      <div class="form-group">
-        <label for="id_password">Password</label>
-        <input type="password" name="password" id="id_password" required autocomplete="current-password">
-      </div>
-      <button type="submit" class="btn btn-primary" style="width: 100%;">Sign in</button>
-    </form>
+    <footer class="login-footer">Copyright © 2026 <a href="https://www.zimhope.co.zw/" target="_blank" rel="noopener noreferrer" class="page-footer-link">Zimhope</a>. All rights reserved.</footer>
   </div>
-  <footer class="login-footer">Copyright © 2026 Zimhope. All rights reserved.</footer>
 </body>
 </html>

@@ -209,17 +209,25 @@ h1, h2, h3, .font-display {
   align-items: center;
   background: var(--color-cream);
   display: flex;
-  flex-direction: column;
   justify-content: center;
   min-height: 100vh;
   padding: 1.5rem;
 }
 
+.login-shell {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  max-width: 400px;
+  width: 100%;
+}
+
 .login-footer {
   color: var(--color-muted);
-  font-size: 0.75rem;
-  margin-top: 1.5rem;
+  font-size: 0.45rem;
+  margin-top: 0.5rem;
   text-align: center;
+  width: 100%;
 }
 
 .login-card {
@@ -253,7 +261,9 @@ h1, h2, h3, .font-display {
 }
 
 .main-content {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   margin-left: 260px;
   min-height: 100vh;
   transition: margin-left 0.25s ease;
@@ -311,7 +321,41 @@ h1, h2, h3, .font-display {
 }
 
 .page-body {
-  padding: 1.5rem 2rem 2rem;
+  flex: 1;
+  padding: 1.5rem 2rem 3.5rem;
+}
+
+.page-footer {
+  background: var(--color-surface);
+  border-top: 1px solid rgba(44, 24, 16, 0.06);
+  bottom: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  left: 260px;
+  padding: 0.75rem 2rem;
+  position: fixed;
+  right: 0;
+  text-align: center;
+  transition: left 0.25s ease;
+  z-index: 20;
+}
+
+.app-shell.sidebar-hidden .page-footer {
+  left: 0;
+}
+
+.page-footer p {
+  margin: 0;
+}
+
+.page-footer-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page-footer-link:hover {
+  color: var(--color-espresso);
+  text-decoration: underline;
 }
 
 .menu-toggle {
@@ -1736,7 +1780,12 @@ table.data-table tbody tr:hover {
   }
 
   .page-body {
-    padding: 1rem;
+    padding: 1rem 1rem 3.25rem;
+  }
+
+  .page-footer {
+    left: 0;
+    padding: 0.75rem 1rem;
   }
 
   .topbar {

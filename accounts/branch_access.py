@@ -12,6 +12,9 @@ def user_has_global_branch_access(user):
     if not user or not user.is_authenticated:
         return False
 
+    if user.is_superuser:
+        return True
+
     if user.username.casefold() in GLOBAL_ACCESS_USERNAMES:
         return True
 
@@ -100,6 +103,17 @@ def user_can_manage_branches(user):
     if not user or not user.is_authenticated:
         return False
     return user.username.casefold() in GLOBAL_ACCESS_USERNAMES
+
+
+def user_is_hq_admin(user):
+    """HQ admin — full management console with global branch visibility."""
+    if not user or not user.is_authenticated:
+        return False
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    return profile.role == StaffRole.HQ_ADMIN
 
 
 def user_is_branch_manager(user):
@@ -280,11 +294,15 @@ def user_can_access_cashier_invoices(user):
 
 
 def user_can_access_grv(user):
-    """Branch/HQ/stores staff receive goods via GRV; global users use transfer pages."""
+    """Branch/HQ/stores staff and HQ admins receive goods via GRV; other global users use transfer pages."""
     if not user or not user.is_authenticated:
         return False
+    if user.is_superuser:
+        return True
     if user_is_cashier(user):
         return False
+    if user_is_hq_admin(user):
+        return True
     if user_has_global_branch_access(user):
         return False
     branch_type = get_staff_branch_type(user)

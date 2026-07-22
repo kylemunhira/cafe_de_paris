@@ -9,6 +9,7 @@ from accounts.branch_access import (
     user_can_approve_delivery,
     user_can_manage_outgoing_delivery,
     user_can_receive_delivery,
+    user_has_global_branch_access,
 )
 from decimal import Decimal, InvalidOperation
 
@@ -298,13 +299,20 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         if incoming and incoming.lower() in ("1", "true", "yes"):
-            staff_branch_id = get_staff_branch_id(self.request.user)
-            if staff_branch_id is not None:
-                queryset = queryset.filter(to_branch_id=staff_branch_id)
-            else:
+            # Branch-scoped staff only see deliveries to their branch.
+            # HQ admins / global users see all branches (optional ?branch= still applies).
+            if user_has_global_branch_access(self.request.user):
                 queryset = filter_by_branch_participation(
                     queryset, self.request.user, requested_branch_id=branch_id
                 )
+            else:
+                staff_branch_id = get_staff_branch_id(self.request.user)
+                if staff_branch_id is not None:
+                    queryset = queryset.filter(to_branch_id=staff_branch_id)
+                else:
+                    queryset = filter_by_branch_participation(
+                        queryset, self.request.user, requested_branch_id=branch_id
+                    )
         else:
             queryset = filter_by_branch_participation(
                 queryset, self.request.user, requested_branch_id=branch_id

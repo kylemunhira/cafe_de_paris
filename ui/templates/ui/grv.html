@@ -45,6 +45,7 @@ const GRV_SORT = {
   items: (n) => n.line_count || n.lines?.length || 0,
   total_quantity: (n) => Number(n.total_quantity),
   from_branch_name: (n) => n.from_branch_name || "",
+  to_branch_name: (n) => n.to_branch_name || "",
   status: (n) => n.status || "",
   created_at: (n) => n.created_at || "",
 };
@@ -139,6 +140,7 @@ function renderNotes() {
           ${sortTh("Items", "items", sortState)}
           ${sortTh("Total qty", "total_quantity", sortState)}
           ${sortTh("From", "from_branch_name", sortState)}
+          ${sortTh("To", "to_branch_name", sortState)}
           ${sortTh("Status", "status", sortState)}
           ${sortTh("Date", "created_at", sortState)}
           ${actionTh()}
@@ -152,6 +154,7 @@ function renderNotes() {
             <td>${n.line_count || n.lines?.length || 0}</td>
             <td>${formatQty(n.total_quantity)}</td>
             <td>${n.from_branch_name}</td>
+            <td>${n.to_branch_name}</td>
             <td>${statusBadge(n.status)}</td>
             <td>${formatDate(n.created_at)}</td>
             <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${noteActions(n)}</td>

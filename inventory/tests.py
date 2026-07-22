@@ -617,6 +617,34 @@ class DeliveryNoteTests(TestCase):
         note_ids = {row["id"] for row in response.data["results"]}
         self.assertEqual(note_ids, {note_for_branch.id})
 
+    def test_hq_admin_incoming_filter_returns_all_branch_notes(self):
+        other_branch = Branch.objects.create(
+            name="Borrowdale",
+            branch_type=BranchType.BRANCH,
+        )
+        note_for_branch = DeliveryNote.objects.create(
+            from_branch=self.bakery,
+            to_branch=self.branch,
+            status=StockTransferStatus.DISPATCHED,
+        )
+        note_for_other = DeliveryNote.objects.create(
+            from_branch=self.bakery,
+            to_branch=other_branch,
+            status=StockTransferStatus.DISPATCHED,
+        )
+        hq_admin = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=hq_admin,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+        )
+
+        self.client.force_authenticate(user=hq_admin)
+        response = self.client.get("/api/delivery-notes/?incoming=true")
+        self.assertEqual(response.status_code, 200)
+        note_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(note_ids, {note_for_branch.id, note_for_other.id})
+
     def test_rejects_empty_delivery_note(self):
         self.client.force_authenticate(user=self.baker)
         response = self.client.post(

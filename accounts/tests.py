@@ -430,11 +430,29 @@ class TransferNavAccessTests(APITestCase):
 
     def test_global_users_use_bakery_transfers_not_grv(self):
         self.assertTrue(user_can_access_bakery_transfers(self.hq_admin))
-        self.assertFalse(user_can_access_grv(self.hq_admin))
+        self.assertTrue(user_can_access_grv(self.hq_admin))
         self.assertTrue(user_can_access_bakery_transfers(self.zimhope))
         self.assertFalse(user_can_access_grv(self.zimhope))
         self.assertTrue(user_can_access_pos(self.hq_admin))
         self.assertTrue(user_can_access_pos(self.zimhope))
+
+    def test_hq_admin_can_access_grv_page(self):
+        self.client.force_login(self.hq_admin)
+        response = self.client.get(reverse("ui:grv"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("ui:grv"))
+
+    def test_superuser_can_access_grv(self):
+        superuser = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="pass",
+        )
+        self.assertTrue(user_can_access_grv(superuser))
+        self.client.force_login(superuser)
+        response = self.client.get(reverse("ui:grv"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("ui:grv"))
 
     def test_pos_page_requires_branch_retail_access(self):
         self.client.force_login(self.baker)
