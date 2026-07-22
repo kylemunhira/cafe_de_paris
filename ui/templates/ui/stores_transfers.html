@@ -28,6 +28,17 @@
       </div>
     </div>
 
+    <div class="form-row" style="align-items: end; margin-bottom: 0.5rem;">
+      <div class="form-group" style="flex: 1;">
+        <label>Ingredient type</label>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button type="button" class="category-tab active" data-ingredient-filter="all">All</button>
+          <button type="button" class="category-tab" data-ingredient-filter="bakery">Bakery</button>
+          <button type="button" class="category-tab" data-ingredient-filter="branch">Branch</button>
+        </div>
+      </div>
+    </div>
+
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
         <label for="product">Ingredient</label>
@@ -99,7 +110,11 @@ let destinationBranches = [];
 let products = [];
 let draftLines = [];
 let activeFilter = "all";
+let ingredientFilter = "all";
 const sortState = createSortState("created_at", "desc");
+
+const BAKERY_INGREDIENT_CATEGORY = "Ingredients";
+const BRANCH_INGREDIENT_CATEGORY = "Branch Ingredients";
 
 const NOTE_SORT = {
   id: (n) => Number(n.id),
@@ -155,7 +170,12 @@ function getProductUnitCost(productId) {
 function updateStockHint() {
   const productId = productSelect.value;
   if (!productId) {
-    stockHint.textContent = "";
+    const filterHints = {
+      bakery: "Showing bakery ingredients only.",
+      branch: "Showing branch ingredients only.",
+      all: "Showing bakery and branch ingredients.",
+    };
+    stockHint.textContent = filterHints[ingredientFilter] || "";
     return;
   }
   const product = getProduct(productId);
@@ -163,7 +183,9 @@ function updateStockHint() {
   const costLabel = cost > 0
     ? formatCurrency(cost)
     : "no unit cost";
-  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))} · Unit cost: ${costLabel}`;
+  const typeLabel = getProductCategoryLabel(product);
+  const typePart = typeLabel ? ` · ${typeLabel}` : "";
+  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))}${typePart} · Unit cost: ${costLabel}`;
 }
 
 function draftLineTotal(line) {
@@ -237,9 +259,10 @@ function noteActions(note) {
   }
 
   if (note.status === "requested") {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve &amp; deliver</button>`);
     actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
   } else if (note.status === "approved") {
+    // Legacy mid-pipeline notes created before approve-and-deliver.
     actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="dispatch" data-id="${id}">Dispatch</button>`);
     actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
   } else if (note.status === "dispatched" && CAN_RECEIVE) {
@@ -265,11 +288,16 @@ function formatReceiptSummary(note) {
 
 function transferActionToast(action, updated) {
   const noteRef = `DN-${String(updated.id).padStart(5, "0")}`;
+  const summary = formatReceiptSummary(updated);
+  if (action === "approve" && updated.status === "delivered") {
+    return summary
+      ? `Delivered — stock moved to ${updated.to_branch_name}: ${summary}`
+      : `Delivered — stock moved to ${updated.to_branch_name} (${noteRef})`;
+  }
   if (action === "dispatch") {
     return `${noteRef} dispatched from Central Stores. Awaiting receipt at ${updated.to_branch_name}.`;
   }
   if (action === "deliver") {
-    const summary = formatReceiptSummary(updated);
     return summary
       ? `Stock added at ${updated.to_branch_name}: ${summary}`
       : `Stock added at ${updated.to_branch_name} (${noteRef})`;
@@ -330,28 +358,90 @@ function renderNotes() {
   `;
 }
 
-function populateFormOptions() {
+function getProductCategoryLabel(product) {
+  if (product?.category_name === BAKERY_INGREDIENT_CATEGORY) return "Bakery";
+  if (product?.category_name === BRANCH_INGREDIENT_CATEGORY) return "Branch";
+  return product?.category_name || "";
+}
+
+function matchesIngredientFilter(product) {
+  if (ingredientFilter === "bakery") {
+    return product.category_name === BAKERY_INGREDIENT_CATEGORY;
+  }
+  if (ingredientFilter === "branch") {
+    return product.category_name === BRANCH_INGREDIENT_CATEGORY;
+  }
+  return true;
+}
+
+function setIngredientFilter(nextFilter, { syncTabs = true } = {}) {
+  ingredientFilter = nextFilter;
+  if (syncTabs) {
+    document.querySelectorAll("[data-ingredient-filter]").forEach(tab => {
+      tab.classList.toggle("active", tab.dataset.ingredientFilter === ingredientFilter);
+    });
+  }
+  populateProductOptions();
+  updateStockHint();
+}
+
+function ingredientFilterForDestination(branchId) {
+  const branch = destinationBranches.find(b => String(b.id) === String(branchId));
+  if (!branch) return "all";
+  if (branch.branch_type === "bakery") return "bakery";
+  if (branch.branch_type === "branch") return "branch";
+  return "all";
+}
+
+function populateBranchOptions() {
+  const selectedFrom = fromBranchSelect.value;
+  const selectedTo = toBranchSelect.value;
+
   fromBranchSelect.innerHTML = storesBranches.map(b => `
-    <option value="${b.id}" selected>${b.name}</option>
+    <option value="${b.id}">${b.name}</option>
   `).join("");
+  if (selectedFrom && storesBranches.some(b => String(b.id) === String(selectedFrom))) {
+    fromBranchSelect.value = selectedFrom;
+  } else if (storesBranches.length) {
+    fromBranchSelect.value = String(storesBranches[0].id);
+  }
 
   toBranchSelect.innerHTML = `
     <option value="">Select branch…</option>
     ${destinationBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
+  if (selectedTo && destinationBranches.some(b => String(b.id) === String(selectedTo))) {
+    toBranchSelect.value = selectedTo;
+  }
+}
 
+function populateProductOptions() {
+  const selectedProduct = productSelect.value;
   const availableProducts = products
-    .filter(p => p.is_active)
+    .filter(p => p.is_active && matchesIngredientFilter(p))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   productSelect.innerHTML = `
-    <option value="">Select product…</option>
+    <option value="">Select ingredient…</option>
     ${availableProducts.map(p => {
       const stock = formatQty(getStoresStock(p.id));
-      return `<option value="${p.id}">${p.name} (${stock} at stores)</option>`;
+      const typeLabel = getProductCategoryLabel(p);
+      const typeSuffix = ingredientFilter === "all" && typeLabel ? ` · ${typeLabel}` : "";
+      return `<option value="${p.id}">${p.name}${typeSuffix} (${stock} at stores)</option>`;
     }).join("")}
   `;
+
+  if (selectedProduct && availableProducts.some(p => String(p.id) === String(selectedProduct))) {
+    productSelect.value = selectedProduct;
+  } else {
+    productSelect.value = "";
+  }
   syncSearchableSelect(productSelect);
+}
+
+function populateFormOptions() {
+  populateBranchOptions();
+  populateProductOptions();
 }
 
 async function refreshStoresInventory() {
@@ -395,6 +485,17 @@ async function loadData() {
 
 productSelect.addEventListener("change", updateStockHint);
 
+toBranchSelect.addEventListener("change", () => {
+  const nextFilter = ingredientFilterForDestination(toBranchSelect.value);
+  setIngredientFilter(nextFilter);
+});
+
+document.querySelectorAll("[data-ingredient-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    setIngredientFilter(tab.dataset.ingredientFilter);
+  });
+});
+
 addLineBtn.addEventListener("click", () => {
   const productId = productSelect.value;
   const quantity = Number(quantityInput.value);
@@ -419,7 +520,12 @@ addLineBtn.addEventListener("click", () => {
 
   draftLines.push({
     product: Number(productId),
-    product_name: getProductName(productId),
+    product_name: (() => {
+      const typeLabel = getProductCategoryLabel(getProduct(productId));
+      return typeLabel
+        ? `${getProductName(productId)} (${typeLabel})`
+        : getProductName(productId);
+    })(),
     quantity: String(quantity),
     unit_price: String(getProductUnitCost(productId)),
   });
@@ -500,20 +606,27 @@ transfersTable.addEventListener("click", async (e) => {
     const index = allNotes.findIndex(n => String(n.id) === id);
     if (index >= 0) allNotes[index] = updated;
 
-    if (action === "dispatch") {
+    if (
+      action === "dispatch"
+      || action === "deliver"
+      || (action === "approve" && updated.status === "delivered")
+    ) {
       await refreshStoresInventory();
     }
 
     renderNotes();
     renderStoresStats();
     showToast(
-      action === "dispatch" || action === "deliver"
+      action === "approve" || action === "dispatch" || action === "deliver"
         ? transferActionToast(action, updated)
         : `Delivery note #${id} ${actionLabels[action] || action}`
     );
   } catch (err) {
     showToast(err.message, true);
-    const labels = { "mark-paid": "Mark paid" };
+    const labels = {
+      "mark-paid": "Mark paid",
+      approve: "Approve & deliver",
+    };
     btn.textContent = labels[action] || action.charAt(0).toUpperCase() + action.slice(1);
     btn.disabled = false;
   }

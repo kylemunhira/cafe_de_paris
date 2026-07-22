@@ -138,6 +138,33 @@ class ApiClient(
         return JsonParsers.parseDeliveryNote(body)
     }
 
+    fun fetchIncomingDeliveryNotes(): List<DeliveryNote> {
+        val token = requireToken()
+        val url = "${config.serverUrl}/api/delivery-notes/?incoming=true&page_size=500"
+        return JsonParsers.parseDeliveryNotes(getJson(url, token))
+            .filter { it.status != "cancelled" }
+    }
+
+    fun approveDeliveryNote(noteId: Int): DeliveryNote {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/delivery-notes/$noteId/approve/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseDeliveryNote(body)
+    }
+
+    fun deliverDeliveryNote(noteId: Int): DeliveryNote {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/delivery-notes/$noteId/deliver/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseDeliveryNote(body)
+    }
+
     fun fetchCategories(): List<ProductCategory> {
         val token = requireToken()
         val url = "${config.serverUrl}/api/categories/?page_size=200"

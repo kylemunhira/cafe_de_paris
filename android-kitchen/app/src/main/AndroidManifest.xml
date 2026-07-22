@@ -48,6 +48,12 @@
             android:keepScreenOn="true" />
 
         <activity
+            android:name=".GrvActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:keepScreenOn="true" />
+
+        <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:keepScreenOn="true"

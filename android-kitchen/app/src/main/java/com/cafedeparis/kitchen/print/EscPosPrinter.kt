@@ -146,7 +146,7 @@ class EscPosPrinter {
       output.write(LF)
     }
 
-    output.write(textLine("Order ticket", bold = true))
+    output.write(textLine(options.documentTitle, bold = true))
     output.write(textLine("Order #${order.id}"))
     output.write(textLine(formatDateTime(order.created_at)))
     output.write(textLine(formatOrderType(order)))

@@ -144,6 +144,37 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
 
 
 @transaction.atomic
+def apply_account_balance_adjustment(
+    *,
+    customer: Customer,
+    branch,
+    target_balance: Decimal,
+    notes: str = "",
+    recorded_by=None,
+) -> CustomerAccountTransaction | None:
+    """Set the customer balance to ``target_balance`` and record the delta."""
+    customer = Customer.objects.select_for_update().get(pk=customer.pk)
+    target = _quantize(target_balance)
+    current = _quantize(customer.account_balance)
+    delta = _quantize(target - current)
+    if delta == Decimal("0"):
+        return None
+
+    customer.account_balance = target
+    customer.save(update_fields=["account_balance"])
+
+    return CustomerAccountTransaction.objects.create(
+        customer=customer,
+        branch=branch,
+        transaction_type=CustomerAccountTransactionType.ADJUSTMENT,
+        amount=delta,
+        balance_after=target,
+        notes=(notes or "Imported account balance").strip()[:200],
+        recorded_by=recorded_by,
+    )
+
+
+@transaction.atomic
 def refund_order_to_account(*, order: Order, recorded_by=None) -> CustomerAccountTransaction:
     """Credit the customer account when voiding an account-paid order."""
     if order.status != OrderStatus.PAID:

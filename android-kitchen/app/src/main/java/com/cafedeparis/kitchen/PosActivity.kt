@@ -128,7 +128,10 @@ class PosActivity : KeepScreenOnActivity() {
         removable = true,
         onRemove = { line -> removeOneFromPlacedOrder(line) },
     ) { _, _ -> }
-    private val receiptAdapter = ReceiptOrderAdapter(::onReceiptOrderSelected)
+    private val receiptAdapter = ReceiptOrderAdapter(
+        onOrderClick = ::onReceiptOrderSelected,
+        onOrderLongClick = ::onReceiptOrderLongPress,
+    )
     private val categoryAdapter = CategoryChipAdapter { categoryId ->
         activeCategoryId = categoryId
         renderProducts()
@@ -139,6 +142,14 @@ class PosActivity : KeepScreenOnActivity() {
         receiptAdapter.selectedOrderId = order.id
         receiptAdapter.notifyDataSetChanged()
         renderReceiptPanel()
+    }
+
+    private fun onReceiptOrderLongPress(order: KitchenOrder) {
+        onReceiptOrderSelected(order)
+        Toast.makeText(this, R.string.printing_bill, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            printOrderTicket(order, documentTitle = getString(R.string.bill_document_title))
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1113,6 +1124,7 @@ class PosActivity : KeepScreenOnActivity() {
         val showReceipt = session.canCollectPayment
         binding.receiptModeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         binding.stockTakeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
+        binding.grvButton.visibility = if (session.canAccessGrv) View.VISIBLE else View.GONE
         binding.customerPaymentButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         binding.expenseButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         binding.dayEndButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
@@ -1539,6 +1551,9 @@ class PosActivity : KeepScreenOnActivity() {
         }
         binding.expenseButton.setOnClickListener { openExpenseDialog() }
         binding.stockTakeButton.setOnClickListener { openStockTakeDialog() }
+        binding.grvButton.setOnClickListener {
+            startActivity(Intent(this, GrvActivity::class.java))
+        }
         binding.customerPaymentButton.setOnClickListener { openCustomerPaymentDialog() }
         binding.dayEndButton.setOnClickListener { openDayEndDialog() }
         binding.clearButton.setOnClickListener {
@@ -2191,7 +2206,10 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
-    private suspend fun printOrderTicket(order: KitchenOrder) {
+    private suspend fun printOrderTicket(
+        order: KitchenOrder,
+        documentTitle: String = "Order ticket",
+    ) {
         val printerAddress = session.printerAddress
         if (printerAddress.isNullOrBlank()) {
             withContext(Dispatchers.Main) {
@@ -2206,6 +2224,7 @@ class PosActivity : KeepScreenOnActivity() {
             baseCurrencyCode = baseCurrency?.code?.takeIf { it.isNotBlank() }
                 ?: baseCurrency?.name,
             paymentOptions = paymentOptionsForAmount(total),
+            documentTitle = documentTitle,
         )
 
         try {

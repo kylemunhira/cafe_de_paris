@@ -377,6 +377,16 @@ def _is_bakery_outbound_delivery(note: DeliveryNote) -> bool:
     )
 
 
+def _is_stores_outbound_delivery(note: DeliveryNote) -> bool:
+    from branches.models import BranchType
+
+    return note.from_branch.branch_type == BranchType.STORES and note.to_branch.branch_type in (
+        BranchType.BRANCH,
+        BranchType.HQ,
+        BranchType.BAKERY,
+    )
+
+
 def finalize_bakery_delivery_note_creation(note: DeliveryNote) -> DeliveryNote:
     """Deduct bakery stock as soon as the delivery note is created."""
     with transaction.atomic():
@@ -420,6 +430,40 @@ def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
                     note, "at least one product line", "approve"
                 )
             for line in lines:
+                adjust_inventory(
+                    note.to_branch,
+                    line.product,
+                    line.quantity,
+                    reason=StockMovementReason.DELIVERY_IN,
+                    reference_type="delivery_note",
+                    reference_id=note.pk,
+                )
+            note.status = StockTransferStatus.DELIVERED
+            note.save(update_fields=["status"])
+        return note
+    if _is_stores_outbound_delivery(note):
+        with transaction.atomic():
+            note = DeliveryNote.objects.select_for_update().select_related(
+                "from_branch", "to_branch"
+            ).get(pk=note.pk)
+            if note.status != StockTransferStatus.REQUESTED:
+                raise InvalidDeliveryNoteStateError(
+                    note, StockTransferStatus.REQUESTED, "approve"
+                )
+            lines = _delivery_note_lines(note)
+            if not lines:
+                raise InvalidDeliveryNoteStateError(
+                    note, "at least one product line", "approve"
+                )
+            for line in lines:
+                adjust_inventory(
+                    note.from_branch,
+                    line.product,
+                    -line.quantity,
+                    reason=StockMovementReason.DELIVERY_OUT,
+                    reference_type="delivery_note",
+                    reference_id=note.pk,
+                )
                 adjust_inventory(
                     note.to_branch,
                     line.product,

@@ -72,6 +72,10 @@ class SessionManager(context: Context) {
         }
     }
 
+    /** Mobile GRV receiving is cashier-only (web GRV remains staff/management). */
+    val canAccessGrv: Boolean
+        get() = userRole == "cashier"
+
     fun saveLogin(response: LoginResponse) {
         token = response.token
         branchId = response.branch.id

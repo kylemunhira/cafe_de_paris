@@ -53,6 +53,7 @@ class CustomerAccountTransactionType(models.TextChoices):
     DEPOSIT = "deposit", "Deposit"
     PAYMENT = "payment", "Payment"
     REFUND = "refund", "Refund"
+    ADJUSTMENT = "adjustment", "Balance adjustment"
 
 
 class CustomerAccountTransaction(models.Model):
@@ -124,4 +125,10 @@ class CustomerAccountTransaction(models.Model):
             return "Payment received"
         if self.transaction_type == CustomerAccountTransactionType.REFUND:
             return "Refund"
+        if self.transaction_type == CustomerAccountTransactionType.ADJUSTMENT:
+            return "Balance adjustment"
         return "Withdrawal"
+
+    @property
+    def is_balance_adjustment(self):
+        return self.transaction_type == CustomerAccountTransactionType.ADJUSTMENT

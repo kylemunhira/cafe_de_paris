@@ -317,13 +317,20 @@ function renderTransactions() {
           const amountClass = Number(t.amount) >= 0 ? "text-success" : "text-danger";
           const amountLabel = Number(t.amount) >= 0 ? `+${formatCurrency(t.amount)}` : formatCurrency(t.amount);
           const userLabel = t.recorded_by_username || t.recorded_by_name || "—";
+          const isAdjustment = t.is_balance_adjustment || t.transaction_type === "adjustment";
           const details = t.transaction_type === "deposit"
             ? `Received in ${t.currency_code || t.currency_name || ""}${t.amount_received != null ? ` ${formatCurrency(t.amount_received, { code: t.currency_code, symbol: t.currency_symbol, name: t.currency_name })}` : ""}${t.notes ? ` · ${t.notes}` : ""}`.trim()
             : (t.order_id ? `Order #${t.order_id}` : (t.notes || "—"));
+          const typeLabel = isAdjustment
+            ? `<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:4px;background:#fff3cd;color:#856404;font-weight:600;">${t.statement_label || t.transaction_type_display}</span>`
+            : (t.statement_label || t.transaction_type_display);
+          const rowStyle = isAdjustment
+            ? ' style="background: #fff8e1; outline: 1px solid #ffe082;"'
+            : "";
           return `
-            <tr>
+            <tr${rowStyle}>
               <td>${formatDate(t.created_at)}</td>
-              <td>${t.statement_label || t.transaction_type_display}</td>
+              <td>${typeLabel}</td>
               <td class="${amountClass}" style="font-weight: 600;">${amountLabel}</td>
               <td>${formatCurrency(t.balance_after)}</td>
               <td>${userLabel}</td>

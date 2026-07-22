@@ -325,7 +325,7 @@ def user_can_receive_delivery(user, note):
 
 
 def user_can_approve_delivery(user, note):
-    """Receiving branch approves bakery deliveries; stores use approve/dispatch workflow."""
+    """Receiving branch approves bakery deliveries; stores staff approve-and-deliver."""
     from branches.models import BranchType
 
     if note.from_branch.branch_type == BranchType.BAKERY:

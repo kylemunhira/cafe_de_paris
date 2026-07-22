@@ -248,6 +248,8 @@ data class OrderSlipPrintOptions(
     val taxRate: Double = 15.5,
     val baseCurrencyCode: String? = null,
     val paymentOptions: List<PaymentOptionLine> = emptyList(),
+    /** Header label on the unpaid slip, e.g. "Order ticket" or "Bill". */
+    val documentTitle: String = "Order ticket",
 )
 
 data class PaymentOptionLine(

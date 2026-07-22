@@ -745,6 +745,7 @@ class StoresTransferTests(TestCase):
         )
         pastries = ProductCategory.objects.create(name="Breads & pastries")
         ingredients = ProductCategory.objects.create(name="Ingredients")
+        branch_ingredients = ProductCategory.objects.create(name="Branch Ingredients")
         self.croissant = Product.objects.create(
             name="Croissant",
             category=pastries,
@@ -753,6 +754,11 @@ class StoresTransferTests(TestCase):
         flour = Product.objects.create(
             name="Flour",
             category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        branch_flour = Product.objects.create(
+            name="Branch Flour",
+            category=branch_ingredients,
             selling_price=Decimal("1.00"),
         )
         Recipe.objects.create(
@@ -765,7 +771,13 @@ class StoresTransferTests(TestCase):
             product=flour,
             quantity=Decimal("30"),
         )
+        BranchInventory.objects.create(
+            branch=self.stores,
+            product=branch_flour,
+            quantity=Decimal("30"),
+        )
         self.flour = flour
+        self.branch_flour = branch_flour
 
     def test_create_stores_delivery_note_assigns_invoice(self):
         self.client.force_authenticate(user=self.stores_clerk)
@@ -774,7 +786,7 @@ class StoresTransferTests(TestCase):
             {
                 "from_branch": self.stores.id,
                 "to_branch": self.branch.id,
-                "lines": [{"product": self.flour.id, "quantity": "6"}],
+                "lines": [{"product": self.branch_flour.id, "quantity": "6"}],
             },
             format="json",
         )
@@ -803,26 +815,23 @@ class StoresTransferTests(TestCase):
             {
                 "from_branch": self.stores.id,
                 "to_branch": self.branch.id,
-                "lines": [{"product": self.flour.id, "quantity": "6"}],
+                "lines": [{"product": self.branch_flour.id, "quantity": "6"}],
             },
             format="json",
         )
         note_id = create_response.data["id"]
 
-        self.client.post(f"/api/delivery-notes/{note_id}/approve/")
-        self.client.post(f"/api/delivery-notes/{note_id}/dispatch/")
-
-        self.client.force_authenticate(user=self.cashier)
-        deliver_response = self.client.post(f"/api/delivery-notes/{note_id}/deliver/")
-        self.assertEqual(deliver_response.status_code, 200)
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], "delivered")
 
         stores_stock = BranchInventory.objects.get(
             branch=self.stores,
-            product=self.flour,
+            product=self.branch_flour,
         )
         branch_stock = BranchInventory.objects.get(
             branch=self.branch,
-            product=self.flour,
+            product=self.branch_flour,
         )
         self.assertEqual(stores_stock.quantity, Decimal("24"))
         self.assertEqual(branch_stock.quantity, Decimal("6"))
@@ -832,12 +841,6 @@ class StoresTransferTests(TestCase):
             name="Central Bakery",
             branch_type=BranchType.BAKERY,
             code="BAK",
-        )
-        bakery_clerk = User.objects.create_user(username="baker", password="pass")
-        StaffProfile.objects.create(
-            user=bakery_clerk,
-            branch=bakery,
-            role=StaffRole.BRANCH_MANAGER,
         )
 
         self.client.force_authenticate(user=self.stores_clerk)
@@ -853,18 +856,20 @@ class StoresTransferTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         note_id = create_response.data["id"]
 
-        self.client.post(f"/api/delivery-notes/{note_id}/approve/")
-        self.client.post(f"/api/delivery-notes/{note_id}/dispatch/")
-
-        self.client.force_authenticate(user=bakery_clerk)
-        deliver_response = self.client.post(f"/api/delivery-notes/{note_id}/deliver/")
-        self.assertEqual(deliver_response.status_code, 200)
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], "delivered")
 
         bakery_stock = BranchInventory.objects.get(
             branch=bakery,
             product=self.flour,
         )
         self.assertEqual(bakery_stock.quantity, Decimal("4"))
+        stores_stock = BranchInventory.objects.get(
+            branch=self.stores,
+            product=self.flour,
+        )
+        self.assertEqual(stores_stock.quantity, Decimal("26"))
 
     def test_transfer_invoice_print_page(self):
         self.client.force_login(self.stores_clerk)
@@ -928,7 +933,7 @@ class StoresTransferTests(TestCase):
             {
                 "from_branch": self.stores.id,
                 "to_branch": self.branch.id,
-                "lines": [{"product": self.flour.id, "quantity": "3"}],
+                "lines": [{"product": self.branch_flour.id, "quantity": "3"}],
             },
             format="json",
         )

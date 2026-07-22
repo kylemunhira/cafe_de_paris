@@ -48,6 +48,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     statement_label = serializers.CharField(read_only=True)
+    is_balance_adjustment = serializers.BooleanField(read_only=True)
     recorded_by_name = serializers.SerializerMethodField()
     recorded_by_username = serializers.SerializerMethodField()
     order_id = serializers.IntegerField(source="order.id", read_only=True, default=None)
@@ -62,6 +63,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
             "transaction_type",
             "transaction_type_display",
             "statement_label",
+            "is_balance_adjustment",
             "amount",
             "balance_after",
             "currency",

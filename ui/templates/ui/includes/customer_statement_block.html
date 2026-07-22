@@ -143,7 +143,7 @@
           <div class="item-name">{{ txn.created_at|date:"d M Y" }}</div>
           <div class="item-detail">{{ txn.created_at|date:"H:i" }}</div>
         </td>
-        <td class="col-qty">{{ txn.statement_label }}</td>
+        <td class="col-qty">{% if txn.transaction_type == "adjustment" %}<strong>★ {{ txn.statement_label }}</strong>{% else %}{{ txn.statement_label }}{% endif %}</td>
         <td class="col-amt">{% if txn.amount >= 0 %}+{% endif %}{{ txn.amount|floatformat:2 }}</td>
       </tr>
       <tr>
@@ -154,6 +154,7 @@
             {% if txn.order_id %} · Order #{{ txn.order_id }}{% endif %}
             {% if txn.notes %} · {{ txn.notes }}{% endif %}
             {% if txn.recorded_by %} · By {{ txn.recorded_by.username }}{% endif %}
+            {% if txn.transaction_type == "adjustment" %} · ★ Imported balance update{% endif %}
           </div>
         </td>
       </tr>

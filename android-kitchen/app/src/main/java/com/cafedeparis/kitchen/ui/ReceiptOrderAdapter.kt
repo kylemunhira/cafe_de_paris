@@ -12,6 +12,7 @@ import com.cafedeparis.kitchen.databinding.ItemReceiptOrderBinding
 
 class ReceiptOrderAdapter(
     private val onOrderClick: (KitchenOrder) -> Unit,
+    private val onOrderLongClick: ((KitchenOrder) -> Unit)? = null,
 ) : ListAdapter<KitchenOrder, ReceiptOrderAdapter.ViewHolder>(Diff) {
 
     var selectedOrderId: Int? = null
@@ -63,6 +64,11 @@ class ReceiptOrderAdapter(
             binding.root.strokeColor = ContextCompat.getColor(binding.root.context, stroke)
             binding.root.strokeWidth = if (selected) 4 else 0
             binding.root.setOnClickListener { onOrderClick(order) }
+            binding.root.setOnLongClickListener {
+                val handler = onOrderLongClick ?: return@setOnLongClickListener false
+                handler(order)
+                true
+            }
         }
     }
 
