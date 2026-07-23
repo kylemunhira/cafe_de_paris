@@ -793,6 +793,46 @@ class DeliveryNoteTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("finished bakery", str(response.data).lower())
 
+    def test_rejects_insufficient_stock_on_create(self):
+        self.client.force_authenticate(user=self.baker)
+        response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.stores.id,
+                "lines": [{"product": self.croissant.id, "quantity": "999"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Insufficient stock", response.data["detail"])
+        self.assertEqual(response.data["available"], "50.00")
+        self.assertEqual(response.data["requested"], "999.00")
+        self.assertFalse(
+            DeliveryNote.objects.filter(
+                from_branch=self.bakery,
+                to_branch=self.stores,
+                lines__product=self.croissant,
+                lines__quantity=Decimal("999"),
+            ).exists()
+        )
+
+    def test_rejects_inactive_product_on_create(self):
+        self.croissant.is_active = False
+        self.croissant.save(update_fields=["is_active"])
+        self.client.force_authenticate(user=self.baker)
+        response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.stores.id,
+                "lines": [{"product": self.croissant.id, "quantity": "5"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("inactive product", str(response.data).lower())
+
     def test_delivery_note_print_page(self):
         self.client.force_login(self.baker)
         note = DeliveryNote.objects.create(

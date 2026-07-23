@@ -315,12 +315,14 @@ class DeliveryNoteReceiptSerializer(serializers.Serializer):
 
 
 class DeliveryNoteLineCreateSerializer(serializers.Serializer):
-    product = serializers.PrimaryKeyRelatedField(
-        queryset=Product.objects.filter(is_active=True)
-    )
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
     quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
 
     def validate_product(self, product):
+        if not product.is_active:
+            raise serializers.ValidationError(
+                "Cannot transfer an inactive product."
+            )
         if not is_bakery_transfer_product(product):
             raise serializers.ValidationError(
                 "Only finished bakery products can be transferred to branches. "

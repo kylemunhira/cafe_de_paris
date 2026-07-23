@@ -361,7 +361,17 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
             )
         serializer = BakeryDeliveryNoteCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        note = serializer.save()
+        try:
+            note = serializer.save()
+        except InsufficientStockError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "available": str(exc.available),
+                    "requested": str(exc.requested),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         note = self.get_queryset().get(pk=note.pk)
         return Response(
             DeliveryNoteSerializer(note).data,

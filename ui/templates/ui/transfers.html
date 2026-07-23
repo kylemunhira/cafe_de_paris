@@ -100,6 +100,7 @@ let destinationBranches = [];
 let products = [];
 let draftLines = [];
 let activeFilter = "all";
+let submitFrozenUntil = 0;
 const sortState = createSortState("created_at", "desc");
 
 const NOTE_SORT = {
@@ -159,7 +160,7 @@ function renderDraftLines() {
   }
 
   linesWrap.style.display = "block";
-  submitBtn.disabled = false;
+  submitBtn.disabled = Date.now() < submitFrozenUntil;
   linesBody.innerHTML = draftLines.map((line, index) => `
     <tr>
       <td>${line.product_name}</td>
@@ -348,12 +349,25 @@ addLineBtn.addEventListener("click", () => {
     showToast("Select a product first", true);
     return;
   }
+  const product = products.find(p => String(p.id) === String(productId));
+  if (product && product.is_active === false) {
+    showToast("Cannot transfer an inactive product.", true);
+    return;
+  }
   if (!Number.isFinite(quantity) || quantity <= 0) {
     showToast("Enter a valid quantity", true);
     return;
   }
   if (draftLines.some(line => String(line.product) === String(productId))) {
     showToast("Product already added — remove it first to change quantity", true);
+    return;
+  }
+  const available = getBakeryStock(productId);
+  if (quantity > available) {
+    showToast(
+      `Insufficient stock for ${getProductName(productId)}: available ${formatQty(available)}, requested ${formatQty(quantity)}`,
+      true,
+    );
     return;
   }
 
@@ -379,6 +393,10 @@ linesBody.addEventListener("click", (e) => {
 transferForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
+  if (Date.now() < submitFrozenUntil || submitBtn.disabled) {
+    return;
+  }
+
   if (!toBranchSelect.value) {
     showToast("Select central stores or a branch as the destination", true);
     return;
@@ -386,6 +404,18 @@ transferForm.addEventListener("submit", async (e) => {
   if (!draftLines.length) {
     showToast("Add at least one product", true);
     return;
+  }
+
+  for (const line of draftLines) {
+    const available = getBakeryStock(line.product);
+    const quantity = Number(line.quantity);
+    if (quantity > available) {
+      showToast(
+        `Insufficient stock for ${line.product_name}: available ${formatQty(available)}, requested ${formatQty(quantity)}`,
+        true,
+      );
+      return;
+    }
   }
 
   const payload = {
@@ -397,7 +427,16 @@ transferForm.addEventListener("submit", async (e) => {
     })),
   };
 
+  const submitLabel = submitBtn.textContent;
+  submitFrozenUntil = Date.now() + 6000;
   submitBtn.disabled = true;
+  submitBtn.textContent = "Creating…";
+
+  const unlockSubmit = () => {
+    submitFrozenUntil = 0;
+    submitBtn.textContent = submitLabel;
+    submitBtn.disabled = draftLines.length === 0;
+  };
 
   try {
     const note = await apiPost("/delivery-notes/from-bakery/", payload);
@@ -418,8 +457,9 @@ transferForm.addEventListener("submit", async (e) => {
     window.open(printUrlTemplate.replace("{id}", note.id), "_blank");
   } catch (err) {
     showToast(err.message, true);
-    submitBtn.disabled = draftLines.length > 0;
   }
+
+  setTimeout(unlockSubmit, 6000);
 });
 
 transfersTable.addEventListener("click", async (e) => {

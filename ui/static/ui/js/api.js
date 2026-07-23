@@ -16,6 +16,12 @@ function mutationHeaders(extra = {}) {
 }
 
 function firstApiErrorMessage(data, fallbackText) {
+  if (typeof data === "string" && data.trim()) {
+    if (/^\s*</.test(data)) {
+      return fallbackText || "Request failed. Please try again.";
+    }
+    return data;
+  }
   if (!data || typeof data !== "object") {
     return fallbackText || null;
   }
@@ -23,10 +29,21 @@ function firstApiErrorMessage(data, fallbackText) {
   if (Array.isArray(data.detail)) return data.detail.map(String).join(" ");
 
   for (const value of Object.values(data)) {
-    if (Array.isArray(value) && value.length) return String(value[0]);
     if (typeof value === "string" && value) return value;
+    if (Array.isArray(value) && value.length) {
+      const first = value[0];
+      if (typeof first === "string") return first;
+      if (first && typeof first === "object") {
+        const nested = firstApiErrorMessage(first);
+        if (nested) return nested;
+      }
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = firstApiErrorMessage(value);
+      if (nested) return nested;
+    }
   }
-  return (typeof data === "object" ? JSON.stringify(data) : null) || fallbackText || null;
+  return fallbackText || null;
 }
 
 async function parseResponse(res) {
@@ -35,10 +52,15 @@ async function parseResponse(res) {
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
-    data = { detail: text };
+    const looksLikeHtml = /^\s*</.test(text || "");
+    data = {
+      detail: looksLikeHtml
+        ? (res.statusText || "Request failed. Please try again.")
+        : text,
+    };
   }
   if (!res.ok) {
-    throw new Error(firstApiErrorMessage(data, text) || res.statusText);
+    throw new Error(firstApiErrorMessage(data, res.statusText) || res.statusText);
   }
   return data;
 }
