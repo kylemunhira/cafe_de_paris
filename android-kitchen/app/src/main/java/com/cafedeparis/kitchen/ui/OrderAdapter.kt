@@ -64,12 +64,22 @@ class OrderAdapter : ListAdapter<KitchenOrder, OrderAdapter.OrderViewHolder>(Dif
 
         private fun formatDate(iso: String): String {
             return try {
-                val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
+                var value = iso.trim()
+                if (value.endsWith("Z", ignoreCase = true)) {
+                    value = value.dropLast(1) + "+00:00"
                 }
-                val formatter = SimpleDateFormat("HH:mm", Locale.US)
-                val date = parser.parse(iso.substring(0, 19))
-                formatter.format(date!!)
+                value = value.replace(Regex("\\.\\d+"), "")
+                val hasOffset = Regex("[+-]\\d{2}:\\d{2}$").containsMatchIn(value)
+                val parser = if (hasOffset) {
+                    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
+                } else {
+                    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+                        timeZone = TimeZone.getTimeZone("UTC")
+                    }
+                }
+                parser.isLenient = false
+                val date = parser.parse(value) ?: return iso
+                SimpleDateFormat("HH:mm", Locale.US).format(date)
             } catch (_: Exception) {
                 iso
             }

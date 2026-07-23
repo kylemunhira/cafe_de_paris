@@ -129,13 +129,15 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ can_filter_any_branch|json_script:"can-filter-any-branch" }}
+{{ staff_branch_id|json_script:"staff-branch-id" }}
 <script type="module">
 import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch-select.js' %}";
 
-const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
-const staffBranchId = {{ staff_branch_id|default:"null" }};
+const canFilterAnyBranch = JSON.parse(document.getElementById("can-filter-any-branch").textContent);
+const staffBranchId = JSON.parse(document.getElementById("staff-branch-id").textContent);
 
 const filterFrom = document.getElementById("filter-from");
 const filterTo = document.getElementById("filter-to");
@@ -402,10 +404,9 @@ function renderProfitChart(summary) {
 }
 
 function setDefaultDates() {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), 1);
-  filterTo.value = today.toISOString().slice(0, 10);
-  filterFrom.value = start.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  filterFrom.value = today;
+  filterTo.value = today;
 }
 
 function queryString() {

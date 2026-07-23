@@ -1992,6 +1992,9 @@ class PosActivity : KeepScreenOnActivity() {
                     api.createOrder(currentOrderType(), tableNumber, cart.values.toList())
                 }
                 cart.clear()
+                if (currentOrderType() == "dine_in") {
+                    setSelectedTable(null)
+                }
                 renderCart()
                 loadOpenOrders(silent = true)
                 printOrderTicket(order)

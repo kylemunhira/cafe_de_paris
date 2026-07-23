@@ -885,15 +885,35 @@ class EscPosPrinter {
   }
 
   private fun formatDateTime(iso: String): String {
+    val date = parseIsoDateTime(iso) ?: return iso
+    return SimpleDateFormat("d MMM yyyy, HH:mm", Locale.US).format(date)
+  }
+
+  /**
+   * Parses API ISO datetimes that may include fractional seconds and an offset
+   * (e.g. 2026-07-23T13:28:25.416627+02:00). Treating offset times as UTC
+   * double-applies the timezone and prints ~2h ahead on CAT devices.
+   */
+  private fun parseIsoDateTime(iso: String): Date? {
     return try {
-      val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("UTC")
+      var value = iso.trim()
+      if (value.endsWith("Z", ignoreCase = true)) {
+        value = value.dropLast(1) + "+00:00"
       }
-      val formatter = SimpleDateFormat("d MMM yyyy, HH:mm", Locale.US)
-      val date = parser.parse(iso.substring(0, 19))
-      formatter.format(date!!)
+      // Drop fractional seconds; SimpleDateFormat is unreliable with 6-digit micros.
+      value = value.replace(Regex("\\.\\d+"), "")
+      val hasOffset = Regex("[+-]\\d{2}:\\d{2}$").containsMatchIn(value)
+      val parser = if (hasOffset) {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
+      } else {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+          timeZone = TimeZone.getTimeZone("UTC")
+        }
+      }
+      parser.isLenient = false
+      parser.parse(value)
     } catch (_: Exception) {
-      iso
+      null
     }
   }
 
