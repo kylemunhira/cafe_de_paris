@@ -370,6 +370,22 @@ class DailyStockTakeFieldTests(TestCase):
         self.product.refresh_from_db()
         self.assertFalse(self.product.daily_stock_take)
 
+    def test_product_patch_daily_stock_take_with_duplicate_name(self):
+        Product.objects.create(
+            name="ESPRESSO",
+            category=self.category,
+            selling_price="4.00",
+            daily_stock_take=False,
+        )
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {"daily_stock_take": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.daily_stock_take)
+
 
 class BranchIngredientFilterTests(TestCase):
     def setUp(self):

@@ -348,23 +348,46 @@
         <tr>
           <th style="width: 40px;">#</th>
           <th>Item</th>
-          <th class="qty">Qty</th>
+          <th class="qty">Sent</th>
+          <th class="qty">Received</th>
+          <th class="qty">Damaged</th>
         </tr>
       </thead>
       <tbody>
         {% for line in note.lines.all %}
         <tr>
           <td>{{ forloop.counter }}</td>
-          <td>{{ line.product.name }}</td>
+          <td>
+            {{ line.product.name }}
+            {% if line.line_notes %}<br><small>{{ line.line_notes }}</small>{% endif %}
+          </td>
           <td class="qty">{{ line.quantity }}</td>
+          <td class="qty">{% if line.received_quantity is not None %}{{ line.received_quantity }}{% else %}—{% endif %}</td>
+          <td class="qty">{% if line.damaged_quantity %}{{ line.damaged_quantity }}{% else %}0{% endif %}</td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="3">No line items</td>
+          <td colspan="5">No line items</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+
+    {% if note.remarks or note.is_flagged %}
+    <div class="summary" style="justify-content: flex-start; margin-bottom: 1.5rem;">
+      <div class="summary-box" style="min-width: 100%;">
+        {% if note.is_flagged %}
+        <div class="summary-row"><span>Status</span><strong>Flagged for follow-up</strong></div>
+        {% endif %}
+        {% if note.remarks %}
+        <div class="summary-row" style="display:block;">
+          <span>Remarks</span>
+          <p style="margin: 0.35rem 0 0;">{{ note.remarks }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <div class="summary">
       <div class="summary-box">

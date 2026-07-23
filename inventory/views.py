@@ -45,6 +45,7 @@ from .serializers import (
     BranchInventorySerializer,
     CentralInvoiceCreateSerializer,
     CentralInvoiceSerializer,
+    DeliveryNoteReceiptSerializer,
     DeliveryNoteSerializer,
     InventoryAdjustSerializer,
     InventorySetSerializer,
@@ -63,6 +64,7 @@ from .services import (
     InsufficientStockError,
     InvalidCentralInvoicePaymentError,
     InvalidCentralInvoiceStateError,
+    InvalidDeliveryNoteReceiptError,
     InvalidDeliveryNoteStateError,
     InvalidStockTakeStateError,
     InvalidTransferStateError,
@@ -282,6 +284,7 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         "from_branch",
         "to_branch",
         "paid_by",
+        "approved_by",
     ).prefetch_related("lines__product").all()
     serializer_class = DeliveryNoteSerializer
     http_method_names = ["get", "post", "head", "options"]
@@ -391,6 +394,29 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "Only the receiving branch can confirm receipt of this delivery."
             )
+        receipt = None
+        if approval or receiving:
+            if request.data:
+                serializer = DeliveryNoteReceiptSerializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                receipt = serializer.validated_data
+            try:
+                note = handler(note, receipt=receipt, user=request.user)
+            except InvalidDeliveryNoteStateError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except InvalidDeliveryNoteReceiptError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except InsufficientStockError as exc:
+                return Response(
+                    {
+                        "detail": str(exc),
+                        "available": str(exc.available),
+                        "requested": str(exc.requested),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            note = self.get_queryset().get(pk=note.pk)
+            return Response(DeliveryNoteSerializer(note).data)
         try:
             note = handler(note)
         except InvalidDeliveryNoteStateError as exc:
@@ -402,8 +428,8 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
                     "available": str(exc.available),
                     "requested": str(exc.requested),
                 },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         note = self.get_queryset().get(pk=note.pk)
         return Response(DeliveryNoteSerializer(note).data)
 

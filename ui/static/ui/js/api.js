@@ -15,6 +15,20 @@ function mutationHeaders(extra = {}) {
   return headers;
 }
 
+function firstApiErrorMessage(data, fallbackText) {
+  if (!data || typeof data !== "object") {
+    return fallbackText || null;
+  }
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.detail)) return data.detail.map(String).join(" ");
+
+  for (const value of Object.values(data)) {
+    if (Array.isArray(value) && value.length) return String(value[0]);
+    if (typeof value === "string" && value) return value;
+  }
+  return (typeof data === "object" ? JSON.stringify(data) : null) || fallbackText || null;
+}
+
 async function parseResponse(res) {
   const text = await res.text();
   let data;
@@ -24,11 +38,7 @@ async function parseResponse(res) {
     data = { detail: text };
   }
   if (!res.ok) {
-    const message =
-      data?.detail ||
-      (typeof data === "object" ? JSON.stringify(data) : text) ||
-      res.statusText;
-    throw new Error(message);
+    throw new Error(firstApiErrorMessage(data, text) || res.statusText);
   }
   return data;
 }

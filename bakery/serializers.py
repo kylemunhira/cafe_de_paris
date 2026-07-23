@@ -69,14 +69,19 @@ class RecipeSerializer(serializers.ModelSerializer):
                 {"ingredient": "Output product and ingredient must differ."}
             )
 
-        if product and not product.is_active:
-            raise serializers.ValidationError(
-                {"product": "Cannot use an inactive product as recipe output."}
-            )
-        if ingredient and not ingredient.is_active:
-            raise serializers.ValidationError(
-                {"ingredient": "Cannot use an inactive product as an ingredient."}
-            )
+        # Active checks apply when creating, or when product/ingredient is being set.
+        # Quantity-only updates on existing lines must still work if a product was later deactivated.
+        creating = self.instance is None
+        if creating or "product" in attrs:
+            if product and not product.is_active:
+                raise serializers.ValidationError(
+                    {"product": "Cannot use an inactive product as recipe output."}
+                )
+        if creating or "ingredient" in attrs:
+            if ingredient and not ingredient.is_active:
+                raise serializers.ValidationError(
+                    {"ingredient": "Cannot use an inactive product as an ingredient."}
+                )
 
         return attrs
 

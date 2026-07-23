@@ -145,24 +145,42 @@ class ApiClient(
             .filter { it.status != "cancelled" }
     }
 
-    fun approveDeliveryNote(noteId: Int): DeliveryNote {
+    fun approveDeliveryNote(noteId: Int, receipt: DeliveryNoteReceipt? = null): DeliveryNote {
         val token = requireToken()
         val body = postJson(
             "${config.serverUrl}/api/delivery-notes/$noteId/approve/",
-            JSONObject(),
+            receiptToJson(receipt),
             token,
         )
         return JsonParsers.parseDeliveryNote(body)
     }
 
-    fun deliverDeliveryNote(noteId: Int): DeliveryNote {
+    fun deliverDeliveryNote(noteId: Int, receipt: DeliveryNoteReceipt? = null): DeliveryNote {
         val token = requireToken()
         val body = postJson(
             "${config.serverUrl}/api/delivery-notes/$noteId/deliver/",
-            JSONObject(),
+            receiptToJson(receipt),
             token,
         )
         return JsonParsers.parseDeliveryNote(body)
+    }
+
+    private fun receiptToJson(receipt: DeliveryNoteReceipt?): JSONObject {
+        if (receipt == null) return JSONObject()
+        val lines = org.json.JSONArray()
+        receipt.lines.forEach { line ->
+            lines.put(
+                JSONObject()
+                    .put("id", line.id)
+                    .put("received_quantity", line.receivedQuantity)
+                    .put("damaged_quantity", line.damagedQuantity)
+                    .put("notes", line.notes),
+            )
+        }
+        return JSONObject()
+            .put("remarks", receipt.remarks)
+            .put("is_flagged", receipt.isFlagged)
+            .put("lines", lines)
     }
 
     fun fetchCategories(): List<ProductCategory> {
@@ -322,6 +340,40 @@ class ApiClient(
         val token = requireToken()
         val body = getJson("${config.serverUrl}/api/customers/$customerId/", token)
         return JsonParsers.parseCustomer(body)
+    }
+
+    /**
+     * Customer account statement for thermal printing.
+     * Defaults to all-time history (capped by the API) so cashiers can print
+     * the full ledger and outstanding balance.
+     */
+    fun fetchCustomerStatement(
+        customerId: Int,
+        allTime: Boolean = true,
+        fromDate: String? = null,
+        toDate: String? = null,
+    ): CustomerStatement {
+        val token = requireToken()
+        if (customerId <= 0) {
+            throw ApiException(400, "Select a customer.")
+        }
+        val query = buildString {
+            if (allTime) {
+                append("all=1")
+            } else {
+                if (!fromDate.isNullOrBlank()) append("from=$fromDate")
+                if (!toDate.isNullOrBlank()) {
+                    if (isNotEmpty()) append('&')
+                    append("to=$toDate")
+                }
+            }
+        }
+        val suffix = if (query.isNotEmpty()) "?$query" else ""
+        val body = getJson(
+            "${config.serverUrl}/api/customers/$customerId/statement/$suffix",
+            token,
+        )
+        return JsonParsers.parseCustomerStatement(body, allTime = allTime)
     }
 
     fun fetchDayEndReport(date: String, countedByCurrency: Map<Int, String>): DayEndReportResponse {

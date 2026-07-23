@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from audit.mixins import AuditedModelMixin
+
 from .csv_io import export_customers_csv, import_customers_csv
 from .models import Customer, CustomerAccountTransaction
 from .serializers import (
@@ -17,10 +19,20 @@ from .services import CustomerAccountError, deposit_to_account
 from .statement import build_customer_statement_report
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
-
+    audit_entity_type = "customer"
+    audit_fields = (
+        "first_name",
+        "last_name",
+        "phone",
+        "email",
+        "account_type",
+        "loyalty_points",
+        "credit_limit",
+    )
+    audit_label_field = ("first_name", "last_name")
     def _require_customer_access(self):
         if not user_can_access_pos(self.request.user):
             raise PermissionDenied("Only POS staff can manage customers.")

@@ -85,6 +85,7 @@ let allStockTakes = [];
 let activeStockTake = null;
 let activeFilter = "all";
 let completedLineFilter = "all";
+let categoryLineFilter = "all";
 const sortState = createSortState("created_at", "desc");
 
 const STOCK_TAKE_SORT = {
@@ -135,6 +136,14 @@ function formatVariance(value) {
   if (!Number.isFinite(qty)) return "—";
   const formatted = qty.toLocaleString("en-US", { maximumFractionDigits: 2 });
   return qty > 0 ? `+${formatted}` : formatted;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function selectedBranchId() {
@@ -237,6 +246,29 @@ function varianceClass(variance) {
   return value > 0 ? "text-success" : "text-danger";
 }
 
+function lineCategories(lines) {
+  const counts = new Map();
+  for (const line of lines) {
+    const name = line.category_name || "Uncategorized";
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count }));
+}
+
+function groupLinesByCategory(lines) {
+  const groups = new Map();
+  for (const line of lines) {
+    const name = line.category_name || "Uncategorized";
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(line);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, groupLines]) => ({ name, lines: groupLines }));
+}
+
 function renderActiveCount() {
   if (!activeStockTake) {
     activeCountPanel.style.display = "none";
@@ -289,35 +321,73 @@ function renderActiveCount() {
     return;
   }
 
+  const categories = lineCategories(lines);
+  const statusFilteredLines = isCompleted && completedLineFilter === "variances"
+    ? varianceLines
+    : lines;
+  const categoryOptions = lineCategories(statusFilteredLines);
+  if (
+    categoryLineFilter !== "all"
+    && !categoryOptions.some(cat => cat.name === categoryLineFilter)
+  ) {
+    categoryLineFilter = "all";
+  }
+
+  const filterTabs = [];
   if (isCompleted) {
-    completedLineFilters.style.display = "flex";
-    completedLineFilters.innerHTML = `
+    filterTabs.push(`
       <button class="category-tab${completedLineFilter === "all" ? " active" : ""}" data-line-filter="all">
         All lines (${lines.length})
       </button>
       <button class="category-tab${completedLineFilter === "variances" ? " active" : ""}" data-line-filter="variances">
         Variances only (${varianceLines.length})
       </button>
-    `;
+    `);
+  }
+  if (categoryOptions.length > 1) {
+    filterTabs.push(`
+      <button class="category-tab${categoryLineFilter === "all" ? " active" : ""}" data-category-filter="all">
+        All categories (${statusFilteredLines.length})
+      </button>
+      ${categoryOptions.map(cat => `
+        <button class="category-tab${categoryLineFilter === cat.name ? " active" : ""}" data-category-filter="${escapeHtml(cat.name)}">
+          ${escapeHtml(cat.name)} (${cat.count})
+        </button>
+      `).join("")}
+    `);
+  }
+
+  if (filterTabs.length) {
+    completedLineFilters.style.display = "flex";
+    completedLineFilters.innerHTML = filterTabs.join("");
   } else {
     completedLineFilters.style.display = "none";
     completedLineFilters.innerHTML = "";
   }
 
-  const visibleLines = isCompleted && completedLineFilter === "variances"
-    ? varianceLines
-    : lines;
+  const visibleLines = categoryLineFilter === "all"
+    ? statusFilteredLines
+    : statusFilteredLines.filter(line => (line.category_name || "Uncategorized") === categoryLineFilter);
 
   if (!visibleLines.length) {
-    countLinesTable.innerHTML = `<div class="empty-state"><p>No variances were posted for this stock take.</p></div>`;
+    countLinesTable.innerHTML = `<div class="empty-state"><p>${
+      isCompleted && completedLineFilter === "variances"
+        ? "No variances were posted for this filter."
+        : "No ingredients in this category."
+    }</p></div>`;
     return;
   }
+
+  const groups = groupLinesByCategory(visibleLines);
+  const showCategoryColumn = categoryLineFilter === "all" && categories.length > 1;
+  const colSpan = (showCategoryColumn ? 2 : 1)
+    + (isCompleted ? 3 : 2);
 
   countLinesTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>Category</th>
+          ${showCategoryColumn ? "<th>Category</th>" : ""}
           <th>Ingredient</th>
           ${isCompleted ? `<th style="text-align: right;">System (before)</th>` : ""}
           <th style="text-align: right; min-width: 120px;">${isCompleted ? "Counted" : "Counted qty"}</th>
@@ -326,58 +396,88 @@ function renderActiveCount() {
         </tr>
       </thead>
       <tbody>
-        ${visibleLines.map(line => {
-          const variance = lineVariance(line);
-          const hasVariance = variance !== null && variance !== 0;
-          return `
-            <tr data-line-id="${line.id}" class="${isCompleted && hasVariance ? "variance-row" : ""}">
-              <td>${line.category_name}</td>
-              <td>${line.product_name}</td>
-              ${isCompleted
-                ? `<td style="text-align: right;">${formatQty(line.system_quantity)}</td>`
-                : ""
-              }
-              <td style="text-align: right;">
+          ${groups.map(group => `
+          <tr class="stock-take-category-header">
+            <td colspan="${colSpan}">
+              <strong>${escapeHtml(group.name)}</strong>
+              <span>${group.lines.length} item${group.lines.length === 1 ? "" : "s"}</span>
+            </td>
+          </tr>
+          ${group.lines.map(line => {
+            const variance = lineVariance(line);
+            const hasVariance = variance !== null && variance !== 0;
+            return `
+              <tr data-line-id="${line.id}" class="${isCompleted && hasVariance ? "variance-row" : ""}">
+                ${showCategoryColumn ? `<td>${escapeHtml(line.category_name || "—")}</td>` : ""}
+                <td>${escapeHtml(line.product_name)}</td>
                 ${isCompleted
-                  ? formatQty(line.counted_quantity)
-                  : `<input type="number" class="counted-input report-input" min="0" step="0.01"
-                      data-line-id="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="0">`
+                  ? `<td style="text-align: right;">${formatQty(line.system_quantity)}</td>`
+                  : ""
                 }
-              </td>
-              ${isCompleted
-                ? `<td style="text-align: right;" class="variance-cell ${varianceClass(variance)}">
-                    ${formatVariance(variance)}
-                  </td>`
-                : ""
-              }
-              ${isCompleted
-                ? ""
-                : `<td>
-                    <input type="text" class="notes-input report-input" data-line-id="${line.id}"
-                      value="${line.notes || ""}" placeholder="Optional">
-                  </td>`
-              }
-            </tr>
-          `;
-        }).join("")}
+                <td style="text-align: right;">
+                  ${isCompleted
+                    ? formatQty(line.counted_quantity)
+                    : `<input type="number" class="counted-input report-input" min="0" step="0.01"
+                        data-line-id="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="0">`
+                  }
+                </td>
+                ${isCompleted
+                  ? `<td style="text-align: right;" class="variance-cell ${varianceClass(variance)}">
+                      ${formatVariance(variance)}
+                    </td>`
+                  : ""
+                }
+                ${isCompleted
+                  ? ""
+                  : `<td>
+                      <input type="text" class="notes-input report-input" data-line-id="${line.id}"
+                        value="${escapeHtml(line.notes || "")}" placeholder="Optional">
+                    </td>`
+                }
+              </tr>
+            `;
+          }).join("")}
+        `).join("")}
       </tbody>
     </table>
   `;
 }
 
 function collectLineUpdates() {
-  const lines = [];
+  const updatesById = new Map();
   document.querySelectorAll(".counted-input").forEach(input => {
     const id = Number(input.dataset.lineId);
     const notesInput = document.querySelector(`.notes-input[data-line-id="${id}"]`);
     const value = input.value.trim();
-    lines.push({
+    updatesById.set(id, {
       id,
       counted_quantity: value === "" ? null : value,
       notes: notesInput?.value?.trim() || "",
     });
   });
-  return lines;
+
+  // Preserve counts for lines hidden by the category filter.
+  return (activeStockTake?.lines || []).map(line => {
+    if (updatesById.has(line.id)) return updatesById.get(line.id);
+    return {
+      id: line.id,
+      counted_quantity: line.counted_quantity,
+      notes: line.notes || "",
+    };
+  });
+}
+
+function syncVisibleLineDrafts() {
+  if (!activeStockTake?.lines) return;
+  document.querySelectorAll(".counted-input").forEach(input => {
+    const id = Number(input.dataset.lineId);
+    const line = activeStockTake.lines.find(item => item.id === id);
+    if (!line) return;
+    const value = input.value.trim();
+    line.counted_quantity = value === "" ? null : value;
+    const notesInput = document.querySelector(`.notes-input[data-line-id="${id}"]`);
+    if (notesInput) line.notes = notesInput.value.trim();
+  });
 }
 
 async function loadStockTakes() {
@@ -396,6 +496,7 @@ async function loadStockTakes() {
 async function openStockTake(id) {
   activeStockTake = await apiGet(`/stock-takes/${id}/`);
   completedLineFilter = "all";
+  categoryLineFilter = "all";
   renderActiveCount();
   activeCountPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -403,6 +504,7 @@ async function openStockTake(id) {
 function closeActiveCount() {
   activeStockTake = null;
   completedLineFilter = "all";
+  categoryLineFilter = "all";
   renderActiveCount();
 }
 
@@ -531,9 +633,17 @@ document.getElementById("complete-count-btn").addEventListener("click", complete
 document.getElementById("cancel-count-btn").addEventListener("click", cancelCount);
 closeCountBtn.addEventListener("click", closeActiveCount);
 completedLineFilters.addEventListener("click", (event) => {
-  const tab = event.target.closest("[data-line-filter]");
-  if (!tab) return;
-  completedLineFilter = tab.dataset.lineFilter;
+  const statusTab = event.target.closest("[data-line-filter]");
+  if (statusTab) {
+    syncVisibleLineDrafts();
+    completedLineFilter = statusTab.dataset.lineFilter;
+    renderActiveCount();
+    return;
+  }
+  const categoryTab = event.target.closest("[data-category-filter]");
+  if (!categoryTab) return;
+  syncVisibleLineDrafts();
+  categoryLineFilter = categoryTab.dataset.categoryFilter;
   renderActiveCount();
 });
 csvUpload.addEventListener("change", async (event) => {

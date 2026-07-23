@@ -4,6 +4,7 @@ from accounts.branch_access import (
     user_can_approve_fiscal_receipt,
     user_can_collect_payment,
 )
+from audit.mixins import AuditedModelMixin
 from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -56,7 +57,7 @@ from .services import (
 )
 
 
-class OrderViewSet(viewsets.ModelViewSet):
+class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = Order.objects.select_related(
         "branch",
         "customer",
@@ -70,6 +71,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         "fiscal_receipt",
     ).all()
     serializer_class = OrderSerializer
+    audit_entity_type = "order"
+    audit_fields = ("customer",)
+    audit_label_field = lambda order: f"Order #{order.pk}"  # noqa: E731
 
     def get_queryset(self):
         qs = super().get_queryset()

@@ -161,6 +161,12 @@
           Users
         </a>
         {% endif %}
+        {% if show_audit_log_nav %}
+        <a href="{% url 'ui:audit-log' %}" class="nav-link{% if active_nav == 'audit_log' %} active{% endif %}">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Audit log
+        </a>
+        {% endif %}
         <details class="nav-group"{% if active_nav == 'reports' or active_nav == 'vat_report' or active_nav == 'supplier_statement' or active_nav == 'ingredient_report' or active_nav == 'ingredient_usage_report' or active_nav == 'day_end_report' %} open{% endif %}>
           <summary class="nav-group-toggle">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6a2 2 0 012-2h8m-6 8h6m-10 4h12a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>

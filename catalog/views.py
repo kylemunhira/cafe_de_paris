@@ -3,6 +3,10 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from audit.mixins import AuditedModelMixin
+from audit.models import AuditAction
+from audit.services import action_for_update, diff_dicts, record_entity_change, snapshot_fields
+
 from .csv_io import (
     export_ingredients_csv,
     export_products_csv,
@@ -40,9 +44,12 @@ def product_has_protected_references(product):
     return any(getattr(product, rel).exists() for rel in PRODUCT_PROTECTED_RELATIONS)
 
 
-class ProductCategoryViewSet(viewsets.ModelViewSet):
+class ProductCategoryViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = ProductCategory.objects.all()
     serializer_class = ProductCategorySerializer
+    audit_entity_type = "product_category"
+    audit_fields = ("name", "is_asset", "show_on_pos", "pos_station")
+    audit_label_field = "name"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -86,33 +93,95 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
 
             for product in inactive_products:
                 if product_has_protected_references(product):
+                    before = snapshot_fields(
+                        product,
+                        ("name", "category", "is_active"),
+                    )
                     product.category = reassign_target
                     product.save(update_fields=["category"])
+                    after = snapshot_fields(
+                        product,
+                        ("name", "category", "is_active"),
+                    )
+                    changes = diff_dicts(before, after)
+                    if changes:
+                        record_entity_change(
+                            action=AuditAction.UPDATE,
+                            entity=product,
+                            entity_type="product",
+                            changes=changes,
+                            actor=request.user,
+                            request=request,
+                        )
                 else:
+                    record_entity_change(
+                        action=AuditAction.DELETE,
+                        entity=product,
+                        entity_type="product",
+                        changes=snapshot_fields(
+                            product,
+                            (
+                                "name",
+                                "category",
+                                "selling_price",
+                                "tax_rate",
+                                "is_active",
+                            ),
+                        ),
+                        actor=request.user,
+                        request=request,
+                    )
                     product.delete()
 
+        self._record_delete_audit(category)
         category.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class MenuAddonGroupViewSet(viewsets.ModelViewSet):
+class MenuAddonGroupViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = MenuAddonGroup.objects.prefetch_related("addons").all()
     serializer_class = MenuAddonGroupSerializer
     http_method_names = ["get", "post", "patch", "head", "options"]
+    audit_entity_type = "menu_addon_group"
+    audit_fields = ("name", "selection_type", "sort_order")
+    audit_label_field = "name"
 
 
-class MenuAddonViewSet(viewsets.ModelViewSet):
+class MenuAddonViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = MenuAddon.objects.select_related("group").all()
     serializer_class = MenuAddonSerializer
     http_method_names = ["get", "post", "patch", "head", "options"]
+    audit_entity_type = "menu_addon"
+    audit_fields = (
+        "group",
+        "name",
+        "selling_price",
+        "tax_rate",
+        "sort_order",
+        "is_active",
+    )
+    audit_label_field = "name"
 
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = Product.objects.select_related("category").prefetch_related(
         "addon_group_links__group__addons",
     ).all()
     serializer_class = ProductSerializer
-
+    audit_entity_type = "product"
+    audit_fields = (
+        "name",
+        "category",
+        "selling_price",
+        "remaining_qty",
+        "tax_rate",
+        "hs_code",
+        "fiscal_tax_code",
+        "fiscal_tax_id",
+        "is_active",
+        "daily_stock_take",
+    )
+    audit_label_field = "name"
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.action == "list":
@@ -170,10 +239,23 @@ class ProductViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         product = self.get_object()
         if product_has_protected_references(product):
+            before = self.get_audit_snapshot(product)
             product.is_active = False
             product.save(update_fields=["is_active"])
+            after = self.get_audit_snapshot(product)
+            changes = diff_dicts(before, after)
+            if changes:
+                record_entity_change(
+                    action=action_for_update(before, after),
+                    entity=product,
+                    entity_type=self.audit_entity_type,
+                    changes=changes,
+                    actor=request.user,
+                    request=request,
+                )
             serializer = self.get_serializer(product)
             return Response(serializer.data)
+        self._record_delete_audit(product)
         product.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

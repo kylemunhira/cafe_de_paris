@@ -199,10 +199,24 @@ class DeliveryNoteLineSerializer(serializers.ModelSerializer):
     line_total = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True
     )
+    returned_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
 
     class Meta:
         model = DeliveryNoteLine
-        fields = ["id", "product", "product_name", "quantity", "unit_price", "line_total"]
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "quantity",
+            "received_quantity",
+            "damaged_quantity",
+            "returned_quantity",
+            "line_notes",
+            "unit_price",
+            "line_total",
+        ]
 
 
 class DeliveryNoteSerializer(serializers.ModelSerializer):
@@ -215,10 +229,12 @@ class DeliveryNoteSerializer(serializers.ModelSerializer):
     lines = DeliveryNoteLineSerializer(many=True, read_only=True)
     line_count = serializers.SerializerMethodField()
     total_quantity = serializers.SerializerMethodField()
+    total_received_quantity = serializers.SerializerMethodField()
     total_amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True
     )
     paid_by_name = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
     payment_status_display = serializers.CharField(
         source="get_payment_status_display",
         read_only=True,
@@ -241,10 +257,16 @@ class DeliveryNoteSerializer(serializers.ModelSerializer):
             "paid_at",
             "paid_by",
             "paid_by_name",
+            "remarks",
+            "is_flagged",
+            "approved_at",
+            "approved_by",
+            "approved_by_name",
             "created_at",
             "lines",
             "line_count",
             "total_quantity",
+            "total_received_quantity",
             "total_amount",
         ]
         read_only_fields = [
@@ -252,17 +274,44 @@ class DeliveryNoteSerializer(serializers.ModelSerializer):
             "payment_status",
             "paid_at",
             "paid_by",
+            "remarks",
+            "is_flagged",
+            "approved_at",
+            "approved_by",
             "created_at",
         ]
 
     def get_paid_by_name(self, obj):
         return staff_display_name(obj.paid_by)
 
+    def get_approved_by_name(self, obj):
+        return staff_display_name(obj.approved_by)
+
     def get_line_count(self, obj):
         return obj.lines.count()
 
     def get_total_quantity(self, obj):
         return obj.total_quantity
+
+    def get_total_received_quantity(self, obj):
+        return obj.total_received_quantity
+
+
+class DeliveryNoteReceiptLineSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    received_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
+    damaged_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, default=Decimal("0")
+    )
+    notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class DeliveryNoteReceiptSerializer(serializers.Serializer):
+    remarks = serializers.CharField(required=False, allow_blank=True)
+    is_flagged = serializers.BooleanField(required=False, default=False)
+    lines = DeliveryNoteReceiptLineSerializer(many=True, required=False)
 
 
 class DeliveryNoteLineCreateSerializer(serializers.Serializer):

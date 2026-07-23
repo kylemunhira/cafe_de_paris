@@ -17,10 +17,52 @@
     <button class="category-tab" data-filter="requested">Not approved</button>
     <button class="category-tab" data-filter="dispatched">Awaiting receipt</button>
     <button class="category-tab" data-filter="delivered">Received</button>
+    <button class="category-tab" data-filter="flagged">Flagged</button>
     <button class="category-tab" data-filter="all">All</button>
   </div>
   <div class="table-wrap" id="grv-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+
+<div id="grv-receive-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
+  <div class="card" style="width:min(720px, 100%); max-height:90vh; overflow:auto; padding:1.25rem 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; margin-bottom:1rem;">
+      <div>
+        <h3 id="grv-receive-title" style="margin:0;">Receive GRV</h3>
+        <p id="grv-receive-subtitle" style="margin:0.35rem 0 0; color:var(--muted, #6b5c52); font-size:0.9rem;"></p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="grv-receive-close">Close</button>
+    </div>
+    <div class="table-wrap" style="margin-bottom:1rem;">
+      <table class="data-table" id="grv-receive-lines">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Sent</th>
+            <th>Received (good)</th>
+            <th>Damaged (return)</th>
+            <th>Line notes</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <label style="display:block; margin-bottom:0.75rem;">
+      <span style="display:block; font-size:0.85rem; margin-bottom:0.35rem;">Remarks</span>
+      <textarea id="grv-receive-remarks" rows="3" style="width:100%; padding:0.6rem 0.75rem; border:1px solid rgba(44,24,16,0.15); border-radius:8px; font:inherit;" placeholder="Optional notes for bakery / stores"></textarea>
+    </label>
+    <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.25rem;">
+      <input type="checkbox" id="grv-receive-flag">
+      <span>Flag this dnote for follow-up</span>
+    </label>
+    <p id="grv-receive-hint" style="margin:0 0 1rem; font-size:0.85rem; color:var(--muted, #6b5c52);">
+      Damaged or short quantities are credited back to the sender. Variance auto-flags the note.
+    </p>
+    <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost" id="grv-receive-cancel">Cancel</button>
+      <button type="button" class="btn btn-accent" id="grv-receive-submit">Confirm receive</button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -35,8 +77,11 @@ const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "
 let allNotes = [];
 const INCOMING_STATUSES = ["requested", "approved", "dispatched"];
 let activeFilter = "incoming";
+let pendingAction = null;
 const grvTable = document.getElementById("grv-table");
 const grvStats = document.getElementById("grv-stats");
+const receiveModal = document.getElementById("grv-receive-modal");
+const receiveLinesBody = document.querySelector("#grv-receive-lines tbody");
 const sortState = createSortState("created_at", "desc");
 
 const GRV_SORT = {
@@ -57,7 +102,12 @@ function formatQty(value) {
 
 function formatLineSummary(note) {
   if (!note.lines?.length) return "—";
-  const preview = note.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
+  const preview = note.lines.slice(0, 2).map(l => {
+    if (l.received_quantity != null && Number(l.received_quantity) !== Number(l.quantity)) {
+      return `${l.product_name} (${formatQty(l.received_quantity)}/${formatQty(l.quantity)})`;
+    }
+    return `${l.product_name} (${formatQty(l.quantity)})`;
+  });
   const extra = note.lines.length > 2 ? ` +${note.lines.length - 2} more` : "";
   return preview.join(", ") + extra;
 }
@@ -65,7 +115,14 @@ function formatLineSummary(note) {
 function formatReceiptSummary(note) {
   if (!note.lines?.length) return "";
   return note.lines
-    .map(l => `${l.product_name} (${formatQty(l.quantity)})`)
+    .map(l => {
+      const received = l.received_quantity != null ? l.received_quantity : l.quantity;
+      const damaged = Number(l.damaged_quantity || 0);
+      let text = `${l.product_name} (${formatQty(received)}`;
+      if (damaged > 0) text += `, ${formatQty(damaged)} damaged`;
+      text += ")";
+      return text;
+    })
     .join(", ");
 }
 
@@ -82,6 +139,14 @@ function noteActions(note) {
   }
 
   return actions.join(" ");
+}
+
+function statusCell(note) {
+  let html = statusBadge(note.status);
+  if (note.is_flagged) {
+    html += ` <span class="badge" style="background:#fef3c7; color:#92400e;">Flagged</span>`;
+  }
+  return html;
 }
 
 function renderStats() {
@@ -113,6 +178,9 @@ function filterNotes() {
   if (activeFilter === "incoming") {
     return allNotes.filter(n => INCOMING_STATUSES.includes(n.status));
   }
+  if (activeFilter === "flagged") {
+    return allNotes.filter(n => n.is_flagged);
+  }
   return allNotes.filter(n => n.status === activeFilter);
 }
 
@@ -125,6 +193,7 @@ function renderNotes() {
       requested: "No deliveries pending your approval",
       dispatched: "No deliveries awaiting receipt",
       delivered: "No received deliveries yet",
+      flagged: "No flagged GRVs",
       all: "No goods received vouchers found",
     };
     grvTable.innerHTML = `<div class="empty-state"><p>${messages[activeFilter] || messages.all}</p></div>`;
@@ -155,7 +224,7 @@ function renderNotes() {
             <td>${formatQty(n.total_quantity)}</td>
             <td>${n.from_branch_name}</td>
             <td>${n.to_branch_name}</td>
-            <td>${statusBadge(n.status)}</td>
+            <td>${statusCell(n)}</td>
             <td>${formatDate(n.created_at)}</td>
             <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${noteActions(n)}</td>
           </tr>
@@ -163,6 +232,86 @@ function renderNotes() {
       </tbody>
     </table>
   `;
+}
+
+function openReceiveModal(note, action) {
+  pendingAction = { note, action };
+  document.getElementById("grv-receive-title").textContent =
+    action === "approve" ? `Approve GRV-${String(note.id).padStart(5, "0")}` : `Receive GRV-${String(note.id).padStart(5, "0")}`;
+  document.getElementById("grv-receive-subtitle").textContent =
+    `From ${note.from_branch_name} → ${note.to_branch_name}`;
+  document.getElementById("grv-receive-remarks").value = "";
+  document.getElementById("grv-receive-flag").checked = false;
+  receiveLinesBody.innerHTML = (note.lines || []).map(line => `
+    <tr data-line-id="${line.id}" data-sent="${line.quantity}">
+      <td>${line.product_name}</td>
+      <td>${formatQty(line.quantity)}</td>
+      <td><input type="number" min="0" step="0.01" class="recv-qty" value="${Number(line.quantity)}" style="width:5.5rem; padding:0.35rem 0.5rem;"></td>
+      <td><input type="number" min="0" step="0.01" class="dmg-qty" value="0" style="width:5.5rem; padding:0.35rem 0.5rem;"></td>
+      <td><input type="text" class="line-notes" maxlength="255" placeholder="Optional" style="width:100%; min-width:8rem; padding:0.35rem 0.5rem;"></td>
+    </tr>
+  `).join("");
+  receiveModal.style.display = "flex";
+}
+
+function closeReceiveModal() {
+  pendingAction = null;
+  receiveModal.style.display = "none";
+}
+
+function buildReceiptPayload() {
+  const lines = [];
+  for (const row of receiveLinesBody.querySelectorAll("tr")) {
+    const sent = Number(row.dataset.sent);
+    const received = Number(row.querySelector(".recv-qty").value);
+    const damaged = Number(row.querySelector(".dmg-qty").value || 0);
+    if (!Number.isFinite(received) || received < 0 || !Number.isFinite(damaged) || damaged < 0) {
+      throw new Error("Enter valid received and damaged quantities.");
+    }
+    if (received + damaged > sent + 1e-9) {
+      throw new Error("Received + damaged cannot exceed sent quantity.");
+    }
+    lines.push({
+      id: Number(row.dataset.lineId),
+      received_quantity: String(received),
+      damaged_quantity: String(damaged),
+      notes: row.querySelector(".line-notes").value.trim(),
+    });
+  }
+  return {
+    remarks: document.getElementById("grv-receive-remarks").value.trim(),
+    is_flagged: document.getElementById("grv-receive-flag").checked,
+    lines,
+  };
+}
+
+async function submitReceive() {
+  if (!pendingAction) return;
+  const { note, action } = pendingAction;
+  const submitBtn = document.getElementById("grv-receive-submit");
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<span class="loading-spinner"></span>`;
+  try {
+    const payload = buildReceiptPayload();
+    const updated = await apiPost(`/delivery-notes/${note.id}/${action}/`, payload);
+    const index = allNotes.findIndex(n => String(n.id) === String(note.id));
+    if (index >= 0) allNotes[index] = updated;
+    closeReceiveModal();
+    renderNotes();
+    renderStats();
+    const summary = formatReceiptSummary(updated);
+    const flagged = updated.is_flagged ? " (flagged)" : "";
+    showToast(
+      summary
+        ? `Stock updated at ${updated.to_branch_name}: ${summary}${flagged}`
+        : `GRV-${String(note.id).padStart(5, "0")} received${flagged}`
+    );
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Confirm receive";
+  }
 }
 
 async function loadData() {
@@ -174,43 +323,19 @@ async function loadData() {
 
 bindTableSort(grvTable, sortState, renderNotes);
 
-grvTable.addEventListener("click", async (e) => {
+grvTable.addEventListener("click", (e) => {
   const btn = e.target.closest(".action-btn");
   if (!btn) return;
+  const note = allNotes.find(n => String(n.id) === btn.dataset.id);
+  if (!note) return;
+  openReceiveModal(note, btn.dataset.action);
+});
 
-  const { action, id } = btn.dataset;
-  btn.disabled = true;
-  btn.innerHTML = `<span class="loading-spinner"></span>`;
-
-  try {
-    const updated = await apiPost(`/delivery-notes/${id}/${action}/`, {});
-    const index = allNotes.findIndex(n => String(n.id) === id);
-    if (index >= 0) allNotes[index] = updated;
-
-    renderNotes();
-    renderStats();
-    if (action === "approve" && updated.status === "delivered") {
-      const summary = formatReceiptSummary(updated);
-      showToast(
-        summary
-          ? `Stock added at ${updated.to_branch_name}: ${summary}`
-          : `GRV-${String(id).padStart(5, "0")} received`
-      );
-    } else if (action === "deliver") {
-      const summary = formatReceiptSummary(updated);
-      showToast(
-        summary
-          ? `Stock added at ${updated.to_branch_name}: ${summary}`
-          : `GRV-${String(id).padStart(5, "0")} received`
-      );
-    } else {
-      showToast(`GRV-${String(id).padStart(5, "0")} ${action === "approve" ? "approved" : "updated"}`);
-    }
-  } catch (err) {
-    showToast(err.message, true);
-    btn.textContent = action === "approve" ? "Approve" : "Confirm receipt";
-    btn.disabled = false;
-  }
+document.getElementById("grv-receive-close").addEventListener("click", closeReceiveModal);
+document.getElementById("grv-receive-cancel").addEventListener("click", closeReceiveModal);
+document.getElementById("grv-receive-submit").addEventListener("click", submitReceive);
+receiveModal.addEventListener("click", (e) => {
+  if (e.target === receiveModal) closeReceiveModal();
 });
 
 document.querySelectorAll("[data-filter]").forEach(tab => {

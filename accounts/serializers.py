@@ -44,7 +44,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
         source="staff_profile.get_kitchen_station_display",
         read_only=True,
     )
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=4)
 
     class Meta:
         model = User

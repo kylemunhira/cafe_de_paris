@@ -114,6 +114,22 @@ class DeliveryNote(models.Model):
         related_name="transfer_invoices_marked_paid",
         help_text="Staff who recorded payment for this transfer invoice.",
     )
+    remarks = models.TextField(
+        blank=True,
+        help_text="Receiving remarks captured on approve / confirm receipt.",
+    )
+    is_flagged = models.BooleanField(
+        default=False,
+        help_text="Flagged for follow-up when receipt differs from what was sent.",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delivery_notes_approved",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -129,6 +145,18 @@ class DeliveryNote(models.Model):
     @property
     def total_quantity(self):
         return sum(line.quantity for line in self.lines.all())
+
+    @property
+    def total_received_quantity(self):
+        from decimal import Decimal
+
+        total = Decimal("0")
+        for line in self.lines.all():
+            if line.received_quantity is not None:
+                total += line.received_quantity
+            else:
+                total += line.quantity
+        return total
 
     @property
     def total_amount(self):
@@ -152,6 +180,20 @@ class DeliveryNoteLine(models.Model):
         related_name="delivery_note_lines",
     )
     quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    received_quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Good quantity accepted at the destination. Null until received.",
+    )
+    damaged_quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Quantity rejected as damaged and returned to the sender.",
+    )
+    line_notes = models.CharField(max_length=255, blank=True)
     unit_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -166,6 +208,17 @@ class DeliveryNoteLine(models.Model):
 
     def __str__(self):
         return f"{self.product} x {self.quantity}"
+
+    @property
+    def returned_quantity(self):
+        from decimal import Decimal
+
+        received = (
+            self.received_quantity
+            if self.received_quantity is not None
+            else self.quantity
+        )
+        return self.quantity - received
 
     @property
     def line_total(self):
@@ -369,6 +422,7 @@ class StockMovementReason(models.TextChoices):
     TRANSFER_IN = "transfer_in", "Transfer in"
     DELIVERY_OUT = "delivery_out", "Delivery out"
     DELIVERY_IN = "delivery_in", "Delivery in"
+    DELIVERY_RETURN = "delivery_return", "Delivery return"
     DELIVERY_CANCEL = "delivery_cancel", "Delivery cancel"
     PRODUCTION_CONSUME = "production_consume", "Production consume"
     PRODUCTION_OUTPUT = "production_output", "Production output"

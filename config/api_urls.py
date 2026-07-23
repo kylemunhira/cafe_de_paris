@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from accounts.auth_views import DesktopLoginView, KitchenLoginView, MobileAppLoginView
 from accounts.views import StaffUserViewSet
+from audit.views import AuditEventViewSet
 from branches.views import BranchViewSet, DiningTableViewSet
 from catalog.views import MenuAddonGroupViewSet, MenuAddonViewSet, ProductCategoryViewSet, ProductViewSet
 from inventory.views import (
@@ -34,6 +35,7 @@ from sync.views import SyncPingView, SyncPullView, SyncPushView
 
 router = DefaultRouter()
 router.register("users", StaffUserViewSet, basename="staffuser")
+router.register("audit-events", AuditEventViewSet, basename="audit-event")
 router.register("branches", BranchViewSet)
 router.register("dining-tables", DiningTableViewSet, basename="dining-table")
 router.register("categories", ProductCategoryViewSet)

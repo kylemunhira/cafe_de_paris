@@ -8,6 +8,7 @@ from accounts.branch_access import (
     user_can_access_fiscal_receipts,
     user_can_access_grv,
     user_can_access_kitchen,
+    user_can_access_management_console,
     user_can_access_pos,
     user_can_access_stores_transfers,
     user_can_create_purchase_orders,
@@ -974,3 +975,11 @@ class ExpensesView(BaseUIView):
         context = super().get_context_data(**kwargs)
         context["staff_branch_id"] = get_staff_branch_id(self.request.user)
         return context
+
+
+class AuditLogView(BaseUIView):
+    template_name = "ui/audit_log.html"
+    active_nav = "audit_log"
+
+    def access_allowed(self, user):
+        return user_can_access_management_console(user)

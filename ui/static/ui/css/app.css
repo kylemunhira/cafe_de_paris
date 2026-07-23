@@ -507,6 +507,43 @@ h1, h2, h3, .font-display {
 .badge-delivered { background: #d1fae5; color: #065f46; }
 .badge-daily-stock { background: #dbeafe; color: #1e40af; }
 
+.daily-count-toggle {
+  display: inline-flex;
+  border: 1px solid rgba(44, 24, 16, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #f3f4f6;
+}
+
+.daily-count-toggle button {
+  margin: 0;
+  padding: 0.25rem 0.7rem;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.daily-count-toggle button + button {
+  border-left: 1px solid rgba(44, 24, 16, 0.12);
+}
+
+.daily-count-toggle button.is-active {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.daily-count-toggle button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .text-success { color: #065f46; }
 .text-danger { color: #991b1b; }
 
@@ -516,6 +553,29 @@ h1, h2, h3, .font-display {
   flex-wrap: wrap;
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid rgba(44, 24, 16, 0.06);
+}
+
+tr.stock-take-category-header td {
+  background: rgba(44, 24, 16, 0.04);
+  border-bottom: 1px solid rgba(44, 24, 16, 0.08);
+  padding: 0.65rem 1rem;
+  font-size: 0.8rem;
+  color: var(--color-espresso);
+}
+
+tr.stock-take-category-header strong {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+tr.stock-take-category-header span {
+  margin-left: 0.5rem;
+  color: var(--color-muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 tr.variance-row td {

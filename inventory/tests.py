@@ -580,6 +580,105 @@ class DeliveryNoteTests(TestCase):
         )
         self.assertEqual(branch_stock.quantity, Decimal("6"))
 
+    def test_partial_receive_credits_damaged_back_to_bakery(self):
+        self.client.force_authenticate(user=self.baker)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": self.croissant.id, "quantity": "7"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        note_id = create_response.data["id"]
+        line_id = create_response.data["lines"][0]["id"]
+
+        bakery_after_send = BranchInventory.objects.get(
+            branch=self.bakery,
+            product=self.croissant,
+        )
+        self.assertEqual(bakery_after_send.quantity, Decimal("43"))
+
+        self.client.force_authenticate(user=self.cashier)
+        approve_response = self.client.post(
+            f"/api/delivery-notes/{note_id}/approve/",
+            {
+                "remarks": "2 crushed in transit",
+                "is_flagged": True,
+                "lines": [
+                    {
+                        "id": line_id,
+                        "received_quantity": "5",
+                        "damaged_quantity": "2",
+                        "notes": "crushed packaging",
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
+        self.assertTrue(approve_response.data["is_flagged"])
+        self.assertEqual(approve_response.data["remarks"], "2 crushed in transit")
+        line = approve_response.data["lines"][0]
+        self.assertEqual(Decimal(line["received_quantity"]), Decimal("5"))
+        self.assertEqual(Decimal(line["damaged_quantity"]), Decimal("2"))
+        self.assertEqual(Decimal(line["returned_quantity"]), Decimal("2"))
+
+        branch_stock = BranchInventory.objects.get(
+            branch=self.branch,
+            product=self.croissant,
+        )
+        bakery_stock = BranchInventory.objects.get(
+            branch=self.bakery,
+            product=self.croissant,
+        )
+        self.assertEqual(branch_stock.quantity, Decimal("5"))
+        self.assertEqual(bakery_stock.quantity, Decimal("45"))
+
+        from inventory.models import StockMovement, StockMovementReason
+
+        returns = StockMovement.objects.filter(
+            branch=self.bakery,
+            product=self.croissant,
+            reason=StockMovementReason.DELIVERY_RETURN,
+            reference_id=note_id,
+        )
+        self.assertEqual(returns.count(), 1)
+        self.assertEqual(returns.first().delta, Decimal("2"))
+
+    def test_partial_receive_rejects_over_sent_quantity(self):
+        self.client.force_authenticate(user=self.baker)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-bakery/",
+            {
+                "from_branch": self.bakery.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": self.croissant.id, "quantity": "7"}],
+            },
+            format="json",
+        )
+        note_id = create_response.data["id"]
+        line_id = create_response.data["lines"][0]["id"]
+
+        self.client.force_authenticate(user=self.cashier)
+        response = self.client.post(
+            f"/api/delivery-notes/{note_id}/approve/",
+            {
+                "lines": [
+                    {
+                        "id": line_id,
+                        "received_quantity": "6",
+                        "damaged_quantity": "2",
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_bakery_cannot_approve_incoming_to_branch(self):
         self.client.force_authenticate(user=self.baker)
         create_response = self.client.post(

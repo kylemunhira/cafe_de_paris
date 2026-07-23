@@ -294,9 +294,17 @@ object JsonParsers {
         val lines = (0 until linesJson.length()).map { index ->
             val line = linesJson.getJSONObject(index)
             DeliveryNoteLine(
+                id = line.getInt("id"),
                 productId = line.getInt("product"),
                 productName = line.optString("product_name", "Product"),
                 quantity = jsonNumberAsString(line, "quantity", "0"),
+                receivedQuantity = if (line.isNull("received_quantity")) {
+                    null
+                } else {
+                    jsonNumberAsString(line, "received_quantity", "0")
+                },
+                damagedQuantity = jsonNumberAsString(line, "damaged_quantity", "0"),
+                lineNotes = line.optString("line_notes", ""),
             )
         }
         return DeliveryNote(
@@ -310,6 +318,8 @@ object JsonParsers {
             status = item.optString("status", "requested"),
             createdAt = item.optString("created_at", ""),
             totalQuantity = jsonNumberAsString(item, "total_quantity", "0"),
+            remarks = item.optString("remarks", ""),
+            isFlagged = item.optBoolean("is_flagged", false),
             lines = lines,
         )
     }
@@ -555,6 +565,60 @@ object JsonParsers {
             status = json.optString("status", "draft"),
             countDate = json.optString("count_date", ""),
             lines = lines,
+        )
+    }
+
+    fun parseCustomerStatement(body: String, allTime: Boolean = false): CustomerStatement {
+        val json = org.json.JSONObject(body)
+        val period = json.optJSONObject("period")
+        val periodFrom = period?.optString("from", null)?.takeIf { it.isNotBlank() && it != "null" }
+        val periodTo = period?.optString("to", null)?.takeIf { it.isNotBlank() && it != "null" }
+        val txnsJson = json.optJSONArray("transactions") ?: org.json.JSONArray()
+        val transactions = (0 until txnsJson.length()).map { index ->
+            val item = txnsJson.getJSONObject(index)
+            val orderId = if (item.has("order_id") && !item.isNull("order_id")) {
+                item.optInt("order_id").takeIf { it > 0 }
+            } else {
+                null
+            }
+            CustomerStatementTransaction(
+                id = item.getInt("id"),
+                statementLabel = item.optString(
+                    "statement_label",
+                    item.optString("transaction_type_display", "Transaction"),
+                ),
+                transactionType = item.optString("transaction_type", ""),
+                amount = jsonNumberAsString(item, "amount", "0"),
+                balanceAfter = jsonNumberAsString(item, "balance_after", "0"),
+                currencyCode = item.optString("currency_code", null)?.takeIf { it.isNotBlank() },
+                currencySymbol = item.optString("currency_symbol", null)?.takeIf { it.isNotBlank() },
+                amountReceived = if (item.has("amount_received") && !item.isNull("amount_received")) {
+                    jsonNumberAsString(item, "amount_received", "0")
+                } else {
+                    null
+                },
+                orderId = orderId,
+                notes = item.optString("notes", ""),
+                recordedByName = item.optString("recorded_by_name", null)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: item.optString("recorded_by_username", null)?.takeIf { it.isNotBlank() },
+                createdAt = item.optString("created_at", ""),
+                isBalanceAdjustment = item.optBoolean("is_balance_adjustment", false)
+                    || item.optString("transaction_type", "") == "adjustment",
+            )
+        }
+        return CustomerStatement(
+            customerId = json.optInt("customer_id", 0),
+            periodFrom = periodFrom,
+            periodTo = periodTo,
+            allTime = allTime || (periodFrom == null && periodTo == null),
+            openingBalance = jsonNumberAsString(json, "opening_balance", "0"),
+            closingBalance = jsonNumberAsString(json, "closing_balance", "0"),
+            currentBalance = jsonNumberAsString(json, "current_balance", "0"),
+            totalCredits = jsonNumberAsString(json, "total_credits", "0"),
+            totalDebits = jsonNumberAsString(json, "total_debits", "0"),
+            transactionCount = json.optInt("transaction_count", transactions.size),
+            transactions = transactions,
         )
     }
 

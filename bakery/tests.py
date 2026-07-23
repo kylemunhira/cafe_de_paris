@@ -52,7 +52,7 @@ class RecipeApiTests(TestCase):
         self.assertEqual(list_response.status_code, 200)
         results = list_response.data.get("results", list_response.data)
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["quantity_required"], "0.25")
+        self.assertEqual(Decimal(results[0]["quantity_required"]), Decimal("0.25"))
         self.assertEqual(results[0]["line_cost"], Decimal("1.25"))
 
     def test_accepts_small_fractional_quantities(self):
@@ -115,8 +115,41 @@ class RecipeApiTests(TestCase):
             format="json",
         )
         self.assertEqual(patch_response.status_code, 200)
-        self.assertEqual(patch_response.data["quantity_required"], "0.15")
+        self.assertEqual(Decimal(patch_response.data["quantity_required"]), Decimal("0.15"))
 
         delete_response = self.client.delete(f"/api/recipes/{recipe.id}/")
         self.assertEqual(delete_response.status_code, 204)
         self.assertFalse(Recipe.objects.filter(pk=recipe.id).exists())
+
+    def test_can_update_quantity_when_product_is_inactive(self):
+        recipe = Recipe.objects.create(
+            product=self.croissant,
+            ingredient=self.butter,
+            quantity_required=Decimal("0.10"),
+        )
+        self.croissant.is_active = False
+        self.croissant.save(update_fields=["is_active"])
+
+        response = self.client.patch(
+            f"/api/recipes/{recipe.id}/",
+            {"quantity_required": "0.20"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Decimal(response.data["quantity_required"]), Decimal("0.20"))
+
+    def test_rejects_create_for_inactive_product(self):
+        self.croissant.is_active = False
+        self.croissant.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            "/api/recipes/",
+            {
+                "product": self.croissant.id,
+                "ingredient": self.flour.id,
+                "quantity_required": "0.25",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("product", response.data)

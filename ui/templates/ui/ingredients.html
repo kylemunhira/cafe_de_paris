@@ -244,7 +244,24 @@ function render() {
               </div>
             </td>
             <td><span class="badge ${item.is_active ? "badge-active" : "badge-inactive"}">${item.is_active ? "Active" : "Inactive"}</span></td>
-            <td>${item.daily_stock_take ? `<span class="badge badge-daily-stock">Yes</span>` : "—"}</td>
+            <td>
+              <div class="daily-count-toggle" role="group" aria-label="Daily count for ${item.name}">
+                <button
+                  type="button"
+                  class="${item.daily_stock_take ? "is-active" : ""}"
+                  data-set-daily="${item.id}"
+                  data-daily-value="true"
+                  ${item.daily_stock_take ? "aria-pressed=\"true\"" : "aria-pressed=\"false\""}
+                >Yes</button>
+                <button
+                  type="button"
+                  class="${item.daily_stock_take ? "" : "is-active"}"
+                  data-set-daily="${item.id}"
+                  data-daily-value="false"
+                  ${item.daily_stock_take ? "aria-pressed=\"false\"" : "aria-pressed=\"true\""}
+                >No</button>
+              </div>
+            </td>
             <td style="text-align: right;">
               <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}">History</button>
               <button type="button" class="btn btn-ghost btn-sm" data-edit="${item.id}">Edit</button>
@@ -404,6 +421,31 @@ ingredientsTable.addEventListener("click", async (e) => {
       });
     } catch (err) {
       showToast(err.message, true);
+    }
+    return;
+  }
+
+  const dailyBtn = e.target.closest("[data-set-daily]");
+  if (dailyBtn) {
+    const item = ingredients.find(i => String(i.id) === dailyBtn.dataset.setDaily);
+    if (!item) return;
+
+    const nextValue = dailyBtn.dataset.dailyValue === "true";
+    if (item.daily_stock_take === nextValue) return;
+
+    const group = dailyBtn.closest(".daily-count-toggle");
+    group?.querySelectorAll("button").forEach(btn => { btn.disabled = true; });
+    try {
+      await apiPatch(`/products/${item.id}/`, { daily_stock_take: nextValue });
+      item.daily_stock_take = nextValue;
+      if (editingId === item.id) {
+        dailyStockInput.checked = nextValue;
+      }
+      showToast(nextValue ? "Daily count enabled" : "Daily count disabled");
+      render();
+    } catch (err) {
+      showToast(err.message, true);
+      group?.querySelectorAll("button").forEach(btn => { btn.disabled = false; });
     }
     return;
   }

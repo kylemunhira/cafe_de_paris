@@ -119,6 +119,7 @@ const stockTakeStartBtn = document.getElementById("stock-take-start-btn");
 const stockTakeSaveBtn = document.getElementById("stock-take-save-btn");
 const stockTakeCompleteBtn = document.getElementById("stock-take-complete-btn");
 const stockTakeLines = document.getElementById("stock-take-lines");
+const stockTakeCategoryFilters = document.getElementById("stock-take-category-filters");
 const customerPaymentModal = document.getElementById("customer-payment-modal");
 const customerPaymentCloseBtn = document.getElementById("customer-payment-close-btn");
 const customerPaymentCancelBtn = document.getElementById("customer-payment-cancel-btn");
@@ -186,6 +187,7 @@ const addonPickerConfirmBtn = document.getElementById("addon-picker-confirm-btn"
 
 let addonPickerProduct = null;
 let activeStockTake = null;
+let stockTakeCategoryFilter = "all";
 const addonPickerSelections = new Map();
 
 function closeStockTakeRequiredModal() {
@@ -236,23 +238,104 @@ async function requireOperationsOnline(label) {
 
 function renderStockTake(stockTake) {
   activeStockTake = stockTake;
+  const lines = stockTake.lines || [];
+  const categories = stockTakeCategoryCounts(lines);
+  if (
+    stockTakeCategoryFilter !== "all"
+    && !categories.some((cat) => cat.name === stockTakeCategoryFilter)
+  ) {
+    stockTakeCategoryFilter = "all";
+  }
+
   stockTakeTitle.textContent = `${stockTake.stock_take_type_display || stockTake.stock_take_type} count · ${stockTake.count_date}`;
-  stockTakeLines.innerHTML = (stockTake.lines || []).map((line) => `
-    <div style="display:grid; grid-template-columns:minmax(180px,1fr) 130px; gap:0.75rem; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(44,24,16,0.08);">
-      <div><strong>${escapeOperationHtml(line.product_name)}</strong><small class="settings-hint" style="display:block;">${escapeOperationHtml(line.category_name || "")}</small></div>
-      <input type="number" min="0" step="0.01" class="report-input" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
-    </div>
-  `).join("") || `<div class="empty-state"><p>No products are configured for this count.</p></div>`;
+
+  if (stockTakeCategoryFilters && categories.length > 1) {
+    stockTakeCategoryFilters.style.display = "flex";
+    stockTakeCategoryFilters.innerHTML = `
+      <button type="button" class="category-tab${stockTakeCategoryFilter === "all" ? " active" : ""}" data-stock-category="all">
+        All (${lines.length})
+      </button>
+      ${categories.map((cat) => `
+        <button type="button" class="category-tab${stockTakeCategoryFilter === cat.name ? " active" : ""}" data-stock-category="${escapeOperationHtml(cat.name)}">
+          ${escapeOperationHtml(cat.name)} (${cat.count})
+        </button>
+      `).join("")}
+    `;
+  } else if (stockTakeCategoryFilters) {
+    stockTakeCategoryFilters.style.display = "none";
+    stockTakeCategoryFilters.innerHTML = "";
+  }
+
+  const visibleLines = stockTakeCategoryFilter === "all"
+    ? lines
+    : lines.filter((line) => stockTakeCategoryName(line) === stockTakeCategoryFilter);
+
+  if (!lines.length) {
+    stockTakeLines.innerHTML = `<div class="empty-state"><p>No products are configured for this count.</p></div>`;
+  } else if (!visibleLines.length) {
+    stockTakeLines.innerHTML = `<div class="empty-state"><p>No products in this category.</p></div>`;
+  } else {
+    const groups = groupStockTakeLines(visibleLines);
+    stockTakeLines.innerHTML = groups.map((group) => `
+      <div style="margin:0.75rem 0 0.35rem; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--color-muted);">
+        ${escapeOperationHtml(group.name)} · ${group.lines.length}
+      </div>
+      ${group.lines.map((line) => `
+        <div style="display:grid; grid-template-columns:minmax(180px,1fr) 130px; gap:0.75rem; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(44,24,16,0.08);">
+          <div><strong>${escapeOperationHtml(line.product_name)}</strong></div>
+          <input type="number" min="0" step="0.01" class="report-input" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
+        </div>
+      `).join("")}
+    `).join("");
+  }
+
   stockTakeStartBtn.hidden = true;
   stockTakeSaveBtn.hidden = false;
   stockTakeCompleteBtn.hidden = false;
 }
 
+function stockTakeCategoryName(line) {
+  return line.category_name || "Uncategorized";
+}
+
+function stockTakeCategoryCounts(lines) {
+  const counts = new Map();
+  for (const line of lines) {
+    const name = stockTakeCategoryName(line);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count }));
+}
+
+function groupStockTakeLines(lines) {
+  const groups = new Map();
+  for (const line of lines) {
+    const name = stockTakeCategoryName(line);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(line);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, groupLines]) => ({ name, lines: groupLines }));
+}
+
+function syncStockTakeLineDrafts() {
+  if (!activeStockTake?.lines) return;
+  stockTakeLines.querySelectorAll("[data-stock-line]").forEach((input) => {
+    const line = activeStockTake.lines.find((item) => item.id === Number(input.dataset.stockLine));
+    if (!line) return;
+    line.counted_quantity = input.value === "" ? null : input.value;
+  });
+}
+
 function stockTakeLinePayload() {
-  return Array.from(stockTakeLines.querySelectorAll("[data-stock-line]")).map((input) => ({
-    id: Number(input.dataset.stockLine),
-    counted_quantity: input.value === "" ? null : input.value,
-    notes: "",
+  syncStockTakeLineDrafts();
+  return (activeStockTake?.lines || []).map((line) => ({
+    id: line.id,
+    counted_quantity: line.counted_quantity,
+    notes: line.notes || "",
   }));
 }
 
@@ -271,7 +354,12 @@ async function loadStockTakeDraft() {
     return;
   }
   activeStockTake = null;
+  stockTakeCategoryFilter = "all";
   stockTakeTitle.textContent = "Start stock take";
+  if (stockTakeCategoryFilters) {
+    stockTakeCategoryFilters.style.display = "none";
+    stockTakeCategoryFilters.innerHTML = "";
+  }
   stockTakeLines.innerHTML = `<div class="empty-state"><p>Choose the type and start a count.</p></div>`;
   stockTakeStartBtn.hidden = false;
   stockTakeSaveBtn.hidden = true;
@@ -281,6 +369,7 @@ async function loadStockTakeDraft() {
 async function openStockTakeModal() {
   if (!(await requireOperationsOnline("Stock take"))) return;
   closeStockTakeRequiredModal();
+  stockTakeCategoryFilter = "all";
   stockTakeDate.value = getTodayISO();
   stockTakeModal.hidden = false;
   try {
@@ -2307,7 +2396,17 @@ stockTakeStartBtn?.addEventListener("click", startStockTake);
 stockTakeSaveBtn?.addEventListener("click", () => saveStockTake(false));
 stockTakeCompleteBtn?.addEventListener("click", () => saveStockTake(true));
 stockTakeDate?.addEventListener("change", () => loadStockTakeDraft().catch((err) => showToast(err.message, true)));
-stockTakeType?.addEventListener("change", () => loadStockTakeDraft().catch((err) => showToast(err.message, true)));
+stockTakeType?.addEventListener("change", () => {
+  stockTakeCategoryFilter = "all";
+  loadStockTakeDraft().catch((err) => showToast(err.message, true));
+});
+stockTakeCategoryFilters?.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-stock-category]");
+  if (!tab) return;
+  syncStockTakeLineDrafts();
+  stockTakeCategoryFilter = tab.dataset.stockCategory;
+  if (activeStockTake) renderStockTake(activeStockTake);
+});
 stockTakeModal?.addEventListener("click", (event) => {
   if (event.target === stockTakeModal) closeStockTakeModal();
 });

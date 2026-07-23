@@ -138,6 +138,9 @@
     <string name="customer_payment_record">Record payment</string>
     <string name="customer_payment_recorded">Customer payment recorded</string>
     <string name="customer_payment_recorded_balance">Payment recorded · balance %1$s</string>
+    <string name="customer_statement_print">Print statement</string>
+    <string name="customer_statement_printing">Printing statement…</string>
+    <string name="customer_statement_printed">Customer statement printed</string>
     <string name="day_end">Day end</string>
     <string name="day_end_title">Day-end cash-up</string>
     <string name="day_end_date">Report date</string>
@@ -247,4 +250,14 @@
     <string name="grv_printed">GRV printed</string>
     <string name="grv_load_failed">Failed to load goods received vouchers.</string>
     <string name="grv_access_denied">GRV is only available for cashiers.</string>
+    <string name="grv_receive_title">Receive GRV-%1$s</string>
+    <string name="grv_receive_hint">Damaged or short qty is credited back to the sender. Variance auto-flags the note.</string>
+    <string name="grv_remarks">Remarks</string>
+    <string name="grv_flag_dnote">Flag this dnote for follow-up</string>
+    <string name="grv_sent_qty">Sent %1$s</string>
+    <string name="grv_received_good">Received (good)</string>
+    <string name="grv_damaged_return">Damaged (return)</string>
+    <string name="grv_line_notes">Line notes</string>
+    <string name="grv_invalid_qty">Received + damaged cannot exceed sent quantity.</string>
+    <string name="grv_flagged_badge"> · Flagged</string>
 </resources>

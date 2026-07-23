@@ -135,7 +135,21 @@ class ProductSerializer(serializers.ModelSerializer):
 
         # Only active products must have unique names. Deactivating a duplicate
         # must always be allowed so existing case-variant rows can be cleaned up.
-        if name and is_active:
+        # Unrelated partial updates (e.g. daily_stock_take) must also succeed when
+        # duplicate active names already exist in the database.
+        creating = self.instance is None
+        name_changing = False
+        if self.instance is not None and "name" in attrs:
+            name_changing = (attrs["name"] or "").casefold() != (self.instance.name or "").casefold()
+        activating = (
+            self.instance is not None
+            and "is_active" in attrs
+            and bool(attrs["is_active"])
+            and not self.instance.is_active
+        )
+        should_check_unique = creating or name_changing or activating
+
+        if name and is_active and should_check_unique:
             qs = Product.objects.filter(name__iexact=name, is_active=True)
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)

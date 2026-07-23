@@ -5,10 +5,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -20,8 +23,11 @@ import com.cafedeparis.kitchen.data.ApiClient
 import com.cafedeparis.kitchen.data.ApiException
 import com.cafedeparis.kitchen.data.AppConfig
 import com.cafedeparis.kitchen.data.DeliveryNote
+import com.cafedeparis.kitchen.data.DeliveryNoteReceipt
+import com.cafedeparis.kitchen.data.DeliveryNoteReceiptLine
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.databinding.ActivityGrvBinding
+import com.cafedeparis.kitchen.databinding.DialogGrvReceiveBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
 import kotlinx.coroutines.Dispatchers
@@ -163,13 +169,18 @@ class GrvActivity : KeepScreenOnActivity() {
                     R.string.grv_note_title,
                     grvNumber(note.id),
                     note.sourceName,
-                )
+                ) + if (note.isFlagged) getString(R.string.grv_flagged_badge) else ""
                 setTextColor(getColor(R.color.text_primary))
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             })
             card.addView(TextView(this).apply {
                 text = note.lines.joinToString("\n") {
-                    "${it.productName} × ${formatQuantity(it.quantity)}"
+                    val received = it.receivedQuantity
+                    if (received != null && received != it.quantity) {
+                        "${it.productName} × ${formatQuantity(received)}/${formatQuantity(it.quantity)}"
+                    } else {
+                        "${it.productName} × ${formatQuantity(it.quantity)}"
+                    }
                 }
                 setTextColor(getColor(R.color.text_primary))
             })
@@ -182,6 +193,12 @@ class GrvActivity : KeepScreenOnActivity() {
                 )
                 setTextColor(getColor(R.color.text_muted))
             })
+            if (note.remarks.isNotBlank()) {
+                card.addView(TextView(this).apply {
+                    text = note.remarks
+                    setTextColor(getColor(R.color.text_muted))
+                })
+            }
             val actions = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, 8, 0, 0)
@@ -193,11 +210,11 @@ class GrvActivity : KeepScreenOnActivity() {
             when (note.status) {
                 "requested" -> actions.addView(Button(this).apply {
                     text = getString(R.string.grv_approve)
-                    setOnClickListener { confirmApprove(note) }
+                    setOnClickListener { openReceiveDialog(note, approve = true) }
                 })
                 "dispatched" -> actions.addView(Button(this).apply {
                     text = getString(R.string.grv_confirm_receipt)
-                    setOnClickListener { confirmDeliver(note) }
+                    setOnClickListener { openReceiveDialog(note, approve = false) }
                 })
             }
             card.addView(actions)
@@ -227,29 +244,124 @@ class GrvActivity : KeepScreenOnActivity() {
         })
     }
 
-    private fun confirmApprove(note: DeliveryNote) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.grv_approve)
-            .setMessage(getString(R.string.grv_approve_confirm, grvNumber(note.id)))
+    private data class LineInputs(
+        val lineId: Int,
+        val sent: Double,
+        val received: EditText,
+        val damaged: EditText,
+        val notes: EditText,
+    )
+
+    private fun openReceiveDialog(note: DeliveryNote, approve: Boolean) {
+        val dialogBinding = DialogGrvReceiveBinding.inflate(LayoutInflater.from(this))
+        dialogBinding.grvReceiveSubtitle.text = "${note.sourceName} → ${note.destinationName}"
+        val inputs = mutableListOf<LineInputs>()
+        note.lines.forEach { line ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+            row.addView(TextView(this).apply {
+                text = "${line.productName} · ${getString(R.string.grv_sent_qty, formatQuantity(line.quantity))}"
+                setTextColor(getColor(R.color.text_primary))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            val received = EditText(this).apply {
+                hint = getString(R.string.grv_received_good)
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                setText(line.quantity)
+            }
+            val damaged = EditText(this).apply {
+                hint = getString(R.string.grv_damaged_return)
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                setText("0")
+            }
+            val notes = EditText(this).apply {
+                hint = getString(R.string.grv_line_notes)
+                inputType = InputType.TYPE_CLASS_TEXT
+            }
+            row.addView(received)
+            row.addView(damaged)
+            row.addView(notes)
+            dialogBinding.grvReceiveLines.addView(row)
+            inputs.add(
+                LineInputs(
+                    lineId = line.id,
+                    sent = line.quantity.toDoubleOrNull() ?: 0.0,
+                    received = received,
+                    damaged = damaged,
+                    notes = notes,
+                ),
+            )
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.grv_receive_title, grvNumber(note.id)))
+            .setView(dialogBinding.root)
             .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.grv_approve) { _, _ -> approveNote(note) }
-            .show()
+            .setPositiveButton(
+                if (approve) R.string.grv_approve else R.string.grv_confirm_receipt,
+                null,
+            )
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val receipt = buildReceipt(
+                    inputs,
+                    dialogBinding.grvRemarksInput.text?.toString().orEmpty(),
+                    dialogBinding.grvFlagCheckbox.isChecked,
+                ) ?: return@setOnClickListener
+                dialog.dismiss()
+                if (approve) {
+                    approveNote(note, receipt)
+                } else {
+                    deliverNote(note, receipt)
+                }
+            }
+        }
+        dialog.show()
     }
 
-    private fun confirmDeliver(note: DeliveryNote) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.grv_confirm_receipt)
-            .setMessage(getString(R.string.grv_deliver_confirm, grvNumber(note.id)))
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.grv_confirm_receipt) { _, _ -> deliverNote(note) }
-            .show()
+    private fun buildReceipt(
+        inputs: List<LineInputs>,
+        remarks: String,
+        isFlagged: Boolean,
+    ): DeliveryNoteReceipt? {
+        val lines = mutableListOf<DeliveryNoteReceiptLine>()
+        for (input in inputs) {
+            val received = input.received.text.toString().toDoubleOrNull()
+            val damaged = input.damaged.text.toString().toDoubleOrNull() ?: 0.0
+            if (received == null || received < 0 || damaged < 0) {
+                Toast.makeText(this, R.string.grv_invalid_qty, Toast.LENGTH_LONG).show()
+                return null
+            }
+            if (received + damaged > input.sent + 0.0001) {
+                Toast.makeText(this, R.string.grv_invalid_qty, Toast.LENGTH_LONG).show()
+                return null
+            }
+            lines.add(
+                DeliveryNoteReceiptLine(
+                    id = input.lineId,
+                    receivedQuantity = received.toString(),
+                    damagedQuantity = damaged.toString(),
+                    notes = input.notes.text.toString().trim(),
+                ),
+            )
+        }
+        return DeliveryNoteReceipt(
+            remarks = remarks.trim(),
+            isFlagged = isFlagged,
+            lines = lines,
+        )
     }
 
-    private fun approveNote(note: DeliveryNote) {
+    private fun approveNote(note: DeliveryNote, receipt: DeliveryNoteReceipt) {
         showLoading(true)
         lifecycleScope.launch {
             try {
-                val updated = withContext(Dispatchers.IO) { api.approveDeliveryNote(note.id) }
+                val updated = withContext(Dispatchers.IO) {
+                    api.approveDeliveryNote(note.id, receipt)
+                }
                 replaceNote(updated)
                 val message = if (updated.status == "delivered") {
                     getString(R.string.grv_received, grvNumber(updated.id))
@@ -267,11 +379,13 @@ class GrvActivity : KeepScreenOnActivity() {
         }
     }
 
-    private fun deliverNote(note: DeliveryNote) {
+    private fun deliverNote(note: DeliveryNote, receipt: DeliveryNoteReceipt) {
         showLoading(true)
         lifecycleScope.launch {
             try {
-                val updated = withContext(Dispatchers.IO) { api.deliverDeliveryNote(note.id) }
+                val updated = withContext(Dispatchers.IO) {
+                    api.deliverDeliveryNote(note.id, receipt)
+                }
                 replaceNote(updated)
                 Toast.makeText(
                     this@GrvActivity,

@@ -157,9 +157,13 @@ data class InventoryItem(
 )
 
 data class DeliveryNoteLine(
+    val id: Int,
     val productId: Int,
     val productName: String,
     val quantity: String,
+    val receivedQuantity: String? = null,
+    val damagedQuantity: String = "0",
+    val lineNotes: String = "",
 )
 
 data class DeliveryNote(
@@ -171,7 +175,22 @@ data class DeliveryNote(
     val status: String,
     val createdAt: String,
     val totalQuantity: String,
+    val remarks: String = "",
+    val isFlagged: Boolean = false,
     val lines: List<DeliveryNoteLine>,
+)
+
+data class DeliveryNoteReceiptLine(
+    val id: Int,
+    val receivedQuantity: String,
+    val damagedQuantity: String,
+    val notes: String = "",
+)
+
+data class DeliveryNoteReceipt(
+    val remarks: String = "",
+    val isFlagged: Boolean = false,
+    val lines: List<DeliveryNoteReceiptLine> = emptyList(),
 )
 
 data class Currency(
@@ -242,6 +261,36 @@ data class CustomerDepositResult(
     val accountBalance: String,
     val transactionId: Int,
     val amount: String? = null,
+)
+
+data class CustomerStatementTransaction(
+    val id: Int,
+    val statementLabel: String,
+    val transactionType: String,
+    val amount: String,
+    val balanceAfter: String,
+    val currencyCode: String? = null,
+    val currencySymbol: String? = null,
+    val amountReceived: String? = null,
+    val orderId: Int? = null,
+    val notes: String = "",
+    val recordedByName: String? = null,
+    val createdAt: String,
+    val isBalanceAdjustment: Boolean = false,
+)
+
+data class CustomerStatement(
+    val customerId: Int,
+    val periodFrom: String? = null,
+    val periodTo: String? = null,
+    val allTime: Boolean = false,
+    val openingBalance: String,
+    val closingBalance: String,
+    val currentBalance: String,
+    val totalCredits: String,
+    val totalDebits: String,
+    val transactionCount: Int,
+    val transactions: List<CustomerStatementTransaction>,
 )
 
 data class OrderSlipPrintOptions(

@@ -4,6 +4,7 @@ from accounts.branch_access import (
     user_can_access_bakery_transfers,
     user_has_global_branch_access,
 )
+from audit.mixins import AuditedModelMixin
 from branches.models import BranchType
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -20,7 +21,7 @@ from .serializers import (
 from .services import NoRecipeError, preview_production
 
 
-class RecipeViewSet(viewsets.ModelViewSet):
+class RecipeViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = Recipe.objects.select_related(
         "product",
         "product__category",
@@ -28,7 +29,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
         "ingredient__category",
     ).all()
     serializer_class = RecipeSerializer
-
+    audit_entity_type = "recipe"
+    audit_fields = ("product", "ingredient", "quantity_required")
+    audit_label_field = lambda recipe: (  # noqa: E731
+        f"{recipe.product} / {recipe.ingredient}"
+    )
     def get_queryset(self):
         queryset = super().get_queryset()
         product_id = self.request.query_params.get("product")

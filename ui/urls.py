@@ -53,6 +53,7 @@ urlpatterns = [
     path("stock-take/", views.StockTakeView.as_view(), name="stock-take"),
     path("stock-adjust/", views.StockAdjustView.as_view(), name="stock-adjust"),
     path("expenses/", views.ExpensesView.as_view(), name="expenses"),
+    path("audit-log/", views.AuditLogView.as_view(), name="audit-log"),
     path("customers/", views.CustomersView.as_view(), name="customers"),
     path("customer-accounts/", views.CustomerAccountsView.as_view(), name="customer-accounts"),
     path(

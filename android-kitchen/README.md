@@ -73,6 +73,8 @@ Polls every 5 seconds.
 
 Receipt tab refreshes every 10 seconds. After payment, a **sales receipt** is printed automatically on the paired Bluetooth printer (same as web POS).
 
+Use **Customer payment** in the header to record account deposits. From that dialog, **Print statement** prints the customer’s full account statement (all transactions and outstanding balance) on the paired Bluetooth printer.
+
 Use **Day end** in the header to run cash-up: enter counted till amounts per currency and print the day-end summary (requires a completed daily stock take for that date).
 
 ## API used
@@ -85,6 +87,8 @@ Use **Day end** in the header to run cash-up: enter counted till amounts per cur
 - `GET /api/stock-takes/day-end-check/` — verify daily stock take before day end
 - `GET /api/reports/day-end/` — day-end cash-up report
 - `GET /api/customers/` — customers with account balances
+- `GET /api/customers/{id}/statement/?all=1` — customer account statement (transactions + balances)
+- `POST /api/customers/{id}/deposit/` — record customer account deposit
 - `POST /api/orders/` — place order
 - `PATCH /api/orders/{id}/` — link customer for account payment
 - `POST /api/orders/{id}/pay/` — collect payment (cash or account)

@@ -8,6 +8,7 @@ from accounts.branch_access import (
     user_can_manage_dining_tables,
     user_can_manage_fiscal_day,
 )
+from audit.mixins import AuditedModelMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -24,9 +25,24 @@ from .models import Branch, BranchType, DiningTable
 from .serializers import BranchSerializer, DiningTableSerializer
 
 
-class BranchViewSet(viewsets.ModelViewSet):
+class BranchViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
+    audit_entity_type = "branch"
+    audit_fields = (
+        "name",
+        "code",
+        "location",
+        "branch_type",
+        "is_active",
+        "allow_negative_stock",
+        "fiscalization_enabled",
+        "zimra_device_id",
+    )
+    audit_label_field = "name"
+
+    def get_audit_branch(self, instance):
+        return instance
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -111,10 +127,12 @@ class BranchViewSet(viewsets.ModelViewSet):
         return Response(payload)
 
 
-class DiningTableViewSet(viewsets.ModelViewSet):
+class DiningTableViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = DiningTable.objects.select_related("branch").all()
     serializer_class = DiningTableSerializer
-
+    audit_entity_type = "dining_table"
+    audit_fields = ("branch", "name", "sort_order", "is_active")
+    audit_label_field = "name"
     def get_queryset(self):
         qs = super().get_queryset()
         branch = self.request.query_params.get("branch")

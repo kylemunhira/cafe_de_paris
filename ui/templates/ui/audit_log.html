@@ -1,0 +1,267 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Audit log — Café de Paris{% endblock %}
+{% block page_title %}Audit log{% endblock %}
+
+{% block content %}
+<div class="card report-filters" style="margin-bottom: 1.25rem;">
+  <div class="report-filters-grid">
+    <label>
+      <span>From</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>To</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    {% if can_filter_any_branch %}
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    {% endif %}
+    <label>
+      <span>Action</span>
+      <select id="filter-action" class="report-input">
+        <option value="">All actions</option>
+        <option value="update">Update</option>
+        <option value="delete">Delete</option>
+        <option value="deactivate">Deactivate</option>
+      </select>
+    </label>
+    <label>
+      <span>Entity</span>
+      <select id="filter-entity-type" class="report-input">
+        <option value="">All types</option>
+        <option value="product">Product</option>
+        <option value="product_category">Category</option>
+        <option value="menu_addon">Menu add-on</option>
+        <option value="menu_addon_group">Add-on group</option>
+        <option value="customer">Customer</option>
+        <option value="supplier">Supplier</option>
+        <option value="purchase_order">Purchase order</option>
+        <option value="user">User</option>
+        <option value="branch">Branch</option>
+        <option value="dining_table">Dining table</option>
+        <option value="recipe">Recipe</option>
+        <option value="currency">Currency</option>
+        <option value="currency_rate">Currency rate</option>
+        <option value="order">Order</option>
+      </select>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <input
+      type="search"
+      id="audit-search"
+      class="report-input"
+      placeholder="Search entity, type, actor…"
+      style="max-width: 360px;"
+    >
+  </div>
+  <div class="table-wrap" id="audit-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch-select.js' %}";
+
+const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+
+let allEvents = [];
+let searchQuery = "";
+
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const filterAction = document.getElementById("filter-action");
+const filterEntityType = document.getElementById("filter-entity-type");
+const applyFiltersBtn = document.getElementById("apply-filters");
+const auditTable = document.getElementById("audit-table");
+const searchInput = document.getElementById("audit-search");
+const sortState = createSortState("created_at", "desc");
+
+const AUDIT_SORT = {
+  created_at: (e) => e.created_at || "",
+  actor_name: (e) => e.actor_name || "",
+  branch_name: (e) => e.branch_name || "",
+  action: (e) => e.action_display || e.action || "",
+  entity_type: (e) => e.entity_type || "",
+  entity_label: (e) => e.entity_label || "",
+};
+
+function getTodayISO() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function setDefaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  filterTo.value = getTodayISO();
+  filterFrom.value = start.toISOString().slice(0, 10);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatEntityType(type) {
+  return String(type || "").replace(/_/g, " ");
+}
+
+function formatChangesDetail(changes) {
+  if (!changes || typeof changes !== "object") return "";
+  const entries = Object.entries(changes);
+  if (!entries.length) return "";
+  const sample = entries[0][1];
+  if (sample && typeof sample === "object" && ("from" in sample || "to" in sample)) {
+    return entries
+      .map(([field, delta]) => {
+        if (delta && typeof delta === "object") {
+          return `<div><strong>${escapeHtml(field)}</strong>: ${escapeHtml(delta.from)} → ${escapeHtml(delta.to)}</div>`;
+        }
+        return `<div><strong>${escapeHtml(field)}</strong></div>`;
+      })
+      .join("");
+  }
+  return entries
+    .map(([field, value]) => `<div><strong>${escapeHtml(field)}</strong>: ${escapeHtml(typeof value === "object" ? JSON.stringify(value) : value)}</div>`)
+    .join("");
+}
+
+function matchesSearch(event) {
+  if (!searchQuery) return true;
+  const haystack = [
+    event.entity_label,
+    event.entity_type,
+    event.entity_id,
+    event.actor_name,
+    event.branch_name,
+    event.action,
+    event.action_display,
+    event.changes_summary,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function renderEvents() {
+  const filtered = sortItems(allEvents.filter(matchesSearch), sortState, AUDIT_SORT);
+
+  if (!filtered.length) {
+    auditTable.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching audit events" : "No audit events in this period"}</p></div>`;
+    return;
+  }
+
+  auditTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("When", "created_at", sortState)}
+          ${sortTh("Who", "actor_name", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Action", "action", sortState)}
+          ${sortTh("Entity", "entity_type", sortState)}
+          ${sortTh("Label", "entity_label", sortState)}
+          <th>Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map((event) => `
+          <tr>
+            <td>${escapeHtml(formatDate(event.created_at))}</td>
+            <td>${escapeHtml(event.actor_name || "—")}</td>
+            <td>${escapeHtml(event.branch_name || "—")}</td>
+            <td><span class="badge">${escapeHtml(event.action_display || event.action)}</span></td>
+            <td>${escapeHtml(formatEntityType(event.entity_type))} #${escapeHtml(event.entity_id)}</td>
+            <td>${escapeHtml(event.entity_label || "—")}</td>
+            <td>
+              <div>${escapeHtml(event.changes_summary || "—")}</div>
+              <details style="margin-top: 0.35rem;">
+                <summary style="cursor: pointer; font-size: 0.85rem; color: var(--muted, #666);">Details</summary>
+                <div style="margin-top: 0.35rem; font-size: 0.85rem; line-height: 1.45;">
+                  ${formatChangesDetail(event.changes) || "—"}
+                </div>
+              </details>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+  bindTableSort(auditTable, sortState, renderEvents);
+}
+
+function listParams() {
+  const params = {};
+  if (filterFrom.value) params.from = filterFrom.value;
+  if (filterTo.value) params.to = filterTo.value;
+  const branch = effectiveBranchParam(canFilterAnyBranch, STAFF_BRANCH_ID, filterBranch?.value);
+  if (branch) params.branch = branch;
+  if (filterAction.value) params.action = filterAction.value;
+  if (filterEntityType.value) params.entity_type = filterEntityType.value;
+  return params;
+}
+
+async function loadEvents() {
+  auditTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    allEvents = await fetchAllPages("/audit-events/", listParams());
+    renderEvents();
+  } catch (err) {
+    console.error(err);
+    auditTable.innerHTML = `<div class="empty-state"><p>Failed to load audit log</p></div>`;
+    showToast(err.message || "Failed to load audit log", true);
+  }
+}
+
+applyFiltersBtn.addEventListener("click", loadEvents);
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderEvents();
+});
+
+setDefaultDates();
+
+(async function init() {
+  if (canFilterAnyBranch && filterBranch) {
+    try {
+      const branchData = await apiGet("/branches/");
+      const branches = unwrapList(branchData);
+      setupBranchFilter(filterBranch, branches, {
+        canSelectAny: canFilterAnyBranch,
+        staffBranchId: STAFF_BRANCH_ID,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  await loadEvents();
+})();
+</script>
+{% endblock %}

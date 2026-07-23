@@ -642,6 +642,7 @@ class PosActivity : KeepScreenOnActivity() {
             .setTitle(R.string.customer_payment_title)
             .setView(dialogBinding.root)
             .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton(R.string.customer_statement_print, null)
             .setPositiveButton(R.string.customer_payment_record, null)
             .create()
 
@@ -654,8 +655,70 @@ class PosActivity : KeepScreenOnActivity() {
                         selectedCurrencyChoice?.value,
                     )
                 }
+            customerPaymentDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+                ?.setOnClickListener {
+                    printCustomerAccountStatement(selectedCustomer)
+                }
         }
         customerPaymentDialog?.show()
+    }
+
+    private fun printCustomerAccountStatement(customer: Customer?) {
+        if (customer == null) {
+            Toast.makeText(this, R.string.customer_payment_customer_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val printerAddress = session.printerAddress
+        if (printerAddress.isNullOrBlank()) {
+            Toast.makeText(this, R.string.printer_not_configured, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val printButton = customerPaymentDialog
+            ?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+        printButton?.isEnabled = false
+
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            Toast.makeText(this@PosActivity, R.string.customer_statement_printing, Toast.LENGTH_SHORT).show()
+            try {
+                val statement = withContext(Dispatchers.IO) {
+                    api.fetchCustomerStatement(customer.id, allTime = true)
+                }
+                val baseCurrency = allCurrencies.firstOrNull { it.is_base }
+                    ?: currencies.firstOrNull { it.is_base }
+                withContext(Dispatchers.IO) {
+                    printer.printCustomerStatement(
+                        deviceAddress = printerAddress,
+                        customer = customer.copy(account_balance = statement.currentBalance),
+                        statement = statement,
+                        branchName = session.branchName,
+                        baseCurrencyCode = baseCurrency?.code?.takeIf { it.isNotBlank() }
+                            ?: baseCurrency?.name,
+                    )
+                }
+                Toast.makeText(
+                    this@PosActivity,
+                    R.string.customer_statement_printed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (err: ApiException) {
+                handleApiError(err)
+                Toast.makeText(this@PosActivity, err.message, Toast.LENGTH_LONG).show()
+            } catch (err: PrinterException) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            } catch (err: SecurityException) {
+                requestBluetoothIfNeeded()
+                showError(getString(R.string.bluetooth_permission_required))
+            } catch (err: Exception) {
+                val message = getString(R.string.connection_failed, err.message ?: "")
+                showError(message)
+                Toast.makeText(this@PosActivity, message, Toast.LENGTH_LONG).show()
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+                printButton?.isEnabled = true
+            }
+        }
     }
 
     private fun parseDepositAmount(raw: String): Double? {

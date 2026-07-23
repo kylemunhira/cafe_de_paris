@@ -3,6 +3,8 @@ package com.cafedeparis.kitchen.print
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import com.cafedeparis.kitchen.data.Customer
+import com.cafedeparis.kitchen.data.CustomerStatement
 import com.cafedeparis.kitchen.data.DayEndReportResponse
 import com.cafedeparis.kitchen.data.DeliveryNote
 import com.cafedeparis.kitchen.data.KitchenOrder
@@ -14,6 +16,7 @@ import java.io.OutputStream
 import java.nio.charset.Charset
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
@@ -55,6 +58,26 @@ class EscPosPrinter {
   fun printDeliveryNote(deviceAddress: String, note: DeliveryNote) {
     print(deviceAddress) { output ->
       writeDeliveryNote(output, note)
+    }
+  }
+
+  fun printCustomerStatement(
+    deviceAddress: String,
+    customer: Customer,
+    statement: CustomerStatement,
+    branchName: String? = null,
+    branchLocation: String? = null,
+    baseCurrencyCode: String? = null,
+  ) {
+    print(deviceAddress) { output ->
+      writeCustomerStatement(
+        output,
+        customer,
+        statement,
+        branchName,
+        branchLocation,
+        baseCurrencyCode,
+      )
     }
   }
 
@@ -609,6 +632,139 @@ class EscPosPrinter {
     output.write(textLine("_".repeat(40)))
     output.write(textLine("Received by"))
     output.write(LF)
+  }
+
+  private fun writeCustomerStatement(
+    output: OutputStream,
+    customer: Customer,
+    statement: CustomerStatement,
+    branchName: String?,
+    branchLocation: String?,
+    baseCurrencyCode: String?,
+  ) {
+    val currencyLabel = baseCurrencyCode?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+    val printedAt = SimpleDateFormat("d MMM yyyy, HH:mm", Locale.US).format(Date())
+
+    output.write(INIT)
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Cafe de Paris", doubleHeight = true))
+    branchLocation?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine(it))
+    }
+    output.write(LF)
+    output.write(textLine("Customer account statement", bold = true))
+    if (statement.allTime || (statement.periodFrom == null && statement.periodTo == null)) {
+      output.write(textLine("All transactions"))
+    } else {
+      val fromLabel = statement.periodFrom?.let { formatReportDate(it) }.orEmpty()
+      val toLabel = statement.periodTo?.let { formatReportDate(it) }.orEmpty()
+      if (fromLabel.isNotBlank() && toLabel.isNotBlank()) {
+        output.write(textLine("$fromLabel - $toLabel"))
+      }
+    }
+    output.write(textLine(printedAt))
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_LEFT)
+
+    output.write(textLine("Customer", suffix = truncText(customer.full_name, 18)))
+    branchName?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Branch", suffix = truncText(it, 18)))
+    }
+
+    output.write(textLine("--------------------------------"))
+    output.write(textLine("Opening balance$currencyLabel", suffix = formatPlainAmount(statement.openingBalance)))
+    val credits = statement.totalCredits.toDoubleOrNull() ?: 0.0
+    if (credits > 0.005) {
+      output.write(textLine("Payments received", suffix = "+${formatPlainAmount(statement.totalCredits)}"))
+    }
+    val debits = statement.totalDebits.toDoubleOrNull() ?: 0.0
+    if (debits > 0.005) {
+      output.write(textLine("Withdrawals", suffix = "-${formatPlainAmount(statement.totalDebits)}"))
+    }
+    output.write(
+      textLine(
+        "Closing balance$currencyLabel",
+        bold = true,
+        suffix = formatPlainAmount(statement.closingBalance),
+      ),
+    )
+
+    val closing = statement.closingBalance.toDoubleOrNull() ?: 0.0
+    if (closing < -0.005) {
+      output.write(
+        textLine(
+          "Amount owed",
+          bold = true,
+          suffix = formatPlainAmount((-closing).toString()),
+        ),
+      )
+    } else {
+      output.write(
+        textLine(
+          "Current balance$currencyLabel",
+          suffix = formatPlainAmount(statement.currentBalance),
+        ),
+      )
+    }
+
+    val creditLimit = customer.credit_limit.toDoubleOrNull() ?: 0.0
+    if (creditLimit > 0.005) {
+      output.write(textLine("Credit limit", suffix = formatPlainAmount(customer.credit_limit)))
+    }
+
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Transactions", bold = true))
+    output.write(ALIGN_LEFT)
+
+    if (statement.transactions.isEmpty()) {
+      output.write(textLine("No transactions"))
+    } else {
+      for (txn in statement.transactions) {
+        val label = if (txn.isBalanceAdjustment) {
+          "* ${txn.statementLabel}"
+        } else {
+          txn.statementLabel
+        }
+        output.write(textLine(formatDateTime(txn.createdAt)))
+        output.write(textLine(label, bold = true, suffix = formatSignedAmount(txn.amount)))
+        output.write(textLine("Balance", suffix = formatPlainAmount(txn.balanceAfter)))
+        if (txn.transactionType == "deposit" && !txn.currencyCode.isNullOrBlank()) {
+          val received = txn.amountReceived?.let { amount ->
+            val symbol = txn.currencySymbol.orEmpty()
+            if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatPlainAmount(amount)
+          }
+          val receivedPart = received?.let { " $it" }.orEmpty()
+          output.write(textLine("  Received in ${txn.currencyCode}$receivedPart"))
+        }
+        txn.orderId?.let {
+          output.write(textLine("  Order #$it"))
+        }
+        txn.notes.takeIf { it.isNotBlank() }?.let {
+          output.write(textLine("  ${truncText(it, LINE_WIDTH - 2)}"))
+        }
+        txn.recordedByName?.takeIf { it.isNotBlank() }?.let {
+          output.write(textLine("  By $it"))
+        }
+        if (txn.isBalanceAdjustment) {
+          output.write(textLine("  * Imported balance update"))
+        }
+      }
+    }
+
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Please retain for your records."))
+    output.write(LF)
+  }
+
+  private fun formatSignedAmount(value: String): String {
+    val amount = value.toDoubleOrNull() ?: 0.0
+    val plain = formatPlainAmount(value)
+    return when {
+      amount > 0.0 -> "+$plain"
+      else -> plain
+    }
   }
 
   private fun formatReportDate(value: String): String {

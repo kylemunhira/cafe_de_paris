@@ -387,6 +387,12 @@ def _is_stores_outbound_delivery(note: DeliveryNote) -> bool:
     )
 
 
+class InvalidDeliveryNoteReceiptError(Exception):
+    def __init__(self, detail):
+        self.detail = detail
+        super().__init__(detail)
+
+
 def finalize_bakery_delivery_note_creation(note: DeliveryNote) -> DeliveryNote:
     """Deduct bakery stock as soon as the delivery note is created."""
     with transaction.atomic():
@@ -410,7 +416,121 @@ def finalize_bakery_delivery_note_creation(note: DeliveryNote) -> DeliveryNote:
     return note
 
 
-def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
+def _normalize_receipt_lines(lines, receipt=None):
+    """Build per-line received/damaged/notes from an optional approve payload."""
+    overrides = {}
+    if receipt:
+        for item in receipt.get("lines") or []:
+            line_id = item.get("id")
+            if line_id is None:
+                raise InvalidDeliveryNoteReceiptError(
+                    "Each receipt line must include its id."
+                )
+            overrides[int(line_id)] = item
+
+    normalized = []
+    variance = False
+    for line in lines:
+        override = overrides.pop(line.pk, None)
+        if override is None:
+            received = line.quantity
+            damaged = Decimal("0")
+            notes = ""
+        else:
+            received = Decimal(str(override.get("received_quantity", line.quantity)))
+            damaged = Decimal(str(override.get("damaged_quantity", "0") or "0"))
+            notes = (override.get("notes") or "").strip()
+
+        if received < 0 or damaged < 0:
+            raise InvalidDeliveryNoteReceiptError(
+                f"Quantities for {line.product} cannot be negative."
+            )
+        if received + damaged > line.quantity:
+            raise InvalidDeliveryNoteReceiptError(
+                f"Received + damaged for {line.product} cannot exceed sent quantity "
+                f"({line.quantity})."
+            )
+        if received != line.quantity or damaged > 0:
+            variance = True
+        normalized.append(
+            {
+                "line": line,
+                "received": received,
+                "damaged": damaged,
+                "returned": line.quantity - received,
+                "notes": notes,
+            }
+        )
+
+    if overrides:
+        unknown = ", ".join(str(key) for key in sorted(overrides))
+        raise InvalidDeliveryNoteReceiptError(
+            f"Unknown delivery note line id(s): {unknown}."
+        )
+    return normalized, variance
+
+
+def _apply_receipt_fields(note, receipt_lines, receipt=None, user=None):
+    remarks = ""
+    flagged = False
+    if receipt:
+        remarks = (receipt.get("remarks") or "").strip()
+        flagged = bool(receipt.get("is_flagged"))
+
+    has_variance = False
+    for item in receipt_lines:
+        line = item["line"]
+        line.received_quantity = item["received"]
+        line.damaged_quantity = item["damaged"]
+        line.line_notes = item["notes"]
+        line.save(
+            update_fields=["received_quantity", "damaged_quantity", "line_notes"]
+        )
+        if item["received"] != line.quantity or item["damaged"] > 0:
+            has_variance = True
+
+    note.remarks = remarks
+    note.is_flagged = flagged or has_variance
+    note.approved_at = timezone.now()
+    if user is not None:
+        note.approved_by = user
+    note.status = StockTransferStatus.DELIVERED
+    update_fields = [
+        "remarks",
+        "is_flagged",
+        "approved_at",
+        "status",
+    ]
+    if user is not None:
+        update_fields.append("approved_by")
+    note.save(update_fields=update_fields)
+    return note
+
+
+def _credit_return_to_source(note, product, quantity, *, damaged, notes=""):
+    if quantity <= 0:
+        return
+    parts = []
+    if damaged > 0:
+        parts.append(f"damaged {damaged}")
+    shortfall = quantity - damaged
+    if shortfall > 0:
+        parts.append(f"short {shortfall}")
+    detail = ", ".join(parts) if parts else "returned"
+    if notes:
+        detail = f"{detail}; {notes}"
+    adjust_inventory(
+        note.from_branch,
+        product,
+        quantity,
+        reason=StockMovementReason.DELIVERY_RETURN,
+        note=detail[:255],
+        reference_type="delivery_note",
+        reference_id=note.pk,
+    )
+
+
+def approve_delivery_note(note: DeliveryNote, receipt=None, user=None) -> DeliveryNote:
     if note.status != StockTransferStatus.REQUESTED:
         raise InvalidDeliveryNoteStateError(
             note, StockTransferStatus.REQUESTED, "approve"
@@ -429,18 +549,26 @@ def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
                 raise InvalidDeliveryNoteStateError(
                     note, "at least one product line", "approve"
                 )
-            for line in lines:
-                adjust_inventory(
-                    note.to_branch,
+            receipt_lines, _ = _normalize_receipt_lines(lines, receipt)
+            for item in receipt_lines:
+                line = item["line"]
+                if item["received"] > 0:
+                    adjust_inventory(
+                        note.to_branch,
+                        line.product,
+                        item["received"],
+                        reason=StockMovementReason.DELIVERY_IN,
+                        reference_type="delivery_note",
+                        reference_id=note.pk,
+                    )
+                _credit_return_to_source(
+                    note,
                     line.product,
-                    line.quantity,
-                    reason=StockMovementReason.DELIVERY_IN,
-                    reference_type="delivery_note",
-                    reference_id=note.pk,
+                    item["returned"],
+                    damaged=item["damaged"],
+                    notes=item["notes"],
                 )
-            note.status = StockTransferStatus.DELIVERED
-            note.save(update_fields=["status"])
-        return note
+            return _apply_receipt_fields(note, receipt_lines, receipt, user=user)
     if _is_stores_outbound_delivery(note):
         with transaction.atomic():
             note = DeliveryNote.objects.select_for_update().select_related(
@@ -455,26 +583,28 @@ def approve_delivery_note(note: DeliveryNote) -> DeliveryNote:
                 raise InvalidDeliveryNoteStateError(
                     note, "at least one product line", "approve"
                 )
-            for line in lines:
-                adjust_inventory(
-                    note.from_branch,
-                    line.product,
-                    -line.quantity,
-                    reason=StockMovementReason.DELIVERY_OUT,
-                    reference_type="delivery_note",
-                    reference_id=note.pk,
-                )
-                adjust_inventory(
-                    note.to_branch,
-                    line.product,
-                    line.quantity,
-                    reason=StockMovementReason.DELIVERY_IN,
-                    reference_type="delivery_note",
-                    reference_id=note.pk,
-                )
-            note.status = StockTransferStatus.DELIVERED
-            note.save(update_fields=["status"])
-        return note
+            receipt_lines, _ = _normalize_receipt_lines(lines, receipt)
+            for item in receipt_lines:
+                line = item["line"]
+                # Stock is still at stores until approve — only move accepted qty.
+                if item["received"] > 0:
+                    adjust_inventory(
+                        note.from_branch,
+                        line.product,
+                        -item["received"],
+                        reason=StockMovementReason.DELIVERY_OUT,
+                        reference_type="delivery_note",
+                        reference_id=note.pk,
+                    )
+                    adjust_inventory(
+                        note.to_branch,
+                        line.product,
+                        item["received"],
+                        reason=StockMovementReason.DELIVERY_IN,
+                        reference_type="delivery_note",
+                        reference_id=note.pk,
+                    )
+            return _apply_receipt_fields(note, receipt_lines, receipt, user=user)
     note.status = StockTransferStatus.APPROVED
     note.save(update_fields=["status"])
     return note
@@ -512,7 +642,7 @@ def dispatch_delivery_note(note: DeliveryNote) -> DeliveryNote:
     return note
 
 
-def deliver_delivery_note(note: DeliveryNote) -> DeliveryNote:
+def deliver_delivery_note(note: DeliveryNote, receipt=None, user=None) -> DeliveryNote:
     if note.status != StockTransferStatus.DISPATCHED:
         raise InvalidDeliveryNoteStateError(
             note, StockTransferStatus.DISPATCHED, "deliver"
@@ -530,18 +660,26 @@ def deliver_delivery_note(note: DeliveryNote) -> DeliveryNote:
             raise InvalidDeliveryNoteStateError(
                 note, "at least one product line", "deliver"
             )
-        for line in lines:
-            adjust_inventory(
-                note.to_branch,
+        receipt_lines, _ = _normalize_receipt_lines(lines, receipt)
+        for item in receipt_lines:
+            line = item["line"]
+            if item["received"] > 0:
+                adjust_inventory(
+                    note.to_branch,
+                    line.product,
+                    item["received"],
+                    reason=StockMovementReason.DELIVERY_IN,
+                    reference_type="delivery_note",
+                    reference_id=note.pk,
+                )
+            _credit_return_to_source(
+                note,
                 line.product,
-                line.quantity,
-                reason=StockMovementReason.DELIVERY_IN,
-                reference_type="delivery_note",
-                reference_id=note.pk,
+                item["returned"],
+                damaged=item["damaged"],
+                notes=item["notes"],
             )
-        note.status = StockTransferStatus.DELIVERED
-        note.save(update_fields=["status"])
-    return note
+        return _apply_receipt_fields(note, receipt_lines, receipt, user=user)
 
 
 class DuplicateStockTakeError(Exception):

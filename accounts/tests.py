@@ -892,6 +892,33 @@ class MobileAppLoginTests(APITestCase):
         self.assertEqual(response.data["branch"]["id"], self.bakery.id)
 
 
+class CaseInsensitiveLoginTests(APITestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            name="Main Street",
+            branch_type=BranchType.BRANCH,
+        )
+        self.user = User.objects.create_user(username="Ngoni", password="secret")
+        StaffProfile.objects.create(
+            user=self.user,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.login_url = "/api/auth/mobile-login/"
+
+    def test_login_accepts_any_username_casing(self):
+        for username in ("Ngoni", "ngoni", "NGONI", "nGoNi"):
+            with self.subTest(username=username):
+                response = self.client.post(
+                    self.login_url,
+                    {"username": username, "password": "secret"},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response.data["user"]["username"], "Ngoni")
+
+
 class CashierConsoleAccessTests(APITestCase):
     def setUp(self):
         self.branch = Branch.objects.create(
