@@ -86,7 +86,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
@@ -330,8 +330,8 @@ async function loadData() {
   }
 
   const bakeryId = bakeryBranches[0].id;
-  const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
-  bakeryInventory = unwrapList(inventoryData);
+  // Must paginate — default page_size is 50; bakery often has more SKUs.
+  bakeryInventory = await fetchAllPages("/inventory/", { branch: String(bakeryId) });
 
   populateFormOptions();
   renderBakeryStats();
@@ -446,8 +446,7 @@ transferForm.addEventListener("submit", async (e) => {
     toBranchSelect.value = "";
     const bakeryId = bakeryBranches[0]?.id;
     if (bakeryId) {
-      const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
-      bakeryInventory = unwrapList(inventoryData);
+      bakeryInventory = await fetchAllPages("/inventory/", { branch: String(bakeryId) });
       populateFormOptions();
       updateStockHint();
     }
@@ -478,8 +477,7 @@ transfersTable.addEventListener("click", async (e) => {
     if (action === "cancel") {
       const bakeryId = bakeryBranches[0]?.id;
       if (bakeryId) {
-        const inventoryData = await apiGet(`/inventory/?branch=${bakeryId}`);
-        bakeryInventory = unwrapList(inventoryData);
+        bakeryInventory = await fetchAllPages("/inventory/", { branch: String(bakeryId) });
         populateFormOptions();
         updateStockHint();
       }
