@@ -532,12 +532,13 @@
                     android:text="@string/place_order" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/cancelOrderButton"
+                    android:id="@+id/transferItemsButton"
                     style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="@string/cancel_order"
+                    android:enabled="false"
+                    android:text="@string/transfer_to_table"
                     android:visibility="gone" />
 
                 <com.google.android.material.button.MaterialButton

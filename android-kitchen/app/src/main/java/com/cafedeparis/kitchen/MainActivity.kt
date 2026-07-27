@@ -227,17 +227,52 @@ class MainActivity : KeepScreenOnActivity() {
         val printerAddress = session.printerAddress
         if (printerAddress.isNullOrBlank()) return
 
-        val printedIds = session.getPrintedOrderIds().toMutableSet()
-        val newOrders = orders.filter { it.id !in printedIds }
-        if (newOrders.isEmpty()) return
+        val fingerprints = session.getPrintedOrderFingerprints().toMutableMap()
 
-        for (order in newOrders) {
+        for (order in orders) {
+            if (order.items.isEmpty()) continue
+            val fingerprint = SessionManager.orderPrintFingerprint(order)
+            val previous = fingerprints[order.id]
+            if (previous == fingerprint) continue
+
+            // After upgrade from id-only tracking, adopt current items without reprinting.
+            if (previous == SessionManager.LEGACY_PRINT_FINGERPRINT) {
+                session.markPrinted(order.id, fingerprint)
+                fingerprints[order.id] = fingerprint
+                continue
+            }
+
+            val previousKeys = previous
+                ?.split("|")
+                ?.filter { it.isNotBlank() }
+                ?.toSet()
+                .orEmpty()
+            val newItems = if (previousKeys.isEmpty()) {
+                order.items
+            } else {
+                order.items.filter { item ->
+                    "${item.id}:${item.quantity}" !in previousKeys
+                }
+            }
+            if (newItems.isEmpty()) {
+                session.markPrinted(order.id, fingerprint)
+                fingerprints[order.id] = fingerprint
+                continue
+            }
+
+            val ticket = if (previousKeys.isEmpty()) {
+                order
+            } else {
+                order.copy(items = newItems)
+            }
+            val isUpdate = previousKeys.isNotEmpty()
+
             try {
                 withContext(Dispatchers.IO) {
-                    printer.printOrder(printerAddress, order)
+                    printer.printOrder(printerAddress, ticket, isUpdate = isUpdate)
                 }
-                session.markPrinted(order.id)
-                printedIds.add(order.id)
+                session.markPrinted(order.id, fingerprint)
+                fingerprints[order.id] = fingerprint
             } catch (err: PrinterException) {
                 withContext(Dispatchers.Main) {
                     showError(getString(R.string.print_failed, err.message ?: ""))

@@ -13,6 +13,7 @@ import com.cafedeparis.kitchen.databinding.ItemDiningTableBinding
 class DiningTableAdapter(
     private val occupiedNames: Set<String>,
     private val selectedName: String?,
+    private val disabledNames: Set<String> = emptySet(),
     private val onTableClick: (DiningTable) -> Unit,
 ) : ListAdapter<DiningTable, DiningTableAdapter.ViewHolder>(Diff) {
 
@@ -32,29 +33,38 @@ class DiningTableAdapter(
             val context = binding.root.context
             val occupied = table.name in occupiedNames
             val selected = table.name == selectedName
+            val disabled = table.name in disabledNames
 
             binding.tableName.text = table.name
-            binding.tableStatus.text = if (occupied) {
-                context.getString(R.string.table_in_use)
-            } else {
-                context.getString(R.string.table_available)
+            binding.tableStatus.text = when {
+                disabled -> context.getString(R.string.table_current)
+                occupied -> context.getString(R.string.table_in_use)
+                else -> context.getString(R.string.table_available)
             }
             binding.tableStatus.setTextColor(
                 ContextCompat.getColor(
                     context,
-                    if (occupied) R.color.status_pending else R.color.status_ready,
+                    when {
+                        disabled -> R.color.text_muted
+                        occupied -> R.color.status_pending
+                        else -> R.color.status_ready
+                    },
                 ),
             )
 
             val strokeColor = when {
+                disabled -> android.R.color.transparent
                 selected -> R.color.accent
                 occupied -> R.color.status_pending
                 else -> android.R.color.transparent
             }
             binding.root.strokeColor = ContextCompat.getColor(context, strokeColor)
-            binding.root.strokeWidth = if (selected || occupied) 4 else 0
-
-            binding.root.setOnClickListener { onTableClick(table) }
+            binding.root.strokeWidth = if (!disabled && (selected || occupied)) 4 else 0
+            binding.root.alpha = if (disabled) 0.45f else 1f
+            binding.root.isEnabled = !disabled
+            binding.root.setOnClickListener {
+                if (!disabled) onTableClick(table)
+            }
         }
     }
 

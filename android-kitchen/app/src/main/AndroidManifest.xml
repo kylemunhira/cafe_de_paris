@@ -54,6 +54,13 @@
             android:keepScreenOn="true" />
 
         <activity
+            android:name=".StockTakeActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:keepScreenOn="true"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:keepScreenOn="true"

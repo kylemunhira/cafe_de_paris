@@ -315,6 +315,16 @@ class KitchenStationFilterTests(TestCase):
         item_names = [item["product_name"] for item in results[0]["items"]]
         self.assertEqual(item_names, ["Beer"])
 
+    def test_pos_open_unpaid_returns_all_items_for_station_staff(self):
+        """POS polls status=open,unpaid and must not hide bar/kitchen lines."""
+        self.client.force_authenticate(user=self.kitchen_user)
+        response = self.client.get("/api/orders/?status=open,unpaid")
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"]
+        self.assertEqual(len(results), 1)
+        item_names = sorted(item["product_name"] for item in results[0]["items"])
+        self.assertEqual(item_names, ["Beer", "Burger"])
+
 
 class InclusiveTaxBreakdownTests(TestCase):
     def test_split_inclusive_total_at_15_5_percent(self):
@@ -928,6 +938,10 @@ class ExpensesPageTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get("/expenses/")
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "print-expenses-btn")
+        self.assertContains(response, "expenses-print-header")
+        self.assertContains(response, "print-expense-date")
+        self.assertContains(response, "print-printed-at")
 
 
 class TableOrderCombineTests(TestCase):
@@ -1307,101 +1321,19 @@ class OrderItemRemoveTests(TestCase):
         order.recalculate_total()
         return order, first, second
 
-    def test_remove_one_decrements_quantity(self):
+    def test_remove_one_rejected_after_order_placed(self):
         order, first, _second = self._open_order_with_items()
         response = self.client.post(
             f"/api/orders/{order.id}/items/{first.id}/remove-one/",
             {},
             format="json",
         )
-        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cannot be removed", response.data["detail"].lower())
         first.refresh_from_db()
         order.refresh_from_db()
-        self.assertEqual(first.quantity, Decimal("1"))
-        self.assertEqual(order.total_amount, Decimal("7.50"))
+        self.assertEqual(first.quantity, Decimal("2"))
         self.assertEqual(order.items.count(), 2)
-
-    def test_remove_one_deletes_line_when_quantity_is_one(self):
-        order, _first, second = self._open_order_with_items()
-        response = self.client.post(
-            f"/api/orders/{order.id}/items/{second.id}/remove-one/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        order.refresh_from_db()
-        self.assertFalse(order.items.filter(pk=second.pk).exists())
-        self.assertEqual(order.total_amount, Decimal("7.00"))
-        self.assertEqual(order.items.count(), 1)
-
-    def test_remove_last_item_rejected(self):
-        order = Order.objects.create(branch=self.branch)
-        item = order.items.create(
-            product=self.product,
-            quantity=Decimal("1"),
-            price=Decimal("3.50"),
-        )
-        order.recalculate_total()
-        response = self.client.post(
-            f"/api/orders/{order.id}/items/{item.id}/remove-one/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("last item", response.data["detail"].lower())
-        order.refresh_from_db()
-        self.assertEqual(order.items.count(), 1)
-
-    def test_remove_item_resets_kitchen_status(self):
-        order, first, _second = self._open_order_with_items()
-        order.kitchen_status = KitchenStatus.READY
-        order.save(update_fields=["kitchen_status"])
-        response = self.client.post(
-            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        order.refresh_from_db()
-        self.assertEqual(order.kitchen_status, KitchenStatus.PENDING)
-        self.assertIsNone(order.kitchen_started_at)
-        self.assertIsNone(order.kitchen_ready_at)
-
-    def test_remove_item_rejects_paid_order(self):
-        order, first, _second = self._open_order_with_items()
-        order.status = OrderStatus.PAID
-        order.save(update_fields=["status"])
-        response = self.client.post(
-            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("open orders", response.data["detail"].lower())
-
-    def test_remove_item_rejects_unpaid_order(self):
-        order, first, _second = self._open_order_with_items()
-        order.status = OrderStatus.UNPAID
-        order.save(update_fields=["status"])
-        response = self.client.post(
-            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-
-    def test_remove_item_rejects_wrong_order(self):
-        order_a, first_a, _ = self._open_order_with_items()
-        order_b, _, _ = self._open_order_with_items()
-        response = self.client.post(
-            f"/api/orders/{order_b.id}/items/{first_a.id}/remove-one/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("does not belong", response.data["detail"].lower())
-        order_a.refresh_from_db()
-        self.assertEqual(order_a.items.get(pk=first_a.pk).quantity, Decimal("2"))
 
     def test_remove_item_requires_pos_access(self):
         order, first, _second = self._open_order_with_items()
@@ -1409,6 +1341,166 @@ class OrderItemRemoveTests(TestCase):
         response = self.client.post(
             f"/api/orders/{order.id}/items/{first.id}/remove-one/",
             {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+class OrderItemTransferTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(username="transfer_cashier", password="pass")
+        self.other_user = User.objects.create_user(username="no_pos", password="pass")
+        self.branch = Branch.objects.create(
+            name="Transfer Branch",
+            code="TRF",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=self.user)
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso",
+            category=category,
+            selling_price=Decimal("3.50"),
+        )
+        self.latte = Product.objects.create(
+            name="Latte",
+            category=category,
+            selling_price=Decimal("4.00"),
+        )
+
+    def _open_dine_in(self, table_number, lines):
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.DINE_IN,
+            table_number=table_number,
+            created_by=self.user,
+        )
+        created = []
+        for product, quantity, price in lines:
+            created.append(
+                order.items.create(product=product, quantity=quantity, price=price)
+            )
+        order.recalculate_total()
+        return order, created
+
+    def test_transfer_partial_lines_creates_destination_order(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [
+                (self.product, Decimal("2"), Decimal("3.50")),
+                (self.latte, Decimal("1"), Decimal("4.00")),
+            ],
+        )
+        first, second = items
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [second.id], "table_number": "T2"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.table_number, "T1")
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.total_amount, Decimal("7.00"))
+
+        destination = Order.objects.get(pk=response.data["destination_order"]["id"])
+        self.assertEqual(destination.table_number, "T2")
+        self.assertEqual(destination.status, OrderStatus.OPEN)
+        self.assertEqual(destination.items.count(), 1)
+        self.assertEqual(destination.items.get().pk, second.pk)
+        self.assertEqual(destination.total_amount, Decimal("4.00"))
+
+    def test_transfer_merges_into_existing_open_table_order(self):
+        source, source_items = self._open_dine_in(
+            "T1",
+            [(self.product, Decimal("1"), Decimal("3.50"))],
+        )
+        destination, dest_items = self._open_dine_in(
+            "T2",
+            [(self.latte, Decimal("1"), Decimal("4.00"))],
+        )
+        response = self.client.post(
+            f"/api/orders/{source.id}/transfer-items/",
+            {"item_ids": [source_items[0].id], "table_number": "T2"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        source.refresh_from_db()
+        destination.refresh_from_db()
+        self.assertEqual(source.status, OrderStatus.CANCELLED)
+        self.assertEqual(destination.pk, response.data["destination_order"]["id"])
+        self.assertEqual(destination.items.count(), 2)
+        self.assertEqual(
+            set(destination.items.values_list("pk", flat=True)),
+            {source_items[0].pk, dest_items[0].pk},
+        )
+
+    def test_transfer_all_lines_to_empty_table_reassigns_order(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [
+                (self.product, Decimal("1"), Decimal("3.50")),
+                (self.latte, Decimal("1"), Decimal("4.00")),
+            ],
+        )
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [items[0].id, items[1].id], "table_number": "T9"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.table_number, "T9")
+        self.assertEqual(order.items.count(), 2)
+        self.assertEqual(
+            response.data["source_order"]["id"],
+            response.data["destination_order"]["id"],
+        )
+
+    def test_transfer_rejects_same_table(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [(self.product, Decimal("1"), Decimal("3.50"))],
+        )
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [items[0].id], "table_number": "T1"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_transfer_rejects_takeaway(self):
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+        )
+        item = order.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [item.id], "table_number": "T2"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_transfer_requires_pos_access(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [(self.product, Decimal("1"), Decimal("3.50"))],
+        )
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [items[0].id], "table_number": "T2"},
             format="json",
         )
         self.assertEqual(response.status_code, 403)

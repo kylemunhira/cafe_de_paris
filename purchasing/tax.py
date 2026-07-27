@@ -9,17 +9,20 @@ def _quantize(amount: Decimal) -> Decimal:
     return amount.quantize(TWOPLACES, ROUND_HALF_UP)
 
 
-def is_taxable_product(product) -> bool:
-    if product.tax_rate and product.tax_rate > 0:
-        return True
-    code = (product.fiscal_tax_code or "").strip().upper()
-    return code not in ("", "B")
+def supplier_is_vat_registered(supplier) -> bool:
+    if supplier is None:
+        return False
+    return bool((supplier.vat_number or "").strip())
 
 
-def split_purchase_line_total(line_total: Decimal, product) -> dict:
-    """Split an inclusive line total at full precision; order totals are quantized later."""
+def split_purchase_line_total(line_total: Decimal, product, *, apply_vat: bool = True) -> dict:
+    """Split an inclusive line total at full precision; order totals are quantized later.
+
+    Purchase VAT follows the supplier: when apply_vat is True (VAT-registered
+    supplier), every line is split at the product rate or the default inclusive rate.
+    """
     line_total = Decimal(line_total)
-    if not is_taxable_product(product):
+    if not apply_vat:
         return {
             "subtotal": line_total,
             "tax": Decimal("0"),
@@ -46,13 +49,16 @@ def purchase_order_amounts(purchase_order) -> dict:
     subtotal = Decimal("0")
     vat = Decimal("0")
     total = Decimal("0")
+    apply_vat = supplier_is_vat_registered(getattr(purchase_order, "supplier", None))
 
     lines = purchase_order.lines.all()
     if hasattr(lines, "select_related"):
         lines = lines.select_related("product")
 
     for line in lines:
-        split = split_purchase_line_total(line.line_total, line.product)
+        split = split_purchase_line_total(
+            line.line_total, line.product, apply_vat=apply_vat
+        )
         subtotal += split["subtotal"]
         vat += split["tax"]
         total += split["total"]

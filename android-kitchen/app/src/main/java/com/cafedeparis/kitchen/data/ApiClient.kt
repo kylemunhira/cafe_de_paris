@@ -83,6 +83,81 @@ class ApiClient(
         return JsonParsers.parseProductionOrders(getJson(url, token))
     }
 
+    fun fetchProductionSheets(status: String? = null): List<ProductionSheet> {
+        val token = requireToken()
+        val statusQuery = status?.takeIf { it.isNotBlank() }?.let { "&status=$it" }.orEmpty()
+        val url =
+            "${config.serverUrl}/api/production-sheets/?branch=${session.branchId}&page_size=200$statusQuery"
+        return JsonParsers.parseProductionSheets(getJson(url, token))
+    }
+
+    fun fetchProductionSheet(sheetId: Int): ProductionSheet {
+        val token = requireToken()
+        val body = getJson("${config.serverUrl}/api/production-sheets/$sheetId/", token)
+        return JsonParsers.parseProductionSheet(body)
+    }
+
+    fun createProductionSheet(productionDate: String): ProductionSheet {
+        val token = requireToken()
+        val payload = JSONObject()
+            .put("branch", session.branchId)
+            .put("production_date", productionDate)
+        val body = postJson("${config.serverUrl}/api/production-sheets/", payload, token)
+        return JsonParsers.parseProductionSheet(body)
+    }
+
+    fun updateProductionSheetLines(
+        sheetId: Int,
+        lines: List<Pair<Int, List<Pair<Int, String?>>>>,
+    ): ProductionSheet {
+        val token = requireToken()
+        val linesJson = JSONArray()
+        for ((lineId, allocations) in lines) {
+            val allocationsJson = JSONArray()
+            for ((destinationId, quantity) in allocations) {
+                val allocation = JSONObject().put("destination_branch", destinationId)
+                if (quantity == null) {
+                    allocation.put("quantity", JSONObject.NULL)
+                } else {
+                    allocation.put("quantity", quantity)
+                }
+                allocationsJson.put(allocation)
+            }
+            linesJson.put(
+                JSONObject()
+                    .put("id", lineId)
+                    .put("allocations", allocationsJson),
+            )
+        }
+        val payload = JSONObject().put("lines", linesJson)
+        val body = patchJson(
+            "${config.serverUrl}/api/production-sheets/$sheetId/lines/",
+            payload,
+            token,
+        )
+        return JsonParsers.parseProductionSheet(body)
+    }
+
+    fun completeProductionSheet(sheetId: Int): ProductionSheet {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/production-sheets/$sheetId/complete/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseProductionSheet(body)
+    }
+
+    fun cancelProductionSheet(sheetId: Int): ProductionSheet {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/production-sheets/$sheetId/cancel/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseProductionSheet(body)
+    }
+
     fun fetchBakeryInventory(): List<InventoryItem> {
         val token = requireToken()
         val url = "${config.serverUrl}/api/inventory/?branch=${session.branchId}&page_size=2000"
@@ -231,6 +306,15 @@ class ApiClient(
         postJson("${config.serverUrl}/api/expenses/", payload, token)
     }
 
+    fun fetchExpenses(date: String): List<Expense> {
+        val token = requireToken()
+        val branchId = session.branchId
+        val url =
+            "${config.serverUrl}/api/expenses/?branch=$branchId&date=$date&page_size=500"
+        val body = getJson(url, token)
+        return JsonParsers.parseExpenses(body)
+    }
+
     fun fetchDiningTables(): List<DiningTable> {
         val token = requireToken()
         val branchId = session.branchId
@@ -247,12 +331,18 @@ class ApiClient(
         return JsonParsers.parseDayEndStockTakeCheck(body)
     }
 
-    fun fetchStockTakes(type: String, status: String = "draft"): List<StockTake> {
+    fun fetchStockTakes(
+        type: String? = null,
+        status: String? = null,
+    ): List<StockTake> {
         val token = requireToken()
         val branchId = session.branchId
-        val url =
-            "${config.serverUrl}/api/stock-takes/?branch=$branchId&stock_take_type=$type&status=$status&page_size=100"
-        val body = getJson(url, token)
+        val query = buildString {
+            append("branch=$branchId&page_size=100")
+            if (!type.isNullOrBlank()) append("&stock_take_type=$type")
+            if (!status.isNullOrBlank()) append("&status=$status")
+        }
+        val body = getJson("${config.serverUrl}/api/stock-takes/?$query", token)
         return JsonParsers.parseStockTakes(body)
     }
 
@@ -274,16 +364,18 @@ class ApiClient(
 
     fun updateStockTakeLines(
         stockTakeId: Int,
-        lines: List<Pair<Int, String?>>,
+        lines: List<StockTakeLineUpdate>,
     ): StockTake {
         val token = requireToken()
         val linesJson = JSONArray()
-        for ((lineId, counted) in lines) {
-            val line = JSONObject().put("id", lineId)
-            if (counted == null) {
+        for (update in lines) {
+            val line = JSONObject()
+                .put("id", update.id)
+                .put("notes", update.notes)
+            if (update.countedQuantity == null) {
                 line.put("counted_quantity", JSONObject.NULL)
             } else {
-                line.put("counted_quantity", counted)
+                line.put("counted_quantity", update.countedQuantity)
             }
             linesJson.put(line)
         }
@@ -296,6 +388,16 @@ class ApiClient(
         val token = requireToken()
         val body = postJson(
             "${config.serverUrl}/api/stock-takes/$stockTakeId/complete/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseStockTake(body)
+    }
+
+    fun cancelStockTake(stockTakeId: Int): StockTake {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/stock-takes/$stockTakeId/cancel/",
             JSONObject(),
             token,
         )
@@ -431,12 +533,6 @@ class ApiClient(
         return JsonParsers.parseOrder(body)
     }
 
-    fun cancelOrder(orderId: Int): KitchenOrder {
-        val token = requireToken()
-        val body = postJson("${config.serverUrl}/api/orders/$orderId/cancel/", JSONObject(), token)
-        return JsonParsers.parseOrder(body)
-    }
-
     fun removeOneOrderItem(orderId: Int, itemId: Int): KitchenOrder {
         val token = requireToken()
         val body = postJson(
@@ -445,6 +541,31 @@ class ApiClient(
             token,
         )
         return JsonParsers.parseOrder(body)
+    }
+
+    fun transferOrderItems(
+        orderId: Int,
+        itemIds: List<Int>,
+        tableNumber: String,
+    ): OrderItemTransferResult {
+        val token = requireToken()
+        val ids = JSONArray()
+        itemIds.forEach { ids.put(it) }
+        val payload = JSONObject()
+            .put("item_ids", ids)
+            .put("table_number", tableNumber.trim())
+        val body = postJson(
+            "${config.serverUrl}/api/orders/$orderId/transfer-items/",
+            payload,
+            token,
+        )
+        val json = JSONObject(body)
+        return OrderItemTransferResult(
+            sourceOrder = JsonParsers.parseOrder(json.getJSONObject("source_order").toString()),
+            destinationOrder = JsonParsers.parseOrder(
+                json.getJSONObject("destination_order").toString(),
+            ),
+        )
     }
 
     fun payOrderCash(orderId: Int, currencyId: Int): KitchenOrder {

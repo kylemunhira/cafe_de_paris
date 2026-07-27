@@ -27,8 +27,10 @@ from .models import (
     StockTakeLine,
     StockTakeType,
     StockTransfer,
+    WastageEntry,
+    WastageReason,
 )
-from .services import create_stock_take, update_stock_take_lines
+from .services import create_stock_take, create_wastage_entry, update_stock_take_lines
 
 
 class BranchInventorySerializer(serializers.ModelSerializer):
@@ -721,3 +723,127 @@ class CentralInvoiceCreateSerializer(serializers.Serializer):
                 ]
             )
             return finalize_central_invoice_creation(invoice)
+
+
+class WastageEntrySerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    destination_branch_name = serializers.CharField(
+        source="destination_branch.name",
+        read_only=True,
+        allow_null=True,
+    )
+    reason_display = serializers.CharField(source="get_reason_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    processed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WastageEntry
+        fields = [
+            "id",
+            "branch",
+            "branch_name",
+            "product",
+            "product_name",
+            "quantity",
+            "reason",
+            "reason_display",
+            "destination_branch",
+            "destination_branch_name",
+            "status",
+            "status_display",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "processed_by",
+            "processed_by_name",
+            "created_at",
+            "processed_at",
+        ]
+        read_only_fields = fields
+
+    def get_created_by_name(self, obj):
+        return staff_display_name(obj.created_by) if obj.created_by_id else ""
+
+    def get_processed_by_name(self, obj):
+        return staff_display_name(obj.processed_by) if obj.processed_by_id else ""
+
+
+class WastageEntryCreateSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True)
+    )
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+    )
+    reason = serializers.ChoiceField(choices=WastageReason.choices)
+    destination_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+    )
+    notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    process_now = serializers.BooleanField(required=False, default=True)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        branch = attrs["branch"]
+        if request and request.user and request.user.is_authenticated:
+            from accounts.branch_access import resolve_branch_filter, NO_BRANCH_ACCESS
+
+            allowed = resolve_branch_filter(
+                request.user, requested_branch_id=branch.id
+            )
+            if allowed is NO_BRANCH_ACCESS or (
+                allowed is not None and int(allowed) != int(branch.id)
+            ):
+                raise serializers.ValidationError(
+                    {"branch": "You do not have access to this branch."}
+                )
+        reason = attrs["reason"]
+        destination = attrs.get("destination_branch")
+        if reason == WastageReason.BAKERY_REUSE:
+            if destination is None:
+                raise serializers.ValidationError(
+                    {
+                        "destination_branch": (
+                            "Select the bakery branch receiving this reuse transfer."
+                        )
+                    }
+                )
+            if destination.branch_type != BranchType.BAKERY:
+                raise serializers.ValidationError(
+                    {
+                        "destination_branch": (
+                            "Bakery reuse destination must be a bakery branch."
+                        )
+                    }
+                )
+            if destination.pk == branch.pk:
+                raise serializers.ValidationError(
+                    {
+                        "destination_branch": (
+                            "Destination bakery must differ from the source branch."
+                        )
+                    }
+                )
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        user = request.user if request else None
+        process_now = validated_data.pop("process_now", True)
+        return create_wastage_entry(
+            branch=validated_data["branch"],
+            product=validated_data["product"],
+            quantity=validated_data["quantity"],
+            reason=validated_data["reason"],
+            destination_branch=validated_data.get("destination_branch"),
+            notes=validated_data.get("notes", ""),
+            created_by=user,
+            process_now=process_now,
+        )

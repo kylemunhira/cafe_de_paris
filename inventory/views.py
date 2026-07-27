@@ -35,6 +35,8 @@ from .models import (
     StockTake,
     StockTakeStatus,
     StockTransfer,
+    WastageEntry,
+    WastageStatus,
 )
 from branches.models import Branch, BranchType
 
@@ -57,6 +59,8 @@ from .serializers import (
     StockTakeSerializer,
     StockTransferCreateSerializer,
     StockTransferSerializer,
+    WastageEntryCreateSerializer,
+    WastageEntrySerializer,
 )
 from .services import (
     DuplicateStockTakeError,
@@ -68,6 +72,8 @@ from .services import (
     InvalidDeliveryNoteStateError,
     InvalidStockTakeStateError,
     InvalidTransferStateError,
+    InvalidWastageError,
+    InvalidWastageStateError,
     adjust_inventory,
     set_inventory_quantity,
     approve_delivery_note,
@@ -76,6 +82,7 @@ from .services import (
     cancel_central_invoice,
     cancel_stock_take,
     cancel_transfer,
+    cancel_wastage_entry,
     complete_stock_take,
     deliver_delivery_note,
     deliver_transfer,
@@ -87,6 +94,7 @@ from .services import (
     InvalidDeliveryNotePaymentError,
     mark_central_invoice_paid,
     mark_delivery_note_paid,
+    process_wastage_entry,
     sync_stock_take_lines,
 )
 
@@ -764,3 +772,121 @@ class CentralInvoiceViewSet(viewsets.ModelViewSet):
             )
         invoice = self.get_queryset().get(pk=invoice.pk)
         return Response(CentralInvoiceSerializer(invoice).data)
+
+
+class WastageEntryViewSet(viewsets.ModelViewSet):
+    queryset = WastageEntry.objects.select_related(
+        "branch",
+        "product",
+        "destination_branch",
+        "created_by",
+        "processed_by",
+    ).all()
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return WastageEntryCreateSerializer
+        return WastageEntrySerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        branch_id = self.request.query_params.get("branch")
+        reason = self.request.query_params.get("reason")
+        status_param = self.request.query_params.get("status")
+        date_from = self.request.query_params.get("from")
+        date_to = self.request.query_params.get("to")
+
+        queryset = filter_by_branch_field(
+            queryset, self.request.user, requested_branch_id=branch_id
+        )
+        if reason:
+            queryset = queryset.filter(reason=reason)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        if date_from:
+            queryset = queryset.filter(created_at__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(created_at__date__lte=date_to)
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            entry = serializer.save()
+        except InsufficientStockError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "available": str(exc.available),
+                    "requested": str(exc.requested),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (InvalidWastageError, InvalidWastageStateError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        entry = self.get_queryset().get(pk=entry.pk)
+        return Response(
+            WastageEntrySerializer(entry).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"])
+    def process(self, request, pk=None):
+        entry = self.get_object()
+        try:
+            entry = process_wastage_entry(entry, user=request.user)
+        except InsufficientStockError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "available": str(exc.available),
+                    "requested": str(exc.requested),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except InvalidWastageStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        entry = self.get_queryset().get(pk=entry.pk)
+        return Response(WastageEntrySerializer(entry).data)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        entry = self.get_object()
+        try:
+            entry = cancel_wastage_entry(entry)
+        except InvalidWastageStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        entry = self.get_queryset().get(pk=entry.pk)
+        return Response(WastageEntrySerializer(entry).data)
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        """Totals by reason for reporting filters."""
+        queryset = self.filter_queryset(self.get_queryset()).filter(
+            status=WastageStatus.PROCESSED
+        ).select_related(None)
+        totals = {
+            "count": 0,
+            "quantity": Decimal("0"),
+            "by_reason": {
+                "bakery_reuse": {"count": 0, "quantity": Decimal("0")},
+                "kitchen": {"count": 0, "quantity": Decimal("0")},
+                "disposal": {"count": 0, "quantity": Decimal("0")},
+            },
+        }
+        for entry in queryset.only("reason", "quantity"):
+            totals["count"] += 1
+            totals["quantity"] += entry.quantity
+            bucket = totals["by_reason"].get(entry.reason)
+            if bucket is not None:
+                bucket["count"] += 1
+                bucket["quantity"] += entry.quantity
+        totals["quantity"] = str(totals["quantity"])
+        for key, bucket in totals["by_reason"].items():
+            totals["by_reason"][key] = {
+                "count": bucket["count"],
+                "quantity": str(bucket["quantity"]),
+            }
+        return Response(totals)

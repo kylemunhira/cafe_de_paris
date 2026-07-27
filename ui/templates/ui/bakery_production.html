@@ -9,62 +9,58 @@
 {% endblock %}
 
 {% block content %}
-<div class="stat-grid" id="production-stats" style="margin-bottom: 1.25rem;">
+<div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <div class="form-row" style="align-items: end;">
+    <div class="form-group">
+      <label for="bakery-branch">Central bakery</label>
+      <select id="bakery-branch" disabled>
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="production-date">Production date</label>
+      <input type="date" id="production-date">
+    </div>
+    <div class="form-group" style="flex: 0 0 auto;">
+      <button type="button" class="btn btn-primary" id="start-sheet-btn">New production sheet</button>
+    </div>
+  </div>
+  <p style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
+    Enter quantities produced for each destination — Highlands, Churchill, and Central stores.
+    Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients).
+  </p>
+</div>
+
+<div class="stat-grid" id="production-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(3, 1fr);">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
 </div>
 
-<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 0.5rem; font-size: 1.05rem;">Record production</h3>
-  <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
-    Finished goods are added to bakery stock. When a recipe exists, ingredients are deducted automatically.
-  </p>
-  <form id="production-form">
-    <div class="form-row">
-      <div class="form-group">
-        <label for="bakery-branch">Central bakery</label>
-        <select id="bakery-branch" required disabled>
-          <option value="">Loading…</option>
-        </select>
-      </div>
-      <div class="form-group" style="flex: 2;">
-        <label for="product">Finished product</label>
-        <select id="product" class="searchable-select" required>
-          <option value="">Select product…</option>
-        </select>
-      </div>
-      <div class="form-group" style="flex: 0 0 140px;">
-        <label for="quantity">Batch qty</label>
-        <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0" required>
-      </div>
+<div id="active-sheet-panel" class="card" style="padding: 0; margin-bottom: 1.25rem; display: none;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+    <div>
+      <h3 id="active-sheet-title" style="margin: 0; font-size: 1.05rem;">Active production</h3>
+      <p id="active-sheet-meta" style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
     </div>
-
-    <div class="table-wrap" id="recipe-wrap" style="display: none; margin-bottom: 1rem;">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Ingredient</th>
-            <th>Category</th>
-            <th style="text-align: right;">Required</th>
-            <th style="text-align: right;">Available</th>
-            <th style="text-align: right;">Status</th>
-          </tr>
-        </thead>
-        <tbody id="recipe-body"></tbody>
-      </table>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <button type="button" class="btn btn-ghost btn-sm" id="close-sheet-btn" style="display: none;">Close</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="save-lines-btn">Save progress</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="cancel-sheet-btn">Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" id="complete-sheet-btn">Complete production</button>
     </div>
-
-    <p id="preview-message" style="margin: 0 0 0.75rem; font-size: 0.85rem; color: var(--color-muted);"></p>
-
-    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Record production</button>
-  </form>
+  </div>
+  <div id="sheet-line-filters" class="stock-take-line-filters" style="display: none;"></div>
+  <div class="table-wrap" id="sheet-lines-table"></div>
 </div>
 
 <div class="card" style="padding: 0;">
-  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1.05rem;">Recent production</h3>
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="all">All</button>
+    <button class="category-tab" data-filter="draft">In progress</button>
+    <button class="category-tab" data-filter="completed">Completed</button>
   </div>
-  <div class="table-wrap" id="history-table">
+  <div class="table-wrap" id="sheets-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
   </div>
 </div>
@@ -72,158 +68,143 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
-import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+import { apiGet, apiPost, apiPatch, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 let bakeryBranches = [];
-let products = [];
-let recipesByProduct = new Map();
-let bakeryInventory = new Map();
-let preview = null;
-let history = [];
+let allSheets = [];
+let activeSheet = null;
+let activeFilter = "all";
+let categoryLineFilter = "all";
+const sortState = createSortState("production_date", "desc");
+
+const SHEET_SORT = {
+  id: (s) => Number(s.id),
+  production_date: (s) => s.production_date || "",
+  branch_name: (s) => s.branch_name || "",
+  line_count: (s) => Number(s.line_count ?? s.lines?.length ?? 0),
+  produced_line_count: (s) => Number(s.produced_line_count ?? 0),
+  status: (s) => s.status || "",
+  created_at: (s) => s.created_at || "",
+};
 
 const bakerySelect = document.getElementById("bakery-branch");
-const productSelect = document.getElementById("product");
-const quantityInput = document.getElementById("quantity");
-const productionForm = document.getElementById("production-form");
-const recipeWrap = document.getElementById("recipe-wrap");
-const recipeBody = document.getElementById("recipe-body");
-const previewMessage = document.getElementById("preview-message");
-const submitBtn = document.getElementById("submit-btn");
-const historyTable = document.getElementById("history-table");
+const productionDateInput = document.getElementById("production-date");
+const sheetsTable = document.getElementById("sheets-table");
 const productionStats = document.getElementById("production-stats");
+const activeSheetPanel = document.getElementById("active-sheet-panel");
+const activeSheetTitle = document.getElementById("active-sheet-title");
+const activeSheetMeta = document.getElementById("active-sheet-meta");
+const sheetLinesTable = document.getElementById("sheet-lines-table");
+const sheetLineFilters = document.getElementById("sheet-line-filters");
+const closeSheetBtn = document.getElementById("close-sheet-btn");
 
-initSearchableSelect(productSelect);
+productionDateInput.value = new Date().toISOString().slice(0, 10);
 
 function formatQty(value) {
   const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "—";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function bakeryId() {
-  return bakeryBranches[0]?.id;
+  return bakerySelect.value ? Number(bakerySelect.value) : null;
 }
 
-function getBakeryStock(productId) {
-  return bakeryInventory.get(Number(productId)) ?? 0;
+function destinations() {
+  return activeSheet?.destinations || [];
+}
+
+function allocationFor(line, destinationId) {
+  return (line.allocations || []).find(a => Number(a.destination_branch) === Number(destinationId));
+}
+
+function lineTotal(line) {
+  return destinations().reduce((sum, dest) => {
+    const allocation = allocationFor(line, dest.id);
+    const qty = Number(allocation?.quantity);
+    return sum + (Number.isFinite(qty) ? qty : 0);
+  }, 0);
+}
+
+function filterSheets() {
+  if (activeFilter === "all") return allSheets;
+  return allSheets.filter(s => s.status === activeFilter);
 }
 
 function renderStats() {
-  const finishedSkus = products.filter(p => getBakeryStock(p.id) > 0).length;
-  const totalUnits = products.reduce((sum, p) => sum + getBakeryStock(p.id), 0);
+  const drafts = allSheets.filter(s => s.status === "draft").length;
+  const completed = allSheets.filter(s => s.status === "completed").length;
   const today = new Date().toISOString().slice(0, 10);
-  const todayCount = history.filter(row => row.created_at?.startsWith(today)).length;
+  const todaySheets = allSheets.filter(s => s.production_date === today && s.status !== "cancelled");
+  const todayDrafts = todaySheets.filter(s => s.status === "draft").length;
+  const todayCompleted = todaySheets.filter(s => s.status === "completed").length;
 
   productionStats.innerHTML = `
     <div class="card stat-card">
-      <div class="label">Finished goods in stock</div>
-      <div class="value">${finishedSkus}</div>
-      <div class="sub">${formatQty(totalUnits)} units across bakery products</div>
+      <div class="label">In progress</div>
+      <div class="value">${drafts}</div>
+      <div class="sub">Draft production sheets</div>
     </div>
     <div class="card stat-card">
-      <div class="label">Batches today</div>
-      <div class="value">${todayCount}</div>
-      <div class="sub">${history.length} total recorded</div>
+      <div class="label">Completed</div>
+      <div class="value">${completed}</div>
+      <div class="sub">Posted production days</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Today</div>
+      <div class="value">${todaySheets.length}</div>
+      <div class="sub">${todayDrafts} open · ${todayCompleted} completed</div>
     </div>
   `;
 }
 
-function populateProductOptions() {
-  if (!products.length) {
-    productSelect.innerHTML = `<option value="">No bakery products found</option>`;
-    productSelect.disabled = true;
-    syncSearchableSelect(productSelect);
+function renderSheets() {
+  const filtered = sortItems(filterSheets(), sortState, SHEET_SORT);
+
+  if (!filtered.length) {
+    sheetsTable.innerHTML = `<div class="empty-state"><p>No production sheets found for this filter.</p></div>`;
     return;
   }
 
-  productSelect.disabled = false;
-  productSelect.innerHTML = `<option value="">Select product…</option>${products.map(p => {
-    const hasRecipe = recipesByProduct.has(p.id);
-    return `<option value="${p.id}">${p.name} (${p.category_name})${hasRecipe ? "" : " — no recipe"}</option>`;
-  }).join("")}`;
-  syncSearchableSelect(productSelect);
-}
-
-function renderPreview() {
-  preview = null;
-  recipeWrap.style.display = "none";
-  recipeBody.innerHTML = "";
-  previewMessage.textContent = "";
-  submitBtn.disabled = true;
-
-  const productId = productSelect.value;
-  const quantity = Number(quantityInput.value);
-  const branch = bakeryId();
-
-  if (!branch || !productId || !Number.isFinite(quantity) || quantity <= 0) {
-    return;
-  }
-
-  previewMessage.textContent = "Checking ingredients…";
-  apiPost("/production-orders/preview/", {
-    branch,
-    product: Number(productId),
-    quantity: String(quantity),
-  }).then(data => {
-    preview = data;
-    if (data.lines?.length) {
-      recipeWrap.style.display = "block";
-      recipeBody.innerHTML = data.lines.map(line => `
-        <tr>
-          <td>${line.ingredient_name}</td>
-          <td>${line.ingredient_category}</td>
-          <td style="text-align: right;">${formatQty(line.required)}</td>
-          <td style="text-align: right;">${formatQty(line.available)}</td>
-          <td style="text-align: right;">
-            <span class="badge ${line.sufficient ? "badge-active" : "badge-inactive"}">
-              ${line.sufficient ? "OK" : "Short"}
-            </span>
-          </td>
-        </tr>
-      `).join("");
-    } else {
-      recipeWrap.style.display = "none";
-      recipeBody.innerHTML = "";
-    }
-
-    if (data.can_produce) {
-      previewMessage.textContent = data.lines?.length
-        ? `Ready to produce ${formatQty(data.quantity)} × ${data.product_name}.`
-        : `No recipe — ready to add ${formatQty(data.quantity)} × ${data.product_name} to stock.`;
-      submitBtn.disabled = false;
-    } else {
-      previewMessage.textContent = "Not enough ingredients at the bakery for this batch.";
-      submitBtn.disabled = true;
-    }
-  }).catch(err => {
-    previewMessage.textContent = err.message;
-    submitBtn.disabled = true;
-  });
-}
-
-function renderHistory() {
-  if (!history.length) {
-    historyTable.innerHTML = `<div class="empty-state"><p>No production recorded yet.</p></div>`;
-    return;
-  }
-
-  historyTable.innerHTML = `
+  sheetsTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          <th>When</th>
-          <th>Product</th>
-          <th style="text-align: right;">Qty</th>
-          <th>Recorded by</th>
+          ${sortTh("ID", "id", sortState)}
+          ${sortTh("Date", "production_date", sortState)}
+          ${sortTh("Bakery", "branch_name", sortState)}
+          ${sortTh("Products", "line_count", sortState)}
+          ${sortTh("Produced", "produced_line_count", sortState)}
+          ${sortTh("Status", "status", sortState)}
+          ${sortTh("Created", "created_at", sortState)}
+          ${actionTh()}
         </tr>
       </thead>
       <tbody>
-        ${history.map(row => `
+        ${filtered.map(sheet => `
           <tr>
-            <td>${formatDate(row.created_at)}</td>
-            <td><strong>${row.product_name}</strong></td>
-            <td style="text-align: right;">${formatQty(row.quantity)}</td>
-            <td>${row.created_by_name || "—"}</td>
+            <td>#${sheet.id}</td>
+            <td>${sheet.production_date}</td>
+            <td>${escapeHtml(sheet.branch_name)}</td>
+            <td>${sheet.line_count ?? sheet.lines?.length ?? 0}</td>
+            <td>${sheet.status === "cancelled" ? "—" : (sheet.produced_line_count ?? 0)}</td>
+            <td>${statusBadge(sheet.status, sheet.status_display)}</td>
+            <td>${formatDate(sheet.created_at)}</td>
+            <td>
+              ${sheet.status === "draft"
+                ? `<button class="btn btn-ghost btn-sm open-sheet-btn" data-id="${sheet.id}">Continue</button>`
+                : sheet.status === "completed"
+                  ? `<button class="btn btn-ghost btn-sm open-sheet-btn" data-id="${sheet.id}">View</button>`
+                  : ""}
+            </td>
           </tr>
         `).join("")}
       </tbody>
@@ -231,94 +212,365 @@ function renderHistory() {
   `;
 }
 
-async function reloadInventory() {
-  const branch = bakeryId();
-  if (!branch) return;
-  const inventoryData = await apiGet(`/inventory/?branch=${branch}`);
-  bakeryInventory = new Map(
-    unwrapList(inventoryData).map(item => [Number(item.product), Number(item.quantity)])
-  );
-  renderStats();
+function lineCategories(lines) {
+  const counts = new Map();
+  for (const line of lines) {
+    const name = line.category_name || "Uncategorized";
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count }));
 }
 
-async function reloadHistory() {
-  const branch = bakeryId();
-  if (!branch) return;
-  history = unwrapList(await apiGet(`/production-orders/?branch=${branch}`));
-  renderHistory();
+function groupLinesByCategory(lines) {
+  const groups = new Map();
+  for (const line of lines) {
+    const name = line.category_name || "Uncategorized";
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(line);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, groupLines]) => ({ name, lines: groupLines }));
+}
+
+function renderActiveSheet() {
+  if (!activeSheet) {
+    activeSheetPanel.style.display = "none";
+    closeSheetBtn.style.display = "none";
+    sheetLineFilters.style.display = "none";
+    return;
+  }
+
+  activeSheetPanel.style.display = "block";
+  const isCompleted = activeSheet.status === "completed";
+  const lines = activeSheet.lines || [];
+  const dests = destinations();
+  const producedCount = lines.filter(line => lineTotal(line) > 0).length;
+
+  activeSheetTitle.textContent = isCompleted
+    ? `Completed production #${activeSheet.id}`
+    : `Production sheet #${activeSheet.id}`;
+
+  const metaParts = [
+    activeSheet.branch_name,
+    activeSheet.production_date,
+    `${lines.length} products`,
+  ];
+  if (isCompleted) {
+    metaParts.push(`${producedCount} produced`);
+    if (activeSheet.completed_at) {
+      metaParts.push(`completed ${formatDate(activeSheet.completed_at)}`);
+    }
+  }
+  activeSheetMeta.textContent = metaParts.join(" · ");
+
+  closeSheetBtn.style.display = isCompleted ? "" : "none";
+  document.getElementById("save-lines-btn").style.display = isCompleted ? "none" : "";
+  document.getElementById("cancel-sheet-btn").style.display = isCompleted ? "none" : "";
+  document.getElementById("complete-sheet-btn").style.display = isCompleted ? "none" : "";
+
+  if (!lines.length) {
+    sheetLineFilters.style.display = "none";
+    sheetLinesTable.innerHTML = `<div class="empty-state"><p>No bakery products to produce.</p></div>`;
+    return;
+  }
+
+  const categories = lineCategories(lines);
+  if (
+    categoryLineFilter !== "all"
+    && !categories.some(cat => cat.name === categoryLineFilter)
+  ) {
+    categoryLineFilter = "all";
+  }
+
+  if (categories.length > 1) {
+    sheetLineFilters.style.display = "flex";
+    sheetLineFilters.innerHTML = `
+      <button class="category-tab${categoryLineFilter === "all" ? " active" : ""}" data-category-filter="all">
+        All categories (${lines.length})
+      </button>
+      ${categories.map(cat => `
+        <button class="category-tab${categoryLineFilter === cat.name ? " active" : ""}" data-category-filter="${escapeHtml(cat.name)}">
+          ${escapeHtml(cat.name)} (${cat.count})
+        </button>
+      `).join("")}
+    `;
+  } else {
+    sheetLineFilters.style.display = "none";
+    sheetLineFilters.innerHTML = "";
+  }
+
+  const visibleLines = categoryLineFilter === "all"
+    ? lines
+    : lines.filter(line => (line.category_name || "Uncategorized") === categoryLineFilter);
+
+  if (!visibleLines.length) {
+    sheetLinesTable.innerHTML = `<div class="empty-state"><p>No products in this category.</p></div>`;
+    return;
+  }
+
+  const groups = groupLinesByCategory(visibleLines);
+  const showCategoryColumn = categoryLineFilter === "all" && categories.length > 1;
+  const colSpan = (showCategoryColumn ? 2 : 1) + dests.length + 1;
+
+  sheetLinesTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${showCategoryColumn ? "<th>Category</th>" : ""}
+          <th>Product Name</th>
+          ${dests.map(dest => `
+            <th style="text-align: right; min-width: 120px;">${escapeHtml(dest.label)}</th>
+          `).join("")}
+          <th style="text-align: right; min-width: 90px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${groups.map(group => `
+          <tr class="stock-take-category-header">
+            <td colspan="${colSpan}">
+              <strong>${escapeHtml(group.name)}</strong>
+              <span>${group.lines.length} item${group.lines.length === 1 ? "" : "s"}</span>
+            </td>
+          </tr>
+          ${group.lines.map(line => `
+            <tr data-line-id="${line.id}">
+              ${showCategoryColumn ? `<td>${escapeHtml(line.category_name || "—")}</td>` : ""}
+              <td>${escapeHtml(line.product_name)}</td>
+              ${dests.map(dest => {
+                const allocation = allocationFor(line, dest.id);
+                const qty = allocation?.quantity;
+                if (isCompleted) {
+                  return `<td style="text-align: right;">${formatQty(qty)}</td>`;
+                }
+                return `
+                  <td style="text-align: right;">
+                    <input type="number" class="qty-input report-input" min="0" step="0.01"
+                      data-line-id="${line.id}"
+                      data-destination-id="${dest.id}"
+                      value="${qty ?? ""}"
+                      placeholder="0">
+                  </td>
+                `;
+              }).join("")}
+              <td style="text-align: right;" class="line-total-cell">
+                <strong>${formatQty(lineTotal(line))}</strong>
+              </td>
+            </tr>
+          `).join("")}
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function updateRowTotal(row) {
+  if (!row) return;
+  const total = [...row.querySelectorAll(".qty-input")].reduce((sum, input) => {
+    const qty = Number(input.value);
+    return sum + (Number.isFinite(qty) ? qty : 0);
+  }, 0);
+  const cell = row.querySelector(".line-total-cell");
+  if (cell) cell.innerHTML = `<strong>${formatQty(total)}</strong>`;
+}
+
+function collectLineUpdates() {
+  const updatesById = new Map();
+  document.querySelectorAll(".qty-input").forEach(input => {
+    const lineId = Number(input.dataset.lineId);
+    const destinationId = Number(input.dataset.destinationId);
+    const value = input.value.trim();
+    if (!updatesById.has(lineId)) {
+      updatesById.set(lineId, { id: lineId, allocations: [] });
+    }
+    updatesById.get(lineId).allocations.push({
+      destination_branch: destinationId,
+      quantity: value === "" ? null : value,
+    });
+  });
+
+  // Preserve quantities for lines hidden by the category filter.
+  return (activeSheet?.lines || []).map(line => {
+    if (updatesById.has(line.id)) return updatesById.get(line.id);
+    return {
+      id: line.id,
+      allocations: (line.allocations || []).map(allocation => ({
+        destination_branch: allocation.destination_branch,
+        quantity: allocation.quantity,
+      })),
+    };
+  });
+}
+
+function syncVisibleLineDrafts() {
+  if (!activeSheet?.lines) return;
+  document.querySelectorAll(".qty-input").forEach(input => {
+    const lineId = Number(input.dataset.lineId);
+    const destinationId = Number(input.dataset.destinationId);
+    const line = activeSheet.lines.find(item => item.id === lineId);
+    if (!line) return;
+    let allocation = allocationFor(line, destinationId);
+    if (!allocation) {
+      allocation = { destination_branch: destinationId, quantity: null };
+      line.allocations = [...(line.allocations || []), allocation];
+    }
+    const value = input.value.trim();
+    allocation.quantity = value === "" ? null : value;
+  });
+}
+
+async function loadSheets() {
+  const branchId = bakeryId();
+  const query = branchId ? `?branch=${branchId}` : "";
+  allSheets = unwrapList(await apiGet(`/production-sheets/${query}`));
   renderStats();
+  renderSheets();
+
+  const draft = allSheets.find(s => s.status === "draft");
+  if (draft && !activeSheet) {
+    await openSheet(draft.id);
+  }
+}
+
+async function openSheet(id) {
+  activeSheet = await apiGet(`/production-sheets/${id}/`);
+  categoryLineFilter = "all";
+  renderActiveSheet();
+  activeSheetPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeActiveSheet() {
+  activeSheet = null;
+  categoryLineFilter = "all";
+  renderActiveSheet();
+}
+
+async function startSheet() {
+  const branchId = bakeryId();
+  if (!branchId) {
+    showToast("No bakery branch configured.", true);
+    return;
+  }
+  if (!productionDateInput.value) {
+    showToast("Select a production date.", true);
+    return;
+  }
+
+  try {
+    const created = await apiPost("/production-sheets/", {
+      branch: branchId,
+      production_date: productionDateInput.value,
+    });
+    showToast("Production sheet started.");
+    await loadSheets();
+    await openSheet(created.id);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+async function saveLines() {
+  if (!activeSheet) return false;
+  const lines = collectLineUpdates();
+  try {
+    activeSheet = await apiPatch(`/production-sheets/${activeSheet.id}/lines/`, { lines });
+    showToast("Production saved.");
+    renderActiveSheet();
+    await loadSheets();
+    return true;
+  } catch (err) {
+    showToast(err.message, true);
+    return false;
+  }
+}
+
+async function completeSheet() {
+  if (!activeSheet) return;
+  const saved = await saveLines();
+  if (!saved) return;
+  if (!confirm("Complete this production sheet and add finished goods to bakery stock?")) return;
+  try {
+    activeSheet = await apiPost(`/production-sheets/${activeSheet.id}/complete/`, {});
+    showToast("Production completed.");
+    renderActiveSheet();
+    await loadSheets();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+async function cancelSheet() {
+  if (!activeSheet) return;
+  if (!confirm("Cancel this production sheet? Entered quantities will be discarded.")) return;
+  try {
+    await apiPost(`/production-sheets/${activeSheet.id}/cancel/`, {});
+    showToast("Production sheet cancelled.");
+    activeSheet = null;
+    renderActiveSheet();
+    await loadSheets();
+  } catch (err) {
+    showToast(err.message, true);
+  }
 }
 
 async function init() {
-  const [branchesData, productsData, recipesData] = await Promise.all([
-    apiGet("/branches/?page_size=500"),
-    apiGet("/products/?bakery_transfer=true&page_size=1000"),
-    apiGet("/recipes/?page_size=5000"),
-  ]);
-
+  const branchesData = await apiGet("/branches/?page_size=500");
   bakeryBranches = unwrapList(branchesData).filter(b => b.branch_type === "bakery" && b.is_active);
-  products = unwrapList(productsData);
-
-  recipesByProduct = new Map();
-  for (const line of unwrapList(recipesData)) {
-    if (!recipesByProduct.has(line.product)) {
-      recipesByProduct.set(line.product, []);
-    }
-    recipesByProduct.get(line.product).push(line);
-  }
 
   if (!bakeryBranches.length) {
-    productionForm.innerHTML = `<div class="empty-state"><p>No central bakery configured. Add a branch with type "Bakery".</p></div>`;
-    historyTable.innerHTML = `<div class="empty-state"><p>Cannot load production without a bakery branch.</p></div>`;
+    bakerySelect.innerHTML = `<option value="">No central bakery configured</option>`;
+    bakerySelect.disabled = true;
+    document.getElementById("start-sheet-btn").disabled = true;
+    sheetsTable.innerHTML = `<div class="empty-state"><p>Add a branch with type "Bakery" to record production.</p></div>`;
     productionStats.innerHTML = "";
     return;
   }
 
   bakerySelect.innerHTML = bakeryBranches.map(b => `
-    <option value="${b.id}" selected>${b.name}</option>
+    <option value="${b.id}" selected>${escapeHtml(b.name)}</option>
   `).join("");
 
-  populateProductOptions();
-  await Promise.all([reloadInventory(), reloadHistory()]);
+  await loadSheets();
 }
 
-productSelect.addEventListener("change", renderPreview);
-quantityInput.addEventListener("input", renderPreview);
+document.getElementById("start-sheet-btn").addEventListener("click", startSheet);
+document.getElementById("save-lines-btn").addEventListener("click", saveLines);
+document.getElementById("complete-sheet-btn").addEventListener("click", completeSheet);
+document.getElementById("cancel-sheet-btn").addEventListener("click", cancelSheet);
+closeSheetBtn.addEventListener("click", closeActiveSheet);
 
-productionForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!preview?.can_produce) {
-    showToast("Resolve ingredient shortages before recording production", true);
-    return;
-  }
-
-  const branch = bakeryId();
-  const productId = Number(productSelect.value);
-  const quantity = quantityInput.value;
-
-  submitBtn.disabled = true;
-
-  try {
-    const order = await apiPost("/production-orders/", {
-      branch,
-      product: productId,
-      quantity,
-    });
-    showToast(`Produced ${formatQty(order.quantity)} × ${order.product_name}`);
-    productSelect.value = "";
-    quantityInput.value = "";
-    renderPreview();
-    await Promise.all([reloadInventory(), reloadHistory()]);
-  } catch (err) {
-    showToast(err.message, true);
-    renderPreview();
-  } finally {
-    submitBtn.disabled = !preview?.can_produce;
-  }
+sheetLineFilters.addEventListener("click", (event) => {
+  const categoryTab = event.target.closest("[data-category-filter]");
+  if (!categoryTab) return;
+  syncVisibleLineDrafts();
+  categoryLineFilter = categoryTab.dataset.categoryFilter;
+  renderActiveSheet();
 });
 
-init().catch(err => {
-  productionForm.innerHTML = `<div class="empty-state"><p>Failed to load production page: ${err.message}</p></div>`;
+document.querySelectorAll(".category-tab[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".category-tab[data-filter]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeFilter = tab.dataset.filter;
+    renderSheets();
+  });
 });
+
+sheetsTable.addEventListener("click", async (event) => {
+  const btn = event.target.closest(".open-sheet-btn");
+  if (!btn) return;
+  await openSheet(btn.dataset.id);
+});
+
+bindTableSort(sheetsTable, sortState, renderSheets);
+
+sheetLinesTable.addEventListener("input", (event) => {
+  if (!event.target.classList.contains("qty-input")) return;
+  updateRowTotal(event.target.closest("tr"));
+});
+
+init().catch(err => showToast(err.message, true));
 </script>
 {% endblock %}

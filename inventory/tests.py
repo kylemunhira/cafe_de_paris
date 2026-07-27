@@ -13,6 +13,8 @@ from payments.models import Currency, CurrencyRate
 from inventory.models import (
     BranchInventory,
     DeliveryNote,
+    StockMovement,
+    StockMovementReason,
     StockTransfer,
     StockTransferStatus,
 )
@@ -1311,3 +1313,184 @@ class OrderRecipeConsumptionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.PAID)
+
+
+class WastageRecordingTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+            code="AVO",
+        )
+        self.bakery = Branch.objects.create(
+            name="Central Bakery",
+            branch_type=BranchType.BAKERY,
+            code="BAK",
+        )
+        category = ProductCategory.objects.create(name="Pastries")
+        self.product = Product.objects.create(
+            name="Croissant",
+            category=category,
+            selling_price=Decimal("2.50"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=self.product,
+            quantity=Decimal("20"),
+        )
+        self.admin = User.objects.create_user(
+            username="wastage_admin",
+            password="pass",
+        )
+        StaffProfile.objects.create(
+            user=self.admin,
+            role=StaffRole.HQ_ADMIN,
+            branch=self.branch,
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    def test_disposal_subtracts_source_stock_when_processed(self):
+        response = self.client.post(
+            "/api/wastage/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "3",
+                "reason": "disposal",
+                "process_now": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["status"], "processed")
+        self.assertEqual(response.data["reason"], "disposal")
+
+        stock = BranchInventory.objects.get(branch=self.branch, product=self.product)
+        self.assertEqual(stock.quantity, Decimal("17"))
+
+        movement = StockMovement.objects.filter(
+            branch=self.branch,
+            product=self.product,
+            reason=StockMovementReason.WASTAGE,
+        ).latest("id")
+        self.assertEqual(movement.delta, Decimal("-3"))
+        self.assertIn("disposal", movement.note.lower())
+
+    def test_bakery_reuse_transfers_stock_to_bakery(self):
+        response = self.client.post(
+            "/api/wastage/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "5",
+                "reason": "bakery_reuse",
+                "destination_branch": self.bakery.id,
+                "process_now": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["status"], "processed")
+
+        source = BranchInventory.objects.get(branch=self.branch, product=self.product)
+        bakery_stock = BranchInventory.objects.get(
+            branch=self.bakery, product=self.product
+        )
+        self.assertEqual(source.quantity, Decimal("15"))
+        self.assertEqual(bakery_stock.quantity, Decimal("5"))
+
+    def test_kitchen_reason_subtracts_without_destination_credit(self):
+        response = self.client.post(
+            "/api/wastage/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "2",
+                "reason": "kitchen",
+                "notes": "staff meal prep",
+                "process_now": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        source = BranchInventory.objects.get(branch=self.branch, product=self.product)
+        self.assertEqual(source.quantity, Decimal("18"))
+        self.assertFalse(
+            BranchInventory.objects.filter(
+                branch=self.bakery, product=self.product
+            ).exists()
+        )
+
+    def test_draft_does_not_change_stock_until_processed(self):
+        create = self.client.post(
+            "/api/wastage/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "4",
+                "reason": "disposal",
+                "process_now": False,
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201, create.data)
+        self.assertEqual(create.data["status"], "draft")
+        stock = BranchInventory.objects.get(branch=self.branch, product=self.product)
+        self.assertEqual(stock.quantity, Decimal("20"))
+
+        process = self.client.post(f"/api/wastage/{create.data['id']}/process/", {})
+        self.assertEqual(process.status_code, 200, process.data)
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal("16"))
+
+    def test_bakery_reuse_requires_bakery_destination(self):
+        response = self.client.post(
+            "/api/wastage/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "1",
+                "reason": "bakery_reuse",
+                "process_now": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_insufficient_stock_rejects_process(self):
+        response = self.client.post(
+            "/api/wastage/",
+            {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": "50",
+                "reason": "disposal",
+                "process_now": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        stock = BranchInventory.objects.get(branch=self.branch, product=self.product)
+        self.assertEqual(stock.quantity, Decimal("20"))
+
+    def test_summary_groups_by_reason(self):
+        for reason, qty in (("disposal", "3"), ("kitchen", "2"), ("bakery_reuse", "1")):
+            payload = {
+                "branch": self.branch.id,
+                "product": self.product.id,
+                "quantity": qty,
+                "reason": reason,
+                "process_now": True,
+            }
+            if reason == "bakery_reuse":
+                payload["destination_branch"] = self.bakery.id
+            created = self.client.post("/api/wastage/", payload, format="json")
+            self.assertEqual(created.status_code, 201, created.data)
+
+        summary = self.client.get("/api/wastage/summary/")
+        self.assertEqual(summary.status_code, 200)
+        self.assertEqual(summary.data["count"], 3)
+        self.assertEqual(summary.data["by_reason"]["disposal"]["quantity"], "3.00")
+        self.assertEqual(summary.data["by_reason"]["kitchen"]["quantity"], "2.00")
+        self.assertEqual(summary.data["by_reason"]["bakery_reuse"]["quantity"], "1.00")

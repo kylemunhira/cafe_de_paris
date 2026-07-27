@@ -28,6 +28,9 @@ from .models import (
     StockTakeType,
     StockTransfer,
     StockTransferStatus,
+    WastageEntry,
+    WastageReason,
+    WastageStatus,
 )
 
 
@@ -1174,3 +1177,142 @@ def mark_central_invoice_paid(invoice, user) -> object:
     invoice.paid_by = user
     invoice.save(update_fields=["payment_status", "paid_at", "paid_by"])
     return invoice
+
+
+class InvalidWastageStateError(Exception):
+    def __init__(self, entry, expected, action):
+        self.entry = entry
+        self.expected = expected
+        self.action = action
+        super().__init__(
+            f"Wastage entry #{entry.pk} must be '{expected}' to {action}, "
+            f"currently '{entry.status}'"
+        )
+
+
+class InvalidWastageError(Exception):
+    pass
+
+
+def _wastage_reason_note(entry: WastageEntry) -> str:
+    label = entry.get_reason_display()
+    if entry.notes:
+        return f"{label}: {entry.notes}"[:255]
+    return label[:255]
+
+
+def create_wastage_entry(
+    *,
+    branch,
+    product,
+    quantity: Decimal,
+    reason: str,
+    destination_branch=None,
+    notes: str = "",
+    created_by=None,
+    process_now: bool = False,
+) -> WastageEntry:
+    from branches.models import BranchType
+
+    if quantity <= 0:
+        raise InvalidWastageError("Quantity must be greater than zero.")
+    if reason not in WastageReason.values:
+        raise InvalidWastageError("Invalid wastage reason.")
+
+    if reason == WastageReason.BAKERY_REUSE:
+        if destination_branch is None:
+            raise InvalidWastageError(
+                "Destination bakery branch is required for bakery reuse."
+            )
+        if destination_branch.branch_type != BranchType.BAKERY:
+            raise InvalidWastageError(
+                "Bakery reuse destination must be a bakery branch."
+            )
+        if destination_branch.pk == branch.pk:
+            raise InvalidWastageError(
+                "Destination bakery must be different from the source branch."
+            )
+    elif reason == WastageReason.KITCHEN:
+        # Kitchen transfer keeps stock within cafe operations: deduct only.
+        # Optional destination is allowed for reporting when stock is moved
+        # to another branch's kitchen use, but is not required.
+        if destination_branch is not None and destination_branch.pk == branch.pk:
+            destination_branch = None
+    else:
+        # Disposal never credits another branch.
+        destination_branch = None
+
+    with transaction.atomic():
+        entry = WastageEntry.objects.create(
+            branch=branch,
+            product=product,
+            quantity=quantity,
+            reason=reason,
+            destination_branch=destination_branch,
+            notes=(notes or "")[:255],
+            created_by=created_by
+            if getattr(created_by, "is_authenticated", False)
+            else None,
+            status=WastageStatus.DRAFT,
+        )
+        if process_now:
+            entry = process_wastage_entry(entry, user=created_by)
+    return entry
+
+
+def process_wastage_entry(entry: WastageEntry, user=None) -> WastageEntry:
+    """Subtract quantity from source stock; credit bakery destination when reuse."""
+    with transaction.atomic():
+        # Avoid select_related on nullable FKs: FOR UPDATE cannot lock outer joins.
+        entry = WastageEntry.objects.select_for_update().get(pk=entry.pk)
+        if entry.status != WastageStatus.DRAFT:
+            raise InvalidWastageStateError(
+                entry, WastageStatus.DRAFT, "process"
+            )
+
+        note = _wastage_reason_note(entry)
+        adjust_inventory(
+            entry.branch,
+            entry.product,
+            -entry.quantity,
+            reason=StockMovementReason.WASTAGE,
+            note=note,
+            user=user,
+            reference_type="wastage",
+            reference_id=entry.pk,
+        )
+
+        if (
+            entry.reason == WastageReason.BAKERY_REUSE
+            and entry.destination_branch_id
+        ):
+            adjust_inventory(
+                entry.destination_branch,
+                entry.product,
+                entry.quantity,
+                reason=StockMovementReason.WASTAGE_TRANSFER_IN,
+                note=note,
+                user=user,
+                reference_type="wastage",
+                reference_id=entry.pk,
+            )
+
+        entry.status = WastageStatus.PROCESSED
+        entry.processed_at = timezone.now()
+        entry.processed_by = (
+            user if getattr(user, "is_authenticated", False) else None
+        )
+        entry.save(
+            update_fields=["status", "processed_at", "processed_by"]
+        )
+    return entry
+
+
+def cancel_wastage_entry(entry: WastageEntry) -> WastageEntry:
+    if entry.status != WastageStatus.DRAFT:
+        raise InvalidWastageStateError(
+            entry, WastageStatus.DRAFT, "cancel"
+        )
+    entry.status = WastageStatus.CANCELLED
+    entry.save(update_fields=["status"])
+    return entry

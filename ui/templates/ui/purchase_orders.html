@@ -212,28 +212,32 @@ function formatLineAmount(value) {
   return symbol ? `${symbol}${formatted}` : formatted;
 }
 
-function isTaxableProduct(product) {
-  if (!product) return false;
-  if (Number(product.tax_rate) > 0) return true;
-  const code = (product.fiscal_tax_code || "").trim().toUpperCase();
-  return code !== "" && code !== "B";
+function selectedSupplier() {
+  const supplierId = supplierSelect.value;
+  if (!supplierId) return null;
+  return suppliers.find(s => String(s.id) === supplierId) || null;
 }
 
-function splitLineTotal(lineTotal, product) {
+function supplierHasVat(supplier) {
+  return Boolean(supplier && String(supplier.vat_number || "").trim());
+}
+
+function splitLineTotal(lineTotal, product, applyVat) {
   const total = Number(lineTotal);
   if (!Number.isFinite(total) || total <= 0) {
     return { subtotal: 0, tax: 0, total: 0 };
   }
-  if (!isTaxableProduct(product)) {
+  if (!applyVat) {
     return { subtotal: total, tax: 0, total };
   }
-  const rate = Number(product.tax_rate) > 0 ? Number(product.tax_rate) : INCLUSIVE_TAX_RATE;
+  const rate = Number(product?.tax_rate) > 0 ? Number(product.tax_rate) : INCLUSIVE_TAX_RATE;
   const divisor = 1 + rate / 100;
   const subtotal = total / divisor;
   return { subtotal, tax: total - subtotal, total };
 }
 
-function purchaseTotals(lines) {
+function purchaseTotals(lines, supplier = selectedSupplier()) {
+  const applyVat = supplierHasVat(supplier);
   let subtotal = 0;
   let vat = 0;
   let total = 0;
@@ -241,7 +245,7 @@ function purchaseTotals(lines) {
   for (const line of lines) {
     const lineTotal = Number(line.quantity) * Number(line.unit_cost);
     const product = products.find(p => p.id === line.product);
-    const split = splitLineTotal(lineTotal, product);
+    const split = splitLineTotal(lineTotal, product, applyVat);
     subtotal += split.subtotal;
     vat += split.tax;
     total += split.total;
@@ -491,7 +495,10 @@ async function loadData() {
   }
 
   supplierSelect.innerHTML = suppliers.length
-    ? `<option value="">Select supplier…</option>${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
+    ? `<option value="">Select supplier…</option>${suppliers.map(s => {
+        const vatLabel = s.vat_number ? " (VAT)" : "";
+        return `<option value="${s.id}">${s.name}${vatLabel}</option>`;
+      }).join("")}`
     : `<option value="">No suppliers — ask HQ to add suppliers first</option>`;
   supplierSelect.disabled = !suppliers.length;
   syncSearchableSelect(supplierSelect);

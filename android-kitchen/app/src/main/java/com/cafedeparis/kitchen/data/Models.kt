@@ -151,6 +151,41 @@ data class ProductionOrder(
     val createdAt: String,
 )
 
+data class ProductionDestination(
+    val id: Int,
+    val name: String,
+    val label: String,
+)
+
+data class ProductionSheetAllocation(
+    val id: Int,
+    val destinationBranchId: Int,
+    val destinationLabel: String,
+    val quantity: String?,
+)
+
+data class ProductionSheetLine(
+    val id: Int,
+    val productId: Int,
+    val productName: String,
+    val categoryName: String?,
+    val allocations: List<ProductionSheetAllocation>,
+    val totalQuantity: String,
+)
+
+data class ProductionSheet(
+    val id: Int,
+    val branchName: String,
+    val productionDate: String,
+    val status: String,
+    val statusDisplay: String,
+    val lineCount: Int = 0,
+    val producedLineCount: Int = 0,
+    val completedAt: String? = null,
+    val destinations: List<ProductionDestination> = emptyList(),
+    val lines: List<ProductionSheetLine> = emptyList(),
+)
+
 data class InventoryItem(
     val productId: Int,
     val quantity: String,
@@ -229,6 +264,11 @@ data class CartLine(
     val orderItemId: Int? = null,
 )
 
+data class OrderItemTransferResult(
+    val sourceOrder: KitchenOrder,
+    val destinationOrder: KitchenOrder,
+)
+
 fun cartLineKey(productId: Int, addonIds: List<Int>, notes: String): String {
     val sorted = addonIds.sorted().joinToString(",")
     return "$productId|$sorted|${notes.trim()}"
@@ -245,7 +285,16 @@ data class StockTakeLine(
     val productId: Int,
     val productName: String,
     val categoryName: String?,
+    val systemQuantity: String? = null,
     val countedQuantity: String?,
+    val variance: String? = null,
+    val notes: String = "",
+)
+
+data class StockTakeLineUpdate(
+    val id: Int,
+    val countedQuantity: String?,
+    val notes: String = "",
 )
 
 data class StockTake(
@@ -253,7 +302,13 @@ data class StockTake(
     val stockTakeType: String,
     val stockTakeTypeDisplay: String,
     val status: String,
+    val statusDisplay: String = "",
     val countDate: String,
+    val branchName: String = "",
+    val createdAt: String = "",
+    val completedAt: String? = null,
+    val lineCount: Int = 0,
+    val varianceCount: Int = 0,
     val lines: List<StockTakeLine> = emptyList(),
 )
 
@@ -313,6 +368,25 @@ data class DayEndReportResponse(
     val baseCurrencyCode: String?,
     val printedAt: String,
     val report: org.json.JSONObject,
+)
+
+data class Expense(
+    val id: Int,
+    val expenseDate: String,
+    val amount: String,
+    val currencyCode: String?,
+    val currencyName: String?,
+    val currencySymbol: String?,
+    val description: String,
+    val supplierName: String?,
+    val recordedByName: String?,
+)
+
+data class ExpenseReport(
+    val expenseDate: String,
+    val printedAt: String,
+    val branchName: String,
+    val expenses: List<Expense>,
 )
 
 data class PagedOrders(

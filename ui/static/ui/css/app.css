@@ -1690,13 +1690,33 @@ table.data-table tbody tr:hover {
   color: var(--color-muted, #6b5c52);
 }
 
+.expenses-print-header {
+  display: none;
+}
+
 @media print {
   .report-filters,
   .topbar-actions,
   .sidebar,
   .topbar,
-  .menu-toggle {
+  .menu-toggle,
+  .no-print {
     display: none !important;
+  }
+
+  .expenses-print-header {
+    display: block !important;
+    margin: 0 0 1.25rem;
+  }
+
+  .expenses-print-header h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.25rem;
+  }
+
+  .expenses-print-header p {
+    margin: 0.15rem 0;
+    font-size: 0.95rem;
   }
 
   .vat-report-card {
@@ -1764,6 +1784,13 @@ table.data-table tbody tr:hover {
 .dining-table-grid .category-tab.category-card.occupied:not(.active) .name,
 .dining-table-grid .category-tab.category-card.occupied:not(.active) .table-status {
   color: #2c1810;
+}
+
+.dining-table-grid .category-tab.category-card:disabled,
+.dining-table-grid .category-tab.category-card.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .dining-table-grid .category-tab.category-card.active .table-status {

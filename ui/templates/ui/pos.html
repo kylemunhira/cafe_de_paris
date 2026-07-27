@@ -149,6 +149,9 @@
       <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>
         Place Order
       </button>
+      <button class="btn btn-ghost" id="transfer-items-btn" style="width: 100%; margin-top: 0.5rem; display: none;" disabled>
+        Transfer to table…
+      </button>
       <button class="btn btn-ghost" id="cancel-order-btn" style="width: 100%; margin-top: 0.5rem; display: none;" disabled>
         Cancel Order
       </button>
@@ -295,7 +298,7 @@
       <button type="button" class="btn btn-ghost btn-sm" id="table-picker-close-btn">Close</button>
     </div>
     <div id="table-picker-view">
-      <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
+      <p id="table-picker-hint" style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
         Tap a table to select it. Highlighted tables have open dine-in orders.
       </p>
       <div id="table-picker-grid" class="dining-table-grid"></div>
@@ -409,6 +412,10 @@ let receiptPaymentOrderKey = null;
 let kitchenRefreshTimer = null;
 let diningTables = [];
 let tablePickerManageMode = false;
+/** @type {"select" | "transfer"} */
+let tablePickerPurpose = "select";
+/** @type {Set<string>} keys `${orderId}:${itemId}` */
+let selectedTransferKeys = new Set();
 let posOperations = null;
 
 const branchSelect = document.getElementById("branch-select");
@@ -419,6 +426,7 @@ const tableSelectBtn = document.getElementById("table-select-btn");
 const tableSelectLabel = document.getElementById("table-select-label");
 const tablePickerModal = document.getElementById("table-picker-modal");
 const tablePickerTitle = document.getElementById("table-picker-title");
+const tablePickerHint = document.getElementById("table-picker-hint");
 const tablePickerView = document.getElementById("table-picker-view");
 const tableManageView = document.getElementById("table-manage-view");
 const tablePickerGrid = document.getElementById("table-picker-grid");
@@ -428,6 +436,7 @@ const tableAddBtn = document.getElementById("table-add-btn");
 const tableManageToggleBtn = document.getElementById("table-manage-toggle-btn");
 const tablePickerCloseBtn = document.getElementById("table-picker-close-btn");
 const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
+const transferItemsBtn = document.getElementById("transfer-items-btn");
 const orderCustomerSelect = document.getElementById("order-customer");
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const accountBalanceHint = document.getElementById("account-balance-hint");
@@ -719,13 +728,19 @@ function renderTablePickerGrid() {
 
   const occupied = occupiedTableNames();
   const selected = tableNumber.value;
+  const sourceTable = tablePickerPurpose === "transfer"
+    ? (selectedOrder?.table_number || "").trim()
+    : "";
   tablePickerGrid.innerHTML = diningTables.map(table => {
     const classes = ["card", "category-tab", "category-card"];
     if (occupied.has(table.name)) classes.push("occupied");
-    if (table.name === selected) classes.push("active");
-    const statusLabel = occupied.has(table.name) ? "In use" : "Available";
+    if (tablePickerPurpose === "select" && table.name === selected) classes.push("active");
+    const isSource = Boolean(sourceTable) && table.name === sourceTable;
+    if (isSource) classes.push("disabled");
+    let statusLabel = occupied.has(table.name) ? "In use" : "Available";
+    if (isSource) statusLabel = "Current table";
     return `
-      <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}">
+      <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}"${isSource ? " disabled" : ""}>
         <div class="name">${table.name}</div>
         <div class="table-status">${statusLabel}</div>
       </button>
@@ -749,11 +764,23 @@ function renderTableManageList() {
 }
 
 function setTablePickerManageMode(enabled) {
+  if (tablePickerPurpose === "transfer") enabled = false;
   tablePickerManageMode = enabled;
   tablePickerView.style.display = enabled ? "none" : "";
   tableManageView.style.display = enabled ? "" : "none";
-  tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
+  if (tablePickerPurpose === "transfer") {
+    tablePickerTitle.textContent = "Transfer to table";
+    if (tablePickerHint) {
+      tablePickerHint.textContent = "Choose any table, including ones already in use. The current table is disabled.";
+    }
+  } else {
+    tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
+    if (tablePickerHint) {
+      tablePickerHint.textContent = "Tap a table to select it. Highlighted tables have open dine-in orders.";
+    }
+  }
   if (tableManageToggleBtn) {
+    tableManageToggleBtn.style.display = tablePickerPurpose === "transfer" ? "none" : "";
     tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
   }
   if (enabled) {
@@ -765,27 +792,35 @@ function setTablePickerManageMode(enabled) {
 
 function closeTablePickerModal() {
   tablePickerModal.style.display = "none";
+  tablePickerPurpose = "select";
   setTablePickerManageMode(false);
   tableAddNameInput.value = "";
 }
 
-async function openTablePickerModal() {
+async function openTablePickerModal(purpose = "select") {
   if (!branchSelect.value) {
     showToast("Select a branch first", true);
     return;
   }
+  tablePickerPurpose = purpose === "transfer" ? "transfer" : "select";
   await Promise.all([loadDiningTables(), loadOpenOrders()]);
   setTablePickerManageMode(false);
   tablePickerModal.style.display = "flex";
   renderTablePickerGrid();
 }
 
-tableSelectBtn.addEventListener("click", openTablePickerModal);
+tableSelectBtn.addEventListener("click", () => openTablePickerModal("select"));
 
-tablePickerGrid.addEventListener("click", (event) => {
+tablePickerGrid.addEventListener("click", async (event) => {
   const btn = event.target.closest("[data-table-name]");
-  if (!btn) return;
-  setSelectedTable(btn.dataset.tableName);
+  if (!btn || btn.disabled) return;
+  const destinationTable = btn.dataset.tableName;
+  if (tablePickerPurpose === "transfer") {
+    closeTablePickerModal();
+    await transferSelectedItemsToTable(destinationTable);
+    return;
+  }
+  setSelectedTable(destinationTable);
   closeTablePickerModal();
 });
 
@@ -1448,12 +1483,17 @@ function renderCart() {
   panelTitle.textContent = "Current Order";
   checkoutBtn.textContent = "Place Order";
   clearBtn.style.display = "";
+  if (transferItemsBtn) {
+    transferItemsBtn.style.display = "none";
+    transferItemsBtn.disabled = true;
+  }
   if (cancelOrderBtn) {
     cancelOrderBtn.style.display = "none";
     cancelOrderBtn.disabled = true;
   }
   receiptPaymentSection.style.display = "none";
   cartTotalLabel.textContent = "Total";
+  selectedTransferKeys = new Set();
 
   if (cart.size === 0) {
     cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p></div>`;
@@ -1489,8 +1529,13 @@ function renderCart() {
 function renderReceiptPanel() {
   if (!selectedOrder) {
     receiptPaymentOrderKey = null;
+    selectedTransferKeys = new Set();
     panelTitle.textContent = "Receipt";
     clearBtn.style.display = "none";
+    if (transferItemsBtn) {
+      transferItemsBtn.style.display = "none";
+      transferItemsBtn.disabled = true;
+    }
     if (cancelOrderBtn) {
       cancelOrderBtn.style.display = "none";
       cancelOrderBtn.disabled = true;
@@ -1507,6 +1552,7 @@ function renderReceiptPanel() {
   const orderKey = String(selectedOrder.id);
   const orderChanged = orderKey !== receiptPaymentOrderKey;
   receiptPaymentOrderKey = orderKey;
+  if (orderChanged) selectedTransferKeys = new Set();
 
   const receiptOrders = getReceiptOrders();
   const combined = receiptOrders.length > 1;
@@ -1534,7 +1580,9 @@ function renderReceiptPanel() {
         ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
       </div>`;
 
-  const canRemoveItems = selectedOrder.status === "open";
+  const canTransferItems = selectedOrder.status === "open"
+    && selectedOrder.order_type === "dine_in"
+    && Boolean(selectedOrder.table_number);
 
   cartItems.innerHTML = `
     <div class="receipt-order-meta">
@@ -1543,25 +1591,38 @@ function renderReceiptPanel() {
       ${tableInfo}
       ${combined ? `<div class="receipt-meta">Combined bill for table ${selectedOrder.table_number}</div>` : ""}
       <div class="receipt-meta">${formatDate(selectedOrder.created_at)}</div>
+      ${canTransferItems ? `<div class="receipt-meta" style="color: var(--color-muted);">Select lines to transfer to another table</div>` : ""}
     </div>
     ${receiptOrders.map(order => `
       ${combined ? `<div class="receipt-meta" style="margin-top: 0.75rem; font-weight: 600;">Order #${order.id}</div>` : ""}
-      ${(order.items || []).map(item => `
+      ${(order.items || []).map(item => {
+        const transferKey = `${order.id}:${item.id}`;
+        const checked = selectedTransferKeys.has(transferKey) ? " checked" : "";
+        return `
         <div class="cart-item">
+          ${canTransferItems ? `
+            <label class="transfer-line-check" title="Select for transfer" style="display:flex; align-items:center;">
+              <input type="checkbox" class="transfer-item-checkbox" data-order-id="${order.id}" data-item-id="${item.id}"${checked}>
+            </label>
+          ` : ""}
           <div class="info">
             <div class="name">${item.product_name}</div>
             <div class="line-total">${formatCurrency(item.price)} × ${item.quantity}</div>
           </div>
-          ${canRemoveItems ? `
-            <div class="qty-control">
-              <button type="button" class="qty-btn remove-item-btn" data-order-id="${order.id}" data-item-id="${item.id}" title="Remove one">−</button>
-            </div>
-          ` : ""}
           <div class="line-total" style="font-weight: 600;">${formatCurrency(item.price * item.quantity)}</div>
         </div>
-      `).join("")}
+      `;
+      }).join("")}
     `).join("")}
   `;
+
+  if (transferItemsBtn) {
+    transferItemsBtn.style.display = canTransferItems ? "" : "none";
+    transferItemsBtn.disabled = !canTransferItems || selectedTransferKeys.size === 0;
+    transferItemsBtn.textContent = selectedTransferKeys.size
+      ? `Transfer ${selectedTransferKeys.size} line${selectedTransferKeys.size === 1 ? "" : "s"}…`
+      : "Transfer to table…";
+  }
 
   renderPaymentCurrencyToggle();
   if (orderChanged) {
@@ -1814,14 +1875,23 @@ function updateQty(lineKey, delta) {
 cartItems.addEventListener("click", (e) => {
   if (posMode === "order") {
     const btn = e.target.closest(".qty-btn");
-    if (!btn || btn.classList.contains("remove-item-btn")) return;
-    updateQty(btn.dataset.lineKey, btn.dataset.action === "inc" ? 1 : -1);
-    return;
-  }
-  if (posMode === "receipt") {
-    const btn = e.target.closest(".remove-item-btn");
     if (!btn) return;
-    removeOneOrderItem(Number(btn.dataset.orderId), Number(btn.dataset.itemId));
+    updateQty(btn.dataset.lineKey, btn.dataset.action === "inc" ? 1 : -1);
+  }
+});
+
+cartItems.addEventListener("change", (e) => {
+  if (posMode !== "receipt") return;
+  const checkbox = e.target.closest(".transfer-item-checkbox");
+  if (!checkbox) return;
+  const key = `${checkbox.dataset.orderId}:${checkbox.dataset.itemId}`;
+  if (checkbox.checked) selectedTransferKeys.add(key);
+  else selectedTransferKeys.delete(key);
+  if (transferItemsBtn) {
+    transferItemsBtn.disabled = selectedTransferKeys.size === 0;
+    transferItemsBtn.textContent = selectedTransferKeys.size
+      ? `Transfer ${selectedTransferKeys.size} line${selectedTransferKeys.size === 1 ? "" : "s"}…`
+      : "Transfer to table…";
   }
 });
 
@@ -1931,32 +2001,62 @@ async function cancelSelectedOrder() {
   }
 }
 
-async function removeOneOrderItem(orderId, itemId) {
-  if (!selectedOrder || selectedOrder.status !== "open") {
-    showToast("Only open orders can be edited", true);
+async function transferSelectedItemsToTable(destinationTable) {
+  const groups = new Map();
+  for (const key of selectedTransferKeys) {
+    const [orderIdRaw, itemIdRaw] = key.split(":");
+    const orderId = Number(orderIdRaw);
+    const itemId = Number(itemIdRaw);
+    if (!orderId || !itemId) continue;
+    if (!groups.has(orderId)) groups.set(orderId, []);
+    groups.get(orderId).push(itemId);
+  }
+  if (!groups.size) {
+    showToast("Select at least one item to transfer", true);
     return;
   }
-  const sourceOrder = openOrders.find(o => o.id === orderId);
-  const item = sourceOrder?.items?.find(i => i.id === itemId);
-  const label = item?.product_name || "item";
-  if (!window.confirm(`Remove one ${label} from order #${orderId}?`)) return;
 
+  const tableLabel = destinationTable;
+  const lineCount = [...groups.values()].reduce((sum, ids) => sum + ids.length, 0);
+  if (!window.confirm(`Transfer ${lineCount} line${lineCount === 1 ? "" : "s"} to table ${tableLabel}?`)) {
+    return;
+  }
+
+  if (transferItemsBtn) transferItemsBtn.disabled = true;
   try {
-    const updated = await apiPost(`/orders/${orderId}/items/${itemId}/remove-one/`, {});
-    const idx = openOrders.findIndex(o => o.id === orderId);
-    if (idx >= 0) {
-      openOrders[idx] = updated;
+    let destinationOrderId = null;
+    for (const [orderId, itemIds] of groups.entries()) {
+      const result = await apiPost(`/orders/${orderId}/transfer-items/`, {
+        item_ids: itemIds,
+        table_number: destinationTable,
+      });
+      destinationOrderId = result.destination_order?.id ?? destinationOrderId;
     }
-    if (selectedOrder.id === orderId) {
-      selectedOrder = updated;
+    selectedTransferKeys = new Set();
+    showToast(`Transferred to table ${tableLabel}`);
+    await loadOpenOrders();
+    if (destinationOrderId) {
+      selectedOrder = openOrders.find(o => o.id === destinationOrderId) || null;
+    } else {
+      selectedOrder = null;
     }
     renderOpenOrdersList();
     renderReceiptPanel();
-    showToast(`Removed one ${label}`);
   } catch (err) {
     showToast(err.message, true);
+    if (transferItemsBtn) {
+      transferItemsBtn.disabled = selectedTransferKeys.size === 0;
+    }
   }
 }
+
+transferItemsBtn?.addEventListener("click", async () => {
+  if (!selectedTransferKeys.size) {
+    showToast("Select at least one item to transfer", true);
+    return;
+  }
+  await openTablePickerModal("transfer");
+});
 
 branchSelect.addEventListener("change", () => {
   updateFiscalDayButtonVisibility();

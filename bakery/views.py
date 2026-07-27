@@ -1,3 +1,5 @@
+from django.db.models import Count, Q
+
 from accounts.branch_access import (
     filter_by_branch_field,
     get_staff_branch_id,
@@ -5,20 +7,32 @@ from accounts.branch_access import (
     user_has_global_branch_access,
 )
 from audit.mixins import AuditedModelMixin
-from branches.models import BranchType
+from inventory.services import InsufficientStockError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from .models import ProductionOrder, Recipe
+from .models import ProductionOrder, ProductionSheet, Recipe
 from .serializers import (
     ProductionCompleteSerializer,
     ProductionOrderSerializer,
     ProductionPreviewSerializer,
+    ProductionSheetCreateSerializer,
+    ProductionSheetLinesUpdateSerializer,
+    ProductionSheetSerializer,
     RecipeSerializer,
 )
-from .services import NoRecipeError, preview_production
+from .services import (
+    EmptyProductionSheetError,
+    InsufficientIngredientsError,
+    InvalidProductionSheetStateError,
+    NoRecipeError,
+    cancel_production_sheet,
+    complete_production_sheet,
+    preview_production,
+    sync_production_sheet_lines,
+)
 
 
 class RecipeViewSet(AuditedModelMixin, viewsets.ModelViewSet):
@@ -109,3 +123,133 @@ class ProductionOrderViewSet(viewsets.ReadOnlyModelViewSet):
             ProductionOrderSerializer(order).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ProductionSheetViewSet(viewsets.ModelViewSet):
+    queryset = ProductionSheet.objects.select_related(
+        "branch",
+        "created_by",
+    ).prefetch_related(
+        "lines__product__category",
+        "lines__allocations__destination_branch",
+    ).all()
+    serializer_class = ProductionSheetSerializer
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return ProductionSheetCreateSerializer
+        if self.action == "update_lines":
+            return ProductionSheetLinesUpdateSerializer
+        return ProductionSheetSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset().annotate(
+            line_count=Count("lines", distinct=True),
+            produced_line_count=Count(
+                "lines",
+                filter=Q(lines__allocations__quantity__gt=0),
+                distinct=True,
+            ),
+        )
+        branch_id = self.request.query_params.get("branch")
+        status_filter = self.request.query_params.get("status")
+        production_date = self.request.query_params.get("production_date")
+
+        queryset = filter_by_branch_field(
+            queryset, self.request.user, requested_branch_id=branch_id
+        )
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if production_date:
+            queryset = queryset.filter(production_date=production_date)
+        return queryset.order_by("-production_date", "-created_at")
+
+    def _ensure_bakery_access(self, branch):
+        if not user_can_access_bakery_transfers(self.request.user):
+            raise PermissionDenied(
+                "Only central bakery staff or HQ admins can manage production sheets."
+            )
+        if user_has_global_branch_access(self.request.user):
+            return
+        staff_branch_id = get_staff_branch_id(self.request.user)
+        if staff_branch_id is None or staff_branch_id != branch.id:
+            raise PermissionDenied(
+                "You can only manage production sheets for your assigned bakery."
+            )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        branch = serializer.validated_data["branch"]
+        self._ensure_bakery_access(branch)
+        sheet = serializer.save()
+        sheet = self.get_queryset().get(pk=sheet.pk)
+        return Response(
+            ProductionSheetSerializer(sheet).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        sheet = self.get_object()
+        if sheet.status == "draft":
+            sync_production_sheet_lines(sheet)
+            sheet = self.get_queryset().get(pk=sheet.pk)
+        return Response(ProductionSheetSerializer(sheet).data)
+
+    def _serialize_sheet(self, sheet):
+        sheet = self.get_queryset().get(pk=sheet.pk)
+        return ProductionSheetSerializer(sheet).data
+
+    def _run_transition(self, request, pk, handler):
+        sheet = self.get_object()
+        self._ensure_bakery_access(sheet.branch)
+        try:
+            sheet = handler(sheet)
+        except InvalidProductionSheetStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except EmptyProductionSheetError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except InsufficientIngredientsError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "shortages": [
+                        {
+                            "ingredient_id": item.ingredient.id,
+                            "ingredient_name": item.ingredient.name,
+                            "required": str(item.required),
+                            "available": str(item.available),
+                        }
+                        for item in exc.shortages
+                    ],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except InsufficientStockError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "available": str(exc.available),
+                    "requested": str(exc.requested),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self._serialize_sheet(sheet))
+
+    @action(detail=True, methods=["patch"], url_path="lines")
+    def update_lines(self, request, pk=None):
+        sheet = self.get_object()
+        self._ensure_bakery_access(sheet.branch)
+        serializer = self.get_serializer(sheet, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        sheet = serializer.save()
+        return Response(self._serialize_sheet(sheet))
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        return self._run_transition(request, pk, complete_production_sheet)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        return self._run_transition(request, pk, cancel_production_sheet)

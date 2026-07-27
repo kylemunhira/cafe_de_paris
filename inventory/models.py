@@ -430,7 +430,87 @@ class StockMovementReason(models.TextChoices):
     PURCHASE = "purchase", "Purchase receive"
     CENTRAL_INVOICE = "central_invoice", "Central invoice"
     CENTRAL_INVOICE_CANCEL = "central_invoice_cancel", "Central invoice cancel"
+    WASTAGE = "wastage", "Wastage"
+    WASTAGE_TRANSFER_IN = "wastage_transfer_in", "Wastage transfer in"
     ADJUSTMENT = "adjustment", "Adjustment"
+
+
+class WastageReason(models.TextChoices):
+    BAKERY_REUSE = "bakery_reuse", "Transferred for bakery reuse"
+    KITCHEN = "kitchen", "Transferred to the kitchen"
+    DISPOSAL = "disposal", "Actual wastage/disposal"
+
+
+class WastageStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    PROCESSED = "processed", "Processed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class WastageEntry(models.Model):
+    """Record of product removed from sellable stock for reuse, kitchen use, or disposal."""
+
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="wastage_entries",
+        help_text="Branch whose stock is reduced when this entry is processed.",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="wastage_entries",
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(max_length=20, choices=WastageReason.choices)
+    destination_branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="incoming_wastage_entries",
+        help_text=(
+            "Receiving branch for bakery reuse or kitchen transfer. "
+            "Required when reason is bakery reuse."
+        ),
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=WastageStatus.choices,
+        default=WastageStatus.DRAFT,
+    )
+    notes = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wastage_entries_created",
+    )
+    processed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wastage_entries_processed",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name_plural = "wastage entries"
+        indexes = [
+            models.Index(fields=["branch", "-created_at"]),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["reason", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"Wastage #{self.pk} {self.product} x {self.quantity} "
+            f"@ {self.branch} ({self.get_reason_display()})"
+        )
 
 
 class StockMovement(models.Model):

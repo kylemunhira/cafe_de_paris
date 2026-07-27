@@ -126,10 +126,8 @@ def _aggregate_purchases(purchase_orders):
         total_excl += split["subtotal"]
         vat_amount += split["tax"]
 
-        if _is_taxable_product(line.product):
-            taxable_excl += split["subtotal"]
-        else:
-            non_taxable += split["total"]
+        # VAT-registered supplier purchases always carry input VAT on line totals.
+        taxable_excl += split["subtotal"]
 
         if is_raw:
             raw_incl += split["total"]

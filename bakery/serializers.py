@@ -6,13 +6,24 @@ from branches.models import Branch, BranchType
 from catalog.constants import is_bakery_transfer_product
 from catalog.models import Product
 
-from .models import ProductionOrder, Recipe
+from .models import (
+    ProductionOrder,
+    ProductionSheet,
+    ProductionSheetAllocation,
+    ProductionSheetLine,
+    Recipe,
+)
 from .services import (
     InsufficientIngredientsError,
     InvalidProductionBranchError,
     InvalidProductionProductError,
+    InvalidProductionSheetStateError,
     NoRecipeError,
     complete_production,
+    create_production_sheet,
+    destination_column_label,
+    production_destination_branches,
+    update_production_sheet_lines,
 )
 
 
@@ -194,3 +205,184 @@ class ProductionCompleteSerializer(serializers.Serializer):
                     ],
                 }
             ) from exc
+
+
+class ProductionSheetAllocationSerializer(serializers.ModelSerializer):
+    destination_branch_name = serializers.CharField(
+        source="destination_branch.name", read_only=True
+    )
+    destination_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionSheetAllocation
+        fields = [
+            "id",
+            "destination_branch",
+            "destination_branch_name",
+            "destination_label",
+            "quantity",
+        ]
+
+    def get_destination_label(self, obj):
+        return destination_column_label(obj.destination_branch)
+
+
+class ProductionSheetLineSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    category_name = serializers.CharField(
+        source="product.category.name", read_only=True
+    )
+    allocations = ProductionSheetAllocationSerializer(many=True, read_only=True)
+    total_quantity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionSheetLine
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "category_name",
+            "allocations",
+            "total_quantity",
+        ]
+
+    def get_total_quantity(self, obj):
+        return obj.total_quantity
+
+
+class ProductionSheetSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    status_display = serializers.CharField(
+        source="get_status_display", read_only=True
+    )
+    created_by_name = serializers.SerializerMethodField()
+    lines = serializers.SerializerMethodField()
+    line_count = serializers.IntegerField(read_only=True)
+    produced_line_count = serializers.IntegerField(read_only=True)
+    total_units = serializers.SerializerMethodField()
+    destinations = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionSheet
+        fields = [
+            "id",
+            "branch",
+            "branch_name",
+            "production_date",
+            "status",
+            "status_display",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "completed_at",
+            "lines",
+            "line_count",
+            "produced_line_count",
+            "total_units",
+            "destinations",
+        ]
+        read_only_fields = [
+            "status",
+            "created_by",
+            "created_at",
+            "completed_at",
+        ]
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        return obj.created_by.get_full_name() or obj.created_by.username
+
+    def get_lines(self, obj):
+        request = self.context.get("request")
+        # List views only need counts; full lines load on retrieve / mutations.
+        if request and getattr(request, "parser_context", None):
+            view = request.parser_context.get("view")
+            if view and getattr(view, "action", None) == "list":
+                return []
+        lines = obj.lines.all()
+        return ProductionSheetLineSerializer(lines, many=True).data
+
+    def get_destinations(self, obj):
+        destinations = production_destination_branches()
+        preferred = ["Highlands qty", "Churchill", "Central stores"]
+
+        def sort_key(branch):
+            label = destination_column_label(branch)
+            try:
+                return (0, preferred.index(label), branch.name)
+            except ValueError:
+                return (1, branch.name)
+
+        return [
+            {
+                "id": branch.id,
+                "name": branch.name,
+                "label": destination_column_label(branch),
+                "branch_type": branch.branch_type,
+            }
+            for branch in sorted(destinations, key=sort_key)
+        ]
+
+    def get_total_units(self, obj):
+        if self.context.get("request"):
+            view = self.context["request"].parser_context.get("view")
+            if view and getattr(view, "action", None) == "list":
+                return None
+        total = Decimal("0")
+        for line in obj.lines.all():
+            total += line.total_quantity
+        return total
+
+
+class ProductionSheetCreateSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.BAKERY)
+    )
+    production_date = serializers.DateField()
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def create(self, validated_data):
+        notes = validated_data.pop("notes", "")
+        request = self.context.get("request")
+        created_by = request.user if request and request.user.is_authenticated else None
+        try:
+            sheet = create_production_sheet(
+                created_by=created_by, **validated_data
+            )
+        except InvalidProductionBranchError as exc:
+            raise serializers.ValidationError({"branch": str(exc)}) from exc
+        if notes:
+            sheet.notes = notes
+            sheet.save(update_fields=["notes"])
+        return sheet
+
+
+class ProductionSheetAllocationUpdateSerializer(serializers.Serializer):
+    destination_branch = serializers.IntegerField()
+    quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
+
+
+class ProductionSheetLineUpdateSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    allocations = ProductionSheetAllocationUpdateSerializer(many=True)
+
+
+class ProductionSheetLinesUpdateSerializer(serializers.Serializer):
+    lines = ProductionSheetLineUpdateSerializer(many=True)
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("Provide at least one line to update.")
+        return value
+
+    def update(self, instance, validated_data):
+        try:
+            return update_production_sheet_lines(instance, validated_data["lines"])
+        except InvalidProductionSheetStateError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc

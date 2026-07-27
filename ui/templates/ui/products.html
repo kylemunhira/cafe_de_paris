@@ -328,10 +328,25 @@ function recipeLink(product) {
   return `<a href="/recipes/?product=${product.id}" class="btn btn-ghost btn-sm">Recipe</a>`;
 }
 
-function dailyStockBadge(product) {
-  return product.daily_stock_take
-    ? `<span class="badge badge-daily-stock" title="Counted in daily stock take">Daily count</span>`
-    : "";
+function dailyStockToggle(product) {
+  return `
+    <div class="daily-count-toggle" role="group" aria-label="Daily count for ${product.name}">
+      <button
+        type="button"
+        class="${product.daily_stock_take ? "is-active" : ""}"
+        data-set-daily="${product.id}"
+        data-daily-value="true"
+        ${product.daily_stock_take ? "aria-pressed=\"true\"" : "aria-pressed=\"false\""}
+      >Yes</button>
+      <button
+        type="button"
+        class="${product.daily_stock_take ? "" : "is-active"}"
+        data-set-daily="${product.id}"
+        data-daily-value="false"
+        ${product.daily_stock_take ? "aria-pressed=\"false\"" : "aria-pressed=\"true\""}
+      >No</button>
+    </div>
+  `;
 }
 
 function renderProductCard(p) {
@@ -347,7 +362,7 @@ function renderProductCard(p) {
         <h3 class="product-mgmt-card__name">${p.name}</h3>
         <div class="product-mgmt-card__actions">
           <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
-          ${dailyStockBadge(p)}
+          ${dailyStockToggle(p)}
           ${recipeLink(p)}
           ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">History</button>` : ""}
           <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
@@ -413,7 +428,7 @@ function renderProductTable(filtered) {
                 </td>
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
                 <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
-                <td>${p.daily_stock_take ? `<span class="badge badge-daily-stock">Yes</span>` : "—"}</td>
+                <td>${dailyStockToggle(p)}</td>
                 ${addonCell(p)}
                 <td style="text-align: right;">
                   ${recipeLink(p)}
@@ -629,6 +644,31 @@ productList.addEventListener("click", async (e) => {
       });
     } catch (err) {
       showToast(err.message, true);
+    }
+    return;
+  }
+
+  const dailyBtn = e.target.closest("[data-set-daily]");
+  if (dailyBtn) {
+    const product = products.find(p => String(p.id) === dailyBtn.dataset.setDaily);
+    if (!product) return;
+
+    const nextValue = dailyBtn.dataset.dailyValue === "true";
+    if (product.daily_stock_take === nextValue) return;
+
+    const group = dailyBtn.closest(".daily-count-toggle");
+    group?.querySelectorAll("button").forEach(btn => { btn.disabled = true; });
+    try {
+      await apiPatch(`/products/${product.id}/`, { daily_stock_take: nextValue });
+      product.daily_stock_take = nextValue;
+      if (editingId === product.id) {
+        document.getElementById("product-daily-stock").checked = nextValue;
+      }
+      showToast(nextValue ? "Daily count enabled" : "Daily count disabled");
+      render();
+    } catch (err) {
+      showToast(err.message, true);
+      group?.querySelectorAll("button").forEach(btn => { btn.disabled = false; });
     }
     return;
   }

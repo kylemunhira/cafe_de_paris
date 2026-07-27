@@ -11,5 +11,6 @@
     <color name="status_preparing">#1D4ED8</color>
     <color name="status_ready">#15803D</color>
     <color name="table_occupied_bg">#FFF7ED</color>
+    <color name="category_header_bg">#0F2C1810</color>
     <color name="launcher_background">#8B4513</color>
 </resources>

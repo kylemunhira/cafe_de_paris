@@ -230,46 +230,104 @@ class OrderItemRemoveError(Exception):
     """Raised when an order line cannot be decremented or removed."""
 
 
+class OrderItemTransferError(Exception):
+    """Raised when order lines cannot be moved to another table."""
+
+
 def remove_one_order_item(order, item):
     """
-    Decrement one unit from an open order line, deleting the line at zero.
-    Keeps at least one unit across all remaining lines on the order.
+    Items on a placed order cannot be removed. Cashiers may only edit the cart
+    before placing, or transfer whole lines to another table afterwards.
     """
-    if order.status != OrderStatus.OPEN:
-        raise OrderItemRemoveError("Only open orders can have items removed.")
-    if item.order_id != order.pk:
-        raise OrderItemRemoveError("This item does not belong to the order.")
-
-    total_units = sum(
-        line.quantity for line in order.items.only("quantity")
+    raise OrderItemRemoveError(
+        "Items cannot be removed after an order is placed. "
+        "Cancel the order or transfer items to another table."
     )
-    if total_units <= Decimal("1"):
-        raise OrderItemRemoveError(
-            "Cannot remove the last item. Cancel the order instead."
+
+
+def transfer_order_items(order, *, item_ids, table_number, created_by=None):
+    """
+    Move whole order lines from an open dine-in order to another table.
+
+    If the destination table already has an open order, lines are merged into it.
+    Otherwise a new open order is created (or the source order is reassigned when
+    every line is transferred to an empty table).
+    """
+    table_number = (table_number or "").strip()
+    if not table_number:
+        raise OrderItemTransferError("Destination table is required.")
+    if order.status != OrderStatus.OPEN:
+        raise OrderItemTransferError("Only open orders can transfer items.")
+    if order.order_type != OrderType.DINE_IN:
+        raise OrderItemTransferError("Only dine-in orders can transfer items.")
+
+    source_table = (order.table_number or "").strip()
+    if not source_table:
+        raise OrderItemTransferError("Source order has no table.")
+    if source_table == table_number:
+        raise OrderItemTransferError("Choose a different destination table.")
+
+    if not item_ids:
+        raise OrderItemTransferError("Select at least one item to transfer.")
+
+    seen = set()
+    unique_ids = []
+    for item_id in item_ids:
+        try:
+            item_id = int(item_id)
+        except (TypeError, ValueError) as exc:
+            raise OrderItemTransferError("Invalid item id.") from exc
+        if item_id not in seen:
+            seen.add(item_id)
+            unique_ids.append(item_id)
+
+    items = list(
+        OrderItem.objects.select_for_update().filter(order=order, pk__in=unique_ids)
+    )
+    if len(items) != len(unique_ids):
+        raise OrderItemTransferError(
+            "One or more items do not belong to this order."
         )
 
-    if item.quantity > Decimal("1"):
-        item.quantity = (item.quantity - Decimal("1")).quantize(Decimal("0.01"))
-        item.save(update_fields=["quantity"])
-    else:
-        item.delete()
+    all_item_ids = set(order.items.values_list("pk", flat=True))
+    transferring_all = all_item_ids == set(unique_ids)
 
-    kitchen_needs_reset = order.kitchen_status != KitchenStatus.PENDING
-    if kitchen_needs_reset:
-        order.kitchen_status = KitchenStatus.PENDING
-        order.kitchen_started_at = None
-        order.kitchen_ready_at = None
-        order.save(
-            update_fields=[
-                "kitchen_status",
-                "kitchen_started_at",
-                "kitchen_ready_at",
-            ]
+    destination = find_open_table_order(branch=order.branch, table_number=table_number)
+    if destination and destination.pk == order.pk:
+        raise OrderItemTransferError("Choose a different destination table.")
+
+    if transferring_all and destination is None:
+        order.table_number = table_number
+        order.save(update_fields=["table_number"])
+        return order, order
+
+    if destination is None:
+        destination = Order.objects.create(
+            branch=order.branch,
+            customer=order.customer,
+            order_type=OrderType.DINE_IN,
+            table_number=table_number,
+            kitchen_status=order.kitchen_status,
+            kitchen_started_at=order.kitchen_started_at,
+            kitchen_ready_at=order.kitchen_ready_at,
+            created_by=created_by,
         )
     else:
-        order.recalculate_total()
+        destination = Order.objects.select_for_update().get(pk=destination.pk)
+        if destination.status != OrderStatus.OPEN:
+            raise OrderItemTransferError(
+                "Destination table order is no longer open."
+            )
 
-    return order
+    OrderItem.objects.filter(pk__in=unique_ids).update(order=destination)
+    order.recalculate_total()
+    destination.recalculate_total()
+
+    # Avoid stale prefetch_related("items") caches from the caller.
+    if not OrderItem.objects.filter(order_id=order.pk).exists():
+        cancel_order(order, cancelled_by=created_by)
+
+    return order, destination
 
 
 def cancel_order(order, *, cancelled_by=None):

@@ -469,6 +469,16 @@ class StockAdjustView(BaseUIView):
         return context
 
 
+class WastageView(BaseUIView):
+    template_name = "ui/wastage.html"
+    active_nav = "wastage"
+
+    def access_allowed(self, user):
+        from accounts.branch_access import user_can_access_management_console
+
+        return user_can_access_management_console(user)
+
+
 class CustomersView(BaseUIView):
     template_name = "ui/customers.html"
     active_nav = "customers"
@@ -965,6 +975,10 @@ class ReceiptsView(BaseUIView):
 class ExpensesView(BaseUIView):
     template_name = "ui/expenses.html"
     active_nav = "expenses"
+    allow_cashier = True
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_pos(user)
 
     def access_allowed(self, user):
         return user_can_access_pos(user)

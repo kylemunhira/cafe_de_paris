@@ -10,6 +10,7 @@ from .models import (
     StockTake,
     StockTakeLine,
     StockTransfer,
+    WastageEntry,
 )
 
 
@@ -119,3 +120,21 @@ class StockTransferAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "from_branch", "to_branch")
+
+
+@admin.register(WastageEntry)
+class WastageEntryAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "branch",
+        "product",
+        "quantity",
+        "reason",
+        "status",
+        "destination_branch",
+        "created_at",
+        "processed_at",
+    )
+    list_filter = ("reason", "status", "branch")
+    search_fields = ("product__name", "branch__name", "notes")
+    readonly_fields = ("created_at", "processed_at", "created_by", "processed_by")

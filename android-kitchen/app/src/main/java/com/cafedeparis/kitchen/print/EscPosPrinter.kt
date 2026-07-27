@@ -7,6 +7,7 @@ import com.cafedeparis.kitchen.data.Customer
 import com.cafedeparis.kitchen.data.CustomerStatement
 import com.cafedeparis.kitchen.data.DayEndReportResponse
 import com.cafedeparis.kitchen.data.DeliveryNote
+import com.cafedeparis.kitchen.data.ExpenseReport
 import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
@@ -23,9 +24,9 @@ import java.util.UUID
 
 class EscPosPrinter {
 
-  fun printOrder(deviceAddress: String, order: KitchenOrder) {
+  fun printOrder(deviceAddress: String, order: KitchenOrder, isUpdate: Boolean = false) {
     print(deviceAddress) { output ->
-      writeKitchenTicket(output, order)
+      writeKitchenTicket(output, order, isUpdate = isUpdate)
     }
   }
 
@@ -52,6 +53,12 @@ class EscPosPrinter {
   fun printDayEnd(deviceAddress: String, payload: DayEndReportResponse) {
     print(deviceAddress) { output ->
       writeDayEndReport(output, payload)
+    }
+  }
+
+  fun printExpenses(deviceAddress: String, report: ExpenseReport) {
+    print(deviceAddress) { output ->
+      writeExpenseReport(output, report)
     }
   }
 
@@ -82,35 +89,87 @@ class EscPosPrinter {
   }
 
   private fun print(deviceAddress: String, writer: (OutputStream) -> Unit) {
-    val adapter = BluetoothAdapter.getDefaultAdapter()
-      ?: throw PrinterException("Bluetooth is not available on this device")
-    if (!adapter.isEnabled) {
-      throw PrinterException("Bluetooth is turned off")
-    }
+    synchronized(PRINT_LOCK) {
+      val adapter = BluetoothAdapter.getDefaultAdapter()
+        ?: throw PrinterException("Bluetooth is not available on this device")
+      if (!adapter.isEnabled) {
+        throw PrinterException("Bluetooth is turned off")
+      }
 
-    val device = adapter.getRemoteDevice(deviceAddress)
-    val socket = createSocket(device)
-    socket.connect()
-    try {
-      val output = socket.outputStream
-      writer(output)
-      output.flush()
-      feedAndCut(output)
-    } finally {
-      runCatching { socket.close() }
+      val device = try {
+        adapter.getRemoteDevice(deviceAddress)
+      } catch (_: IllegalArgumentException) {
+        throw PrinterException("Invalid printer address. Open Settings and pick a paired printer.")
+      }
+
+      // Discovery blocks RFCOMM connects on many Android devices.
+      runCatching { adapter.cancelDiscovery() }
+
+      var lastError: Exception? = null
+      for (attempt in 1..3) {
+        val socket = createSocket(device, attempt)
+        try {
+          socket.connect()
+          try {
+            val output = socket.outputStream
+            writer(output)
+            output.flush()
+            feedAndCut(output)
+            output.flush()
+            return
+          } finally {
+            runCatching { socket.close() }
+          }
+        } catch (err: Exception) {
+          lastError = err
+          runCatching { socket.close() }
+          if (attempt < 3) {
+            Thread.sleep(350L * attempt)
+            runCatching { adapter.cancelDiscovery() }
+          }
+        }
+      }
+      throw PrinterException(friendlyBluetoothError(lastError))
     }
   }
 
-  private fun createSocket(device: BluetoothDevice): BluetoothSocket {
-    return try {
-      device.createRfcommSocketToServiceRecord(SPP_UUID)
-    } catch (_: Exception) {
-      val method = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-      method.invoke(device, 1) as BluetoothSocket
+  private fun createSocket(device: BluetoothDevice, attempt: Int): BluetoothSocket {
+    return when (attempt) {
+      1 -> try {
+        device.createRfcommSocketToServiceRecord(SPP_UUID)
+      } catch (_: Exception) {
+        createReflectionSocket(device)
+      }
+      2 -> try {
+        device.createInsecureRfcommSocketToServiceRecord(SPP_UUID)
+      } catch (_: Exception) {
+        createReflectionSocket(device)
+      }
+      else -> createReflectionSocket(device)
     }
   }
 
-  private fun writeKitchenTicket(output: OutputStream, order: KitchenOrder) {
+  private fun createReflectionSocket(device: BluetoothDevice): BluetoothSocket {
+    val method = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+    return method.invoke(device, 1) as BluetoothSocket
+  }
+
+  private fun friendlyBluetoothError(err: Exception?): String {
+    val detail = err?.message?.takeIf { it.isNotBlank() }.orEmpty()
+    val lower = detail.lowercase()
+    return when {
+      "read failed" in lower || "socket might closed" in lower || "socket closed" in lower ->
+        "Printer connection dropped. Turn the printer off/on, then retry."
+      "connection refused" in lower || ("connect" in lower && "fail" in lower) ->
+        "Could not connect to printer. Check pairing in Settings and that nothing else is printing."
+      "permission" in lower || "not allowed" in lower ->
+        "Bluetooth permission required. Allow nearby devices access and retry."
+      detail.isNotBlank() -> detail
+      else -> "Could not reach the Bluetooth printer"
+    }
+  }
+
+  private fun writeKitchenTicket(output: OutputStream, order: KitchenOrder, isUpdate: Boolean = false) {
     output.write(INIT)
     output.write(ALIGN_CENTER)
     if (order.branch_fiscalization_enabled) {
@@ -121,7 +180,11 @@ class EscPosPrinter {
       output.write(LF)
     }
 
-    output.write(textLine("ORDER TICKET", bold = true))
+    if (isUpdate) {
+      output.write(textLine("ADDED ITEMS", bold = true, doubleHeight = true))
+    } else {
+      output.write(textLine("ORDER TICKET", bold = true))
+    }
     output.write(textLine("Order #${order.id}", bold = true))
     output.write(textLine(formatDateTime(order.created_at)))
     output.write(textLine(formatOrderType(order)))
@@ -562,6 +625,66 @@ class EscPosPrinter {
     output.write(LF)
   }
 
+  private fun writeExpenseReport(output: OutputStream, report: ExpenseReport) {
+    output.write(INIT)
+    output.write(ALIGN_CENTER)
+    output.write(textLine("Cafe de Paris", doubleHeight = true))
+    output.write(LF)
+    output.write(textLine("Expenses", bold = true))
+    output.write(textLine("Expense date: ${formatReportDate(report.expenseDate)}"))
+    output.write(textLine("Printed: ${formatDateTime(report.printedAt)}"))
+    output.write(textLine(report.branchName))
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_LEFT)
+
+    if (report.expenses.isEmpty()) {
+      output.write(textLine("No expenses recorded"))
+    } else {
+      for (expense in report.expenses) {
+        val symbol = expense.currencySymbol.orEmpty()
+        val amount = if (symbol.isNotBlank()) {
+          "$symbol${formatPlainAmount(expense.amount)}"
+        } else {
+          formatMoney(expense.amount)
+        }
+        val code = expense.currencyCode?.takeIf { it.isNotBlank() }.orEmpty()
+        val suffix = if (code.isNotBlank()) "$amount $code" else amount
+        output.write(textLine(expense.description, bold = true))
+        expense.supplierName?.takeIf { it.isNotBlank() }?.let {
+          output.write(textLine("  $it"))
+        }
+        output.write(textLine("  Amount", suffix = suffix))
+      }
+
+      output.write(textLine("--------------------------------"))
+      val totals = linkedMapOf<String, Pair<String, Double>>()
+      for (expense in report.expenses) {
+        val key = expense.currencyCode
+          ?.takeIf { it.isNotBlank() }
+          ?: expense.currencyName
+          ?: "—"
+        val symbol = expense.currencySymbol.orEmpty()
+        val prev = totals[key]?.second ?: 0.0
+        totals[key] = symbol to (prev + (expense.amount.toDoubleOrNull() ?: 0.0))
+      }
+      for ((code, row) in totals) {
+        val (symbol, total) = row
+        val formatted = if (symbol.isNotBlank()) {
+          "$symbol${formatPlainAmount(total.toString())}"
+        } else {
+          formatMoney(total.toString())
+        }
+        output.write(textLine("Total $code", bold = true, suffix = formatted))
+      }
+      output.write(textLine("Count", suffix = report.expenses.size.toString()))
+    }
+
+    output.write(LF)
+    output.write(ALIGN_CENTER)
+    output.write(textLine("End of expenses"))
+    output.write(LF)
+  }
+
   private fun writeDeliveryNote(output: OutputStream, note: DeliveryNote) {
     output.write(INIT)
     output.write(ALIGN_CENTER)
@@ -938,6 +1061,7 @@ class EscPosPrinter {
   }
 
   companion object {
+    private val PRINT_LOCK = Any()
     private const val LINE_WIDTH = 32
     private const val DELIVERY_NOTE_LINE_WIDTH = 48
     private const val ITEM_NAME_W = 16

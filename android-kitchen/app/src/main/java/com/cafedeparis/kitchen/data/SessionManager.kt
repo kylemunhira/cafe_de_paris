@@ -110,21 +110,41 @@ class SessionManager(context: Context) {
             .apply()
     }
 
-    fun markPrinted(orderId: Int) {
-        val ids = getPrintedOrderIds().toMutableSet()
-        ids.add(orderId)
-        prefs.edit().putStringSet(KEY_PRINTED_IDS, ids.map { it.toString() }.toSet()).apply()
+    fun markPrinted(orderId: Int, fingerprint: String = LEGACY_PRINT_FINGERPRINT) {
+        val map = getPrintedOrderFingerprints().toMutableMap()
+        map[orderId] = fingerprint
+        // Keep the map from growing forever across long shifts.
+        if (map.size > MAX_PRINTED_TRACKED) {
+            val keep = map.entries.sortedByDescending { it.key }.take(MAX_PRINTED_TRACKED)
+            map.clear()
+            keep.forEach { map[it.key] = it.value }
+        }
+        prefs.edit()
+            .putString(KEY_PRINTED_FINGERPRINTS, encodePrintedFingerprints(map))
+            .remove(KEY_PRINTED_IDS)
+            .apply()
     }
 
-    fun getPrintedOrderIds(): Set<Int> {
-        return prefs.getStringSet(KEY_PRINTED_IDS, emptySet())
+    fun getPrintedOrderIds(): Set<Int> = getPrintedOrderFingerprints().keys
+
+    fun getPrintedOrderFingerprints(): Map<Int, String> {
+        val encoded = prefs.getString(KEY_PRINTED_FINGERPRINTS, null)
+        if (!encoded.isNullOrBlank()) {
+            return decodePrintedFingerprints(encoded)
+        }
+        // Migrate legacy "printed once by id" set so we do not reprint every open ticket.
+        val legacyIds = prefs.getStringSet(KEY_PRINTED_IDS, emptySet())
             ?.mapNotNull { it.toIntOrNull() }
-            ?.toSet()
-            ?: emptySet()
+            .orEmpty()
+        if (legacyIds.isEmpty()) return emptyMap()
+        return legacyIds.associateWith { LEGACY_PRINT_FINGERPRINT }
     }
 
     fun clearPrintedOrderIds() {
-        prefs.edit().remove(KEY_PRINTED_IDS).apply()
+        prefs.edit()
+            .remove(KEY_PRINTED_IDS)
+            .remove(KEY_PRINTED_FINGERPRINTS)
+            .apply()
     }
 
     companion object {
@@ -144,6 +164,32 @@ class SessionManager(context: Context) {
         private const val KEY_CAN_MANAGE_DINING_TABLES = "can_manage_dining_tables"
         private const val KEY_PRINTER_ADDRESS = "printer_address"
         private const val KEY_PRINTED_IDS = "printed_order_ids"
+        private const val KEY_PRINTED_FINGERPRINTS = "printed_order_fingerprints"
+        const val LEGACY_PRINT_FINGERPRINT = "legacy"
+        private const val MAX_PRINTED_TRACKED = 250
+
+        fun orderPrintFingerprint(order: KitchenOrder): String {
+            return order.items
+                .map { "${it.id}:${it.quantity}" }
+                .sorted()
+                .joinToString("|")
+        }
+
+        private fun encodePrintedFingerprints(map: Map<Int, String>): String {
+            return map.entries.joinToString(";") { "${it.key}=${it.value}" }
+        }
+
+        private fun decodePrintedFingerprints(encoded: String): Map<Int, String> {
+            if (encoded.isBlank()) return emptyMap()
+            return encoded.split(";")
+                .mapNotNull { part ->
+                    val sep = part.indexOf('=')
+                    if (sep <= 0) return@mapNotNull null
+                    val id = part.substring(0, sep).toIntOrNull() ?: return@mapNotNull null
+                    id to part.substring(sep + 1)
+                }
+                .toMap()
+        }
     }
 }
 
@@ -243,6 +289,78 @@ object JsonParsers {
             createdByName = item.optString("created_by_name", null)
                 ?.takeIf { it.isNotBlank() && it != "null" },
             createdAt = item.optString("created_at", ""),
+        )
+    }
+
+    fun parseProductionSheets(body: String): List<ProductionSheet> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            parseProductionSheetObject(results.getJSONObject(index))
+        }
+    }
+
+    fun parseProductionSheet(body: String): ProductionSheet {
+        return parseProductionSheetObject(org.json.JSONObject(body))
+    }
+
+    private fun parseProductionSheetObject(json: org.json.JSONObject): ProductionSheet {
+        val destinationsJson = json.optJSONArray("destinations") ?: org.json.JSONArray()
+        val destinations = (0 until destinationsJson.length()).map { index ->
+            val item = destinationsJson.getJSONObject(index)
+            ProductionDestination(
+                id = item.getInt("id"),
+                name = item.optString("name", ""),
+                label = item.optString("label", item.optString("name", "Qty")),
+            )
+        }
+        val linesJson = json.optJSONArray("lines") ?: org.json.JSONArray()
+        val lines = (0 until linesJson.length()).map { index ->
+            val line = linesJson.getJSONObject(index)
+            val allocationsJson = line.optJSONArray("allocations") ?: org.json.JSONArray()
+            val allocations = (0 until allocationsJson.length()).map { allocIndex ->
+                val allocation = allocationsJson.getJSONObject(allocIndex)
+                val quantity = if (allocation.isNull("quantity")) {
+                    null
+                } else {
+                    jsonNumberAsString(allocation, "quantity", "")
+                        .takeIf { it.isNotBlank() }
+                }
+                ProductionSheetAllocation(
+                    id = allocation.optInt("id", 0),
+                    destinationBranchId = allocation.getInt("destination_branch"),
+                    destinationLabel = allocation.optString(
+                        "destination_label",
+                        allocation.optString("destination_branch_name", "Qty"),
+                    ),
+                    quantity = quantity,
+                )
+            }
+            ProductionSheetLine(
+                id = line.getInt("id"),
+                productId = line.getInt("product"),
+                productName = line.optString("product_name", "Product"),
+                categoryName = line.optString("category_name", null)
+                    ?.takeIf { it.isNotBlank() && it != "null" },
+                allocations = allocations,
+                totalQuantity = jsonNumberAsString(line, "total_quantity", "0"),
+            )
+        }
+        return ProductionSheet(
+            id = json.getInt("id"),
+            branchName = json.optString("branch_name", ""),
+            productionDate = json.optString("production_date", ""),
+            status = json.optString("status", "draft"),
+            statusDisplay = json.optString(
+                "status_display",
+                json.optString("status", "Draft"),
+            ),
+            lineCount = json.optInt("line_count", lines.size),
+            producedLineCount = json.optInt("produced_line_count", 0),
+            completedAt = json.optString("completed_at", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            destinations = destinations,
+            lines = lines,
         )
     }
 
@@ -526,6 +644,25 @@ object JsonParsers {
         )
     }
 
+    fun parseExpenses(body: String): List<Expense> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            val item = results.getJSONObject(index)
+            Expense(
+                id = item.getInt("id"),
+                expenseDate = item.optString("expense_date", ""),
+                amount = item.optString("amount", "0"),
+                currencyCode = item.optString("currency_code", null)?.takeIf { it.isNotBlank() },
+                currencyName = item.optString("currency_name", null)?.takeIf { it.isNotBlank() },
+                currencySymbol = item.optString("currency_symbol", null)?.takeIf { it.isNotBlank() },
+                description = item.optString("description", "Expense"),
+                supplierName = item.optString("supplier_name", null)?.takeIf { it.isNotBlank() },
+                recordedByName = item.optString("recorded_by_name", null)?.takeIf { it.isNotBlank() },
+            )
+        }
+    }
+
     fun parseStockTakes(body: String): List<StockTake> {
         val json = org.json.JSONObject(body)
         val results = json.optJSONArray("results") ?: org.json.JSONArray()
@@ -545,16 +682,31 @@ object JsonParsers {
             val counted = if (line.isNull("counted_quantity")) {
                 null
             } else {
-                line.optString("counted_quantity", null)
+                line.optString("counted_quantity", null)?.takeIf { it.isNotBlank() && it != "null" }
+            }
+            val systemQty = if (line.isNull("system_quantity")) {
+                null
+            } else {
+                line.optString("system_quantity", null)?.takeIf { it.isNotBlank() && it != "null" }
+            }
+            val variance = if (line.isNull("variance")) {
+                null
+            } else {
+                line.optString("variance", null)?.takeIf { it.isNotBlank() && it != "null" }
             }
             StockTakeLine(
                 id = line.getInt("id"),
                 productId = line.optInt("product", 0),
                 productName = line.optString("product_name", "Product"),
-                categoryName = line.optString("category_name", null),
+                categoryName = line.optString("category_name", null)
+                    ?.takeIf { it.isNotBlank() && it != "null" },
+                systemQuantity = systemQty,
                 countedQuantity = counted,
+                variance = variance,
+                notes = line.optString("notes", ""),
             )
         }
+        val status = json.optString("status", "draft")
         return StockTake(
             id = json.getInt("id"),
             stockTakeType = json.optString("stock_take_type", "daily"),
@@ -562,8 +714,15 @@ object JsonParsers {
                 "stock_take_type_display",
                 json.optString("stock_take_type", "Daily"),
             ),
-            status = json.optString("status", "draft"),
+            status = status,
+            statusDisplay = json.optString("status_display", status.replaceFirstChar { it.uppercase() }),
             countDate = json.optString("count_date", ""),
+            branchName = json.optString("branch_name", ""),
+            createdAt = json.optString("created_at", ""),
+            completedAt = json.optString("completed_at", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            lineCount = json.optInt("line_count", lines.size),
+            varianceCount = json.optInt("variance_count", 0),
             lines = lines,
         )
     }

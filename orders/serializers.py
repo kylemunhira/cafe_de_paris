@@ -73,6 +73,32 @@ class OrderItemCreateSerializer(serializers.Serializer):
     )
 
 
+class OrderTransferItemsSerializer(serializers.Serializer):
+    item_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    table_number = serializers.CharField(max_length=20)
+
+    def validate_table_number(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Destination table is required.")
+        return value
+
+    def validate_item_ids(self, value):
+        # Preserve order while dropping duplicates.
+        seen = set()
+        unique = []
+        for item_id in value:
+            if item_id not in seen:
+                seen.add(item_id)
+                unique.append(item_id)
+        if not unique:
+            raise serializers.ValidationError("Select at least one item to transfer.")
+        return unique
+
+
 class OrderPaymentSerializer(serializers.ModelSerializer):
     method_display = serializers.CharField(source="get_method_display", read_only=True)
     currency_name = serializers.CharField(source="currency.name", read_only=True)

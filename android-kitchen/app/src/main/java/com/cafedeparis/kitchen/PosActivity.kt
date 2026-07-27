@@ -32,12 +32,12 @@ import com.cafedeparis.kitchen.data.CartLine
 import com.cafedeparis.kitchen.data.Currency
 import com.cafedeparis.kitchen.data.Customer
 import com.cafedeparis.kitchen.data.DiningTable
+import com.cafedeparis.kitchen.data.ExpenseReport
 import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.PaymentOptionLine
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.data.SessionManager
-import com.cafedeparis.kitchen.data.StockTake
 import com.cafedeparis.kitchen.data.Supplier
 import com.cafedeparis.kitchen.databinding.ActivityPosBinding
 import com.cafedeparis.kitchen.databinding.DialogCustomerPaymentBinding
@@ -45,7 +45,6 @@ import com.cafedeparis.kitchen.databinding.DialogCustomerPickerBinding
 import com.cafedeparis.kitchen.databinding.DialogDayEndBinding
 import java.util.Locale
 import com.cafedeparis.kitchen.databinding.DialogExpenseBinding
-import com.cafedeparis.kitchen.databinding.DialogStockTakeBinding
 import com.cafedeparis.kitchen.databinding.DialogTablePickerBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
@@ -61,6 +60,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -94,6 +94,8 @@ class PosActivity : KeepScreenOnActivity() {
     private var selectedOrder: KitchenOrder? = null
     private var receiptPaymentOrderId: Int? = null
     private var selectedTableName: String? = null
+    private val selectedTransferKeys = linkedSetOf<String>()
+    private var tablePickerPurpose: TablePickerPurpose = TablePickerPurpose.SELECT
     private var activeCategoryId: Int? = null
     private var searchQuery: String = ""
     private var posMode: PosMode = PosMode.ORDER
@@ -102,11 +104,8 @@ class PosActivity : KeepScreenOnActivity() {
     private var tablePickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var dayEndDialog: androidx.appcompat.app.AlertDialog? = null
     private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
-    private var stockTakeDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPaymentDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPickerDialog: androidx.appcompat.app.AlertDialog? = null
-    private var activeStockTake: StockTake? = null
-    private var stockTakeLineInputs: MutableMap<Int, TextInputEditText> = linkedMapOf()
     private var refreshJob: Job? = null
     private var errorHideJob: Job? = null
     private val printer = EscPosPrinter()
@@ -125,8 +124,12 @@ class PosActivity : KeepScreenOnActivity() {
     }
     private val receiptCartAdapter = CartLineAdapter(
         editable = false,
-        removable = true,
-        onRemove = { line -> removeOneFromPlacedOrder(line) },
+        transferable = true,
+        onTransferToggle = { line, selected ->
+            if (selected) selectedTransferKeys.add(line.lineKey)
+            else selectedTransferKeys.remove(line.lineKey)
+            updateTransferButtonState()
+        },
     ) { _, _ -> }
     private val receiptAdapter = ReceiptOrderAdapter(
         onOrderClick = ::onReceiptOrderSelected,
@@ -197,7 +200,6 @@ class PosActivity : KeepScreenOnActivity() {
         tablePickerDialog?.dismiss()
         dayEndDialog?.dismiss()
         expenseDialog?.dismiss()
-        stockTakeDialog?.dismiss()
         customerPaymentDialog?.dismiss()
         customerPickerDialog?.dismiss()
         super.onDestroy()
@@ -205,6 +207,12 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun todayIso(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun nowIso(): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date())
     }
 
     private fun openExpenseDialog() {
@@ -261,18 +269,23 @@ class PosActivity : KeepScreenOnActivity() {
             .setTitle(R.string.expense_title)
             .setView(dialogBinding.root)
             .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton(R.string.print_expenses, null)
             .setPositiveButton(R.string.save, null)
             .create()
 
         expenseDialog?.setOnShowListener {
-            val saveButton = expenseDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
-            saveButton?.setOnClickListener {
-                saveExpense(
-                    dialogBinding = dialogBinding,
-                    expenseCurrencies = expenseCurrencies,
-                    activeSuppliers = activeSuppliers,
-                )
-            }
+            expenseDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+                ?.setOnClickListener {
+                    saveExpense(
+                        dialogBinding = dialogBinding,
+                        expenseCurrencies = expenseCurrencies,
+                        activeSuppliers = activeSuppliers,
+                    )
+                }
+            expenseDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+                ?.setOnClickListener {
+                    printExpensesForDate(dialogBinding)
+                }
         }
         expenseDialog?.show()
     }
@@ -331,214 +344,58 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
-    private fun openStockTakeDialog() {
-        lifecycleScope.launch {
-            binding.refreshProgress.visibility = View.VISIBLE
-            try {
-                showStockTakeDialog()
-            } catch (err: Exception) {
-                showError(getString(R.string.connection_failed, err.message ?: ""))
-            } finally {
-                binding.refreshProgress.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun showStockTakeDialog() {
-        val dialogBinding = DialogStockTakeBinding.inflate(layoutInflater)
-        dialogBinding.stockTakeDateInput.setText(todayIso())
-        val types = listOf(
-            getString(R.string.stock_take_type_daily) to "daily",
-            getString(R.string.stock_take_type_monthly) to "monthly",
-        )
-        dialogBinding.stockTakeTypeSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            types.map { it.first },
-        )
-        activeStockTake = null
-        stockTakeLineInputs.clear()
-        dialogBinding.stockTakeLines.removeAllViews()
-        dialogBinding.stockTakeStatusLabel.text = getString(R.string.stock_take_start_hint)
-        dialogBinding.stockTakeStartButton.visibility = View.VISIBLE
-
-        fun selectedType(): String {
-            val index = dialogBinding.stockTakeTypeSpinner.selectedItemPosition.coerceAtLeast(0)
-            return types.getOrNull(index)?.second ?: "daily"
-        }
-
-        fun selectedDate(): String {
-            return dialogBinding.stockTakeDateInput.text?.toString()?.trim().orEmpty().ifBlank { todayIso() }
-        }
-
-        fun periodDate(type: String, date: String): String {
-            return if (type == "monthly" && date.length >= 7) "${date.take(7)}-01" else date
-        }
-
-        fun renderStockTake(stockTake: StockTake) {
-            activeStockTake = stockTake
-            dialogBinding.stockTakeStatusLabel.text =
-                "${stockTake.stockTakeTypeDisplay} · ${stockTake.countDate}"
-            dialogBinding.stockTakeStartButton.visibility = View.GONE
-            dialogBinding.stockTakeLines.removeAllViews()
-            stockTakeLineInputs.clear()
-            if (stockTake.lines.isEmpty()) {
-                dialogBinding.stockTakeLines.addView(
-                    TextView(this).apply {
-                        text = getString(R.string.stock_take_no_lines)
-                        setTextColor(getColor(R.color.text_muted))
-                        textSize = 13f
-                    },
-                )
-                return
-            }
-            for (line in stockTake.lines) {
-                val label = TextView(this).apply {
-                    text = buildString {
-                        append(line.productName)
-                        if (!line.categoryName.isNullOrBlank()) {
-                            append(" · ")
-                            append(line.categoryName)
-                        }
-                    }
-                    setTextColor(getColor(R.color.text_primary))
-                    textSize = 14f
-                    setPadding(0, 8, 0, 4)
-                }
-                val field = TextInputLayout(this).apply {
-                    hint = getString(R.string.stock_take_counted)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ).apply { bottomMargin = 8 }
-                }
-                val input = TextInputEditText(field.context).apply {
-                    inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-                    setText(line.countedQuantity.orEmpty())
-                }
-                field.addView(input)
-                dialogBinding.stockTakeLines.addView(label)
-                dialogBinding.stockTakeLines.addView(field)
-                stockTakeLineInputs[line.id] = input
-            }
-        }
-
-        fun loadDraft() {
-            lifecycleScope.launch {
-                binding.refreshProgress.visibility = View.VISIBLE
-                try {
-                    val type = selectedType()
-                    val date = periodDate(type, selectedDate())
-                    val drafts = withContext(Dispatchers.IO) {
-                        api.fetchStockTakes(type = type, status = "draft")
-                    }
-                    val draft = drafts.firstOrNull { it.countDate == date }
-                    if (draft != null) {
-                        val full = withContext(Dispatchers.IO) { api.fetchStockTake(draft.id) }
-                        renderStockTake(full)
-                    } else {
-                        activeStockTake = null
-                        stockTakeLineInputs.clear()
-                        dialogBinding.stockTakeLines.removeAllViews()
-                        dialogBinding.stockTakeStartButton.visibility = View.VISIBLE
-                        dialogBinding.stockTakeStatusLabel.text =
-                            getString(R.string.stock_take_start_hint)
-                    }
-                } catch (err: ApiException) {
-                    handleApiError(err)
-                } catch (err: Exception) {
-                    showError(getString(R.string.connection_failed, err.message ?: ""))
-                } finally {
-                    binding.refreshProgress.visibility = View.GONE
-                }
-            }
-        }
-
-        dialogBinding.stockTakeStartButton.setOnClickListener {
-            lifecycleScope.launch {
-                binding.refreshProgress.visibility = View.VISIBLE
-                try {
-                    val created = withContext(Dispatchers.IO) {
-                        api.createStockTake(selectedType(), selectedDate())
-                    }
-                    renderStockTake(created)
-                } catch (err: ApiException) {
-                    handleApiError(err)
-                } catch (err: Exception) {
-                    showError(getString(R.string.connection_failed, err.message ?: ""))
-                } finally {
-                    binding.refreshProgress.visibility = View.GONE
-                }
-            }
-        }
-
-        dialogBinding.stockTakeTypeSpinner.onItemSelectedListener =
-            object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: AdapterView<*>?,
-                    view: View?,
-                    position: Int,
-                    id: Long,
-                ) {
-                    loadDraft()
-                }
-
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            }
-
-        stockTakeDialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.stock_take_title)
-            .setView(dialogBinding.root)
-            .setNeutralButton(R.string.stock_take_save, null)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.stock_take_complete, null)
-            .create()
-
-        stockTakeDialog?.setOnShowListener {
-            stockTakeDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
-                ?.setOnClickListener { saveStockTake(complete = false) }
-            stockTakeDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
-                ?.setOnClickListener { saveStockTake(complete = true) }
-        }
-        stockTakeDialog?.show()
-    }
-
-    private fun collectStockTakeLines(): List<Pair<Int, String?>> {
-        return stockTakeLineInputs.map { (lineId, input) ->
-            val raw = input.text?.toString()?.trim().orEmpty()
-            lineId to raw.ifBlank { null }
-        }
-    }
-
-    private fun saveStockTake(complete: Boolean) {
-        val stockTake = activeStockTake ?: run {
-            Toast.makeText(this, R.string.stock_take_start_hint, Toast.LENGTH_SHORT).show()
+    private fun printExpensesForDate(dialogBinding: DialogExpenseBinding) {
+        val expenseDate = dialogBinding.expenseDateInput.text?.toString()?.trim().orEmpty()
+            .ifBlank { todayIso() }
+        if (expenseDate.isBlank()) {
+            dialogBinding.expenseDateInput.error = getString(R.string.print_expenses_date_required)
+            dialogBinding.expenseDateInput.requestFocus()
             return
         }
+
+        val printerAddress = session.printerAddress
+        if (printerAddress.isNullOrBlank()) {
+            Toast.makeText(this, R.string.printer_not_configured, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val printButton = expenseDialog
+            ?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+        printButton?.isEnabled = false
+
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
+            Toast.makeText(this@PosActivity, R.string.print_expenses_printing, Toast.LENGTH_SHORT).show()
             try {
-                val updated = withContext(Dispatchers.IO) {
-                    api.updateStockTakeLines(stockTake.id, collectStockTakeLines())
+                val expenses = withContext(Dispatchers.IO) { api.fetchExpenses(expenseDate) }
+                val report = ExpenseReport(
+                    expenseDate = expenseDate,
+                    printedAt = nowIso(),
+                    branchName = session.branchName.orEmpty(),
+                    expenses = expenses,
+                )
+                withContext(Dispatchers.IO) {
+                    printer.printExpenses(printerAddress, report)
                 }
-                if (complete) {
-                    withContext(Dispatchers.IO) { api.completeStockTake(stockTake.id) }
-                    stockTakeDialog?.dismiss()
-                    activeStockTake = null
-                    Toast.makeText(this@PosActivity, R.string.stock_take_completed, Toast.LENGTH_SHORT).show()
-                } else {
-                    activeStockTake = updated
-                    Toast.makeText(this@PosActivity, R.string.stock_take_saved, Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(this@PosActivity, R.string.print_expenses_printed, Toast.LENGTH_SHORT).show()
             } catch (err: ApiException) {
                 handleApiError(err)
+            } catch (err: PrinterException) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            } catch (err: SecurityException) {
+                requestBluetoothIfNeeded()
+                showError(getString(R.string.bluetooth_permission_required))
             } catch (err: Exception) {
                 showError(getString(R.string.connection_failed, err.message ?: ""))
             } finally {
                 binding.refreshProgress.visibility = View.GONE
+                printButton?.isEnabled = true
             }
         }
+    }
+
+    private fun openStockTake() {
+        startActivity(Intent(this, StockTakeActivity::class.java))
     }
 
     private fun openCustomerPaymentDialog() {
@@ -818,7 +675,7 @@ class PosActivity : KeepScreenOnActivity() {
                         .setMessage(check.detail)
                         .setNegativeButton(android.R.string.cancel, null)
                         .setPositiveButton(R.string.stock_take_open) { _, _ ->
-                            openStockTakeDialog()
+                            openStockTake()
                         }
                         .show()
                     return@launch
@@ -995,7 +852,7 @@ class PosActivity : KeepScreenOnActivity() {
                         .setMessage(check.detail)
                         .setNegativeButton(android.R.string.cancel, null)
                         .setPositiveButton(R.string.stock_take_open) { _, _ ->
-                            openStockTakeDialog()
+                            openStockTake()
                         }
                         .show()
                     return@launch
@@ -1013,7 +870,7 @@ class PosActivity : KeepScreenOnActivity() {
                         .setMessage(err.message ?: getString(R.string.day_end_stock_take_required))
                         .setNegativeButton(android.R.string.cancel, null)
                         .setPositiveButton(R.string.stock_take_open) { _, _ ->
-                            openStockTakeDialog()
+                            openStockTake()
                         }
                         .show()
                 } else {
@@ -1118,7 +975,8 @@ class PosActivity : KeepScreenOnActivity() {
         return receiptOrders().sumOf { it.total_amount.toDoubleOrNull() ?: 0.0 }
     }
 
-    private fun openTablePicker() {
+    private fun openTablePicker(purpose: TablePickerPurpose = TablePickerPurpose.SELECT) {
+        tablePickerPurpose = purpose
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
             try {
@@ -1127,7 +985,7 @@ class PosActivity : KeepScreenOnActivity() {
                 }
                 diningTables = tables.filter { it.is_active }.sortedBy { it.sort_order }
                 openOrders = orders
-                showTablePickerDialog(diningTables, occupiedTableNames(orders))
+                showTablePickerDialog(diningTables, occupiedTableNames(orders), purpose)
             } catch (err: ApiException) {
                 handleApiError(err)
             } catch (err: Exception) {
@@ -1138,19 +996,41 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
-    private fun showTablePickerDialog(tables: List<DiningTable>, occupied: Set<String>) {
+    private fun showTablePickerDialog(
+        tables: List<DiningTable>,
+        occupied: Set<String>,
+        purpose: TablePickerPurpose,
+    ) {
         val dialogBinding = DialogTablePickerBinding.inflate(layoutInflater)
+        val sourceTable = if (purpose == TablePickerPurpose.TRANSFER) {
+            selectedOrder?.table_number?.trim().orEmpty()
+        } else {
+            ""
+        }
+        val disabledNames = if (sourceTable.isNotEmpty()) setOf(sourceTable) else emptySet()
         val adapter = DiningTableAdapter(
             occupiedNames = occupied,
-            selectedName = selectedTableName,
+            selectedName = if (purpose == TablePickerPurpose.SELECT) selectedTableName else null,
+            disabledNames = disabledNames,
             onTableClick = { table ->
-                setSelectedTable(table.name)
                 tablePickerDialog?.dismiss()
+                if (purpose == TablePickerPurpose.TRANSFER) {
+                    confirmTransferToTable(table.name)
+                } else {
+                    setSelectedTable(table.name)
+                }
             },
         )
         dialogBinding.tableGrid.layoutManager = GridLayoutManager(this, 3)
         dialogBinding.tableGrid.adapter = adapter
         adapter.submitList(tables)
+        dialogBinding.tablePickerHint.setText(
+            if (purpose == TablePickerPurpose.TRANSFER) {
+                R.string.transfer_table_hint
+            } else {
+                R.string.table_picker_hint
+            },
+        )
 
         val hasTables = tables.isNotEmpty()
         dialogBinding.tableGrid.visibility = if (hasTables) View.VISIBLE else View.GONE
@@ -1163,8 +1043,13 @@ class PosActivity : KeepScreenOnActivity() {
             }
         }
 
+        val titleRes = if (purpose == TablePickerPurpose.TRANSFER) {
+            R.string.transfer_table_title
+        } else {
+            R.string.select_table_title
+        }
         tablePickerDialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.select_table_title)
+            .setTitle(titleRes)
             .setView(dialogBinding.root)
             .setNegativeButton(android.R.string.cancel, null)
             .create()
@@ -1613,7 +1498,7 @@ class PosActivity : KeepScreenOnActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         binding.expenseButton.setOnClickListener { openExpenseDialog() }
-        binding.stockTakeButton.setOnClickListener { openStockTakeDialog() }
+        binding.stockTakeButton.setOnClickListener { openStockTake() }
         binding.grvButton.setOnClickListener {
             startActivity(Intent(this, GrvActivity::class.java))
         }
@@ -1625,8 +1510,8 @@ class PosActivity : KeepScreenOnActivity() {
                 renderCart()
             }
         }
-        binding.cancelOrderButton.setOnClickListener {
-            cancelSelectedOrder()
+        binding.transferItemsButton.setOnClickListener {
+            startTableTransfer()
         }
         binding.checkoutButton.setOnClickListener {
             if (posMode == PosMode.ORDER) {
@@ -1661,18 +1546,22 @@ class PosActivity : KeepScreenOnActivity() {
 
         if (resolvedMode == PosMode.RECEIPT) {
             selectedOrder = null
+            selectedTransferKeys.clear()
             receiptAdapter.selectedOrderId = null
             binding.panelTitle.text = getString(R.string.collect_payment)
             binding.checkoutButton.text = getString(R.string.collect_payment)
-            binding.cancelOrderButton.visibility = View.GONE
+            binding.transferItemsButton.visibility = View.GONE
+            binding.clearButton.visibility = View.GONE
             loadOpenOrders()
             startReceiptRefresh()
         } else {
             refreshJob?.cancel()
             selectedOrder = null
+            selectedTransferKeys.clear()
             binding.panelTitle.text = getString(R.string.current_order)
             binding.checkoutButton.text = getString(R.string.place_order)
-            binding.cancelOrderButton.visibility = View.GONE
+            binding.transferItemsButton.visibility = View.GONE
+            binding.clearButton.visibility = View.VISIBLE
             syncOrderTypeUi(if (binding.orderTypeSpinner.selectedItemPosition == 1) "dine_in" else "takeaway")
             renderCart()
         }
@@ -1792,7 +1681,7 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
-    private fun loadOpenOrders(silent: Boolean = false) {
+    private fun loadOpenOrders(silent: Boolean = false, selectOrderId: Int? = null) {
         lifecycleScope.launch {
             if (!silent) binding.refreshProgress.visibility = View.VISIBLE
             try {
@@ -1801,9 +1690,13 @@ class PosActivity : KeepScreenOnActivity() {
                 openOrders = orders
                 receiptAdapter.openOrders = orders
                 receiptAdapter.submitList(orders)
-                selectedOrder = selectedOrder?.let { current ->
-                    orders.find { it.id == current.id }
+                selectedOrder = when {
+                    selectOrderId != null -> orders.find { it.id == selectOrderId }
+                    else -> selectedOrder?.let { current ->
+                        orders.find { it.id == current.id }
+                    }
                 }
+                receiptAdapter.selectedOrderId = selectedOrder?.id
                 if (selectedOrder == null) {
                     binding.paymentSection.visibility = View.GONE
                 }
@@ -1866,15 +1759,17 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun renderCart() {
+        selectedTransferKeys.clear()
         binding.cartList.adapter = cartAdapter
         val lines = cart.values.toList()
         cartAdapter.submitList(lines)
         val hasLines = lines.isNotEmpty()
         binding.emptyCartLabel.visibility = if (hasLines) View.GONE else View.VISIBLE
         binding.cartList.visibility = if (hasLines) View.VISIBLE else View.GONE
+        binding.clearButton.visibility = View.VISIBLE
         binding.clearButton.isEnabled = hasLines
         binding.checkoutButton.isEnabled = hasLines
-        binding.cancelOrderButton.visibility = View.GONE
+        binding.transferItemsButton.visibility = View.GONE
         val total = lines.sumOf { it.price * it.quantity }
         binding.totalCaption.setText(R.string.total)
         binding.totalLabel.text = ProductAdapter.formatMoney(total, baseCurrencySymbol())
@@ -1900,14 +1795,15 @@ class PosActivity : KeepScreenOnActivity() {
         val order = selectedOrder
         if (order == null) {
             receiptPaymentOrderId = null
+            selectedTransferKeys.clear()
             binding.cartList.adapter = cartAdapter
             cartAdapter.submitList(emptyList())
             binding.emptyCartLabel.visibility = View.VISIBLE
             binding.cartList.visibility = View.GONE
             binding.paymentSection.visibility = View.GONE
-            binding.clearButton.isEnabled = false
+            binding.clearButton.visibility = View.GONE
             binding.checkoutButton.isEnabled = false
-            binding.cancelOrderButton.visibility = View.GONE
+            binding.transferItemsButton.visibility = View.GONE
             binding.totalCaption.setText(R.string.total)
             binding.totalLabel.text = ProductAdapter.formatMoney(0.0, baseCurrencySymbol())
             binding.exchangeRateLabel.visibility = View.GONE
@@ -1916,8 +1812,11 @@ class PosActivity : KeepScreenOnActivity() {
 
         val orderChanged = receiptPaymentOrderId != order.id
         receiptPaymentOrderId = order.id
+        if (orderChanged) selectedTransferKeys.clear()
 
-        val canRemoveItems = order.status == "open"
+        val canTransferItems = order.status == "open"
+            && order.order_type == "dine_in"
+            && order.table_number.isNotBlank()
         val lines = receiptOrders().flatMap { tableOrder ->
             tableOrder.items.map { item ->
                 val qty = item.quantity.toDoubleOrNull() ?: 1.0
@@ -1941,21 +1840,21 @@ class PosActivity : KeepScreenOnActivity() {
                         )
                     },
                     notes = item.notes,
-                    orderId = if (canRemoveItems) tableOrder.id else null,
-                    orderItemId = if (canRemoveItems) item.id else null,
+                    orderId = if (canTransferItems) tableOrder.id else null,
+                    orderItemId = if (canTransferItems) item.id else null,
                 )
             }
         }
         binding.cartList.adapter = receiptCartAdapter
-        receiptCartAdapter.removable = canRemoveItems
+        receiptCartAdapter.removable = false
+        receiptCartAdapter.transferable = canTransferItems
+        receiptCartAdapter.selectedTransferKeys = selectedTransferKeys.toSet()
         receiptCartAdapter.submitList(lines)
         binding.emptyCartLabel.visibility = View.GONE
         binding.cartList.visibility = View.VISIBLE
         binding.paymentSection.visibility = View.VISIBLE
-        binding.clearButton.isEnabled = false
-        val canCancel = order.status == "open"
-        binding.cancelOrderButton.visibility = if (canCancel) View.VISIBLE else View.GONE
-        binding.cancelOrderButton.isEnabled = canCancel
+        binding.clearButton.visibility = View.GONE
+        updateTransferButtonState(canTransferItems)
         if (orderChanged) {
             paymentMethod = PaymentMethod.CASH
             binding.paymentMethodToggle.check(binding.cashPaymentButton.id)
@@ -1968,6 +1867,98 @@ class PosActivity : KeepScreenOnActivity() {
         syncPaymentMethodUi()
         renderCurrencyButtons()
         updateReceiptCheckoutState()
+    }
+
+    private fun updateTransferButtonState(canTransfer: Boolean? = null) {
+        val transferable = canTransfer ?: (
+            selectedOrder?.status == "open"
+                && selectedOrder?.order_type == "dine_in"
+                && !selectedOrder?.table_number.isNullOrBlank()
+            )
+        binding.transferItemsButton.visibility = if (transferable) View.VISIBLE else View.GONE
+        binding.transferItemsButton.isEnabled = transferable && selectedTransferKeys.isNotEmpty()
+        binding.transferItemsButton.text = if (selectedTransferKeys.isNotEmpty()) {
+            getString(R.string.transfer_lines_count, selectedTransferKeys.size)
+        } else {
+            getString(R.string.transfer_to_table)
+        }
+        receiptCartAdapter.selectedTransferKeys = selectedTransferKeys.toSet()
+    }
+
+    private fun startTableTransfer() {
+        if (selectedTransferKeys.isEmpty()) {
+            Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val order = selectedOrder
+        if (
+            order == null
+            || order.status != "open"
+            || order.order_type != "dine_in"
+            || order.table_number.isBlank()
+        ) {
+            Toast.makeText(this, R.string.transfer_only_dine_in, Toast.LENGTH_SHORT).show()
+            return
+        }
+        openTablePicker(TablePickerPurpose.TRANSFER)
+    }
+
+    private fun confirmTransferToTable(destinationTable: String) {
+        val lineCount = selectedTransferKeys.size
+        if (lineCount == 0) {
+            Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setMessage(getString(R.string.transfer_confirm, lineCount, destinationTable))
+            .setPositiveButton(R.string.transfer_action) { _, _ ->
+                performTransferToTable(destinationTable)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun performTransferToTable(destinationTable: String) {
+        val groups = linkedMapOf<Int, MutableList<Int>>()
+        for (line in receiptCartAdapter.currentList) {
+            if (line.lineKey !in selectedTransferKeys) continue
+            val orderId = line.orderId ?: continue
+            val itemId = line.orderItemId ?: continue
+            groups.getOrPut(orderId) { mutableListOf() }.add(itemId)
+        }
+        if (groups.isEmpty()) {
+            Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        binding.transferItemsButton.isEnabled = false
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                var destinationOrderId: Int? = null
+                withContext(Dispatchers.IO) {
+                    for ((orderId, itemIds) in groups) {
+                        val result = api.transferOrderItems(orderId, itemIds, destinationTable)
+                        destinationOrderId = result.destinationOrder.id
+                    }
+                }
+                selectedTransferKeys.clear()
+                Toast.makeText(
+                    this@PosActivity,
+                    getString(R.string.transfer_success, destinationTable),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                loadOpenOrders(selectOrderId = destinationOrderId)
+            } catch (err: ApiException) {
+                handleApiError(err)
+                updateTransferButtonState()
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+                updateTransferButtonState()
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
     }
 
     private fun selectedCurrency(): Currency? {
@@ -2022,95 +2013,6 @@ class PosActivity : KeepScreenOnActivity() {
             } catch (err: Exception) {
                 showError(getString(R.string.connection_failed, err.message ?: ""))
                 renderCart()
-            }
-        }
-    }
-
-    private fun removeOneFromPlacedOrder(line: CartLine) {
-        val orderId = line.orderId ?: return
-        val itemId = line.orderItemId ?: return
-        val order = selectedOrder ?: return
-        if (order.status != "open") {
-            Toast.makeText(this, R.string.only_open_orders_edit, Toast.LENGTH_SHORT).show()
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setMessage(getString(R.string.remove_order_item_confirm, line.name, orderId))
-            .setPositiveButton(R.string.remove_item) { _, _ ->
-                performRemoveOneOrderItem(orderId, itemId, line.name)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun performRemoveOneOrderItem(orderId: Int, itemId: Int, itemName: String) {
-        lifecycleScope.launch {
-            binding.refreshProgress.visibility = View.VISIBLE
-            try {
-                val updated = withContext(Dispatchers.IO) {
-                    api.removeOneOrderItem(orderId, itemId)
-                }
-                openOrders = openOrders.map { existing ->
-                    if (existing.id == updated.id) updated else existing
-                }
-                if (selectedOrder?.id == updated.id) {
-                    selectedOrder = updated
-                }
-                receiptAdapter.openOrders = openOrders
-                receiptAdapter.submitList(openOrders)
-                renderReceiptPanel()
-                Toast.makeText(
-                    this@PosActivity,
-                    getString(R.string.order_item_removed, itemName),
-                    Toast.LENGTH_SHORT,
-                ).show()
-            } catch (err: ApiException) {
-                handleApiError(err)
-            } catch (err: Exception) {
-                showError(getString(R.string.connection_failed, err.message ?: ""))
-            } finally {
-                binding.refreshProgress.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun cancelSelectedOrder() {
-        val order = selectedOrder ?: return
-        if (order.status != "open") {
-            Toast.makeText(this, R.string.only_open_orders_cancel, Toast.LENGTH_SHORT).show()
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setMessage(getString(R.string.cancel_order_confirm, order.id))
-            .setPositiveButton(R.string.cancel_order) { _, _ ->
-                performCancelOrder(order)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun performCancelOrder(order: KitchenOrder) {
-        binding.cancelOrderButton.isEnabled = false
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    api.cancelOrder(order.id)
-                }
-                Toast.makeText(
-                    this@PosActivity,
-                    getString(R.string.order_cancelled, order.id),
-                    Toast.LENGTH_SHORT,
-                ).show()
-                selectedOrder = null
-                receiptAdapter.selectedOrderId = null
-                loadOpenOrders(silent = true)
-                renderReceiptPanel()
-            } catch (err: ApiException) {
-                handleApiError(err)
-                binding.cancelOrderButton.isEnabled = selectedOrder != null
-            } catch (err: Exception) {
-                showError(getString(R.string.connection_failed, err.message ?: ""))
-                binding.cancelOrderButton.isEnabled = selectedOrder != null
             }
         }
     }
@@ -2363,6 +2265,11 @@ class PosActivity : KeepScreenOnActivity() {
     private enum class PaymentMethod {
         CASH,
         ACCOUNT,
+    }
+
+    private enum class TablePickerPurpose {
+        SELECT,
+        TRANSFER,
     }
 
     private data class PosCatalog(

@@ -1,0 +1,509 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Wastage — Café de Paris{% endblock %}
+{% block page_title %}Wastage{% endblock %}
+
+{% block content %}
+<p class="products-page-description">
+  Record items leaving sellable stock for bakery reuse, kitchen use, or disposal.
+  Processing subtracts quantity from the source branch and, for bakery reuse, credits the bakery.
+</p>
+
+<div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record wastage</h3>
+  <form id="wastage-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="wastage-branch">Branch</label>
+        <select id="wastage-branch" required>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="wastage-product">Product</label>
+        <select id="wastage-product" class="searchable-select" required>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="wastage-quantity">Quantity</label>
+        <input type="number" id="wastage-quantity" step="0.01" min="0.01" placeholder="0.00" required>
+      </div>
+      <div class="form-group">
+        <label for="wastage-reason">Reason</label>
+        <select id="wastage-reason" required>
+          <option value="disposal">Actual wastage/disposal</option>
+          <option value="bakery_reuse">Transferred for bakery reuse</option>
+          <option value="kitchen">Transferred to the kitchen</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row" id="destination-row" style="display: none;">
+      <div class="form-group">
+        <label for="wastage-destination">Bakery destination</label>
+        <select id="wastage-destination">
+          <option value="">Select bakery…</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="wastage-notes">Notes <span style="color: var(--color-muted); font-weight: 400;">(optional)</span></label>
+      <input type="text" id="wastage-notes" maxlength="255" placeholder="e.g. end-of-day leftovers, damaged packaging">
+    </div>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+      <button type="submit" class="btn btn-primary" id="wastage-process-btn" data-process="true">
+        Record &amp; process
+      </button>
+      <button type="button" class="btn btn-ghost" id="wastage-draft-btn" data-process="false">
+        Save as draft
+      </button>
+      <span id="wastage-stock-hint" style="font-size: 0.85rem; color: var(--color-muted);"></span>
+    </div>
+  </form>
+</div>
+
+<div class="card report-filters" style="margin-bottom: 1.25rem;">
+  <div class="report-filters-grid">
+    <label>
+      <span>From</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>To</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    {% if can_filter_any_branch %}
+    <label>
+      <span>Branch</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">All branches</option>
+      </select>
+    </label>
+    {% endif %}
+    <label>
+      <span>Reason</span>
+      <select id="filter-reason" class="report-input">
+        <option value="">All reasons</option>
+        <option value="bakery_reuse">Transferred for bakery reuse</option>
+        <option value="kitchen">Transferred to the kitchen</option>
+        <option value="disposal">Actual wastage/disposal</option>
+      </select>
+    </label>
+    <label>
+      <span>Status</span>
+      <select id="filter-status" class="report-input">
+        <option value="">All statuses</option>
+        <option value="draft">Draft</option>
+        <option value="processed">Processed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="wastage-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(4, 1fr);">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <input
+      type="search"
+      id="wastage-search"
+      class="report-input"
+      placeholder="Search product, branch, reason, notes…"
+      style="max-width: 360px;"
+    >
+  </div>
+  <div class="table-wrap" id="wastage-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { branchesForUser, effectiveBranchParam, setupBranchFilter, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+
+let branches = [];
+let products = [];
+let inventoryByProduct = new Map();
+let allEntries = [];
+let searchQuery = "";
+
+const form = document.getElementById("wastage-form");
+const branchSelect = document.getElementById("wastage-branch");
+const productSelect = document.getElementById("wastage-product");
+const quantityInput = document.getElementById("wastage-quantity");
+const reasonSelect = document.getElementById("wastage-reason");
+const destinationRow = document.getElementById("destination-row");
+const destinationSelect = document.getElementById("wastage-destination");
+const notesInput = document.getElementById("wastage-notes");
+const processBtn = document.getElementById("wastage-process-btn");
+const draftBtn = document.getElementById("wastage-draft-btn");
+const stockHint = document.getElementById("wastage-stock-hint");
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const filterReason = document.getElementById("filter-reason");
+const filterStatus = document.getElementById("filter-status");
+const applyFiltersBtn = document.getElementById("apply-filters");
+const statsEl = document.getElementById("wastage-stats");
+const tableEl = document.getElementById("wastage-table");
+const searchInput = document.getElementById("wastage-search");
+const sortState = createSortState("created_at", "desc");
+
+initSearchableSelect(productSelect);
+
+const ENTRY_SORT = {
+  created_at: (e) => e.created_at || "",
+  branch_name: (e) => e.branch_name || "",
+  product_name: (e) => e.product_name || "",
+  quantity: (e) => Number(e.quantity),
+  reason_display: (e) => e.reason_display || "",
+  status_display: (e) => e.status_display || "",
+  destination_branch_name: (e) => e.destination_branch_name || "",
+};
+
+function getTodayISO() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function setDefaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  filterTo.value = getTodayISO();
+  filterFrom.value = start.toISOString().slice(0, 10);
+}
+
+function formatQty(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function updateDestinationVisibility() {
+  const needsBakery = reasonSelect.value === "bakery_reuse";
+  destinationRow.style.display = needsBakery ? "" : "none";
+  destinationSelect.required = needsBakery;
+  if (!needsBakery) destinationSelect.value = "";
+}
+
+function updateStockHint() {
+  const productId = productSelect.value;
+  if (!productId) {
+    stockHint.textContent = "";
+    return;
+  }
+  const qty = inventoryByProduct.get(String(productId));
+  stockHint.textContent = qty == null
+    ? "Current stock: 0"
+    : `Current stock: ${formatQty(qty)}`;
+}
+
+function populateBranchSelects() {
+  const visible = branchesForUser(branches, STAFF_BRANCH_ID, canFilterAnyBranch);
+  setupBranchSelect(branchSelect, visible, { canSelectAny: canFilterAnyBranch });
+  if (filterBranch) {
+    setupBranchFilter(filterBranch, branches, {
+      canSelectAny: canFilterAnyBranch,
+      staffBranchId: STAFF_BRANCH_ID,
+    });
+  }
+  const bakeries = branches.filter(b => b.is_active && b.branch_type === "bakery");
+  destinationSelect.innerHTML = bakeries.length
+    ? `<option value="">Select bakery…</option>${bakeries.map(b =>
+        `<option value="${b.id}">${b.name}</option>`
+      ).join("")}`
+    : `<option value="">No bakery branches found</option>`;
+  if (bakeries.length === 1) destinationSelect.value = String(bakeries[0].id);
+}
+
+function populateProductSelect() {
+  const active = products.filter(p => p.is_active);
+  productSelect.innerHTML = active.length
+    ? `<option value="">Select product…</option>${active.map(p =>
+        `<option value="${p.id}">${p.name}${p.category_name ? ` · ${p.category_name}` : ""}</option>`
+      ).join("")}`
+    : `<option value="">No products</option>`;
+  syncSearchableSelect(productSelect);
+}
+
+async function loadBranchInventory() {
+  inventoryByProduct = new Map();
+  const branchId = branchSelect.value;
+  if (!branchId) {
+    updateStockHint();
+    return;
+  }
+  try {
+    const rows = unwrapList(await apiGet(`/inventory/?branch=${encodeURIComponent(branchId)}&page_size=500`));
+    for (const row of rows) {
+      inventoryByProduct.set(String(row.product), Number(row.quantity));
+    }
+  } catch {
+    inventoryByProduct = new Map();
+  }
+  updateStockHint();
+}
+
+function matchesSearch(entry) {
+  if (!searchQuery) return true;
+  const haystack = [
+    entry.product_name,
+    entry.branch_name,
+    entry.reason_display,
+    entry.status_display,
+    entry.destination_branch_name,
+    entry.notes,
+    entry.created_by_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function renderStats(summary) {
+  const by = summary?.by_reason || {};
+  const bakery = by.bakery_reuse || { count: 0, quantity: "0" };
+  const kitchen = by.kitchen || { count: 0, quantity: "0" };
+  const disposal = by.disposal || { count: 0, quantity: "0" };
+  statsEl.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">Processed entries</div>
+      <div class="value">${summary?.count ?? 0}</div>
+      <div class="sub">${formatQty(summary?.quantity)} units total</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Bakery reuse</div>
+      <div class="value">${formatQty(bakery.quantity)}</div>
+      <div class="sub">${bakery.count} entries</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Kitchen transfer</div>
+      <div class="value">${formatQty(kitchen.quantity)}</div>
+      <div class="sub">${kitchen.count} entries</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Disposal</div>
+      <div class="value">${formatQty(disposal.quantity)}</div>
+      <div class="sub">${disposal.count} entries</div>
+    </div>
+  `;
+}
+
+function statusBadge(entry) {
+  const status = entry.status;
+  if (status === "processed") return `<span class="badge" style="background:#dcfce7;color:#166534;">Processed</span>`;
+  if (status === "draft") return `<span class="badge" style="background:#fef3c7;color:#92400e;">Draft</span>`;
+  if (status === "cancelled") return `<span class="badge" style="background:#f1f5f9;color:#475569;">Cancelled</span>`;
+  return entry.status_display || status;
+}
+
+function renderTable() {
+  const filtered = sortItems(allEntries.filter(matchesSearch), sortState, ENTRY_SORT);
+  if (!filtered.length) {
+    tableEl.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching wastage entries" : "No wastage entries in this period"}</p></div>`;
+    return;
+  }
+  tableEl.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Logged", "created_at", sortState)}
+          ${sortTh("Branch", "branch_name", sortState)}
+          ${sortTh("Product", "product_name", sortState)}
+          ${sortTh("Qty", "quantity", sortState, { align: "right" })}
+          ${sortTh("Reason", "reason_display", sortState)}
+          ${sortTh("Destination", "destination_branch_name", sortState)}
+          ${sortTh("Status", "status_display", sortState)}
+          ${actionTh("Actions")}
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(entry => `
+          <tr>
+            <td>${formatDate(entry.created_at)}</td>
+            <td>${entry.branch_name}</td>
+            <td>
+              <div>${entry.product_name}</div>
+              ${entry.notes ? `<div style="font-size:0.8rem;color:var(--color-muted);">${entry.notes}</div>` : ""}
+            </td>
+            <td style="text-align:right;">${formatQty(entry.quantity)}</td>
+            <td>${entry.reason_display}</td>
+            <td>${entry.destination_branch_name || "—"}</td>
+            <td>${statusBadge(entry)}</td>
+            <td>
+              ${entry.status === "draft" ? `
+                <button type="button" class="btn btn-primary btn-sm" data-action="process" data-id="${entry.id}">Process</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-action="cancel" data-id="${entry.id}">Cancel</button>
+              ` : "—"}
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function listParams() {
+  const params = {};
+  if (filterFrom.value) params.from = filterFrom.value;
+  if (filterTo.value) params.to = filterTo.value;
+  if (filterReason.value) params.reason = filterReason.value;
+  if (filterStatus.value) params.status = filterStatus.value;
+  const branch = effectiveBranchParam(canFilterAnyBranch, STAFF_BRANCH_ID, filterBranch?.value);
+  if (branch) params.branch = branch;
+  return params;
+}
+
+async function loadEntries() {
+  tableEl.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    const params = listParams();
+    const query = new URLSearchParams(params).toString();
+    const [entries, summary] = await Promise.all([
+      fetchAllPages("/wastage/", params),
+      apiGet(`/wastage/summary/${query ? `?${query}` : ""}`),
+    ]);
+    allEntries = entries;
+    renderStats(summary);
+    renderTable();
+  } catch (err) {
+    tableEl.innerHTML = `<div class="empty-state">Failed to load wastage: ${err.message}</div>`;
+  }
+}
+
+async function submitWastage(processNow) {
+  const branchId = branchSelect.value;
+  const productId = productSelect.value;
+  const quantity = quantityInput.value.trim();
+  const reason = reasonSelect.value;
+  const destination = destinationSelect.value;
+  const notes = notesInput.value.trim();
+
+  if (!branchId || !productId || !quantity || !reason) {
+    showToast("Fill in branch, product, quantity, and reason.", "error");
+    return;
+  }
+  if (reason === "bakery_reuse" && !destination) {
+    showToast("Select the bakery destination for reuse transfers.", "error");
+    return;
+  }
+
+  processBtn.disabled = true;
+  draftBtn.disabled = true;
+  try {
+    const payload = {
+      branch: Number(branchId),
+      product: Number(productId),
+      quantity,
+      reason,
+      notes,
+      process_now: processNow,
+    };
+    if (reason === "bakery_reuse") {
+      payload.destination_branch = Number(destination);
+    }
+    const created = await apiPost("/wastage/", payload);
+    showToast(
+      created.status === "processed"
+        ? "Wastage recorded and stock updated."
+        : "Wastage saved as draft.",
+      "success",
+    );
+    quantityInput.value = "";
+    notesInput.value = "";
+    await loadBranchInventory();
+    await loadEntries();
+  } catch (err) {
+    showToast(err.message || "Failed to record wastage.", "error");
+  } finally {
+    processBtn.disabled = false;
+    draftBtn.disabled = false;
+  }
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitWastage(true);
+});
+
+draftBtn.addEventListener("click", () => submitWastage(false));
+
+reasonSelect.addEventListener("change", updateDestinationVisibility);
+productSelect.addEventListener("change", updateStockHint);
+branchSelect.addEventListener("change", loadBranchInventory);
+
+applyFiltersBtn.addEventListener("click", loadEntries);
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderTable();
+});
+
+tableEl.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-action]");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  if (action === "process" && !confirm("Process this wastage entry and subtract from stock?")) {
+    return;
+  }
+  if (action === "cancel" && !confirm("Cancel this draft wastage entry?")) {
+    return;
+  }
+  btn.disabled = true;
+  try {
+    if (action === "process") {
+      await apiPost(`/wastage/${id}/process/`, {});
+      showToast("Wastage processed; stock updated.", "success");
+    } else if (action === "cancel") {
+      await apiPost(`/wastage/${id}/cancel/`, {});
+      showToast("Draft cancelled.", "success");
+    }
+    await loadBranchInventory();
+    await loadEntries();
+  } catch (err) {
+    showToast(err.message || "Action failed.", "error");
+    btn.disabled = false;
+  }
+});
+
+bindTableSort(tableEl, sortState, renderTable);
+
+(async function init() {
+  setDefaultDates();
+  updateDestinationVisibility();
+  try {
+    const [branchData, productData] = await Promise.all([
+      fetchAllPages("/branches/", { is_active: true }),
+      fetchAllPages("/products/", { is_active: true }),
+    ]);
+    branches = branchData;
+    products = productData;
+    populateBranchSelects();
+    populateProductSelect();
+    await loadBranchInventory();
+    await loadEntries();
+  } catch (err) {
+    showToast(err.message || "Failed to initialize wastage page.", "error");
+    tableEl.innerHTML = `<div class="empty-state">Failed to load: ${err.message}</div>`;
+  }
+})();
+</script>
+{% endblock %}

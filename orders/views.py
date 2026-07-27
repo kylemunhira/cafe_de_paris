@@ -38,12 +38,14 @@ from .serializers import (
     OrderCreateSerializer,
     OrderPaySerializer,
     OrderSerializer,
+    OrderTransferItemsSerializer,
     OrderUpdateSerializer,
 )
 from .services import (
     InvalidKitchenStateError,
     OrderCancelError,
     OrderItemRemoveError,
+    OrderItemTransferError,
     PaymentValidationError,
     ReceiptNumberError,
     allocate_receipt_number,
@@ -53,6 +55,7 @@ from .services import (
     mark_order_ready,
     remove_one_order_item,
     start_preparing_order,
+    transfer_order_items,
     void_order,
 )
 
@@ -95,18 +98,26 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         if fiscal_only in ("1", "true", "yes"):
             qs = qs.filter(branch__fiscalization_enabled=True)
         qs = filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
-        station = resolve_kitchen_station_filter(
-            self.request.user,
-            self.request.query_params.get("pos_station"),
-        )
+        station = self._kitchen_station_for_request()
         return filter_orders_for_kitchen_station(qs, station)
+
+    def _kitchen_station_for_request(self):
+        """Apply bar/kitchen station filtering for kitchen displays only.
+
+        Kitchen polls ``status=open``. POS uses ``status=open,unpaid`` and must
+        receive every line item so receipts and payments stay complete.
+        Explicit ``pos_station`` still forces a station filter when provided.
+        """
+        explicit = self.request.query_params.get("pos_station")
+        status_filter = self.request.query_params.get("status")
+        statuses = [value.strip() for value in (status_filter or "").split(",") if value.strip()]
+        if explicit is None and statuses != ["open"]:
+            return ""
+        return resolve_kitchen_station_filter(self.request.user, explicit)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["kitchen_station"] = resolve_kitchen_station_filter(
-            self.request.user,
-            self.request.query_params.get("pos_station"),
-        )
+        context["kitchen_station"] = self._kitchen_station_for_request()
         return context
 
     def get_serializer_class(self):
@@ -323,6 +334,59 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             .get(pk=order.pk)
         )
         return Response(OrderSerializer(order, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="transfer-items")
+    def transfer_items(self, request, pk=None):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to transfer items.")
+        order = self.get_object()
+        serializer = OrderTransferItemsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                order = (
+                    Order.objects.select_for_update()
+                    .prefetch_related("items")
+                    .get(pk=order.pk)
+                )
+                source, destination = transfer_order_items(
+                    order,
+                    item_ids=serializer.validated_data["item_ids"],
+                    table_number=serializer.validated_data["table_number"],
+                    created_by=request.user,
+                )
+        except OrderItemTransferError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        context = self.get_serializer_context()
+        source = (
+            Order.objects.select_related(
+                "branch",
+                "customer",
+                "payment_currency",
+                "created_by",
+                "paid_by",
+            )
+            .prefetch_related("items__product", "payments__currency", "fiscal_receipt")
+            .get(pk=source.pk)
+        )
+        destination = (
+            Order.objects.select_related(
+                "branch",
+                "customer",
+                "payment_currency",
+                "created_by",
+                "paid_by",
+            )
+            .prefetch_related("items__product", "payments__currency", "fiscal_receipt")
+            .get(pk=destination.pk)
+        )
+        return Response(
+            {
+                "source_order": OrderSerializer(source, context=context).data,
+                "destination_order": OrderSerializer(destination, context=context).data,
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

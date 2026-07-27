@@ -11,11 +11,27 @@ import com.cafedeparis.kitchen.databinding.ItemCartLineBinding
 class CartLineAdapter(
     private val editable: Boolean,
     removable: Boolean = false,
+    transferable: Boolean = false,
     private val onRemove: ((CartLine) -> Unit)? = null,
+    private val onTransferToggle: ((CartLine, Boolean) -> Unit)? = null,
     private val onQuantityChange: (String, Double) -> Unit,
 ) : ListAdapter<CartLine, CartLineAdapter.ViewHolder>(Diff) {
 
     var removable: Boolean = removable
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
+
+    var transferable: Boolean = transferable
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
+
+    var selectedTransferKeys: Set<String> = emptySet()
         set(value) {
             if (field == value) return
             field = value
@@ -58,6 +74,15 @@ class CartLineAdapter(
                 } else {
                     onQuantityChange(line.lineKey, line.quantity - 1)
                 }
+            }
+
+            val showTransferCheck = transferable && line.orderId != null && line.orderItemId != null
+            binding.transferCheck.visibility =
+                if (showTransferCheck) android.view.View.VISIBLE else android.view.View.GONE
+            binding.transferCheck.setOnCheckedChangeListener(null)
+            binding.transferCheck.isChecked = line.lineKey in selectedTransferKeys
+            binding.transferCheck.setOnCheckedChangeListener { _, isChecked ->
+                onTransferToggle?.invoke(line, isChecked)
             }
             binding.root.contentDescription = "${line.name} ${formatQty(line.quantity)}"
         }
