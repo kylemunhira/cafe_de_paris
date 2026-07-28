@@ -9,6 +9,7 @@ import com.cafedeparis.kitchen.data.DayEndReportResponse
 import com.cafedeparis.kitchen.data.DeliveryNote
 import com.cafedeparis.kitchen.data.ExpenseReport
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.PaymentOptionLine
@@ -24,9 +25,35 @@ import java.util.UUID
 
 class EscPosPrinter {
 
-  fun printOrder(deviceAddress: String, order: KitchenOrder, isUpdate: Boolean = false) {
+  fun printOrder(
+    deviceAddress: String,
+    order: KitchenOrder,
+    isUpdate: Boolean = false,
+    transferredFromOrderId: Int? = null,
+  ) {
     print(deviceAddress) { output ->
-      writeKitchenTicket(output, order, isUpdate = isUpdate)
+      writeKitchenTicket(
+        output,
+        order,
+        isUpdate = isUpdate,
+        transferredFromOrderId = transferredFromOrderId,
+      )
+    }
+  }
+
+  fun printCancelOrder(
+    deviceAddress: String,
+    order: KitchenOrder,
+    partial: Boolean = false,
+    transferredToOrderId: Int? = null,
+  ) {
+    print(deviceAddress) { output ->
+      writeKitchenCancelTicket(
+        output,
+        order,
+        partial = partial,
+        transferredToOrderId = transferredToOrderId,
+      )
     }
   }
 
@@ -169,7 +196,12 @@ class EscPosPrinter {
     }
   }
 
-  private fun writeKitchenTicket(output: OutputStream, order: KitchenOrder, isUpdate: Boolean = false) {
+  private fun writeKitchenTicket(
+    output: OutputStream,
+    order: KitchenOrder,
+    isUpdate: Boolean = false,
+    transferredFromOrderId: Int? = null,
+  ) {
     output.write(INIT)
     output.write(ALIGN_CENTER)
     if (order.branch_fiscalization_enabled) {
@@ -186,6 +218,9 @@ class EscPosPrinter {
       output.write(textLine("ORDER TICKET", bold = true))
     }
     output.write(textLine("Order #${order.id}", bold = true))
+    transferredFromOrderId?.takeIf { it > 0 && it != order.id }?.let { fromId ->
+      output.write(textLine("Transferred from Order #$fromId", bold = true))
+    }
     output.write(textLine(formatDateTime(order.created_at)))
     output.write(textLine(formatOrderType(order)))
     order.customer_name?.takeIf { it.isNotBlank() }?.let {
@@ -210,6 +245,70 @@ class EscPosPrinter {
     }
 
     output.write(textLine("--------------------------------"))
+    output.write(LF)
+    output.write(LF)
+  }
+
+  private fun writeKitchenCancelTicket(
+    output: OutputStream,
+    order: KitchenOrder,
+    partial: Boolean = false,
+    transferredToOrderId: Int? = null,
+  ) {
+    output.write(INIT)
+    output.write(ALIGN_CENTER)
+    if (order.branch_fiscalization_enabled) {
+      output.write(textLine("Cafe de Paris", doubleHeight = true))
+      if (order.branch_name.isNotBlank()) {
+        output.write(textLine(order.branch_name))
+      }
+      output.write(LF)
+    }
+
+    val isTransfer = transferredToOrderId != null && transferredToOrderId > 0
+    val heading = when {
+      isTransfer && partial -> "ITEMS TRANSFERRED"
+      isTransfer -> "ORDER TRANSFERRED"
+      partial -> "ITEMS CANCELLED"
+      else -> "ORDER CANCELLED"
+    }
+    output.write(textLine(heading, bold = true, doubleHeight = true))
+    output.write(textLine("Order #${order.id}", bold = true))
+    if (isTransfer) {
+      output.write(textLine("Transferred from Order #${order.id}"))
+      output.write(textLine("to Order #$transferredToOrderId", bold = true))
+    }
+    output.write(textLine(formatDateTime(order.created_at)))
+    output.write(textLine(formatOrderType(order)))
+    order.customer_name?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Customer: $it"))
+    }
+    order.created_by_name?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Served by $it"))
+    }
+
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_LEFT)
+
+    for (item in order.items) {
+      val qty = formatQty(item.quantity)
+      output.write(textLine("$qty x ${item.product_name}", bold = true, large = true))
+      for (addon in item.addons) {
+        output.write(textLine("  + ${addon.name}"))
+      }
+      if (item.notes.isNotBlank()) {
+        output.write(textLine("  Note: ${item.notes}"))
+      }
+    }
+
+    output.write(textLine("--------------------------------"))
+    output.write(LF)
+    output.write(ALIGN_CENTER)
+    if (isTransfer) {
+      output.write(textLine("MOVED TO ORDER #$transferredToOrderId", bold = true))
+    } else {
+      output.write(textLine("DO NOT PREPARE", bold = true ))
+    }
     output.write(LF)
     output.write(LF)
   }
@@ -339,9 +438,8 @@ class EscPosPrinter {
       }
     }
 
-    output.write(textLine("Order #${order.id}"))
+    output.write(textLine(order.receiptHeaderLabel(), bold = true))
     output.write(textLine(formatDateTime(order.created_at)))
-    output.write(textLine(formatOrderType(order)))
     order.customer_name?.takeIf { it.isNotBlank() }?.let {
       output.write(textLine("Customer: $it"))
     }
@@ -561,6 +659,41 @@ class EscPosPrinter {
         val amount = expense.optString("amount", "0")
         val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatMoney(amount)
         output.write(textLine(label, suffix = formatted))
+      }
+    }
+
+    val accountTransactions = report.optJSONArray("account_transactions") ?: JSONArray()
+    if (accountTransactions.length() > 0) {
+      output.write(textLine("--------------------------------"))
+      output.write(ALIGN_CENTER)
+      output.write(textLine("Customer account transactions", bold = true))
+      output.write(ALIGN_LEFT)
+      for (i in 0 until accountTransactions.length()) {
+        val txn = accountTransactions.getJSONObject(i)
+        val customer = txn.optString("customer_name", "Customer")
+        val label = txn.optString("statement_label", txn.optString("transaction_type", "Transaction"))
+        val amount = txn.optString("amount", "0")
+        val prefix = if (amount.startsWith("-")) "" else "+"
+        output.write(textLine("$customer — $label", suffix = "$prefix${formatMoney(amount)}"))
+        val details = buildList {
+          txn.optString("created_at", "").takeIf { it.isNotBlank() }?.let {
+            add(formatDateTime(it))
+          }
+          txn.optInt("order_id", 0).takeIf { it > 0 }?.let { add("Order #$it") }
+          if (txn.optString("transaction_type", "") == "deposit") {
+            val received = txn.optString("amount_received", "")
+            if (received.isNotBlank() && received != "0" && received != "0.00") {
+              val symbol = txn.optString("currency__symbol", "")
+              val code = txn.optString("currency__code", txn.optString("currency__name", ""))
+              val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(received)}" else formatMoney(received)
+              add("$formatted $code".trim())
+            }
+          }
+          txn.optString("notes", "").takeIf { it.isNotBlank() }?.let { add(it) }
+        }
+        if (details.isNotEmpty()) {
+          output.write(textLine("  ${details.joinToString(" · ")}"))
+        }
       }
     }
 

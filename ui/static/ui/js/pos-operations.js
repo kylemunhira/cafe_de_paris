@@ -75,7 +75,7 @@ export function initPosOperations({
           <strong>${escapeHtml(line.product_name)}</strong>
           <small style="display:block; color:var(--color-muted);">${escapeHtml(line.category_name || "")}</small>
         </div>
-        <input type="number" min="0" step="0.01" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
+        <input type="number" min="0" step="0.001" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
       </div>
     `).join("") || `<p class="empty-state">No products are configured for this count.</p>`;
     stockStart.style.display = "none";

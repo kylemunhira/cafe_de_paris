@@ -99,6 +99,11 @@ urlpatterns = [
         name="ingredient-usage-report",
     ),
     path(
+        "reports/voided-cancelled/",
+        views.VoidedItemsReportView.as_view(),
+        name="voided-items-report",
+    ),
+    path(
         "reports/suppliers/",
         views.SupplierStatementView.as_view(),
         name="supplier-statement",

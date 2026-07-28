@@ -15,6 +15,7 @@ import com.cafedeparis.kitchen.data.ApiClient
 import com.cafedeparis.kitchen.data.ApiException
 import com.cafedeparis.kitchen.data.AppConfig
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.databinding.ActivityMainBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
@@ -26,6 +27,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class MainActivity : KeepScreenOnActivity() {
 
@@ -36,6 +41,7 @@ class MainActivity : KeepScreenOnActivity() {
     private val adapter = OrderAdapter()
     private var pollJob: Job? = null
     private var errorHideJob: Job? = null
+    private var lastOpenOrderIds: Set<Int> = emptySet()
     private val printer = EscPosPrinter()
 
     private val bluetoothPermissionLauncher = registerForActivityResult(
@@ -161,6 +167,8 @@ class MainActivity : KeepScreenOnActivity() {
     private fun logout() {
         pollJob?.cancel()
         session.clearLogin()
+        session.clearCancellationTracking()
+        lastOpenOrderIds = emptySet()
         adapter.submitList(emptyList())
         showLogin()
     }
@@ -180,6 +188,7 @@ class MainActivity : KeepScreenOnActivity() {
         } else {
             "${session.displayName ?: ""} · $stationLabel"
         }
+        session.ensureCancellationPollSince(currentIsoTimestamp())
         updateStatus(getString(R.string.status_waiting))
     }
 
@@ -201,13 +210,19 @@ class MainActivity : KeepScreenOnActivity() {
                 binding.refreshProgress.visibility = View.VISIBLE
             }
             try {
+                val cancelled = withContext(Dispatchers.IO) {
+                    val since = session.cancellationPollSince
+                    if (since.isNullOrBlank()) emptyList() else api.fetchCancelledOrders(since)
+                }
+                session.cancellationPollSince = currentIsoTimestamp()
+
                 val orders = withContext(Dispatchers.IO) { api.fetchOpenOrders() }
                     .sortedBy { it.created_at }
                 adapter.submitList(orders)
                 binding.emptyState.visibility = if (orders.isEmpty()) View.VISIBLE else View.GONE
                 binding.errorBanner.visibility = View.GONE
                 updateStatus(getString(R.string.status_live, orders.size))
-                autoPrintNewOrders(orders)
+                processKitchenPrinting(orders, cancelled)
             } catch (err: ApiException) {
                 if (err.statusCode == 401) {
                     Toast.makeText(this@MainActivity, R.string.session_expired, Toast.LENGTH_LONG).show()
@@ -223,22 +238,102 @@ class MainActivity : KeepScreenOnActivity() {
         }
     }
 
-    private suspend fun autoPrintNewOrders(orders: List<KitchenOrder>) {
-        val printerAddress = session.printerAddress
-        if (printerAddress.isNullOrBlank()) return
+    private suspend fun processKitchenPrinting(
+        orders: List<KitchenOrder>,
+        cancelledOrders: List<KitchenOrder>,
+    ) {
+        val printerAddress = session.printerAddress ?: return
+
+        val currentIds = orders.map { it.id }.toSet()
+        val disappeared = lastOpenOrderIds - currentIds
+        lastOpenOrderIds = currentIds
+
+        val cancelledIds = cancelledOrders.map { it.id }.toSet()
+        val printedCancelIds = session.getPrintedCancelOrderIds().toMutableSet()
+
+        // Freeze printed item snapshots before any updates so transfer
+        // source/destination can still be resolved in this poll.
+        val snapshotByOrder = linkedMapOf<Int, List<OrderItem>>()
+        for (orderId in (currentIds + disappeared + cancelledIds)) {
+            val snapshot = session.getPrintedItemSnapshot(orderId)
+            if (snapshot.isNotEmpty()) {
+                snapshotByOrder[orderId] = snapshot
+            }
+        }
+
+        for (order in cancelledOrders) {
+            if (order.id in printedCancelIds) continue
+            val items = order.items.ifEmpty { snapshotByOrder[order.id].orEmpty() }
+            if (items.isEmpty()) continue
+            val transferredTo = findDestinationOrderId(items, orders, excludeOrderId = order.id)
+            if (!printCancelTicket(
+                    printerAddress,
+                    order.copy(items = items),
+                    partial = false,
+                    transferredToOrderId = transferredTo,
+                )
+            ) {
+                return
+            }
+            session.markCancelPrinted(order.id)
+            printedCancelIds.add(order.id)
+            session.removePrintedItemSnapshot(order.id)
+            session.markPrinted(order.id, SessionManager.orderPrintFingerprint(order.copy(items = items)))
+        }
+
+        for (orderId in disappeared) {
+            if (orderId in printedCancelIds || orderId in cancelledIds) continue
+            val snapshot = snapshotByOrder[orderId].orEmpty()
+            if (snapshot.isEmpty()) continue
+            val remote = withContext(Dispatchers.IO) {
+                runCatching { api.fetchOrder(orderId) }.getOrNull()
+            }
+            session.removePrintedItemSnapshot(orderId)
+            if (remote?.status != "cancelled") continue
+            val transferredTo = findDestinationOrderId(snapshot, orders, excludeOrderId = orderId)
+            if (!printCancelTicket(
+                    printerAddress,
+                    remote.copy(items = snapshot),
+                    partial = false,
+                    transferredToOrderId = transferredTo,
+                )
+            ) {
+                return
+            }
+            session.markCancelPrinted(orderId)
+            printedCancelIds.add(orderId)
+        }
 
         val fingerprints = session.getPrintedOrderFingerprints().toMutableMap()
-
         for (order in orders) {
             if (order.items.isEmpty()) continue
+
+            val snapshot = snapshotByOrder[order.id].orEmpty()
+            val removedItems = computeRemovedItems(snapshot, order)
+            if (removedItems.isNotEmpty()) {
+                val transferredTo = findDestinationOrderId(removedItems, orders, excludeOrderId = order.id)
+                if (!printCancelTicket(
+                        printerAddress,
+                        order.copy(items = removedItems),
+                        partial = true,
+                        transferredToOrderId = transferredTo,
+                    )
+                ) {
+                    return
+                }
+            }
+
             val fingerprint = SessionManager.orderPrintFingerprint(order)
             val previous = fingerprints[order.id]
-            if (previous == fingerprint) continue
+            if (previous == fingerprint) {
+                session.setPrintedItemSnapshot(order.id, order.items)
+                continue
+            }
 
-            // After upgrade from id-only tracking, adopt current items without reprinting.
             if (previous == SessionManager.LEGACY_PRINT_FINGERPRINT) {
                 session.markPrinted(order.id, fingerprint)
                 fingerprints[order.id] = fingerprint
+                session.setPrintedItemSnapshot(order.id, order.items)
                 continue
             }
 
@@ -254,43 +349,169 @@ class MainActivity : KeepScreenOnActivity() {
                     "${item.id}:${item.quantity}" !in previousKeys
                 }
             }
-            if (newItems.isEmpty()) {
-                session.markPrinted(order.id, fingerprint)
-                fingerprints[order.id] = fingerprint
-                continue
+
+            if (newItems.isNotEmpty()) {
+                val ticket = if (previousKeys.isEmpty()) {
+                    order
+                } else {
+                    order.copy(items = newItems)
+                }
+                val transferredFrom = findSourceOrderId(
+                    newItems,
+                    snapshotByOrder,
+                    excludeOrderId = order.id,
+                )
+                val printAsUpdate = previousKeys.isNotEmpty()
+                if (!printOrderTicket(
+                        printerAddress,
+                        ticket,
+                        isUpdate = printAsUpdate,
+                        transferredFromOrderId = transferredFrom,
+                    )
+                ) {
+                    return
+                }
             }
 
-            val ticket = if (previousKeys.isEmpty()) {
-                order
-            } else {
-                order.copy(items = newItems)
-            }
-            val isUpdate = previousKeys.isNotEmpty()
+            session.markPrinted(order.id, fingerprint)
+            fingerprints[order.id] = fingerprint
+            session.setPrintedItemSnapshot(order.id, order.items)
+        }
+    }
 
-            try {
-                withContext(Dispatchers.IO) {
-                    printer.printOrder(printerAddress, ticket, isUpdate = isUpdate)
-                }
-                session.markPrinted(order.id, fingerprint)
-                fingerprints[order.id] = fingerprint
-            } catch (err: PrinterException) {
-                withContext(Dispatchers.Main) {
-                    showError(getString(R.string.print_failed, err.message ?: ""))
-                }
-                break
-            } catch (err: SecurityException) {
-                withContext(Dispatchers.Main) {
-                    requestBluetoothIfNeeded()
-                    showError(getString(R.string.bluetooth_permission_required))
-                }
-                break
-            } catch (err: Exception) {
-                withContext(Dispatchers.Main) {
-                    showError(getString(R.string.print_failed, err.message ?: ""))
-                }
-                break
+    private suspend fun printOrderTicket(
+        printerAddress: String,
+        order: KitchenOrder,
+        isUpdate: Boolean,
+        transferredFromOrderId: Int? = null,
+    ): Boolean {
+        return try {
+            withContext(Dispatchers.IO) {
+                printer.printOrder(
+                    printerAddress,
+                    order,
+                    isUpdate = isUpdate,
+                    transferredFromOrderId = transferredFromOrderId,
+                )
+            }
+            true
+        } catch (err: PrinterException) {
+            withContext(Dispatchers.Main) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            }
+            false
+        } catch (err: SecurityException) {
+            withContext(Dispatchers.Main) {
+                requestBluetoothIfNeeded()
+                showError(getString(R.string.bluetooth_permission_required))
+            }
+            false
+        } catch (err: Exception) {
+            withContext(Dispatchers.Main) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            }
+            false
+        }
+    }
+
+    private suspend fun printCancelTicket(
+        printerAddress: String,
+        order: KitchenOrder,
+        partial: Boolean,
+        transferredToOrderId: Int? = null,
+    ): Boolean {
+        return try {
+            withContext(Dispatchers.IO) {
+                printer.printCancelOrder(
+                    printerAddress,
+                    order,
+                    partial = partial,
+                    transferredToOrderId = transferredToOrderId,
+                )
+            }
+            true
+        } catch (err: PrinterException) {
+            withContext(Dispatchers.Main) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            }
+            false
+        } catch (err: SecurityException) {
+            withContext(Dispatchers.Main) {
+                requestBluetoothIfNeeded()
+                showError(getString(R.string.bluetooth_permission_required))
+            }
+            false
+        } catch (err: Exception) {
+            withContext(Dispatchers.Main) {
+                showError(getString(R.string.print_failed, err.message ?: ""))
+            }
+            false
+        }
+    }
+
+    private fun findDestinationOrderId(
+        items: List<OrderItem>,
+        openOrders: List<KitchenOrder>,
+        excludeOrderId: Int,
+    ): Int? {
+        val itemIds = items.map { it.id }.toSet()
+        if (itemIds.isEmpty()) return null
+        val matches = openOrders.filter { order ->
+            order.id != excludeOrderId && order.items.any { it.id in itemIds }
+        }
+        return matches.singleOrNull()?.id
+            ?: matches.maxByOrNull { order -> order.items.count { it.id in itemIds } }?.id
+    }
+
+    private fun findSourceOrderId(
+        items: List<OrderItem>,
+        snapshotByOrder: Map<Int, List<OrderItem>>,
+        excludeOrderId: Int,
+    ): Int? {
+        val itemIds = items.map { it.id }.toSet()
+        if (itemIds.isEmpty()) return null
+        var bestOrderId: Int? = null
+        var bestCount = 0
+        for ((orderId, snapshot) in snapshotByOrder) {
+            if (orderId == excludeOrderId) continue
+            val count = itemIds.count { id -> snapshot.any { it.id == id } }
+            if (count > bestCount) {
+                bestCount = count
+                bestOrderId = orderId
             }
         }
+        return bestOrderId?.takeIf { bestCount > 0 }
+    }
+
+    private fun computeRemovedItems(snapshot: List<OrderItem>, order: KitchenOrder): List<OrderItem> {
+        if (snapshot.isEmpty()) return emptyList()
+        val currentById = order.items.associateBy { it.id }
+        val removed = mutableListOf<OrderItem>()
+        for (prev in snapshot) {
+            val current = currentById[prev.id]
+            if (current == null) {
+                removed.add(prev)
+                continue
+            }
+            val prevQty = prev.quantity.toDoubleOrNull() ?: 0.0
+            val curQty = current.quantity.toDoubleOrNull() ?: 0.0
+            if (prevQty > curQty + 0.0001) {
+                val diffQty = prevQty - curQty
+                val qtyStr = if (diffQty % 1.0 == 0.0) {
+                    diffQty.toInt().toString()
+                } else {
+                    String.format(Locale.US, "%.2f", diffQty)
+                }
+                removed.add(prev.copy(quantity = qtyStr))
+            }
+        }
+        return removed
+    }
+
+    private fun currentIsoTimestamp(): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date())
     }
 
     private fun showError(message: String) {

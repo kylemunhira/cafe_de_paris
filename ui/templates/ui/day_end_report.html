@@ -229,14 +229,28 @@ function activityHtml(snapshot) {
   if (!snapshot || typeof snapshot !== "object") {
     return `<p class="report-panel-note">No activity snapshot.</p>`;
   }
-  const methods = (snapshot.payments_by_method || []).map((row) => {
-    const label = row.method_label || row.method || "—";
-    const code = row.currency__code || row.currency__name || "";
-    return `<li>${label}${code ? ` (${code})` : ""}: ${money(row.total_paid)} (${row.payment_count || 0})</li>`;
-  }).join("");
+  const methodsByName = new Map();
+  for (const row of snapshot.payments_by_method || []) {
+    const label = row.currency__name || row.currency__code || row.method_label || row.method || "—";
+    const existing = methodsByName.get(label) || { total: 0, count: 0 };
+    existing.total += Number(row.total_paid || 0);
+    existing.count += Number(row.payment_count || 0);
+    methodsByName.set(label, existing);
+  }
+  const methods = [...methodsByName.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, row]) => `<li>${label}: ${money(row.total)} (${row.count})</li>`)
+    .join("");
   const expenses = (snapshot.expenses || []).map((row) => {
     const code = row.currency__code || "";
     return `<li>${row.description || "Expense"}: ${money(row.amount)}${code ? ` ${code}` : ""}</li>`;
+  }).join("");
+  const accountTransactions = (snapshot.account_transactions || []).map((row) => {
+    const sign = Number(row.amount) >= 0 ? "+" : "";
+    const detail = [row.statement_label || row.transaction_type || "Transaction"]
+      .concat(row.order_id ? [`Order #${row.order_id}`] : [])
+      .join(" · ");
+    return `<li>${row.customer_name || "Customer"} — ${detail}: ${sign}${money(row.amount)}</li>`;
   }).join("");
   const products = (snapshot.products || []).slice(0, 15).map((row) => {
     return `<li>${row.product__name || "Item"} × ${row.quantity} — ${money(row.revenue)}</li>`;
@@ -251,6 +265,10 @@ function activityHtml(snapshot) {
       <div>
         <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Expenses</h4>
         ${expenses ? `<ul style="margin: 0; padding-left: 1.1rem;">${expenses}</ul>` : `<p class="report-panel-note">None</p>`}
+      </div>
+      <div>
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Customer accounts</h4>
+        ${accountTransactions ? `<ul style="margin: 0; padding-left: 1.1rem;">${accountTransactions}</ul>` : `<p class="report-panel-note">None</p>`}
       </div>
       <div>
         <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Top products</h4>

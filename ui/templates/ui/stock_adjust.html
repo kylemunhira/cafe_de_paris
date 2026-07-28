@@ -203,7 +203,7 @@ function render() {
                 class="stock-adjust-row-qty"
                 data-row-qty
                 min="0"
-                step="0.01"
+                step="0.001"
                 placeholder="${qtyPlaceholder()}"
                 value="${pendingQty.has(item.id) ? pendingQty.get(item.id) : ""}"
                 aria-label="Quantity for ${item.name}"

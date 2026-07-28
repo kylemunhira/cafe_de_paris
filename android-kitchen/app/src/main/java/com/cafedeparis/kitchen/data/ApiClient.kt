@@ -26,6 +26,22 @@ class ApiClient(
         return fetchOrdersByStatus("open")
     }
 
+    fun fetchCancelledOrders(since: String): List<KitchenOrder> {
+        val token = session.token ?: throw ApiException(401, "Not logged in")
+        val branchId = session.branchId
+        val encodedSince = java.net.URLEncoder.encode(since, Charsets.UTF_8.name())
+        val url =
+            "${config.serverUrl}/api/orders/?status=cancelled&cancelled_since=$encodedSince&branch=$branchId&page_size=500"
+        val body = getJson(url, token)
+        return JsonParsers.parseOrders(body)
+    }
+
+    fun fetchOrder(orderId: Int): KitchenOrder {
+        val token = session.token ?: throw ApiException(401, "Not logged in")
+        val url = "${config.serverUrl}/api/orders/$orderId/"
+        return JsonParsers.parseOrder(getJson(url, token))
+    }
+
     fun fetchPayableOrders(): List<KitchenOrder> {
         return fetchOrdersByStatus("open,unpaid")
     }
@@ -546,14 +562,23 @@ class ApiClient(
     fun transferOrderItems(
         orderId: Int,
         itemIds: List<Int>,
-        tableNumber: String,
+        tableNumber: String? = null,
+        destinationOrderId: Int? = null,
+        destinationOrderType: String? = null,
     ): OrderItemTransferResult {
         val token = requireToken()
         val ids = JSONArray()
         itemIds.forEach { ids.put(it) }
-        val payload = JSONObject()
-            .put("item_ids", ids)
-            .put("table_number", tableNumber.trim())
+        val payload = JSONObject().put("item_ids", ids)
+        if (!tableNumber.isNullOrBlank()) {
+            payload.put("table_number", tableNumber.trim())
+        }
+        if (destinationOrderId != null) {
+            payload.put("destination_order_id", destinationOrderId)
+        }
+        if (!destinationOrderType.isNullOrBlank()) {
+            payload.put("destination_order_type", destinationOrderType)
+        }
         val body = postJson(
             "${config.serverUrl}/api/orders/$orderId/transfer-items/",
             payload,

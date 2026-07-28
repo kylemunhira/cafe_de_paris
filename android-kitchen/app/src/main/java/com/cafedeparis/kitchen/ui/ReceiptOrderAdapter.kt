@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.cafedeparis.kitchen.R
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.databinding.ItemReceiptOrderBinding
 
 class ReceiptOrderAdapter(
@@ -46,12 +47,10 @@ class ReceiptOrderAdapter(
             } else {
                 order.total_amount.toDoubleOrNull() ?: 0.0
             }
-            binding.orderId.text = "#${order.id}"
+            binding.orderId.text = order.receiptHeaderLabel()
             binding.orderTotal.text = ProductAdapter.formatMoney(displayTotal.toString())
-            val typeLabel = order.order_type.replace("_", " ").replaceFirstChar { it.uppercase() }
-            val table = if (order.table_number.isNotBlank()) " · Table ${order.table_number}" else ""
-            val combined = if (tableOrders.size > 1) " · ${tableOrders.size} orders on table" else ""
-            binding.orderMeta.text = "$typeLabel$table$combined · ${order.items.size} items"
+            val combined = if (tableOrders.size > 1) "${tableOrders.size} orders on table · " else ""
+            binding.orderMeta.text = "$combined${order.items.size} items"
             binding.orderKitchenStatus.text = if (order.status == "unpaid") {
                 binding.root.context.getString(R.string.status_unpaid)
             } else {

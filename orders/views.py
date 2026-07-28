@@ -7,6 +7,8 @@ from accounts.branch_access import (
 )
 from audit.mixins import AuditedModelMixin
 from django.db import transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -86,12 +88,22 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         fiscal_approval_status = self.request.query_params.get("fiscal_approval_status")
         fiscal_only = self.request.query_params.get("fiscal_only")
         branch = self.request.query_params.get("branch")
+        statuses = []
         if status_filter:
             statuses = [value.strip() for value in status_filter.split(",") if value.strip()]
             if len(statuses) == 1:
                 qs = qs.filter(status=statuses[0])
             elif statuses:
                 qs = qs.filter(status__in=statuses)
+            if OrderStatus.CANCELLED in statuses:
+                qs = qs.filter(paid_at__isnull=True)
+        cancelled_since = self.request.query_params.get("cancelled_since")
+        if cancelled_since:
+            since = parse_datetime(cancelled_since)
+            if since is not None:
+                if timezone.is_naive(since):
+                    since = timezone.make_aware(since, timezone.get_current_timezone())
+                qs = qs.filter(cancelled_at__gte=since)
         if kitchen_status:
             qs = qs.filter(kitchen_status=kitchen_status)
         if fiscal_approval_status:
@@ -105,14 +117,15 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     def _kitchen_station_for_request(self):
         """Apply bar/kitchen station filtering for kitchen displays only.
 
-        Kitchen polls ``status=open``. POS uses ``status=open,unpaid`` and must
-        receive every line item so receipts and payments stay complete.
+        Kitchen polls ``status=open`` and ``status=cancelled`` (with
+        ``cancelled_since``). POS uses ``status=open,unpaid`` and must receive
+        every line item so receipts and payments stay complete.
         Explicit ``pos_station`` still forces a station filter when provided.
         """
         explicit = self.request.query_params.get("pos_station")
         status_filter = self.request.query_params.get("status")
         statuses = [value.strip() for value in (status_filter or "").split(",") if value.strip()]
-        if explicit is None and statuses != ["open"]:
+        if explicit is None and statuses not in (["open"], [OrderStatus.CANCELLED]):
             return ""
         return resolve_kitchen_station_filter(self.request.user, explicit)
 
@@ -120,6 +133,16 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         context = super().get_serializer_context()
         context["kitchen_station"] = self._kitchen_station_for_request()
         return context
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        if not self._kitchen_station_for_request():
+            return response
+        if isinstance(response.data, dict) and "results" in response.data:
+            response.data["results"] = [
+                order for order in response.data["results"] if order.get("items")
+            ]
+        return response
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -357,7 +380,13 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 source, destination = transfer_order_items(
                     order,
                     item_ids=serializer.validated_data["item_ids"],
-                    table_number=serializer.validated_data["table_number"],
+                    table_number=serializer.validated_data.get("table_number"),
+                    destination_order_id=serializer.validated_data.get(
+                        "destination_order_id"
+                    ),
+                    destination_order_type=serializer.validated_data.get(
+                        "destination_order_type"
+                    ),
                     created_by=request.user,
                 )
         except OrderItemTransferError as exc:

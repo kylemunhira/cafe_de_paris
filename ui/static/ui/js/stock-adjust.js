@@ -3,14 +3,14 @@
 export function formatStockQty(value) {
   const qty = Number(value);
   return Number.isFinite(qty)
-    ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 })
+    ? qty.toLocaleString("en-US", { maximumFractionDigits: 3 })
     : "0";
 }
 
 function formatDelta(value) {
   const qty = Number(value);
   if (!Number.isFinite(qty)) return "0";
-  const formatted = qty.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const formatted = qty.toLocaleString("en-US", { maximumFractionDigits: 3 });
   return qty > 0 ? `+${formatted}` : formatted;
 }
 
@@ -82,7 +82,7 @@ export function stockAdjustInlineHtml({ productId, disabled = false }) {
         class="stock-adjust-inline__qty"
         data-stock-qty
         min="0"
-        step="0.01"
+        step="0.001"
         placeholder="Qty"
         aria-label="Quantity"
         ${disabledAttr}

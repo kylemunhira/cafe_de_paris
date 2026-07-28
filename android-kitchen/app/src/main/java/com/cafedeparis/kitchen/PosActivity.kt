@@ -45,10 +45,12 @@ import com.cafedeparis.kitchen.databinding.DialogCustomerPickerBinding
 import com.cafedeparis.kitchen.databinding.DialogDayEndBinding
 import java.util.Locale
 import com.cafedeparis.kitchen.databinding.DialogExpenseBinding
+import com.cafedeparis.kitchen.databinding.DialogOrderPickerBinding
 import com.cafedeparis.kitchen.databinding.DialogTablePickerBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
 import com.cafedeparis.kitchen.data.cartLineKey
+import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.ui.AddonPickerDialog
 import com.cafedeparis.kitchen.ui.CartLineAdapter
 import com.cafedeparis.kitchen.ui.CategoryChipAdapter
@@ -102,6 +104,7 @@ class PosActivity : KeepScreenOnActivity() {
     private var paymentMethod: PaymentMethod = PaymentMethod.CASH
     private var selectedCurrencyId: Int? = null
     private var tablePickerDialog: androidx.appcompat.app.AlertDialog? = null
+    private var orderPickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var dayEndDialog: androidx.appcompat.app.AlertDialog? = null
     private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPaymentDialog: androidx.appcompat.app.AlertDialog? = null
@@ -198,6 +201,7 @@ class PosActivity : KeepScreenOnActivity() {
         refreshJob?.cancel()
         errorHideJob?.cancel()
         tablePickerDialog?.dismiss()
+        orderPickerDialog?.dismiss()
         dayEndDialog?.dismiss()
         expenseDialog?.dismiss()
         customerPaymentDialog?.dismiss()
@@ -1511,7 +1515,7 @@ class PosActivity : KeepScreenOnActivity() {
             }
         }
         binding.transferItemsButton.setOnClickListener {
-            startTableTransfer()
+            startItemTransfer()
         }
         binding.checkoutButton.setOnClickListener {
             if (posMode == PosMode.ORDER) {
@@ -1814,9 +1818,9 @@ class PosActivity : KeepScreenOnActivity() {
         receiptPaymentOrderId = order.id
         if (orderChanged) selectedTransferKeys.clear()
 
-        val canTransferItems = order.status == "open"
-            && order.order_type == "dine_in"
-            && order.table_number.isNotBlank()
+        val canTransferItems = order.status == "open" && (
+            order.order_type == "dine_in" || order.order_type == "takeaway"
+            )
         val lines = receiptOrders().flatMap { tableOrder ->
             tableOrder.items.map { item ->
                 val qty = item.quantity.toDoubleOrNull() ?: 1.0
@@ -1870,37 +1874,123 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun updateTransferButtonState(canTransfer: Boolean? = null) {
+        val order = selectedOrder
         val transferable = canTransfer ?: (
-            selectedOrder?.status == "open"
-                && selectedOrder?.order_type == "dine_in"
-                && !selectedOrder?.table_number.isNullOrBlank()
+            order?.status == "open" && (
+                order.order_type == "dine_in" || order.order_type == "takeaway"
+                )
             )
         binding.transferItemsButton.visibility = if (transferable) View.VISIBLE else View.GONE
         binding.transferItemsButton.isEnabled = transferable && selectedTransferKeys.isNotEmpty()
         binding.transferItemsButton.text = if (selectedTransferKeys.isNotEmpty()) {
             getString(R.string.transfer_lines_count, selectedTransferKeys.size)
         } else {
-            getString(R.string.transfer_to_table)
+            getString(R.string.transfer_action)
         }
         receiptCartAdapter.selectedTransferKeys = selectedTransferKeys.toSet()
     }
 
-    private fun startTableTransfer() {
+    private fun startItemTransfer() {
         if (selectedTransferKeys.isEmpty()) {
             Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
             return
         }
         val order = selectedOrder
-        if (
-            order == null
-            || order.status != "open"
-            || order.order_type != "dine_in"
-            || order.table_number.isBlank()
-        ) {
-            Toast.makeText(this, R.string.transfer_only_dine_in, Toast.LENGTH_SHORT).show()
+        if (order == null || order.status != "open") {
+            Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
             return
         }
-        openTablePicker(TablePickerPurpose.TRANSFER)
+        if (order.order_type != "dine_in" && order.order_type != "takeaway") {
+            Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val options = arrayOf(
+            getString(R.string.transfer_destination_table),
+            getString(R.string.transfer_destination_takeaway),
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.transfer_destination_title)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> openTablePicker(TablePickerPurpose.TRANSFER)
+                    1 -> openOrderPickerForTransfer()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun openOrderPickerForTransfer() {
+        lifecycleScope.launch {
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                val orders = withContext(Dispatchers.IO) { api.fetchPayableOrders() }
+                openOrders = orders
+                showOrderPickerDialog(orders)
+            } catch (err: ApiException) {
+                handleApiError(err)
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun showOrderPickerDialog(orders: List<KitchenOrder>) {
+        val sourceIds = receiptOrders().map { it.id }.toSet()
+        val candidates = orders.filter {
+            it.status == "open"
+                && it.order_type == "takeaway"
+                && it.id !in sourceIds
+        }
+        val dialogBinding = DialogOrderPickerBinding.inflate(layoutInflater)
+        val adapter = ReceiptOrderAdapter(
+            onOrderClick = { order ->
+                orderPickerDialog?.dismiss()
+                confirmTransferToOrder(order.id, order.receiptHeaderLabel())
+            },
+        )
+        dialogBinding.orderList.layoutManager = LinearLayoutManager(this)
+        dialogBinding.orderList.adapter = adapter
+        adapter.submitList(candidates)
+        dialogBinding.orderEmptyLabel.visibility =
+            if (candidates.isEmpty()) View.VISIBLE else View.GONE
+        dialogBinding.orderList.visibility =
+            if (candidates.isEmpty()) View.GONE else View.VISIBLE
+        dialogBinding.newOrderButton.setOnClickListener {
+            orderPickerDialog?.dismiss()
+            confirmTransferToOrder(null, getString(R.string.transfer_new_order))
+        }
+        orderPickerDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.transfer_order_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        orderPickerDialog?.show()
+    }
+
+    private fun confirmTransferToOrder(destinationOrderId: Int?, destinationLabel: String) {
+        val lineCount = selectedTransferKeys.size
+        if (lineCount == 0) {
+            Toast.makeText(this, R.string.transfer_select_items, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val message = if (destinationOrderId == null) {
+            getString(R.string.transfer_confirm_new_order, lineCount)
+        } else {
+            getString(R.string.transfer_confirm_order, lineCount, destinationLabel)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setMessage(message)
+            .setPositiveButton(R.string.transfer_action) { _, _ ->
+                performTransfer(
+                    destinationOrderId = destinationOrderId,
+                    destinationOrderType = "takeaway",
+                )
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun confirmTransferToTable(destinationTable: String) {
@@ -1912,13 +2002,20 @@ class PosActivity : KeepScreenOnActivity() {
         MaterialAlertDialogBuilder(this)
             .setMessage(getString(R.string.transfer_confirm, lineCount, destinationTable))
             .setPositiveButton(R.string.transfer_action) { _, _ ->
-                performTransferToTable(destinationTable)
+                performTransfer(
+                    destinationTable = destinationTable,
+                    destinationOrderType = "dine_in",
+                )
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
-    private fun performTransferToTable(destinationTable: String) {
+    private fun performTransfer(
+        destinationTable: String? = null,
+        destinationOrderId: Int? = null,
+        destinationOrderType: String? = null,
+    ) {
         val groups = linkedMapOf<Int, MutableList<Int>>()
         for (line in receiptCartAdapter.currentList) {
             if (line.lineKey !in selectedTransferKeys) continue
@@ -1935,20 +2032,27 @@ class PosActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
             try {
-                var destinationOrderId: Int? = null
+                var resultDestinationId = destinationOrderId
                 withContext(Dispatchers.IO) {
                     for ((orderId, itemIds) in groups) {
-                        val result = api.transferOrderItems(orderId, itemIds, destinationTable)
-                        destinationOrderId = result.destinationOrder.id
+                        val result = api.transferOrderItems(
+                            orderId = orderId,
+                            itemIds = itemIds,
+                            tableNumber = destinationTable,
+                            destinationOrderId = destinationOrderId,
+                            destinationOrderType = destinationOrderType,
+                        )
+                        resultDestinationId = result.destinationOrder.id
                     }
                 }
                 selectedTransferKeys.clear()
-                Toast.makeText(
-                    this@PosActivity,
-                    getString(R.string.transfer_success, destinationTable),
-                    Toast.LENGTH_SHORT,
-                ).show()
-                loadOpenOrders(selectOrderId = destinationOrderId)
+                val toastRes = when {
+                    destinationTable != null -> getString(R.string.transfer_success, destinationTable)
+                    destinationOrderId != null -> getString(R.string.transfer_success_order, destinationOrderId)
+                    else -> getString(R.string.transfer_success_new_order)
+                }
+                Toast.makeText(this@PosActivity, toastRes, Toast.LENGTH_SHORT).show()
+                loadOpenOrders(selectOrderId = resultDestinationId)
             } catch (err: ApiException) {
                 handleApiError(err)
                 updateTransferButtonState()

@@ -102,7 +102,7 @@ const REPORT_SORT = {
 
 function formatQty(value) {
   const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "0";
 }
 
 function defaultDate() {

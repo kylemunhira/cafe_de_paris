@@ -117,7 +117,7 @@ countDateInput.value = new Date().toISOString().slice(0, 10);
 
 function formatQty(value) {
   const qty = Number(value);
-  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "—";
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "—";
 }
 
 function lineVariance(line) {
@@ -134,7 +134,7 @@ function formatVariance(value) {
   if (value === null || value === undefined || value === "") return "—";
   const qty = Number(value);
   if (!Number.isFinite(qty)) return "—";
-  const formatted = qty.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const formatted = qty.toLocaleString("en-US", { maximumFractionDigits: 3 });
   return qty > 0 ? `+${formatted}` : formatted;
 }
 
@@ -417,7 +417,7 @@ function renderActiveCount() {
                 <td style="text-align: right;">
                   ${isCompleted
                     ? formatQty(line.counted_quantity)
-                    : `<input type="number" class="counted-input report-input" min="0" step="0.01"
+                    : `<input type="number" class="counted-input report-input" min="0" step="0.001"
                         data-line-id="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="0">`
                   }
                 </td>

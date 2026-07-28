@@ -69,6 +69,16 @@ data class KitchenOrder(
     val payments: List<OrderPaymentLine> = emptyList(),
 )
 
+fun KitchenOrder.receiptLocationLabel(): String {
+    return when {
+        order_type == "takeaway" -> "TAKEAWAY"
+        table_number.isNotBlank() -> table_number.trim()
+        else -> "DINE IN"
+    }
+}
+
+fun KitchenOrder.receiptHeaderLabel(): String = "#$id - ${receiptLocationLabel()}"
+
 data class Customer(
     val id: Int,
     val full_name: String,

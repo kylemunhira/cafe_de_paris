@@ -339,6 +339,14 @@ class IngredientUsageReportView(BaseUIView):
     active_nav = "ingredient_usage_report"
 
 
+class VoidedItemsReportView(BaseUIView):
+    template_name = "ui/voided_items_report.html"
+    active_nav = "voided_items_report"
+
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
+
+
 class SupplierStatementView(BaseUIView):
     template_name = "ui/supplier_statement.html"
     active_nav = "supplier_statement"

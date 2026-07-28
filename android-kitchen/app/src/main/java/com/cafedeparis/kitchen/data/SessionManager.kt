@@ -147,6 +147,143 @@ class SessionManager(context: Context) {
             .apply()
     }
 
+    var cancellationPollSince: String?
+        get() = prefs.getString(KEY_CANCELLATION_POLL_SINCE, null)
+        set(value) = prefs.edit().putString(KEY_CANCELLATION_POLL_SINCE, value).apply()
+
+    fun ensureCancellationPollSince(nowIso: String) {
+        if (cancellationPollSince.isNullOrBlank()) {
+            cancellationPollSince = nowIso
+        }
+    }
+
+    fun getPrintedCancelOrderIds(): Set<Int> {
+        return prefs.getStringSet(KEY_PRINTED_CANCEL_IDS, emptySet())
+            ?.mapNotNull { it.toIntOrNull() }
+            ?.toSet()
+            .orEmpty()
+    }
+
+    fun markCancelPrinted(orderId: Int) {
+        val ids = getPrintedCancelOrderIds().toMutableSet()
+        ids.add(orderId)
+        if (ids.size > MAX_PRINTED_TRACKED) {
+            val keep = ids.sortedDescending().take(MAX_PRINTED_TRACKED)
+            ids.clear()
+            ids.addAll(keep)
+        }
+        prefs.edit()
+            .putStringSet(KEY_PRINTED_CANCEL_IDS, ids.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    fun clearCancellationTracking() {
+        prefs.edit()
+            .remove(KEY_CANCELLATION_POLL_SINCE)
+            .remove(KEY_PRINTED_CANCEL_IDS)
+            .remove(KEY_PRINTED_ITEM_SNAPSHOTS)
+            .apply()
+    }
+
+    fun getPrintedItemSnapshot(orderId: Int): List<OrderItem> {
+        return getAllPrintedItemSnapshots()[orderId].orEmpty()
+    }
+
+    fun setPrintedItemSnapshot(orderId: Int, items: List<OrderItem>) {
+        val snapshots = getAllPrintedItemSnapshots().toMutableMap()
+        if (items.isEmpty()) {
+            snapshots.remove(orderId)
+        } else {
+            snapshots[orderId] = items
+        }
+        savePrintedItemSnapshots(snapshots)
+    }
+
+    fun removePrintedItemSnapshot(orderId: Int) {
+        setPrintedItemSnapshot(orderId, emptyList())
+    }
+
+    private fun getAllPrintedItemSnapshots(): Map<Int, List<OrderItem>> {
+        val encoded = prefs.getString(KEY_PRINTED_ITEM_SNAPSHOTS, null) ?: return emptyMap()
+        if (encoded.isBlank()) return emptyMap()
+        val snapshots = linkedMapOf<Int, List<OrderItem>>()
+        for (part in encoded.split(ORDER_SNAPSHOT_SEP)) {
+            if (part.isBlank()) continue
+            val sep = part.indexOf('=')
+            if (sep <= 0) continue
+            val orderId = part.substring(0, sep).toIntOrNull() ?: continue
+            val itemsJson = part.substring(sep + 1)
+            snapshots[orderId] = decodeOrderItems(itemsJson)
+        }
+        return snapshots
+    }
+
+    private fun savePrintedItemSnapshots(snapshots: Map<Int, List<OrderItem>>) {
+        if (snapshots.isEmpty()) {
+            prefs.edit().remove(KEY_PRINTED_ITEM_SNAPSHOTS).apply()
+            return
+        }
+        val trimmed = snapshots.entries
+            .sortedByDescending { it.key }
+            .take(MAX_PRINTED_TRACKED)
+            .associate { it.key to it.value }
+        val encoded = trimmed.entries.joinToString(ORDER_SNAPSHOT_SEP) { (orderId, items) ->
+            "$orderId=${encodeOrderItems(items)}"
+        }
+        prefs.edit().putString(KEY_PRINTED_ITEM_SNAPSHOTS, encoded).apply()
+    }
+
+    private fun encodeOrderItems(items: List<OrderItem>): String {
+        val array = org.json.JSONArray()
+        for (item in items) {
+            val addons = org.json.JSONArray()
+            for (addon in item.addons) {
+                addons.put(
+                    org.json.JSONObject()
+                        .put("name", addon.name)
+                        .put("price", addon.price),
+                )
+            }
+            array.put(
+                org.json.JSONObject()
+                    .put("id", item.id)
+                    .put("product_name", item.product_name)
+                    .put("quantity", item.quantity)
+                    .put("price", item.price)
+                    .put("notes", item.notes)
+                    .put("addons", addons),
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decodeOrderItems(encoded: String): List<OrderItem> {
+        return try {
+            val array = org.json.JSONArray(encoded)
+            (0 until array.length()).map { index ->
+                val item = array.getJSONObject(index)
+                val addonsJson = item.optJSONArray("addons") ?: org.json.JSONArray()
+                val addons = (0 until addonsJson.length()).map { addonIndex ->
+                    val addon = addonsJson.getJSONObject(addonIndex)
+                    OrderItemAddon(
+                        name = addon.optString("name", ""),
+                        price = addon.optString("price", "0"),
+                    )
+                }
+                OrderItem(
+                    id = item.getInt("id"),
+                    product_name = item.optString("product_name", ""),
+                    quantity = item.optString("quantity", "0"),
+                    price = item.optString("price", "0"),
+                    notes = item.optString("notes", ""),
+                    addons = addons,
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     companion object {
         private const val PREFS_NAME = "kitchen_session"
         private const val KEY_TOKEN = "token"
@@ -165,6 +302,10 @@ class SessionManager(context: Context) {
         private const val KEY_PRINTER_ADDRESS = "printer_address"
         private const val KEY_PRINTED_IDS = "printed_order_ids"
         private const val KEY_PRINTED_FINGERPRINTS = "printed_order_fingerprints"
+        private const val KEY_CANCELLATION_POLL_SINCE = "cancellation_poll_since"
+        private const val KEY_PRINTED_CANCEL_IDS = "printed_cancel_order_ids"
+        private const val KEY_PRINTED_ITEM_SNAPSHOTS = "printed_item_snapshots"
+        private const val ORDER_SNAPSHOT_SEP = "\u001e"
         const val LEGACY_PRINT_FINGERPRINT = "legacy"
         private const val MAX_PRINTED_TRACKED = 250
 

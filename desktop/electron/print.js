@@ -120,6 +120,16 @@ function orderTypeLine(order) {
     : type;
 }
 
+function orderReceiptLocationLabel(order) {
+  if (order.order_type === "takeaway") return "TAKEAWAY";
+  if (order.table_number) return esc(order.table_number);
+  return "DINE IN";
+}
+
+function orderReceiptHeaderLine(order, orderId) {
+  return `#${esc(orderId)} - ${orderReceiptLocationLabel(order)}`;
+}
+
 function itemColumns(name, quantity, amount) {
   const label = truncText(name, ITEM_NAME_W).padEnd(ITEM_NAME_W);
   const q = qty(quantity).padStart(ITEM_QTY_W);
@@ -384,9 +394,8 @@ function renderReceiptHtml(data) {
       <div class="center meta">
         <p><strong>Sales Receipt</strong></p>
         ${receiptLine}
-        <p>Order #${esc(orderId)}</p>
+        <p><strong>${orderReceiptHeaderLine(order, orderId)}</strong></p>
         <p>${esc(formatDateTime(order.paid_at || order.created_at))}</p>
-        <p>${orderTypeLine(order)}</p>
         ${renderSalespersonLine(salesperson)}
       </div>
       <hr class="divider">
@@ -631,6 +640,21 @@ function renderDayEndReportHtml(data) {
 
   const paymentLines = (report.payments || []).map((payment) => formatPaymentLine(payment));
   const expenseLines = (report.expenses || []).map((expense) => formatExpenseLine(expense));
+  const accountTransactionLines = (report.account_transactions || []).map((txn) => {
+    const sign = Number(txn.amount) >= 0 ? "+" : "";
+    const label = `${txn.customer_name || "Customer"} — ${txn.statement_label || txn.transaction_type || "Transaction"}`;
+    const suffix = `${sign}${money(txn.amount)}`;
+    const details = [];
+    if (txn.order_id) details.push(`Order #${txn.order_id}`);
+    if (txn.transaction_type === "deposit" && txn.amount_received) {
+      const code = txn.currency__code || txn.currency__name || "";
+      const symbol = txn.currency__symbol || "";
+      details.push(`${symbol}${money(txn.amount_received)} ${code}`.trim());
+    }
+    if (txn.notes) details.push(txn.notes);
+    const detailText = details.length ? `\n  ${details.join(" · ")}` : "";
+    return padLine(label, suffix, LINE_CHARS) + detailText;
+  });
   const cashupRows = report.cashup_rows || [];
   const cashupBlocks = cashupRows
     .map((row) => {
@@ -698,6 +722,14 @@ function renderDayEndReportHtml(data) {
       <hr class="divider">
       <div class="center meta"><p><strong>Expenses</strong></p></div>
       <pre class="lines">${esc(expenseLines.join("\n"))}</pre>`
+          : ""
+      }
+      ${
+        accountTransactionLines.length
+          ? `
+      <hr class="divider">
+      <div class="center meta"><p><strong>Customer account transactions</strong></p></div>
+      <pre class="lines">${esc(accountTransactionLines.join("\n"))}</pre>`
           : ""
       }
       ${

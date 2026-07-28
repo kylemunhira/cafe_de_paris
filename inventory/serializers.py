@@ -54,7 +54,7 @@ class BranchInventorySerializer(serializers.ModelSerializer):
 class InventoryAdjustSerializer(serializers.Serializer):
     branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.filter(is_active=True))
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
-    delta = serializers.DecimalField(max_digits=12, decimal_places=2)
+    delta = serializers.DecimalField(max_digits=12, decimal_places=3)
 
     def validate_delta(self, value):
         if value == 0:
@@ -65,7 +65,7 @@ class InventoryAdjustSerializer(serializers.Serializer):
 class InventorySetSerializer(serializers.Serializer):
     branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.filter(is_active=True))
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0"))
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0"))
 
 
 class StockMovementSerializer(serializers.ModelSerializer):
@@ -202,7 +202,7 @@ class DeliveryNoteLineSerializer(serializers.ModelSerializer):
         max_digits=14, decimal_places=2, read_only=True
     )
     returned_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
+        max_digits=12, decimal_places=3, read_only=True
     )
 
     class Meta:
@@ -302,10 +302,10 @@ class DeliveryNoteSerializer(serializers.ModelSerializer):
 class DeliveryNoteReceiptLineSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     received_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False
+        max_digits=12, decimal_places=3, required=False
     )
     damaged_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False, default=Decimal("0")
+        max_digits=12, decimal_places=3, required=False, default=Decimal("0")
     )
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
@@ -318,7 +318,7 @@ class DeliveryNoteReceiptSerializer(serializers.Serializer):
 
 class DeliveryNoteLineCreateSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3)
 
     def validate_product(self, product):
         if not product.is_active:
@@ -388,7 +388,7 @@ class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.filter(is_active=True)
     )
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3)
 
     def validate_product(self, product):
         if not is_ingredient_product(product):
@@ -495,7 +495,7 @@ class StockTakeLineSerializer(serializers.ModelSerializer):
 class StockTakeLineUpdateSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     counted_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False, allow_null=True
+        max_digits=12, decimal_places=3, required=False, allow_null=True
     )
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
@@ -664,7 +664,7 @@ class CentralInvoiceLineCreateSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.filter(is_active=True)
     )
-    quantity = serializers.DecimalField(max_digits=12, decimal_places=2)
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3)
     unit_price = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -778,7 +778,7 @@ class WastageEntryCreateSerializer(serializers.Serializer):
         queryset=Product.objects.filter(is_active=True)
     )
     quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+        max_digits=12, decimal_places=3, min_value=Decimal("0.001")
     )
     reason = serializers.ChoiceField(choices=WastageReason.choices)
     destination_branch = serializers.PrimaryKeyRelatedField(

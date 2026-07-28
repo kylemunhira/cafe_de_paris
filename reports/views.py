@@ -16,6 +16,7 @@ from purchasing.reports import build_supplier_spend_summary_report
 from .ingredients import build_ingredient_stock_report, build_ingredient_usage_report
 from .services import build_profit_report, build_report_summary, export_sales_csv
 from .vat import build_vat_report
+from .voided import build_voided_cancelled_report
 from orders.day_end import build_day_end_report
 from orders.day_end_close import (
     DayEndValidationError,
@@ -146,6 +147,27 @@ class ReportIngredientUsageView(APIView):
                 branch_id=branch_id,
                 search=request.query_params.get("search"),
                 active_only=request.query_params.get("active_only", "1") != "0",
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(data)
+
+
+class ReportVoidedCancelledView(APIView):
+    def get(self, request):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied(
+                "Only authorized staff can view voided and cancelled reports."
+            )
+
+        try:
+            branch_id = effective_branch_id(
+                request.user, request.query_params.get("branch")
+            )
+            data = build_voided_cancelled_report(
+                report_date=request.query_params.get("date"),
+                branch_id=branch_id,
+                search=request.query_params.get("search"),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)

@@ -16,7 +16,7 @@ class BranchInventory(models.Model):
         on_delete=models.CASCADE,
         related_name="branch_inventory",
     )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     last_updated = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -57,7 +57,7 @@ class StockTransfer(models.Model):
         on_delete=models.PROTECT,
         related_name="stock_transfers",
     )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
     status = models.CharField(
         max_length=20,
         choices=StockTransferStatus.choices,
@@ -179,17 +179,17 @@ class DeliveryNoteLine(models.Model):
         on_delete=models.PROTECT,
         related_name="delivery_note_lines",
     )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
     received_quantity = models.DecimalField(
         max_digits=12,
-        decimal_places=2,
+        decimal_places=3,
         null=True,
         blank=True,
         help_text="Good quantity accepted at the destination. Null until received.",
     )
     damaged_quantity = models.DecimalField(
         max_digits=12,
-        decimal_places=2,
+        decimal_places=3,
         default=0,
         help_text="Quantity rejected as damaged and returned to the sender.",
     )
@@ -305,10 +305,10 @@ class StockTakeLine(models.Model):
         on_delete=models.PROTECT,
         related_name="stock_take_lines",
     )
-    system_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    system_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     counted_quantity = models.DecimalField(
         max_digits=12,
-        decimal_places=2,
+        decimal_places=3,
         null=True,
         blank=True,
     )
@@ -398,7 +398,7 @@ class CentralInvoiceLine(models.Model):
         on_delete=models.PROTECT,
         related_name="central_invoice_lines",
     )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
 
     class Meta:
@@ -461,7 +461,7 @@ class WastageEntry(models.Model):
         on_delete=models.PROTECT,
         related_name="wastage_entries",
     )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
     reason = models.CharField(max_length=20, choices=WastageReason.choices)
     destination_branch = models.ForeignKey(
         Branch,
@@ -526,9 +526,9 @@ class StockMovement(models.Model):
         on_delete=models.CASCADE,
         related_name="stock_movements",
     )
-    quantity_before = models.DecimalField(max_digits=12, decimal_places=2)
-    delta = models.DecimalField(max_digits=12, decimal_places=2)
-    quantity_after = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity_before = models.DecimalField(max_digits=12, decimal_places=3)
+    delta = models.DecimalField(max_digits=12, decimal_places=3)
+    quantity_after = models.DecimalField(max_digits=12, decimal_places=3)
     reason = models.CharField(
         max_length=32,
         choices=StockMovementReason.choices,

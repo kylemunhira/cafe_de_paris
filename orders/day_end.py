@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Min, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -102,17 +102,16 @@ def build_day_end_report(
             order__paid_at__lt=end,
         )
         .values(
-            "method",
-            "currency__id",
-            "currency__code",
             "currency__name",
-            "currency__symbol",
         )
         .annotate(
             payment_count=Count("id"),
             total_paid=Coalesce(Sum("amount"), Decimal("0")),
+            currency__code=Min("currency__code"),
+            currency__symbol=Min("currency__symbol"),
+            method=Min("method"),
         )
-        .order_by("method", "currency__name")
+        .order_by("currency__name")
     )
     for row in payments_by_method:
         row["method_label"] = TENDER_METHOD_LABELS.get(row["method"], row["method"])
@@ -138,6 +137,36 @@ def build_day_end_report(
     deposits_by_currency = {
         row["currency__id"]: row["total_received"] or Decimal("0") for row in deposit_rows
     }
+
+    account_transactions = []
+    for txn in (
+        CustomerAccountTransaction.objects.filter(
+            branch=branch,
+            created_at__gte=start,
+            created_at__lt=end,
+        )
+        .select_related("customer", "currency", "order", "recorded_by")
+        .order_by("created_at", "id")
+    ):
+        account_transactions.append(
+            {
+                "id": txn.id,
+                "customer_name": str(txn.customer),
+                "transaction_type": txn.transaction_type,
+                "statement_label": txn.statement_label,
+                "amount": txn.amount,
+                "amount_received": txn.amount_received,
+                "balance_after": txn.balance_after,
+                "order_id": txn.order_id,
+                "notes": txn.notes,
+                "created_at": txn.created_at,
+                "currency__id": txn.currency_id,
+                "currency__code": txn.currency.code if txn.currency else None,
+                "currency__name": txn.currency.name if txn.currency else None,
+                "currency__symbol": txn.currency.symbol if txn.currency else None,
+                "recorded_by__username": txn.recorded_by.username if txn.recorded_by else None,
+            }
+        )
 
     account_payments_total = orders_qs.filter(
         payment_method=PaymentMethod.ACCOUNT
@@ -251,6 +280,7 @@ def build_day_end_report(
         "payments": payments,
         "payments_by_method": payments_by_method,
         "account_payments_total": account_payments_total,
+        "account_transactions": account_transactions,
         "cashup_rows": cashup_rows,
         "has_counted_entries": has_counted_entries,
         "variance_total": variance_total,

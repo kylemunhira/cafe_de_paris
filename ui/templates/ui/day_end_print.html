@@ -72,7 +72,7 @@
       {% for payment in report.payments %}
       <tr>
         <td class="col-label">
-          {{ payment.payment_currency__code|default:payment.payment_currency__name|default:"—" }}
+          {{ payment.payment_currency__name|default:payment.payment_currency__code|default:"—" }}
         </td>
         <td class="col-amt">
           {% if payment.payment_currency__symbol %}{{ payment.payment_currency__symbol }}{% endif %}{{ payment.total_paid|floatformat:2 }}
@@ -90,8 +90,7 @@
       {% for payment in report.payments_by_method %}
       <tr>
         <td class="col-label">
-          {{ payment.method_label }}
-          · {{ payment.currency__code|default:payment.currency__name|default:"—" }}
+          {{ payment.currency__name|default:payment.currency__code|default:"—" }}
         </td>
         <td class="col-amt">
           {% if payment.currency__symbol %}{{ payment.currency__symbol }}{% endif %}{{ payment.total_paid|floatformat:2 }}
@@ -113,6 +112,27 @@
         </td>
         <td class="col-amt">
           {% if row.currency__symbol %}{{ row.currency__symbol }}{% endif %}{{ row.amount|floatformat:2 }}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if report.account_transactions %}
+    <hr class="divider">
+    <div class="center meta"><p><strong>Customer account transactions</strong></p></div>
+    <table class="summary">
+      {% for row in report.account_transactions %}
+      <tr>
+        <td class="col-label">
+          {{ row.customer_name }} — {{ row.statement_label }}
+          <div class="item-detail">{{ row.created_at|date:"H:i" }}{% if row.order_id %} · Order #{{ row.order_id }}{% endif %}{% if row.notes %} · {{ row.notes }}{% endif %}</div>
+        </td>
+        <td class="col-amt">
+          {% if row.amount >= 0 %}+{% endif %}{{ row.amount|floatformat:2 }}
+          {% if row.transaction_type == "deposit" and row.amount_received %}
+          <div class="item-detail">{% if row.currency__symbol %}{{ row.currency__symbol }}{% endif %}{{ row.amount_received|floatformat:2 }} {{ row.currency__code|default:row.currency__name }}</div>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

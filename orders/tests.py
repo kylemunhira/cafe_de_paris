@@ -1,4 +1,5 @@
 from decimal import Decimal
+from urllib.parse import quote
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -15,9 +16,11 @@ from orders.models import (
     FiscalApprovalStatus,
     KitchenStatus,
     Order,
+    OrderPayment,
     OrderStatus,
     OrderType,
     PaymentMethod,
+    TenderMethod,
 )
 from orders.tax import order_receipt_tax_breakdown, split_inclusive_total
 from payments.models import Currency, CurrencyRate
@@ -324,6 +327,134 @@ class KitchenStationFilterTests(TestCase):
         self.assertEqual(len(results), 1)
         item_names = sorted(item["product_name"] for item in results[0]["items"])
         self.assertEqual(item_names, ["Beer", "Burger"])
+
+    def test_kitchen_polls_recent_cancellations_for_station(self):
+        from orders.services import cancel_order
+
+        since = timezone.now()
+        bar_only = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        bar_only.items.create(
+            product=self.bar_product,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        kitchen_only = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        kitchen_only.items.create(
+            product=self.kitchen_product,
+            quantity=Decimal("1"),
+            price=Decimal("8.00"),
+        )
+
+        cancel_order(self.mixed_order)
+        cancel_order(bar_only)
+        cancel_order(kitchen_only)
+
+        self.client.force_authenticate(user=self.kitchen_user)
+        response = self.client.get(
+            "/api/orders/?status=cancelled"
+            f"&cancelled_since={quote(since.isoformat())}"
+            f"&branch={self.branch.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"]
+        ids = {row["id"] for row in results}
+        self.assertIn(self.mixed_order.id, ids)
+        self.assertIn(kitchen_only.id, ids)
+        self.assertNotIn(bar_only.id, ids)
+        for row in results:
+            if row["id"] == self.mixed_order.id:
+                item_names = [item["product_name"] for item in row["items"]]
+                self.assertEqual(item_names, ["Burger"])
+
+    def test_bar_polls_recent_cancellations_for_station(self):
+        from orders.services import cancel_order
+
+        since = timezone.now()
+        kitchen_only = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        kitchen_only.items.create(
+            product=self.kitchen_product,
+            quantity=Decimal("1"),
+            price=Decimal("8.00"),
+        )
+        cancel_order(self.mixed_order)
+        cancel_order(kitchen_only)
+
+        self.client.force_authenticate(user=self.bar_user)
+        response = self.client.get(
+            "/api/orders/?status=cancelled"
+            f"&cancelled_since={quote(since.isoformat())}"
+            f"&branch={self.branch.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.mixed_order.id, ids)
+        self.assertNotIn(kitchen_only.id, ids)
+
+    def test_unassigned_station_items_visible_on_all_kitchen_stations(self):
+        unassigned_category = ProductCategory.objects.create(name="Kiddies")
+        unassigned_product = Product.objects.create(
+            name="Fish Strips",
+            category=unassigned_category,
+            selling_price=Decimal("6.00"),
+        )
+        order = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        order.items.create(
+            product=unassigned_product,
+            quantity=Decimal("1"),
+            price=Decimal("6.00"),
+        )
+        order.recalculate_total()
+
+        only_unassigned = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        only_unassigned.items.create(
+            product=unassigned_product,
+            quantity=Decimal("2"),
+            price=Decimal("6.00"),
+        )
+        only_unassigned.recalculate_total()
+
+        self.client.force_authenticate(user=self.kitchen_user)
+        response = self.client.get("/api/orders/?status=open")
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"]
+        self.assertEqual(len(results), 3)
+        unassigned = next(row for row in results if row["id"] == order.id)
+        self.assertEqual(
+            [item["product_name"] for item in unassigned["items"]],
+            ["Fish Strips"],
+        )
+        only_unassigned_row = next(
+            row for row in results if row["id"] == only_unassigned.id
+        )
+        self.assertEqual(
+            [item["product_name"] for item in only_unassigned_row["items"]],
+            ["Fish Strips"],
+        )
+
+        self.client.force_authenticate(user=self.bar_user)
+        response = self.client.get("/api/orders/?status=open")
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"]
+        self.assertEqual(len(results), 3)
+        unassigned = next(row for row in results if row["id"] == order.id)
+        self.assertEqual(
+            [item["product_name"] for item in unassigned["items"]],
+            ["Fish Strips"],
+        )
+
+    def test_cancelled_since_excludes_older_cancellations(self):
+        from orders.services import cancel_order
+
+        cancel_order(self.mixed_order)
+        since = timezone.now()
+        self.client.force_authenticate(user=self.kitchen_user)
+        response = self.client.get(
+            "/api/orders/?status=cancelled"
+            f"&cancelled_since={quote(since.isoformat())}"
+            f"&branch={self.branch.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"], [])
 
 
 class InclusiveTaxBreakdownTests(TestCase):
@@ -650,6 +781,100 @@ class DayEndReportTests(TestCase):
         self.assertEqual(row["variance"], Decimal("0.00"))
         self.assertEqual(len(report["expenses"]), 1)
         self.assertEqual(report["expenses"][0]["description"], "Milk")
+
+    def test_build_day_end_report_includes_account_transactions(self):
+        from customers.models import Customer
+        from customers.services import deposit_to_account, pay_order_from_account
+
+        customer = Customer.objects.create(
+            first_name="Jane",
+            last_name="Doe",
+            account_balance=Decimal("20.00"),
+        )
+        deposit_to_account(
+            customer=customer,
+            branch=self.branch,
+            currency=self.usd,
+            amount_received=Decimal("10.00"),
+            notes="Top up",
+            recorded_by=self.user,
+        )
+        order = Order.objects.create(
+            branch=self.branch,
+            customer=customer,
+            status=OrderStatus.OPEN,
+        )
+        order.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=self.latte.selling_price,
+        )
+        order.refresh_from_db()
+        pay_order_from_account(order=order, recorded_by=self.user)
+
+        report = build_day_end_report(self.branch)
+        self.assertEqual(len(report["account_transactions"]), 2)
+        self.assertEqual(report["account_transactions"][0]["customer_name"], "Jane Doe")
+        self.assertEqual(report["account_transactions"][0]["statement_label"], "Payment received")
+        self.assertEqual(report["account_transactions"][0]["amount"], Decimal("10.00"))
+        self.assertEqual(report["account_transactions"][1]["statement_label"], "Withdrawal")
+        self.assertEqual(report["account_transactions"][1]["amount"], Decimal("-4.00"))
+        self.assertEqual(report["account_transactions"][1]["order_id"], order.id)
+
+    def test_build_day_end_report_groups_payments_by_currency_name(self):
+        usd_cash_alt = Currency.objects.create(
+            code="USD",
+            name="Legacy USD Cash",
+            symbol="$",
+        )
+        CurrencyRate.objects.create(
+            currency=usd_cash_alt,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+        order_one = self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+        order_two = self._create_paid_order(product=self.espresso, quantity=Decimal("1"))
+        OrderPayment.objects.create(
+            order=order_one,
+            method=TenderMethod.CASH,
+            currency=self.usd,
+            amount=Decimal("4.00"),
+            exchange_rate=Decimal("1"),
+        )
+        OrderPayment.objects.create(
+            order=order_two,
+            method=TenderMethod.CASH,
+            currency=usd_cash_alt,
+            amount=Decimal("3.50"),
+            exchange_rate=Decimal("1"),
+        )
+
+        report = build_day_end_report(self.branch)
+        by_name = {row["currency__name"]: row for row in report["payments_by_method"]}
+        self.assertIn(self.usd.name, by_name)
+        self.assertIn(usd_cash_alt.name, by_name)
+        self.assertEqual(by_name[self.usd.name]["total_paid"], Decimal("4.00"))
+        self.assertEqual(by_name[usd_cash_alt.name]["total_paid"], Decimal("3.50"))
+
+    def test_day_end_print_view_includes_account_transactions(self):
+        from customers.models import Customer
+        from customers.services import deposit_to_account
+
+        customer = Customer.objects.create(first_name="Jane", last_name="Doe")
+        deposit_to_account(
+            customer=customer,
+            branch=self.branch,
+            currency=self.usd,
+            amount_received=Decimal("10.00"),
+            recorded_by=self.user,
+        )
+        self._complete_daily_stock_take()
+
+        response = self.client.get(f"/pos/day-end/print/?branch={self.branch.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Customer account transactions")
+        self.assertContains(response, "Jane Doe")
+        self.assertContains(response, "Payment received")
 
     def test_day_end_print_view(self):
         self._create_paid_order(product=self.latte, quantity=Decimal("1"))
@@ -1545,7 +1770,117 @@ class OrderItemTransferTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    def test_transfer_rejects_takeaway(self):
+    def test_transfer_dine_in_without_table_to_destination_table(self):
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.DINE_IN,
+            table_number="",
+            created_by=self.user,
+        )
+        first = order.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        second = order.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        order.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [second.id], "table_number": "T9"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.items.count(), 1)
+
+        destination = Order.objects.get(pk=response.data["destination_order"]["id"])
+        self.assertEqual(destination.order_type, OrderType.DINE_IN)
+        self.assertEqual(destination.table_number, "T9")
+        self.assertEqual(destination.items.get().pk, second.pk)
+        self.assertEqual(first.order_id, order.pk)
+
+    def test_transfer_takeaway_partial_lines_creates_destination_order(self):
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            created_by=self.user,
+        )
+        first = order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        second = order.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        order.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [second.id]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.total_amount, Decimal("7.00"))
+
+        destination = Order.objects.get(pk=response.data["destination_order"]["id"])
+        self.assertEqual(destination.order_type, OrderType.TAKEAWAY)
+        self.assertEqual(destination.status, OrderStatus.OPEN)
+        self.assertEqual(destination.items.count(), 1)
+        self.assertEqual(destination.items.get().pk, second.pk)
+        self.assertEqual(destination.total_amount, Decimal("4.00"))
+
+    def test_transfer_takeaway_merges_into_existing_order(self):
+        source = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            created_by=self.user,
+        )
+        source_item = source.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        source.recalculate_total()
+        destination = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            created_by=self.user,
+        )
+        dest_item = destination.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        destination.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{source.id}/transfer-items/",
+            {
+                "item_ids": [source_item.id],
+                "destination_order_id": destination.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        source.refresh_from_db()
+        destination.refresh_from_db()
+        self.assertEqual(source.status, OrderStatus.CANCELLED)
+        self.assertEqual(destination.items.count(), 2)
+        self.assertEqual(
+            set(destination.items.values_list("pk", flat=True)),
+            {source_item.pk, dest_item.pk},
+        )
+
+    def test_transfer_takeaway_rejects_same_order(self):
         order = Order.objects.create(
             branch=self.branch,
             order_type=OrderType.TAKEAWAY,
@@ -1557,7 +1892,7 @@ class OrderItemTransferTests(TestCase):
         )
         response = self.client.post(
             f"/api/orders/{order.id}/transfer-items/",
-            {"item_ids": [item.id], "table_number": "T2"},
+            {"item_ids": [item.id], "destination_order_id": order.id},
             format="json",
         )
         self.assertEqual(response.status_code, 400)
@@ -1574,6 +1909,173 @@ class OrderItemTransferTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_transfer_dine_in_all_lines_to_takeaway_converts_order(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [
+                (self.product, Decimal("1"), Decimal("3.50")),
+                (self.latte, Decimal("1"), Decimal("4.00")),
+            ],
+        )
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {
+                "item_ids": [items[0].id, items[1].id],
+                "destination_order_type": "takeaway",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.order_type, OrderType.TAKEAWAY)
+        self.assertEqual(order.table_number, "")
+        self.assertEqual(order.items.count(), 2)
+        self.assertEqual(
+            response.data["source_order"]["id"],
+            response.data["destination_order"]["id"],
+        )
+
+    def test_transfer_dine_in_partial_lines_to_new_takeaway(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [
+                (self.product, Decimal("1"), Decimal("3.50")),
+                (self.latte, Decimal("1"), Decimal("4.00")),
+            ],
+        )
+        first, second = items
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {
+                "item_ids": [second.id],
+                "destination_order_type": "takeaway",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.order_type, OrderType.DINE_IN)
+        self.assertEqual(order.table_number, "T1")
+        self.assertEqual(order.items.count(), 1)
+
+        destination = Order.objects.get(pk=response.data["destination_order"]["id"])
+        self.assertEqual(destination.order_type, OrderType.TAKEAWAY)
+        self.assertEqual(destination.table_number, "")
+        self.assertEqual(destination.items.get().pk, second.pk)
+        self.assertEqual(first.order_id, order.pk)
+
+    def test_transfer_takeaway_all_lines_to_empty_table_converts_order(self):
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            created_by=self.user,
+        )
+        items = [
+            order.items.create(
+                product=self.product,
+                quantity=Decimal("1"),
+                price=Decimal("3.50"),
+            ),
+            order.items.create(
+                product=self.latte,
+                quantity=Decimal("1"),
+                price=Decimal("4.00"),
+            ),
+        ]
+        order.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {
+                "item_ids": [items[0].id, items[1].id],
+                "destination_order_type": "dine_in",
+                "table_number": "T5",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.OPEN)
+        self.assertEqual(order.order_type, OrderType.DINE_IN)
+        self.assertEqual(order.table_number, "T5")
+        self.assertEqual(order.items.count(), 2)
+        self.assertEqual(
+            response.data["source_order"]["id"],
+            response.data["destination_order"]["id"],
+        )
+
+    def test_transfer_takeaway_partial_lines_to_occupied_table(self):
+        source = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            created_by=self.user,
+        )
+        source_item = source.items.create(
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("3.50"),
+        )
+        source.recalculate_total()
+        destination, dest_items = self._open_dine_in(
+            "T2",
+            [(self.latte, Decimal("1"), Decimal("4.00"))],
+        )
+        response = self.client.post(
+            f"/api/orders/{source.id}/transfer-items/",
+            {
+                "item_ids": [source_item.id],
+                "destination_order_type": "dine_in",
+                "table_number": "T2",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        source.refresh_from_db()
+        destination.refresh_from_db()
+        self.assertEqual(source.status, OrderStatus.CANCELLED)
+        self.assertEqual(destination.order_type, OrderType.DINE_IN)
+        self.assertEqual(destination.items.count(), 2)
+        self.assertEqual(
+            set(destination.items.values_list("pk", flat=True)),
+            {source_item.pk, dest_items[0].pk},
+        )
+
+    def test_transfer_dine_in_to_existing_takeaway(self):
+        source, source_items = self._open_dine_in(
+            "T1",
+            [(self.product, Decimal("1"), Decimal("3.50"))],
+        )
+        destination = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            created_by=self.user,
+        )
+        dest_item = destination.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        destination.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{source.id}/transfer-items/",
+            {
+                "item_ids": [source_items[0].id],
+                "destination_order_type": "takeaway",
+                "destination_order_id": destination.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        source.refresh_from_db()
+        destination.refresh_from_db()
+        self.assertEqual(source.status, OrderStatus.CANCELLED)
+        self.assertEqual(destination.items.count(), 2)
+        self.assertEqual(
+            set(destination.items.values_list("pk", flat=True)),
+            {source_items[0].pk, dest_item.pk},
+        )
 
 
 class FamilyStaffCostPriceTests(TestCase):

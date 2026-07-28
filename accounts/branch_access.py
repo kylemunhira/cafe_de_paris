@@ -105,6 +105,13 @@ def user_can_manage_branches(user):
     return user.username.casefold() in GLOBAL_ACCESS_USERNAMES
 
 
+def user_can_manage_currencies(user):
+    """Only designated global users may create or edit currencies."""
+    if not user or not user.is_authenticated:
+        return False
+    return user.username.casefold() in GLOBAL_ACCESS_USERNAMES
+
+
 def user_is_hq_admin(user):
     """HQ admin — full management console with global branch visibility."""
     if not user or not user.is_authenticated:

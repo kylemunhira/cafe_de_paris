@@ -18,6 +18,7 @@ from .branch_access import (
     user_can_access_stores_transfers,
     user_can_collect_payment,
     user_can_manage_branches,
+    user_can_manage_currencies,
     user_can_manage_users,
     user_can_use_desktop_pos,
     user_has_global_branch_access,
@@ -587,6 +588,11 @@ class BranchManageAccessTests(APITestCase):
         self.assertFalse(user_can_manage_branches(self.cashier))
         self.assertFalse(user_can_manage_branches(self.hq_admin))
         self.assertTrue(user_can_manage_branches(self.zimhope))
+
+    def test_manage_currencies_access_flags(self):
+        self.assertFalse(user_can_manage_currencies(self.cashier))
+        self.assertFalse(user_can_manage_currencies(self.hq_admin))
+        self.assertTrue(user_can_manage_currencies(self.zimhope))
 
     def test_branch_list_allowed_for_all_staff(self):
         self.client.force_authenticate(user=self.cashier)

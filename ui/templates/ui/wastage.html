@@ -28,7 +28,7 @@
       </div>
       <div class="form-group">
         <label for="wastage-quantity">Quantity</label>
-        <input type="number" id="wastage-quantity" step="0.01" min="0.01" placeholder="0.00" required>
+        <input type="number" id="wastage-quantity" step="0.001" min="0.001" placeholder="0.000" required>
       </div>
       <div class="form-group">
         <label for="wastage-reason">Reason</label>
@@ -193,7 +193,7 @@ function setDefaultDates() {
 function formatQty(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return n.toLocaleString("en-US", { maximumFractionDigits: 3 });
 }
 
 function updateDestinationVisibility() {

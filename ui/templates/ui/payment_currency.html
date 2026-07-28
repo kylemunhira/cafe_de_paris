@@ -5,8 +5,9 @@
 {% block page_title %}Currency{% endblock %}
 
 {% block content %}
+{% if can_manage_currencies %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; max-width: 640px;">
-  <h3 style="margin: 0 0 1rem; font-size: 1rem;">Add currency</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add currency</h3>
   <form id="currency-form">
     <div class="form-group">
       <label for="currency-name">Name</label>
@@ -26,11 +27,19 @@
       <input type="checkbox" id="currency-base" name="is_base">
       <label for="currency-base" style="margin: 0;">Set as base currency (order prices are in this currency)</label>
     </div>
-    <div style="display: flex; justify-content: flex-end;">
+    <div class="form-group" id="active-field" style="display: none;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="currency-active" name="is_active" checked>
+        Active currency
+      </label>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
       <button type="submit" class="btn btn-primary" id="currency-submit">Add currency</button>
     </div>
   </form>
 </div>
+{% endif %}
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
@@ -47,13 +56,19 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
+const canManageCurrencies = {{ can_manage_currencies|yesno:"true,false" }};
 const currencyForm = document.getElementById("currency-form");
+const formTitle = document.getElementById("form-title");
 const currencySubmit = document.getElementById("currency-submit");
+const cancelBtn = document.getElementById("cancel-btn");
+const activeField = document.getElementById("active-field");
+const currencyActiveInput = document.getElementById("currency-active");
 const currenciesTable = document.getElementById("currencies-table");
 let allCurrencies = [];
+let editingCurrencyId = null;
 const sortState = createSortState("name", "asc");
 
 const CURRENCY_SORT = {
@@ -70,6 +85,36 @@ function formatRate(value) {
   return Number.isFinite(rate)
     ? rate.toLocaleString("en-US", { maximumFractionDigits: 6 })
     : "—";
+}
+
+function setFormMode(mode) {
+  if (!canManageCurrencies) return;
+
+  const isEdit = mode === "edit";
+  editingCurrencyId = isEdit ? editingCurrencyId : null;
+
+  formTitle.textContent = isEdit ? "Edit currency" : "Add currency";
+  currencySubmit.textContent = isEdit ? "Save changes" : "Add currency";
+  cancelBtn.style.display = isEdit ? "" : "none";
+  activeField.style.display = isEdit ? "" : "none";
+
+  if (!isEdit) {
+    currencyForm.reset();
+    currencyActiveInput.checked = true;
+  }
+}
+
+function startEdit(currency) {
+  if (!canManageCurrencies) return;
+
+  editingCurrencyId = currency.id;
+  currencyForm.name.value = currency.name || "";
+  currencyForm.code.value = currency.code || "";
+  currencyForm.symbol.value = currency.symbol || "";
+  currencyForm.is_base.checked = currency.is_base;
+  currencyActiveInput.checked = currency.is_active;
+  setFormMode("edit");
+  currencyForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderCurrencies(currencies) {
@@ -91,6 +136,7 @@ function renderCurrencies(currencies) {
           ${sortTh("Base", "is_base", sortState)}
           ${sortTh("Current rate", "current_rate", sortState)}
           ${sortTh("Status", "is_active", sortState)}
+          ${canManageCurrencies ? "<th></th>" : ""}
         </tr>
       </thead>
       <tbody>
@@ -106,6 +152,7 @@ function renderCurrencies(currencies) {
                 ${c.is_active ? "Active" : "Inactive"}
               </span>
             </td>
+            ${canManageCurrencies ? `<td><button type="button" class="btn btn-ghost btn-sm" data-edit="${c.id}">Edit</button></td>` : ""}
           </tr>
         `).join("")}
       </tbody>
@@ -118,51 +165,70 @@ async function loadCurrencies() {
   renderCurrencies(unwrapList(data));
 }
 
-currencyForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+if (canManageCurrencies) {
+  cancelBtn.addEventListener("click", () => setFormMode("create"));
 
-  const payload = {
-    name: currencyForm.name.value.trim(),
-    code: currencyForm.code.value.trim().toUpperCase(),
-    symbol: currencyForm.symbol.value.trim(),
-    is_base: currencyForm.is_base.checked,
-  };
+  currenciesTable.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-edit]");
+    if (!btn) return;
+    const currency = allCurrencies.find(c => String(c.id) === btn.dataset.edit);
+    if (currency) startEdit(currency);
+  });
 
-  if (!payload.name) {
-    showToast("Currency name is required", true);
-    return;
-  }
+  currencyForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  currencySubmit.disabled = true;
-  currencySubmit.innerHTML = `<span class="loading-spinner"></span>`;
+    const payload = {
+      name: currencyForm.name.value.trim(),
+      code: currencyForm.code.value.trim().toUpperCase(),
+      symbol: currencyForm.symbol.value.trim(),
+      is_base: currencyForm.is_base.checked,
+    };
 
-  try {
-    const created = await apiPost("/currencies/", payload);
-    showToast(`Currency "${created.name}" added`);
-    currencyForm.reset();
-    await loadCurrencies();
-    if (created.is_base) {
-      await apiPost("/currency-rates/", {
-        currency: created.id,
-        rate: "1",
-        effective_from: new Date().toISOString().slice(0, 10),
-      });
-      await loadCurrencies();
+    if (!payload.name) {
+      showToast("Currency name is required", true);
+      return;
     }
-  } catch (err) {
-    let message = err.message;
+
+    currencySubmit.disabled = true;
+    currencySubmit.innerHTML = `<span class="loading-spinner"></span>`;
+
     try {
-      const data = JSON.parse(err.message);
-      if (data?.name?.length) message = data.name[0];
-    } catch {
-      // use raw message
+      if (editingCurrencyId) {
+        payload.is_active = currencyActiveInput.checked;
+        await apiPatch(`/currencies/${editingCurrencyId}/`, payload);
+        showToast("Currency updated");
+        setFormMode("create");
+        await loadCurrencies();
+      } else {
+        const created = await apiPost("/currencies/", payload);
+        showToast(`Currency "${created.name}" added`);
+        setFormMode("create");
+        await loadCurrencies();
+        if (created.is_base) {
+          await apiPost("/currency-rates/", {
+            currency: created.id,
+            rate: "1",
+            effective_from: new Date().toISOString().slice(0, 10),
+          });
+          await loadCurrencies();
+        }
+      }
+    } catch (err) {
+      let message = err.message;
+      try {
+        const data = JSON.parse(err.message);
+        if (data?.name?.length) message = data.name[0];
+      } catch {
+        // use raw message
+      }
+      showToast(message, true);
+    } finally {
+      currencySubmit.disabled = false;
+      currencySubmit.textContent = editingCurrencyId ? "Save changes" : "Add currency";
     }
-    showToast(message, true);
-  } finally {
-    currencySubmit.disabled = false;
-    currencySubmit.textContent = "Add currency";
-  }
-});
+  });
+}
 
 bindTableSort(currenciesTable, sortState, () => renderCurrencies(allCurrencies));
 

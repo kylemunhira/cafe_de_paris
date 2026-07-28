@@ -120,7 +120,6 @@ class StockTakeActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             try {
                 allStockTakes = withContext(Dispatchers.IO) { api.fetchStockTakes() }
-                renderStats()
                 renderHistory()
                 val currentId = activeStockTake?.id
                 if (currentId != null) {
@@ -157,7 +156,6 @@ class StockTakeActivity : KeepScreenOnActivity() {
                     api.createStockTake(type, date)
                 }
                 allStockTakes = withContext(Dispatchers.IO) { api.fetchStockTakes() }
-                renderStats()
                 renderHistory()
                 openStockTake(created.id)
             } catch (err: ApiException) {
@@ -185,17 +183,6 @@ class StockTakeActivity : KeepScreenOnActivity() {
                 showLoading(false)
             }
         }
-    }
-
-    private fun renderStats() {
-        val drafts = allStockTakes.count { it.status == "draft" }
-        val completed = allStockTakes.count { it.status == "completed" }
-        val variances = allStockTakes
-            .filter { it.status == "completed" }
-            .sumOf { it.varianceCount }
-        binding.statInProgress.text = drafts.toString()
-        binding.statCompleted.text = completed.toString()
-        binding.statVariances.text = variances.toString()
     }
 
     private fun filteredHistory(): List<StockTake> {
@@ -540,7 +527,6 @@ class StockTakeActivity : KeepScreenOnActivity() {
                         Toast.LENGTH_SHORT,
                     ).show()
                     allStockTakes = withContext(Dispatchers.IO) { api.fetchStockTakes() }
-                    renderStats()
                     renderHistory()
                     openStockTake(stockTake.id)
                 } else {
@@ -551,7 +537,6 @@ class StockTakeActivity : KeepScreenOnActivity() {
                         Toast.LENGTH_SHORT,
                     ).show()
                     allStockTakes = withContext(Dispatchers.IO) { api.fetchStockTakes() }
-                    renderStats()
                     renderHistory()
                     renderActiveCount()
                 }
@@ -598,7 +583,6 @@ class StockTakeActivity : KeepScreenOnActivity() {
                 activeStockTake = null
                 Toast.makeText(this@StockTakeActivity, R.string.stock_take_cancelled, Toast.LENGTH_SHORT).show()
                 allStockTakes = withContext(Dispatchers.IO) { api.fetchStockTakes() }
-                renderStats()
                 renderHistory()
                 renderActiveCount()
             } catch (err: ApiException) {

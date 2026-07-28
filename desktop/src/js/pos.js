@@ -283,7 +283,7 @@ function renderStockTake(stockTake) {
       ${group.lines.map((line) => `
         <div style="display:grid; grid-template-columns:minmax(180px,1fr) 130px; gap:0.75rem; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(44,24,16,0.08);">
           <div><strong>${escapeOperationHtml(line.product_name)}</strong></div>
-          <input type="number" min="0" step="0.01" class="report-input" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
+          <input type="number" min="0" step="0.001" class="report-input" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
         </div>
       `).join("")}
     `).join("");
@@ -765,6 +765,17 @@ function orderDisplayLabel(order) {
   if (order.receipt_number) return order.receipt_number;
   if (order.server_id) return `#${order.server_id}`;
   return order.client_id.slice(0, 8);
+}
+
+function orderReceiptLocationLabel(order) {
+  if (order.order_type === "takeaway") return "TAKEAWAY";
+  if (order.table_number) return order.table_number.trim();
+  return "DINE IN";
+}
+
+function orderReceiptHeaderLabel(order) {
+  const id = order.server_id || order.id || order.client_id?.slice(0, 8);
+  return `#${id} - ${orderReceiptLocationLabel(order)}`;
 }
 
 function receiptOrdersForTable(tableNumber) {
@@ -1797,8 +1808,6 @@ function renderOpenOrdersList() {
   receiptOrdersList.innerHTML = receiptOpenOrders
     .map((o) => {
       const tableOrders = o.table_number ? receiptOrdersForTable(o.table_number) : [];
-      const combinedLabel =
-        tableOrders.length > 1 ? ` · ${tableOrders.length} orders on table` : "";
       const displayTotal =
         tableOrders.length > 1
           ? tableOrders.reduce((sum, order) => sum + Number(order.total_amount), 0)
@@ -1808,10 +1817,10 @@ function renderOpenOrdersList() {
       return `
       <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.client_id}">
         <div class="receipt-order-card-top">
-          <strong>${orderDisplayLabel(o)}</strong>
+          <strong>${orderReceiptHeaderLabel(o)}</strong>
           <span class="receipt-order-amount">${money(displayTotal)}</span>
         </div>
-        <div class="receipt-order-card-meta">${o.order_type.replace("_", " ")}${o.table_number ? ` · Table ${o.table_number}` : ""}${combinedLabel} · ${o.items.length} items</div>
+        <div class="receipt-order-card-meta">${tableOrders.length > 1 ? `${tableOrders.length} orders on table · ` : ""}${o.items.length} items</div>
         <div class="receipt-order-card-meta" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
           <span>${formatDate(o.created_at)}</span>
           ${kitchenStatusBadge(o.kitchen_status || "pending")}

@@ -8,6 +8,7 @@ from payments.models import Currency
 
 from customers.models import Customer
 
+from .kitchen_station import order_item_matches_kitchen_station
 from .models import (
     Expense,
     FiscalApprovalStatus,
@@ -78,13 +79,24 @@ class OrderTransferItemsSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
     )
-    table_number = serializers.CharField(max_length=20)
+    table_number = serializers.CharField(
+        max_length=20,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    destination_order_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+    destination_order_type = serializers.ChoiceField(
+        choices=OrderType.choices,
+        required=False,
+        allow_null=True,
+    )
 
     def validate_table_number(self, value):
-        value = (value or "").strip()
-        if not value:
-            raise serializers.ValidationError("Destination table is required.")
-        return value
+        return (value or "").strip()
 
     def validate_item_ids(self, value):
         # Preserve order while dropping duplicates.
@@ -248,12 +260,20 @@ class OrderSerializer(serializers.ModelSerializer):
         return obj.customer.account_balance
 
     def to_representation(self, instance):
-        data = super().to_representation(instance)
         station = self.context.get("kitchen_station")
-        if station:
-            data["items"] = [
-                item for item in data["items"] if item.get("pos_station") == station
-            ]
+        data = super().to_representation(instance)
+        if not station:
+            return data
+        visible_items = [
+            item
+            for item in instance.items.all()
+            if order_item_matches_kitchen_station(item, station)
+        ]
+        data["items"] = OrderItemSerializer(
+            visible_items,
+            many=True,
+            context=self.context,
+        ).data
         return data
 
 

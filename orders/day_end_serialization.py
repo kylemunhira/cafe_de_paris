@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 
 def json_safe_day_end_value(value):
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, dict):

@@ -231,7 +231,7 @@ class OrderItemRemoveError(Exception):
 
 
 class OrderItemTransferError(Exception):
-    """Raised when order lines cannot be moved to another table."""
+    """Raised when order lines cannot be moved to another order or table."""
 
 
 def remove_one_order_item(order, item, *, removed_by=None):
@@ -270,31 +270,9 @@ def remove_one_order_item(order, item, *, removed_by=None):
     return order
 
 
-def transfer_order_items(order, *, item_ids, table_number, created_by=None):
-    """
-    Move whole order lines from an open dine-in order to another table.
-
-    If the destination table already has an open order, lines are merged into it.
-    Otherwise a new open order is created (or the source order is reassigned when
-    every line is transferred to an empty table).
-    """
-    table_number = (table_number or "").strip()
-    if not table_number:
-        raise OrderItemTransferError("Destination table is required.")
-    if order.status != OrderStatus.OPEN:
-        raise OrderItemTransferError("Only open orders can transfer items.")
-    if order.order_type != OrderType.DINE_IN:
-        raise OrderItemTransferError("Only dine-in orders can transfer items.")
-
-    source_table = (order.table_number or "").strip()
-    if not source_table:
-        raise OrderItemTransferError("Source order has no table.")
-    if source_table == table_number:
-        raise OrderItemTransferError("Choose a different destination table.")
-
+def _normalize_transfer_item_ids(item_ids):
     if not item_ids:
         raise OrderItemTransferError("Select at least one item to transfer.")
-
     seen = set()
     unique_ids = []
     for item_id in item_ids:
@@ -305,7 +283,10 @@ def transfer_order_items(order, *, item_ids, table_number, created_by=None):
         if item_id not in seen:
             seen.add(item_id)
             unique_ids.append(item_id)
+    return unique_ids
 
+
+def _load_transfer_items(order, unique_ids):
     items = list(
         OrderItem.objects.select_for_update().filter(order=order, pk__in=unique_ids)
     )
@@ -313,6 +294,89 @@ def transfer_order_items(order, *, item_ids, table_number, created_by=None):
         raise OrderItemTransferError(
             "One or more items do not belong to this order."
         )
+    return items
+
+
+def _finalize_transfer(source, destination, unique_ids, *, created_by=None):
+    OrderItem.objects.filter(pk__in=unique_ids).update(order=destination)
+    source.recalculate_total()
+    destination.recalculate_total()
+    if not OrderItem.objects.filter(order_id=source.pk).exists():
+        cancel_order(source, cancelled_by=created_by)
+    return source, destination
+
+
+def transfer_order_items(
+    order,
+    *,
+    item_ids,
+    table_number=None,
+    destination_order_id=None,
+    destination_order_type=None,
+    created_by=None,
+):
+    """
+    Move whole order lines from an open order to another destination.
+
+    Destination type defaults to the source order type. Pass
+    `destination_order_type` to convert between dine-in and takeaway.
+
+    Dine-in destination: requires `table_number`. Merges into an open table
+    order when present; otherwise creates a new dine-in order (or reassigns
+    the source when every line moves to an empty table).
+
+    Takeaway destination: uses `destination_order_id`, or creates a new
+    takeaway when omitted. Moving every dine-in line to a new takeaway
+    converts the source order in place.
+    """
+    if order.status != OrderStatus.OPEN:
+        raise OrderItemTransferError("Only open orders can transfer items.")
+    if order.order_type not in (OrderType.DINE_IN, OrderType.TAKEAWAY):
+        raise OrderItemTransferError("This order type cannot transfer items.")
+
+    unique_ids = _normalize_transfer_item_ids(item_ids)
+    _load_transfer_items(order, unique_ids)
+
+    dest_type = destination_order_type or order.order_type
+    if dest_type == OrderType.TAKEAWAY:
+        return _transfer_to_takeaway(
+            order,
+            unique_ids=unique_ids,
+            destination_order_id=destination_order_id,
+            created_by=created_by,
+        )
+    if dest_type != OrderType.DINE_IN:
+        raise OrderItemTransferError("Invalid destination order type.")
+    return _transfer_to_dine_in(
+        order,
+        unique_ids=unique_ids,
+        table_number=table_number,
+        destination_order_id=destination_order_id,
+        created_by=created_by,
+    )
+
+
+def _transfer_to_dine_in(
+    order,
+    *,
+    unique_ids,
+    table_number=None,
+    destination_order_id=None,
+    created_by=None,
+):
+    table_number = (table_number or "").strip()
+    if not table_number:
+        raise OrderItemTransferError("Destination table is required.")
+    if destination_order_id is not None:
+        raise OrderItemTransferError("Destination order is only for takeaway transfers.")
+
+    source_table = (order.table_number or "").strip()
+    if (
+        order.order_type == OrderType.DINE_IN
+        and source_table
+        and source_table == table_number
+    ):
+        raise OrderItemTransferError("Choose a different destination table.")
 
     all_item_ids = set(order.items.values_list("pk", flat=True))
     transferring_all = all_item_ids == set(unique_ids)
@@ -322,8 +386,12 @@ def transfer_order_items(order, *, item_ids, table_number, created_by=None):
         raise OrderItemTransferError("Choose a different destination table.")
 
     if transferring_all and destination is None:
+        update_fields = ["table_number"]
         order.table_number = table_number
-        order.save(update_fields=["table_number"])
+        if order.order_type != OrderType.DINE_IN:
+            order.order_type = OrderType.DINE_IN
+            update_fields.append("order_type")
+        order.save(update_fields=update_fields)
         return order, order
 
     if destination is None:
@@ -344,15 +412,59 @@ def transfer_order_items(order, *, item_ids, table_number, created_by=None):
                 "Destination table order is no longer open."
             )
 
-    OrderItem.objects.filter(pk__in=unique_ids).update(order=destination)
-    order.recalculate_total()
-    destination.recalculate_total()
+    return _finalize_transfer(order, destination, unique_ids, created_by=created_by)
 
-    # Avoid stale prefetch_related("items") caches from the caller.
-    if not OrderItem.objects.filter(order_id=order.pk).exists():
-        cancel_order(order, cancelled_by=created_by)
 
-    return order, destination
+def _transfer_to_takeaway(
+    order, *, unique_ids, destination_order_id=None, created_by=None
+):
+    destination = None
+    if destination_order_id is not None:
+        try:
+            destination_order_id = int(destination_order_id)
+        except (TypeError, ValueError) as exc:
+            raise OrderItemTransferError("Invalid destination order.") from exc
+        if destination_order_id == order.pk:
+            raise OrderItemTransferError("Choose a different destination order.")
+        destination = (
+            Order.objects.select_for_update()
+            .filter(
+                pk=destination_order_id,
+                branch=order.branch,
+                order_type=OrderType.TAKEAWAY,
+                status=OrderStatus.OPEN,
+            )
+            .first()
+        )
+        if destination is None:
+            raise OrderItemTransferError("Destination order is not available.")
+
+    all_item_ids = set(order.items.values_list("pk", flat=True))
+    transferring_all = all_item_ids == set(unique_ids)
+
+    # Convert an entire dine-in order to takeaway in place (keeps order id).
+    if (
+        destination is None
+        and transferring_all
+        and order.order_type == OrderType.DINE_IN
+    ):
+        order.order_type = OrderType.TAKEAWAY
+        order.table_number = ""
+        order.save(update_fields=["order_type", "table_number"])
+        return order, order
+
+    if destination is None:
+        destination = Order.objects.create(
+            branch=order.branch,
+            customer=order.customer,
+            order_type=OrderType.TAKEAWAY,
+            kitchen_status=order.kitchen_status,
+            kitchen_started_at=order.kitchen_started_at,
+            kitchen_ready_at=order.kitchen_ready_at,
+            created_by=created_by,
+        )
+
+    return _finalize_transfer(order, destination, unique_ids, created_by=created_by)
 
 
 def cancel_order(order, *, cancelled_by=None, allow_unpaid=False):

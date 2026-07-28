@@ -1,8 +1,8 @@
 {% extends "ui/base.html" %}
 {% load static %}
 
-{% block title %}Ingredient Stock — Café de Paris{% endblock %}
-{% block page_title %}Ingredient Stock Report{% endblock %}
+{% block title %}Voided &amp; Cancelled — Café de Paris{% endblock %}
+{% block page_title %}Voided &amp; Cancelled Items{% endblock %}
 
 {% block topbar_actions %}
 <button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
@@ -11,6 +11,10 @@
 {% block content %}
 <div class="card report-filters">
   <div class="report-filters-grid">
+    <label>
+      <span>Date</span>
+      <input type="date" id="filter-date" class="report-input">
+    </label>
     {% if can_filter_any_branch %}
     <label>
       <span>Branch</span>
@@ -20,16 +24,8 @@
     </label>
     {% endif %}
     <label style="grid-column: span 2;">
-      <span>Search ingredient</span>
-      <input type="search" id="filter-search" class="report-input" placeholder="Name…" autocomplete="off">
-    </label>
-    <label class="report-checkbox-label">
-      <input type="checkbox" id="filter-active-only" checked>
-      <span>Active ingredients only</span>
-    </label>
-    <label class="report-checkbox-label">
-      <input type="checkbox" id="filter-low-stock">
-      <span>Low stock only</span>
+      <span>Search product</span>
+      <input type="search" id="filter-search" class="report-input" placeholder="Product name…" autocomplete="off">
     </label>
     <div class="report-filters-actions">
       <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
@@ -39,26 +35,26 @@
 
 <div class="stat-grid" id="report-summary">
   <div class="card stat-card">
-    <div class="stat-label">Ingredients</div>
-    <div class="stat-value" id="summary-ingredients">—</div>
+    <div class="stat-label">Voided items</div>
+    <div class="stat-value" id="summary-voided-items">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Branches</div>
-    <div class="stat-value" id="summary-branches">—</div>
+    <div class="stat-label">Cancelled items</div>
+    <div class="stat-value" id="summary-cancelled-items">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Lines with stock</div>
-    <div class="stat-value" id="summary-with-stock">—</div>
+    <div class="stat-label">Voided amount</div>
+    <div class="stat-value" id="summary-voided-amount">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Total stock value</div>
-    <div class="stat-value" id="summary-total-value">—</div>
+    <div class="stat-label">Cancelled amount</div>
+    <div class="stat-value" id="summary-cancelled-amount">—</div>
   </div>
 </div>
 
 <div class="card report-panel" id="report-table-card" style="padding: 0;">
   <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Stock by branch</h3>
+    <h3 style="margin: 0; font-size: 1rem;">Voided &amp; cancelled lines</h3>
     <p class="report-panel-note" id="report-generated-at" style="margin: 0.35rem 0 0;"></p>
   </div>
   <div class="table-wrap" id="report-table">
@@ -72,32 +68,34 @@
 import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
-const staffBranchId = {{ staff_branch_id|default:"null" }};
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 
+const filterDate = document.getElementById("filter-date");
 const filterBranch = document.getElementById("filter-branch");
 const filterSearch = document.getElementById("filter-search");
-const filterActiveOnly = document.getElementById("filter-active-only");
-const filterLowStock = document.getElementById("filter-low-stock");
 const applyFilters = document.getElementById("apply-filters");
 const printReportBtn = document.getElementById("print-report-btn");
-const summaryIngredients = document.getElementById("summary-ingredients");
-const summaryBranches = document.getElementById("summary-branches");
-const summaryWithStock = document.getElementById("summary-with-stock");
-const summaryTotalValue = document.getElementById("summary-total-value");
+const summaryVoidedItems = document.getElementById("summary-voided-items");
+const summaryCancelledItems = document.getElementById("summary-cancelled-items");
+const summaryVoidedAmount = document.getElementById("summary-voided-amount");
+const summaryCancelledAmount = document.getElementById("summary-cancelled-amount");
 const reportTable = document.getElementById("report-table");
 const reportGeneratedAt = document.getElementById("report-generated-at");
 
 let reportData = null;
-const sortState = createSortState("ingredient_name", "asc");
+const sortState = createSortState("cancelled_at", "desc");
 
 const REPORT_SORT = {
-  ingredient_name: (r) => r.ingredient_name || "",
+  cancelled_at: (r) => r.cancelled_at || "",
+  action_label: (r) => r.action_label || "",
+  order_id: (r) => Number(r.order_id),
   branch_name: (r) => r.branch_name || "",
-  unit_cost: (r) => Number(r.unit_cost),
+  table_number: (r) => r.table_number || "",
+  product_name: (r) => r.product_name || "",
   quantity: (r) => Number(r.quantity),
-  stock_value: (r) => Number(r.stock_value),
-  is_active: (r) => r.is_active ? 1 : 0,
+  unit_price: (r) => Number(r.unit_price),
+  line_total: (r) => Number(r.line_total),
+  cancelled_by_name: (r) => r.cancelled_by_name || "",
 };
 
 function formatQty(value) {
@@ -105,67 +103,98 @@ function formatQty(value) {
   return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "0";
 }
 
+function formatTime(iso) {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function actionBadge(actionType) {
+  if (actionType === "voided") {
+    return `<span class="badge badge-cancelled">Voided</span>`;
+  }
+  return `<span class="badge" style="background:#f1f5f9;color:#475569;">Cancelled</span>`;
+}
+
+function defaultDate() {
+  const today = new Date();
+  return today.toISOString().slice(0, 10);
+}
+
 function reportParams() {
   const params = new URLSearchParams();
+  if (filterDate.value) params.set("date", filterDate.value);
   if (canFilterAnyBranch && filterBranch?.value) {
     params.set("branch", filterBranch.value);
   }
   const search = filterSearch.value.trim();
   if (search) params.set("search", search);
-  if (!filterActiveOnly.checked) params.set("active_only", "0");
-  if (filterLowStock.checked) params.set("low_stock_only", "1");
   return params;
 }
 
 function renderReport(data) {
   reportData = data;
   const summary = data.summary || {};
-  summaryIngredients.textContent = summary.ingredient_count ?? 0;
-  summaryBranches.textContent = summary.branch_count ?? 0;
-  summaryWithStock.textContent = summary.rows_with_stock ?? 0;
-  summaryTotalValue.textContent = formatCurrency(summary.total_stock_value ?? 0);
+  summaryVoidedItems.textContent = summary.voided_item_count ?? 0;
+  summaryCancelledItems.textContent = summary.cancelled_item_count ?? 0;
+  summaryVoidedAmount.textContent = formatCurrency(summary.voided_amount ?? 0);
+  summaryCancelledAmount.textContent = formatCurrency(summary.cancelled_amount ?? 0);
 
-  const filters = data.filters || {};
-  const branchLabel = filters.branch_id ? "" : "all branches, ";
-  reportGeneratedAt.textContent = `As at ${new Date().toLocaleString()} — ${branchLabel}${summary.row_count ?? 0} lines`;
+  const reportDate = data.date || filterDate.value;
+  const voidedOrders = summary.voided_order_count ?? 0;
+  const cancelledOrders = summary.cancelled_order_count ?? 0;
+  reportGeneratedAt.textContent =
+    `${reportDate} — ${voidedOrders} voided order(s), ${cancelledOrders} cancelled order(s), ${summary.row_count ?? 0} line(s)`;
 
   const rows = data.rows || [];
   if (!rows.length) {
-    reportTable.innerHTML = `<div class="empty-state"><p>No ingredients match your filters</p></div>`;
+    reportTable.innerHTML = `<div class="empty-state"><p>No voided or cancelled items for this date</p></div>`;
     return;
   }
 
-  const showBranchColumn = (summary.branch_count ?? 0) > 1;
+  const showBranchColumn = rows.some((row, _, all) =>
+    all.some(other => other.branch_id !== row.branch_id)
+  );
   const sorted = sortItems(rows, sortState, REPORT_SORT);
 
   reportTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Ingredient", "ingredient_name", sortState)}
+          ${sortTh("Time", "cancelled_at", sortState)}
+          ${sortTh("Action", "action_label", sortState)}
+          ${sortTh("Order", "order_id", sortState)}
           ${showBranchColumn ? sortTh("Branch", "branch_name", sortState) : ""}
-          ${sortTh("Unit cost", "unit_cost", sortState, { align: "right" })}
-          ${sortTh("Stock qty", "quantity", sortState, { align: "right" })}
-          ${sortTh("Stock value", "stock_value", sortState, { align: "right" })}
-          ${sortTh("Status", "is_active", sortState)}
+          ${sortTh("Table", "table_number", sortState)}
+          ${sortTh("Product", "product_name", sortState)}
+          <th>Add-ons</th>
+          ${sortTh("Qty", "quantity", sortState, { align: "right" })}
+          ${sortTh("Unit price", "unit_price", sortState, { align: "right" })}
+          ${sortTh("Line total", "line_total", sortState, { align: "right" })}
+          ${sortTh("By", "cancelled_by_name", sortState)}
         </tr>
       </thead>
       <tbody>
         ${sorted.map(row => `
           <tr>
-            <td><strong>${row.ingredient_name}</strong></td>
+            <td>${formatTime(row.cancelled_at)}</td>
+            <td>${actionBadge(row.action_type)}</td>
+            <td>#${row.order_id}</td>
             ${showBranchColumn ? `<td>${row.branch_name}</td>` : ""}
-            <td style="text-align: right;">${formatCurrency(row.unit_cost)}</td>
+            <td>${row.table_number || "—"}</td>
+            <td><strong>${row.product_name}</strong></td>
+            <td>${row.addons || "—"}</td>
             <td style="text-align: right;">${formatQty(row.quantity)}</td>
-            <td style="text-align: right; font-weight: 600;">${formatCurrency(row.stock_value)}</td>
-            <td><span class="badge ${row.is_active ? "badge-active" : "badge-inactive"}">${row.is_active ? "Active" : "Inactive"}</span></td>
+            <td style="text-align: right;">${formatCurrency(row.unit_price)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatCurrency(row.line_total)}</td>
+            <td>${row.cancelled_by_name || "—"}</td>
           </tr>
         `).join("")}
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="${showBranchColumn ? 4 : 3}"><strong>Total stock value</strong></td>
-          <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_stock_value ?? 0)}</td>
+          <td colspan="${showBranchColumn ? 8 : 7}"><strong>Total</strong></td>
+          <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_amount ?? 0)}</td>
           <td></td>
         </tr>
       </tfoot>
@@ -178,7 +207,7 @@ async function loadReport() {
   try {
     const params = reportParams();
     const query = params.toString();
-    const data = await apiGet(`/reports/ingredient-stock/${query ? `?${query}` : ""}`);
+    const data = await apiGet(`/reports/voided-cancelled/${query ? `?${query}` : ""}`);
     renderReport(data);
   } catch (err) {
     reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
@@ -194,6 +223,7 @@ async function loadBranches() {
     branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
 }
 
+filterDate.value = defaultDate();
 applyFilters.addEventListener("click", loadReport);
 filterSearch.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
@@ -201,8 +231,6 @@ filterSearch.addEventListener("keydown", (e) => {
     loadReport();
   }
 });
-filterActiveOnly.addEventListener("change", loadReport);
-filterLowStock.addEventListener("change", loadReport);
 printReportBtn?.addEventListener("click", () => window.print());
 
 bindTableSort(reportTable, sortState, () => {

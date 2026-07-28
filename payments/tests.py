@@ -1,9 +1,14 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from accounts.models import StaffProfile, StaffRole
+from branches.models import Branch, BranchType
 from .models import Currency, CurrencyRate
+
+User = get_user_model()
 
 
 class PaymentModelsTests(TestCase):
@@ -61,6 +66,8 @@ class PaymentModelsTests(TestCase):
 class PaymentApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        self.zimhope = User.objects.create_user(username="Zimhope", password="pass")
+        self.client.force_authenticate(user=self.zimhope)
         self.usd = Currency.objects.create(
             code="USD",
             name="US Dollar",
@@ -101,3 +108,66 @@ class PaymentApiTests(TestCase):
             format="json",
         )
         self.assertEqual(rate_response.status_code, 201)
+
+
+class CurrencyManagementAccessTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+        )
+
+        self.hq_admin = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=self.hq_admin,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+        )
+
+        self.zimhope = User.objects.create_user(username="Zimhope", password="pass")
+        StaffProfile.objects.create(
+            user=self.zimhope,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+        )
+
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+
+    def test_currency_list_allowed_for_all_authenticated_staff(self):
+        self.client.force_authenticate(user=self.hq_admin)
+        response = self.client.get("/api/currencies/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_currency_create_restricted_to_zimhope(self):
+        payload = {"name": "ZiG", "code": "ZWG", "symbol": "ZiG"}
+
+        self.client.force_authenticate(user=self.hq_admin)
+        response = self.client.post("/api/currencies/", payload, format="json")
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_authenticate(user=self.zimhope)
+        response = self.client.post("/api/currencies/", payload, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["name"], "ZiG")
+
+    def test_currency_update_restricted_to_zimhope(self):
+        payload = {"name": "United States Dollar"}
+
+        self.client.force_authenticate(user=self.hq_admin)
+        response = self.client.patch(
+            f"/api/currencies/{self.usd.id}/", payload, format="json"
+        )
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_authenticate(user=self.zimhope)
+        response = self.client.patch(
+            f"/api/currencies/{self.usd.id}/", payload, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["name"], "United States Dollar")

@@ -30,6 +30,7 @@ from reports.views import (
     ReportSummaryView,
     ReportSupplierSpendView,
     ReportVATView,
+    ReportVoidedCancelledView,
 )
 from sync.views import SyncPingView, SyncPullView, SyncPushView
 
@@ -94,6 +95,11 @@ urlpatterns = [
         "reports/ingredient-usage/",
         ReportIngredientUsageView.as_view(),
         name="report-ingredient-usage",
+    ),
+    path(
+        "reports/voided-cancelled/",
+        ReportVoidedCancelledView.as_view(),
+        name="report-voided-cancelled",
     ),
     path(
         "reports/supplier-spend/",

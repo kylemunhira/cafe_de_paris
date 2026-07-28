@@ -38,9 +38,8 @@
       <p>Receipt #{{ order.receipt_number }}</p>
       {% endif %}
       {% endif %}
-      <p>Order #{{ order.id }}</p>
+      <p><strong>#{{ order.id }} - {% if order.order_type == "takeaway" %}TAKEAWAY{% elif order.table_number %}{{ order.table_number }}{% else %}DINE IN{% endif %}</strong></p>
       <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
-      <p>{{ order.get_order_type_display }}{% if order.table_number %} · Table {{ order.table_number }}{% endif %}</p>
       {% if order.customer %}<p>Customer: {{ order.customer }}</p>{% endif %}
       {% if salesperson_name %}<p>Served by {{ salesperson_name }}</p>{% endif %}
     </div>

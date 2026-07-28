@@ -1,5 +1,7 @@
+from accounts.branch_access import user_can_manage_currencies
 from audit.mixins import AuditedModelMixin
 from rest_framework import viewsets
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Currency, CurrencyRate
 from .serializers import CurrencyRateSerializer, CurrencySerializer
@@ -11,6 +13,12 @@ class CurrencyViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     audit_entity_type = "currency"
     audit_fields = ("code", "name", "symbol", "is_base", "is_active")
     audit_label_field = "name"
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            if not user_can_manage_currencies(request.user):
+                raise PermissionDenied("You do not have permission to manage currencies.")
 
 
 class CurrencyRateViewSet(AuditedModelMixin, viewsets.ModelViewSet):

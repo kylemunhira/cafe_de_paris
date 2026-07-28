@@ -45,7 +45,7 @@ class Product(models.Model):
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     remaining_qty = models.DecimalField(
         max_digits=12,
-        decimal_places=2,
+        decimal_places=3,
         default=Decimal("0"),
     )
     tax_rate = models.DecimalField(
