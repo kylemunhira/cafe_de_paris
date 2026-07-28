@@ -1107,6 +1107,32 @@ class OrderCancelVoidTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.PAID)
 
+    def test_cancel_unpaid_rejected_for_cashier(self):
+        order = self._open_order()
+        order.status = OrderStatus.UNPAID
+        order.save(update_fields=["status"])
+        response = self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.UNPAID)
+
+    def test_hq_admin_can_cancel_unpaid_order(self):
+        User = get_user_model()
+        hq_admin = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=hq_admin,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+        )
+        order = self._open_order()
+        order.status = OrderStatus.UNPAID
+        order.save(update_fields=["status"])
+        self.client.force_authenticate(user=hq_admin)
+        response = self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.CANCELLED)
+
     def test_void_paid_order(self):
         order = self._open_order()
         self.client.post(
@@ -1285,6 +1311,7 @@ class OrderItemRemoveTests(TestCase):
         self.client = APIClient()
         User = get_user_model()
         self.user = User.objects.create_user(username="cashier", password="pass")
+        self.hq_admin = User.objects.create_user(username="hqboss", password="pass")
         self.other_user = User.objects.create_user(username="other", password="pass")
         self.branch = Branch.objects.create(
             name="Test Branch",
@@ -1293,7 +1320,12 @@ class OrderItemRemoveTests(TestCase):
             branch_type=BranchType.BRANCH,
         )
         StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
-        self.client.force_authenticate(user=self.user)
+        StaffProfile.objects.create(
+            user=self.hq_admin,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+        )
+        self.client.force_authenticate(user=self.hq_admin)
         category = ProductCategory.objects.create(name="Coffee")
         self.product = Product.objects.create(
             name="Espresso",
@@ -1321,21 +1353,19 @@ class OrderItemRemoveTests(TestCase):
         order.recalculate_total()
         return order, first, second
 
-    def test_remove_one_rejected_after_order_placed(self):
+    def test_remove_one_rejected_for_cashier(self):
         order, first, _second = self._open_order_with_items()
+        self.client.force_authenticate(user=self.user)
         response = self.client.post(
             f"/api/orders/{order.id}/items/{first.id}/remove-one/",
             {},
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("cannot be removed", response.data["detail"].lower())
+        self.assertEqual(response.status_code, 403)
         first.refresh_from_db()
-        order.refresh_from_db()
         self.assertEqual(first.quantity, Decimal("2"))
-        self.assertEqual(order.items.count(), 2)
 
-    def test_remove_item_requires_pos_access(self):
+    def test_remove_item_requires_hq_admin(self):
         order, first, _second = self._open_order_with_items()
         self.client.force_authenticate(user=self.other_user)
         response = self.client.post(
@@ -1344,6 +1374,46 @@ class OrderItemRemoveTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_hq_admin_remove_one_decrements_quantity(self):
+        order, first, _second = self._open_order_with_items()
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        first.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(first.quantity, Decimal("1"))
+        self.assertEqual(order.items.count(), 2)
+        self.assertEqual(Decimal(response.data["total_amount"]), Decimal("7.50"))
+
+    def test_hq_admin_remove_last_item_cancels_order(self):
+        order, _first, second = self._open_order_with_items()
+        order.items.filter(product=self.product).delete()
+        order.recalculate_total()
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{second.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.CANCELLED)
+        self.assertEqual(order.items.count(), 0)
+
+    def test_remove_one_rejected_for_paid_order(self):
+        order, first, _second = self._open_order_with_items()
+        order.status = OrderStatus.PAID
+        order.save(update_fields=["status"])
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("open orders", response.data["detail"].lower())
 
 
 class OrderItemTransferTests(TestCase):

@@ -84,8 +84,8 @@
 
     <div id="receipt-mode-panel" class="card" style="padding: 0; display: none;">
       <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-        <h3 style="margin: 0; font-size: 1rem;">Open Orders</h3>
-        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Select an order to collect payment · kitchen status updates automatically</p>
+        <h3 style="margin: 0; font-size: 1rem;">Open orders</h3>
+        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Takeaway and dine-in · not yet billed · select to collect payment</p>
       </div>
       <div class="receipt-orders-list" id="receipt-orders-list">
         <div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders</p></div>
@@ -103,6 +103,15 @@
       </div>
     </div>
     <div class="cart-footer">
+      <div id="receipt-actions-section" class="receipt-actions" style="display: none;">
+        <div class="receipt-actions-label">Order actions</div>
+        <button type="button" class="btn btn-danger-outline" id="cancel-order-btn" style="display: none;" disabled>
+          Cancel entire order
+        </button>
+        <button type="button" class="btn btn-ghost" id="transfer-items-btn" style="display: none;" disabled>
+          Transfer to table…
+        </button>
+      </div>
       <div id="receipt-payment-section" style="display: none; margin-bottom: 1rem;">
         <div class="form-group">
           <label>Payment method</label>
@@ -148,12 +157,6 @@
       </div>
       <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>
         Place Order
-      </button>
-      <button class="btn btn-ghost" id="transfer-items-btn" style="width: 100%; margin-top: 0.5rem; display: none;" disabled>
-        Transfer to table…
-      </button>
-      <button class="btn btn-ghost" id="cancel-order-btn" style="width: 100%; margin-top: 0.5rem; display: none;" disabled>
-        Cancel Order
       </button>
       <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>
         Clear Cart
@@ -387,6 +390,7 @@ import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/sea
 import { initPosOperations } from "{% static 'ui/js/pos-operations.js' %}?v=1";
 
 const canFilterAnyBranch = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
+const canManagePosOrders = "{{ can_manage_pos_orders|yesno:'true,false' }}" === "true";
 const preferredBranchId = "{{ staff_branch_id|default:'' }}";
 
 const INCLUSIVE_TAX_RATE = Number(document.querySelector(".pos-layout")?.dataset.inclusiveTaxRate ?? 0);
@@ -437,6 +441,7 @@ const tableManageToggleBtn = document.getElementById("table-manage-toggle-btn");
 const tablePickerCloseBtn = document.getElementById("table-picker-close-btn");
 const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
 const transferItemsBtn = document.getElementById("transfer-items-btn");
+const receiptActionsSection = document.getElementById("receipt-actions-section");
 const orderCustomerSelect = document.getElementById("order-customer");
 const receiptCustomerSelect = document.getElementById("receipt-customer");
 const accountBalanceHint = document.getElementById("account-balance-hint");
@@ -689,9 +694,16 @@ function openOrdersForTable(tableNumber) {
 
 function getReceiptOrders() {
   if (!selectedOrder) return [];
-  if (selectedOrder.status === "unpaid") return [selectedOrder];
   const tableOrders = openOrdersForTable(selectedOrder.table_number);
   return tableOrders.length > 1 ? tableOrders : [selectedOrder];
+}
+
+function orderTypeLabel(orderType) {
+  return orderType === "dine_in" ? "Dine in" : "Takeaway";
+}
+
+function canCancelOrder(order) {
+  return Boolean(order && order.status === "open");
 }
 
 function getReceiptInclusiveTotal() {
@@ -1479,10 +1491,18 @@ function renderReceiptTotals(inclusiveTotal) {
   updateSplitPaymentRemaining();
 }
 
+function setReceiptActionsVisible(visible) {
+  if (receiptActionsSection) {
+    receiptActionsSection.style.display = visible ? "" : "none";
+  }
+}
+
 function renderCart() {
   panelTitle.textContent = "Current Order";
   checkoutBtn.textContent = "Place Order";
+  checkoutBtn.style.display = "";
   clearBtn.style.display = "";
+  setReceiptActionsVisible(false);
   if (transferItemsBtn) {
     transferItemsBtn.style.display = "none";
     transferItemsBtn.disabled = true;
@@ -1532,6 +1552,7 @@ function renderReceiptPanel() {
     selectedTransferKeys = new Set();
     panelTitle.textContent = "Receipt";
     clearBtn.style.display = "none";
+    setReceiptActionsVisible(false);
     if (transferItemsBtn) {
       transferItemsBtn.style.display = "none";
       transferItemsBtn.disabled = true;
@@ -1540,11 +1561,12 @@ function renderReceiptPanel() {
       cancelOrderBtn.style.display = "none";
       cancelOrderBtn.disabled = true;
     }
-    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to view details</p></div>`;
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to collect payment</p></div>`;
     cartTotal.textContent = formatCurrency(0);
     cartTotalLabel.textContent = "Total";
     receiptPaymentSection.style.display = "none";
     checkoutBtn.textContent = "Collect Payment";
+    checkoutBtn.style.display = "";
     checkoutBtn.disabled = true;
     return;
   }
@@ -1556,26 +1578,26 @@ function renderReceiptPanel() {
 
   const receiptOrders = getReceiptOrders();
   const combined = receiptOrders.length > 1;
+  const orderTypeText = orderTypeLabel(selectedOrder.order_type);
   panelTitle.textContent = combined
     ? `Table ${selectedOrder.table_number} — ${receiptOrders.length} orders`
-    : `Order #${selectedOrder.id}`;
+    : `Order #${selectedOrder.id} · ${orderTypeText}`;
   clearBtn.style.display = "none";
+  const canCancel = canCancelOrder(selectedOrder);
+  setReceiptActionsVisible(canCancel || (
+    selectedOrder.order_type === "dine_in"
+    && Boolean(selectedOrder.table_number)
+  ));
   if (cancelOrderBtn) {
-    const canCancel = selectedOrder.status === "open";
     cancelOrderBtn.style.display = canCancel ? "" : "none";
     cancelOrderBtn.disabled = !canCancel;
   }
 
-  const typeLabel = selectedOrder.order_type.replace("_", " ");
+  const typeLabel = orderTypeText;
   const tableInfo = selectedOrder.table_number && !combined
     ? `<div class="receipt-meta">Table ${selectedOrder.table_number}</div>`
     : "";
-  const statusMeta = selectedOrder.status === "unpaid"
-    ? `<div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-        <span>Status</span>
-        ${statusBadge("unpaid")}
-      </div>`
-    : `<div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+  const statusMeta = `<div class="receipt-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
         <span>Kitchen</span>
         ${kitchenStatusBadge(selectedOrder.kitchen_status || "pending")}
       </div>`;
@@ -1583,6 +1605,14 @@ function renderReceiptPanel() {
   const canTransferItems = selectedOrder.status === "open"
     && selectedOrder.order_type === "dine_in"
     && Boolean(selectedOrder.table_number);
+  const canRemoveItems = canManagePosOrders && selectedOrder.status === "open";
+  const removeHint = canRemoveItems
+    ? (selectedOrder.order_type === "takeaway"
+      ? "Use Remove on a line, or Cancel entire order below"
+      : "Use Remove on a line, transfer lines, or Cancel entire order below")
+    : (canCancel
+      ? "Use Cancel entire order below to remove this order"
+      : "");
 
   cartItems.innerHTML = `
     <div class="receipt-order-meta">
@@ -1592,6 +1622,7 @@ function renderReceiptPanel() {
       ${combined ? `<div class="receipt-meta">Combined bill for table ${selectedOrder.table_number}</div>` : ""}
       <div class="receipt-meta">${formatDate(selectedOrder.created_at)}</div>
       ${canTransferItems ? `<div class="receipt-meta" style="color: var(--color-muted);">Select lines to transfer to another table</div>` : ""}
+      ${removeHint ? `<div class="receipt-meta receipt-actions-hint">${removeHint}</div>` : ""}
     </div>
     ${receiptOrders.map(order => `
       ${combined ? `<div class="receipt-meta" style="margin-top: 0.75rem; font-weight: 600;">Order #${order.id}</div>` : ""}
@@ -1609,7 +1640,12 @@ function renderReceiptPanel() {
             <div class="name">${item.product_name}</div>
             <div class="line-total">${formatCurrency(item.price)} × ${item.quantity}</div>
           </div>
-          <div class="line-total" style="font-weight: 600;">${formatCurrency(item.price * item.quantity)}</div>
+          <div style="display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0;">
+            ${canRemoveItems ? `
+              <button type="button" class="btn btn-ghost btn-sm remove-one-item-btn" data-order-id="${order.id}" data-item-id="${item.id}" title="Remove one unit">Remove 1</button>
+            ` : ""}
+            <div class="line-total" style="font-weight: 600;">${formatCurrency(item.price * item.quantity)}</div>
+          </div>
         </div>
       `;
       }).join("")}
@@ -1636,49 +1672,48 @@ function renderReceiptPanel() {
   receiptPaymentSection.style.display = "";
   const inclusiveTotal = getReceiptInclusiveTotal();
   renderReceiptTotals(inclusiveTotal);
+  checkoutBtn.style.display = "";
   checkoutBtn.textContent = combined ? "Collect Table Payment" : "Collect Payment";
   updateCheckoutButtonState(inclusiveTotal);
 }
 
+function findReceiptOrder(orderId) {
+  return openOrders.find(o => o.id === orderId) || null;
+}
+
+function renderReceiptOrderCard(o) {
+  const typeLabel = orderTypeLabel(o.order_type);
+  const tableLabel = o.table_number ? ` · Table ${o.table_number}` : "";
+  const tableOrders = o.table_number ? openOrdersForTable(o.table_number) : [];
+  const combinedLabel = tableOrders.length > 1
+    ? ` · ${tableOrders.length} orders on table`
+    : "";
+  const selected = selectedOrder?.id === o.id ? " selected" : "";
+  const readyClass = o.kitchen_status === "ready" ? " receipt-order-ready" : "";
+  const displayTotal = tableOrders.length > 1
+    ? tableOrders.reduce((sum, order) => sum + Number(order.total_amount), 0)
+    : o.total_amount;
+  return `
+    <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.id}">
+      <div class="receipt-order-card-top">
+        <strong>#${o.id}</strong>
+        <span class="receipt-order-amount">${formatCurrency(displayTotal)}</span>
+      </div>
+      <div class="receipt-order-card-meta">${typeLabel}${tableLabel}${combinedLabel} · ${o.items?.length || 0} items</div>
+      <div class="receipt-order-card-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+        <span>${formatDate(o.created_at)}</span>
+        ${kitchenStatusBadge(o.kitchen_status || "pending")}
+      </div>
+    </button>
+  `;
+}
+
 function renderOpenOrdersList() {
   if (!openOrders.length) {
-    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open or unpaid orders for this branch</p></div>`;
+    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders awaiting payment</p></div>`;
     return;
   }
-
-  receiptOrdersList.innerHTML = openOrders.map(o => {
-    const typeLabel = o.order_type.replace("_", " ");
-    const tableLabel = o.table_number ? ` · Table ${o.table_number}` : "";
-    const tableOrders = o.status === "open" && o.table_number
-      ? openOrdersForTable(o.table_number)
-      : [];
-    const combinedLabel = tableOrders.length > 1
-      ? ` · ${tableOrders.length} orders on table`
-      : "";
-    const selected = selectedOrder?.id === o.id ? " selected" : "";
-    const readyClass = o.status === "open" && o.kitchen_status === "ready"
-      ? " receipt-order-ready"
-      : "";
-    const displayTotal = tableOrders.length > 1
-      ? tableOrders.reduce((sum, order) => sum + Number(order.total_amount), 0)
-      : o.total_amount;
-    const statusLabel = o.status === "unpaid"
-      ? statusBadge("unpaid")
-      : kitchenStatusBadge(o.kitchen_status || "pending");
-    return `
-      <button type="button" class="receipt-order-card${selected}${readyClass}" data-id="${o.id}">
-        <div class="receipt-order-card-top">
-          <strong>#${o.id}</strong>
-          <span class="receipt-order-amount">${formatCurrency(displayTotal)}</span>
-        </div>
-        <div class="receipt-order-card-meta">${typeLabel}${tableLabel}${combinedLabel} · ${o.items?.length || 0} items</div>
-        <div class="receipt-order-card-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-          <span>${formatDate(o.created_at)}</span>
-          ${statusLabel}
-        </div>
-      </button>
-    `;
-  }).join("");
+  receiptOrdersList.innerHTML = openOrders.map(o => renderReceiptOrderCard(o)).join("");
 }
 
 async function loadOpenOrders({ notifyReady = false } = {}) {
@@ -1693,15 +1728,10 @@ async function loadOpenOrders({ notifyReady = false } = {}) {
     : null;
 
   try {
-    const data = await apiGet(`/orders/?status=open,unpaid&branch=${branchSelect.value}&page_size=500`);
+    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}&page_size=500`);
     openOrders = unwrapList(data);
     if (selectedOrder) {
-      const refreshed = openOrders.find(o => o.id === selectedOrder.id);
-      if (refreshed) {
-        selectedOrder = refreshed;
-      } else {
-        selectedOrder = null;
-      }
+      selectedOrder = findReceiptOrder(selectedOrder.id);
     }
     if (notifyReady && previousStatuses) {
       for (const order of openOrders) {
@@ -1961,13 +1991,16 @@ productGrid.addEventListener("click", (e) => {
   if (product) handleProductTap(product);
 });
 
+function selectReceiptOrder(orderId) {
+  selectedOrder = findReceiptOrder(orderId);
+  renderOpenOrdersList();
+  renderReceiptPanel();
+}
+
 receiptOrdersList.addEventListener("click", (e) => {
   const card = e.target.closest(".receipt-order-card");
   if (!card) return;
-  const id = Number(card.dataset.id);
-  selectedOrder = openOrders.find(o => o.id === id) || null;
-  renderOpenOrdersList();
-  renderReceiptPanel();
+  selectReceiptOrder(Number(card.dataset.id));
 });
 
 clearBtn.addEventListener("click", () => {
@@ -1979,14 +2012,23 @@ cancelOrderBtn?.addEventListener("click", () => {
   cancelSelectedOrder();
 });
 
+cartItems.addEventListener("click", async (e) => {
+  const removeBtn = e.target.closest(".remove-one-item-btn");
+  if (!removeBtn) return;
+  const orderId = Number(removeBtn.dataset.orderId);
+  const itemId = Number(removeBtn.dataset.itemId);
+  if (!orderId || !itemId) return;
+  await removeOneFromOrder(orderId, itemId, removeBtn);
+});
+
 async function cancelSelectedOrder() {
   if (!selectedOrder) return;
-  if (selectedOrder.status !== "open") {
-    showToast("Only open orders can be cancelled", true);
+  if (!canCancelOrder(selectedOrder)) {
+    showToast("This order cannot be cancelled", true);
     return;
   }
   const orderId = selectedOrder.id;
-  if (!window.confirm(`Cancel unpaid order #${orderId}?`)) return;
+  if (!window.confirm(`Cancel entire order #${orderId}? This cannot be undone.`)) return;
 
   cancelOrderBtn.disabled = true;
   try {
@@ -1998,6 +2040,26 @@ async function cancelSelectedOrder() {
   } catch (err) {
     showToast(err.message, true);
     cancelOrderBtn.disabled = false;
+  }
+}
+
+async function removeOneFromOrder(orderId, itemId, triggerBtn) {
+  if (!window.confirm("Remove one unit from this line?")) return;
+  if (triggerBtn) triggerBtn.disabled = true;
+  try {
+    const updated = await apiPost(`/orders/${orderId}/items/${itemId}/remove-one/`, {});
+    if (updated.status === "cancelled") {
+      showToast(`Order #${orderId} cancelled (no items left)`);
+      selectedOrder = null;
+    } else {
+      showToast("Item removed");
+      selectedOrder = updated;
+    }
+    await loadOpenOrders();
+    renderReceiptPanel();
+  } catch (err) {
+    showToast(err.message, true);
+    if (triggerBtn) triggerBtn.disabled = false;
   }
 }
 

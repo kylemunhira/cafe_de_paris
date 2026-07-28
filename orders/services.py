@@ -234,15 +234,40 @@ class OrderItemTransferError(Exception):
     """Raised when order lines cannot be moved to another table."""
 
 
-def remove_one_order_item(order, item):
+def remove_one_order_item(order, item, *, removed_by=None):
     """
-    Items on a placed order cannot be removed. Cashiers may only edit the cart
-    before placing, or transfer whole lines to another table afterwards.
+    Decrement an open order line by one unit. HQ admins only (enforced in the view).
+    Deletes the line when quantity reaches zero; cancels the order when empty.
     """
-    raise OrderItemRemoveError(
-        "Items cannot be removed after an order is placed. "
-        "Cancel the order or transfer items to another table."
-    )
+    if item.order_id != order.pk:
+        raise OrderItemRemoveError("Item does not belong to this order.")
+    if order.status != OrderStatus.OPEN:
+        raise OrderItemRemoveError("Only open orders can have items removed.")
+
+    new_qty = (item.quantity - Decimal("1")).quantize(Decimal("0.01"))
+    if new_qty <= 0:
+        item.delete()
+        if not OrderItem.objects.filter(order_id=order.pk).exists():
+            cancel_order(order, cancelled_by=removed_by)
+            return order
+    else:
+        item.quantity = new_qty
+        item.save(update_fields=["quantity"])
+
+    if order.kitchen_status != KitchenStatus.PENDING:
+        order.kitchen_status = KitchenStatus.PENDING
+        order.kitchen_started_at = None
+        order.kitchen_ready_at = None
+        order.save(
+            update_fields=[
+                "kitchen_status",
+                "kitchen_started_at",
+                "kitchen_ready_at",
+            ]
+        )
+
+    order.recalculate_total()
+    return order
 
 
 def transfer_order_items(order, *, item_ids, table_number, created_by=None):
@@ -330,9 +355,12 @@ def transfer_order_items(order, *, item_ids, table_number, created_by=None):
     return order, destination
 
 
-def cancel_order(order, *, cancelled_by=None):
+def cancel_order(order, *, cancelled_by=None, allow_unpaid=False):
     """Cancel an unpaid (open) order. No inventory changes."""
-    if order.status != OrderStatus.OPEN:
+    allowed = {OrderStatus.OPEN}
+    if allow_unpaid:
+        allowed.add(OrderStatus.UNPAID)
+    if order.status not in allowed:
         raise OrderCancelError("Only open orders can be cancelled.")
     order.status = OrderStatus.CANCELLED
     order.cancelled_at = timezone.now()

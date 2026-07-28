@@ -188,6 +188,7 @@ class POSView(BaseUIView):
             user_can_collect_payment,
             user_can_manage_dining_tables,
             user_can_manage_fiscal_day,
+            user_can_manage_pos_orders,
         )
 
         context = super().get_context_data(**kwargs)
@@ -200,6 +201,9 @@ class POSView(BaseUIView):
             self.request.user
         )
         context["can_collect_payment"] = user_can_collect_payment(self.request.user)
+        context["can_manage_pos_orders"] = user_can_manage_pos_orders(
+            self.request.user
+        )
         context["can_stock_take"] = user_can_collect_payment(self.request.user)
         context["can_record_customer_payment"] = user_can_collect_payment(
             self.request.user

@@ -3,6 +3,7 @@ from accounts.branch_access import (
     user_can_access_pos,
     user_can_approve_fiscal_receipt,
     user_can_collect_payment,
+    user_can_manage_pos_orders,
 )
 from audit.mixins import AuditedModelMixin
 from django.db import transaction
@@ -303,8 +304,10 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         url_path=r"items/(?P<item_id>[^/.]+)/remove-one",
     )
     def remove_one_item(self, request, pk=None, item_id=None):
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to update orders.")
+        if not user_can_manage_pos_orders(request.user):
+            raise PermissionDenied(
+                "HQ admin access is required to remove items from orders."
+            )
         order = self.get_object()
         try:
             with transaction.atomic():
@@ -314,7 +317,9 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                     .get(pk=order.pk)
                 )
                 item = OrderItem.objects.select_for_update().get(pk=item_id)
-                order = remove_one_order_item(order, item)
+                order = remove_one_order_item(
+                    order, item, removed_by=request.user
+                )
         except OrderItem.DoesNotExist:
             return Response(
                 {"detail": "Order item not found."},
@@ -396,7 +401,11 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         try:
             with transaction.atomic():
                 order = Order.objects.select_for_update().get(pk=order.pk)
-                order = cancel_order(order, cancelled_by=request.user)
+                order = cancel_order(
+                    order,
+                    cancelled_by=request.user,
+                    allow_unpaid=user_can_manage_pos_orders(request.user),
+                )
         except OrderCancelError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         order = (

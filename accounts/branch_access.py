@@ -189,6 +189,11 @@ def user_can_collect_payment(user):
     return user_can_access_pos(user)
 
 
+def user_can_manage_pos_orders(user):
+    """Void paid orders and remove lines from open orders (HQ admin / global access)."""
+    return user_has_global_branch_access(user)
+
+
 def user_can_use_desktop_pos(user):
     """Offline desktop POS — cashiers, waiters, and branch managers."""
     if not user_can_access_pos(user):
