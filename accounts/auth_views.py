@@ -85,6 +85,7 @@ class DesktopLoginView(APIView):
                     "can_manage_fiscal_day": user_can_manage_fiscal_day(user),
                     "can_manage_dining_tables": user_can_manage_dining_tables(user),
                     "can_collect_payment": user_can_collect_payment(user),
+                    "is_superuser": user.is_superuser,
                     "kitchen_station": kitchen_station or None,
                     "kitchen_station_display": profile.get_kitchen_station_display()
                     if kitchen_station
@@ -158,6 +159,7 @@ class MobileAppLoginView(APIView):
                     "can_manage_fiscal_day": user_can_manage_fiscal_day(user),
                     "can_manage_dining_tables": user_can_manage_dining_tables(user),
                     "can_collect_payment": user_can_collect_payment(user),
+                    "is_superuser": user.is_superuser,
                     "kitchen_station": kitchen_station or None,
                     "kitchen_station_display": profile.get_kitchen_station_display()
                     if kitchen_station

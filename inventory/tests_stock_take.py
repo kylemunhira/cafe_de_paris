@@ -265,8 +265,8 @@ class StockTakeWorkflowTests(TestCase):
         self.assertIn(str(flour_line["id"]), csv_text)
 
         csv_content = (
-            "line_id,category,product_name,counted_quantity\n"
-            f"{flour_line['id']},Ingredients,Flour,48\n"
+            "line_id,station,product_name,counted_quantity\n"
+            f"{flour_line['id']},Kitchen,Flour,48\n"
         )
         import_response = self.client.post(
             f"/api/stock-takes/{stock_take_id}/import-csv/",
@@ -477,3 +477,83 @@ class StockTakeBranchAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         branch_ids = {item["branch"] for item in response.data["results"]}
         self.assertEqual(branch_ids, {self.branch.id})
+
+
+class StockTakeStationGroupingTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+        )
+        self.ingredient_cat = ProductCategory.objects.create(
+            name=BRANCH_INGREDIENTS_CATEGORY,
+        )
+        self.bar_cat = ProductCategory.objects.create(
+            name="Drinks",
+            pos_station="bar",
+        )
+        self.cake_cat = ProductCategory.objects.create(
+            name="Cakes & desserts",
+            pos_station="bar",
+        )
+        self.shop_cat = ProductCategory.objects.create(name="Retail")
+        self.flour = Product.objects.create(
+            name="Flour",
+            category=self.ingredient_cat,
+            selling_price=Decimal("5.00"),
+            daily_stock_take=True,
+        )
+        self.gin = Product.objects.create(
+            name="Gin",
+            category=self.bar_cat,
+            selling_price=Decimal("8.00"),
+            daily_stock_take=True,
+        )
+        self.croissant_cat = ProductCategory.objects.create(name="Croissants")
+        self.croissant = Product.objects.create(
+            name="Almond croissants",
+            category=self.croissant_cat,
+            selling_price=Decimal("3.00"),
+            daily_stock_take=True,
+        )
+        self.carrot_cake = Product.objects.create(
+            name="Carrot Cake",
+            category=self.cake_cat,
+            selling_price=Decimal("15.00"),
+            daily_stock_take=True,
+        )
+        self.mug = Product.objects.create(
+            name="Mug",
+            category=self.shop_cat,
+            selling_price=Decimal("12.00"),
+            daily_stock_take=True,
+        )
+        for product in (self.flour, self.gin, self.croissant, self.carrot_cake, self.mug):
+            BranchInventory.objects.create(
+                branch=self.branch,
+                product=product,
+                quantity=Decimal("10"),
+            )
+
+    def test_stock_take_lines_include_station_fields(self):
+        response = APIClient().post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-21",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        lines = {line["product_name"]: line for line in response.data["lines"]}
+        self.assertEqual(lines["Flour"]["stock_take_station"], "kitchen")
+        self.assertEqual(lines["Flour"]["stock_take_station_display"], "Kitchen")
+        self.assertEqual(lines["Gin"]["stock_take_station"], "bar")
+        self.assertEqual(lines["Gin"]["stock_take_station_display"], "Bar")
+        self.assertEqual(lines["Almond croissants"]["stock_take_station"], "shop")
+        self.assertEqual(lines["Almond croissants"]["stock_take_station_display"], "Shop")
+        self.assertEqual(lines["Carrot Cake"]["stock_take_station"], "shop")
+        self.assertEqual(lines["Carrot Cake"]["stock_take_station_display"], "Shop")
+        self.assertEqual(lines["Mug"]["stock_take_station"], "shop")
+        self.assertEqual(lines["Mug"]["stock_take_station_display"], "Shop")

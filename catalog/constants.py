@@ -22,9 +22,23 @@ BAKERY_SELLABLE_CATEGORIES = {
     "Savory",
 }
 
+# Legacy POS tabs and bakery categories — finished goods counted at the shop.
+STOCK_TAKE_BAKERY_CATEGORIES = BAKERY_CATEGORIES | {
+    "Croissants",
+    "Desserts",
+    "Confectionary",
+    "Sweet Confessions",
+    "Cafe Classics",
+}
+
 
 def is_bakery_transfer_product(product):
     return product.category.name in BAKERY_SELLABLE_CATEGORIES
+
+
+def is_stock_take_bakery_product(product):
+    """Finished bakery goods — grouped with shop stock."""
+    return product.category.name in STOCK_TAKE_BAKERY_CATEGORIES
 
 
 def ingredient_categories_for_branch_type(branch_type):
@@ -50,6 +64,46 @@ def is_bakery_ingredient_product(product):
 
 def is_branch_ingredient_product(product):
     return product.category.name == BRANCH_INGREDIENTS_CATEGORY
+
+
+class StockTakeStation:
+    KITCHEN = "kitchen"
+    BAR = "bar"
+    SHOP = "shop"
+
+
+STOCK_TAKE_STATION_LABELS = {
+    StockTakeStation.KITCHEN: "Kitchen",
+    StockTakeStation.BAR: "Bar",
+    StockTakeStation.SHOP: "Shop",
+}
+
+STOCK_TAKE_STATION_ORDER = (
+    StockTakeStation.KITCHEN,
+    StockTakeStation.BAR,
+    StockTakeStation.SHOP,
+)
+
+
+def stock_take_station_for_product(product):
+    """Prep area for stock-take grouping: ingredients, bar, or shop."""
+    from catalog.models import PosStation
+
+    if is_ingredient_product(product):
+        return StockTakeStation.KITCHEN
+    if is_stock_take_bakery_product(product):
+        return StockTakeStation.SHOP
+    pos_station = (product.category.pos_station or "").strip()
+    if pos_station == PosStation.BAR:
+        return StockTakeStation.BAR
+    if pos_station == PosStation.KITCHEN:
+        return StockTakeStation.KITCHEN
+    return StockTakeStation.SHOP
+
+
+def stock_take_station_display_for_product(product):
+    station = stock_take_station_for_product(product)
+    return STOCK_TAKE_STATION_LABELS[station]
 
 
 def is_bakery_manufactured_product(product):

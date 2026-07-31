@@ -97,8 +97,22 @@ class CustomerDepositSerializer(serializers.Serializer):
         queryset=Currency.objects.filter(is_active=True),
         source="currency",
     )
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     notes = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+    def validate_amount(self, amount):
+        if amount == Decimal("0"):
+            raise serializers.ValidationError("Amount must not be zero.")
+        if amount < Decimal("0"):
+            from accounts.branch_access import user_can_adjust_customer_balance
+
+            request = self.context.get("request")
+            user = getattr(request, "user", None) if request else None
+            if not user_can_adjust_customer_balance(user):
+                raise serializers.ValidationError(
+                    "Only superusers and HQ admins can record a negative amount."
+                )
+        return amount
 
     def validate_branch(self, branch):
         request = self.context.get("request")
@@ -113,3 +127,13 @@ class CustomerDepositSerializer(serializers.Serializer):
                 "You can only record deposits for your assigned branch."
             )
         return branch
+
+
+class CustomerBalanceAdjustmentSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    notes = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+    def validate_amount(self, amount):
+        if amount == Decimal("0"):
+            raise serializers.ValidationError("Adjustment amount must not be zero.")
+        return amount

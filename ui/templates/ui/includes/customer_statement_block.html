@@ -154,7 +154,7 @@
             {% if txn.order_id %} · Order #{{ txn.order_id }}{% endif %}
             {% if txn.notes %} · {{ txn.notes }}{% endif %}
             {% if txn.recorded_by %} · By {{ txn.recorded_by.username }}{% endif %}
-            {% if txn.transaction_type == "adjustment" %} · ★ Imported balance update{% endif %}
+            {% if txn.transaction_type == "adjustment" %} · ★ Balance adjustment{% endif %}
           </div>
         </td>
       </tr>

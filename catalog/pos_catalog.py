@@ -1,10 +1,11 @@
 from .constants import (
-    ALL_INGREDIENT_CATEGORIES,
     ARCHIVED_CATEGORY,
+
+  
 )
 
 # Internal sub-recipes are not sold directly on POS terminals.
-POS_EXCLUDED_CATEGORIES = ALL_INGREDIENT_CATEGORIES | {
+POS_EXCLUDED_CATEGORIES =  {
     ARCHIVED_CATEGORY,
     "Components",
     "Extras",

@@ -85,7 +85,7 @@ let allStockTakes = [];
 let activeStockTake = null;
 let activeFilter = "all";
 let completedLineFilter = "all";
-let categoryLineFilter = "all";
+let stationLineFilter = "all";
 const sortState = createSortState("created_at", "desc");
 
 const STOCK_TAKE_SORT = {
@@ -246,27 +246,42 @@ function varianceClass(variance) {
   return value > 0 ? "text-success" : "text-danger";
 }
 
-function lineCategories(lines) {
-  const counts = new Map();
-  for (const line of lines) {
-    const name = line.category_name || "Uncategorized";
-    counts.set(name, (counts.get(name) || 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, count]) => ({ name, count }));
+const STATION_ORDER = ["kitchen", "bar", "shop"];
+const STATION_LABELS = { kitchen: "Kitchen", bar: "Bar", shop: "Shop" };
+
+function lineStationName(line) {
+  return line.stock_take_station_display || STATION_LABELS[line.stock_take_station] || "Shop";
 }
 
-function groupLinesByCategory(lines) {
+function lineStationKey(line) {
+  return line.stock_take_station || "shop";
+}
+
+function lineStations(lines) {
+  const counts = new Map();
+  for (const line of lines) {
+    const key = lineStationKey(line);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return STATION_ORDER
+    .filter(key => counts.has(key))
+    .map(key => ({ key, name: STATION_LABELS[key], count: counts.get(key) }));
+}
+
+function groupLinesByStation(lines) {
   const groups = new Map();
   for (const line of lines) {
-    const name = line.category_name || "Uncategorized";
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(line);
+    const key = lineStationKey(line);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(line);
   }
-  return [...groups.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, groupLines]) => ({ name, lines: groupLines }));
+  return STATION_ORDER
+    .filter(key => groups.has(key))
+    .map(key => ({
+      key,
+      name: STATION_LABELS[key],
+      lines: groups.get(key),
+    }));
 }
 
 function renderActiveCount() {
@@ -321,16 +336,16 @@ function renderActiveCount() {
     return;
   }
 
-  const categories = lineCategories(lines);
+  const stations = lineStations(lines);
   const statusFilteredLines = isCompleted && completedLineFilter === "variances"
     ? varianceLines
     : lines;
-  const categoryOptions = lineCategories(statusFilteredLines);
+  const stationOptions = lineStations(statusFilteredLines);
   if (
-    categoryLineFilter !== "all"
-    && !categoryOptions.some(cat => cat.name === categoryLineFilter)
+    stationLineFilter !== "all"
+    && !stationOptions.some(station => station.key === stationLineFilter)
   ) {
-    categoryLineFilter = "all";
+    stationLineFilter = "all";
   }
 
   const filterTabs = [];
@@ -344,14 +359,14 @@ function renderActiveCount() {
       </button>
     `);
   }
-  if (categoryOptions.length > 1) {
+  if (stationOptions.length > 1) {
     filterTabs.push(`
-      <button class="category-tab${categoryLineFilter === "all" ? " active" : ""}" data-category-filter="all">
-        All categories (${statusFilteredLines.length})
+      <button class="category-tab${stationLineFilter === "all" ? " active" : ""}" data-station-filter="all">
+        All stations (${statusFilteredLines.length})
       </button>
-      ${categoryOptions.map(cat => `
-        <button class="category-tab${categoryLineFilter === cat.name ? " active" : ""}" data-category-filter="${escapeHtml(cat.name)}">
-          ${escapeHtml(cat.name)} (${cat.count})
+      ${stationOptions.map(station => `
+        <button class="category-tab${stationLineFilter === station.key ? " active" : ""}" data-station-filter="${escapeHtml(station.key)}">
+          ${escapeHtml(station.name)} (${station.count})
         </button>
       `).join("")}
     `);
@@ -365,29 +380,29 @@ function renderActiveCount() {
     completedLineFilters.innerHTML = "";
   }
 
-  const visibleLines = categoryLineFilter === "all"
+  const visibleLines = stationLineFilter === "all"
     ? statusFilteredLines
-    : statusFilteredLines.filter(line => (line.category_name || "Uncategorized") === categoryLineFilter);
+    : statusFilteredLines.filter(line => lineStationKey(line) === stationLineFilter);
 
   if (!visibleLines.length) {
     countLinesTable.innerHTML = `<div class="empty-state"><p>${
       isCompleted && completedLineFilter === "variances"
         ? "No variances were posted for this filter."
-        : "No ingredients in this category."
+        : "No ingredients in this station."
     }</p></div>`;
     return;
   }
 
-  const groups = groupLinesByCategory(visibleLines);
-  const showCategoryColumn = categoryLineFilter === "all" && categories.length > 1;
-  const colSpan = (showCategoryColumn ? 2 : 1)
+  const groups = groupLinesByStation(visibleLines);
+  const showStationColumn = stationLineFilter === "all" && stations.length > 1;
+  const colSpan = (showStationColumn ? 2 : 1)
     + (isCompleted ? 3 : 2);
 
   countLinesTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          ${showCategoryColumn ? "<th>Category</th>" : ""}
+          ${showStationColumn ? "<th>Station</th>" : ""}
           <th>Ingredient</th>
           ${isCompleted ? `<th style="text-align: right;">System (before)</th>` : ""}
           <th style="text-align: right; min-width: 120px;">${isCompleted ? "Counted" : "Counted qty"}</th>
@@ -408,7 +423,7 @@ function renderActiveCount() {
             const hasVariance = variance !== null && variance !== 0;
             return `
               <tr data-line-id="${line.id}" class="${isCompleted && hasVariance ? "variance-row" : ""}">
-                ${showCategoryColumn ? `<td>${escapeHtml(line.category_name || "—")}</td>` : ""}
+                ${showStationColumn ? `<td>${escapeHtml(lineStationName(line))}</td>` : ""}
                 <td>${escapeHtml(line.product_name)}</td>
                 ${isCompleted
                   ? `<td style="text-align: right;">${formatQty(line.system_quantity)}</td>`
@@ -456,7 +471,7 @@ function collectLineUpdates() {
     });
   });
 
-  // Preserve counts for lines hidden by the category filter.
+  // Preserve counts for lines hidden by the station filter.
   return (activeStockTake?.lines || []).map(line => {
     if (updatesById.has(line.id)) return updatesById.get(line.id);
     return {
@@ -496,7 +511,7 @@ async function loadStockTakes() {
 async function openStockTake(id) {
   activeStockTake = await apiGet(`/stock-takes/${id}/`);
   completedLineFilter = "all";
-  categoryLineFilter = "all";
+  stationLineFilter = "all";
   renderActiveCount();
   activeCountPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -504,7 +519,7 @@ async function openStockTake(id) {
 function closeActiveCount() {
   activeStockTake = null;
   completedLineFilter = "all";
-  categoryLineFilter = "all";
+  stationLineFilter = "all";
   renderActiveCount();
 }
 
@@ -640,10 +655,10 @@ completedLineFilters.addEventListener("click", (event) => {
     renderActiveCount();
     return;
   }
-  const categoryTab = event.target.closest("[data-category-filter]");
-  if (!categoryTab) return;
+  const stationTab = event.target.closest("[data-station-filter]");
+  if (!stationTab) return;
   syncVisibleLineDrafts();
-  categoryLineFilter = categoryTab.dataset.categoryFilter;
+  stationLineFilter = stationTab.dataset.stationFilter;
   renderActiveCount();
 });
 csvUpload.addEventListener("change", async (event) => {

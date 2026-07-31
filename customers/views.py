@@ -1,6 +1,6 @@
 from django.http import HttpResponse
 
-from accounts.branch_access import user_can_access_pos, user_can_collect_payment
+from accounts.branch_access import user_can_access_pos, user_can_adjust_customer_balance, user_can_collect_payment
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -12,10 +12,15 @@ from .csv_io import export_customers_csv, import_customers_csv
 from .models import Customer, CustomerAccountTransaction
 from .serializers import (
     CustomerAccountTransactionSerializer,
+    CustomerBalanceAdjustmentSerializer,
     CustomerDepositSerializer,
     CustomerSerializer,
 )
-from .services import CustomerAccountError, deposit_to_account
+from .services import (
+    CustomerAccountError,
+    adjust_account_balance_by_amount,
+    deposit_to_account,
+)
 from .statement import build_customer_statement_report
 
 
@@ -137,6 +142,36 @@ class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 amount_received=data["amount"],
                 notes=data.get("notes", ""),
                 recorded_by=request.user if request.user.is_authenticated else None,
+                allow_negative=user_can_adjust_customer_balance(request.user),
+            )
+        except CustomerAccountError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        customer.refresh_from_db()
+        return Response(
+            {
+                "account_balance": customer.account_balance,
+                "transaction": CustomerAccountTransactionSerializer(txn).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="adjust-balance")
+    def adjust_balance(self, request, pk=None):
+        if not user_can_adjust_customer_balance(request.user):
+            raise PermissionDenied("Only superusers and HQ admins can adjust customer balances.")
+        customer = self.get_object()
+        serializer = CustomerBalanceAdjustmentSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            txn = adjust_account_balance_by_amount(
+                customer=customer,
+                amount=data["amount"],
+                notes=data.get("notes", ""),
+                recorded_by=request.user,
             )
         except CustomerAccountError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

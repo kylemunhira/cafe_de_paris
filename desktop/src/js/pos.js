@@ -155,6 +155,12 @@ const tableAddBtn = document.getElementById("table-add-btn");
 const tableManageToggleBtn = document.getElementById("table-manage-toggle-btn");
 const tablePickerCloseBtn = document.getElementById("table-picker-close-btn");
 const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
+const takeawayPickerModal = document.getElementById("takeaway-picker-modal");
+const takeawayPickerList = document.getElementById("takeaway-picker-list");
+const takeawayPickerCloseBtn = document.getElementById("takeaway-picker-close-btn");
+const takeawayPickerCancelBtn = document.getElementById("takeaway-picker-cancel-btn");
+/** @type {((value: string | null | undefined) => void) | null} */
+let takeawayPickerResolver = null;
 const orderModePanel = document.getElementById("order-mode-panel");
 const receiptModePanel = document.getElementById("receipt-mode-panel");
 const receiptOrdersList = document.getElementById("receipt-orders-list");
@@ -187,7 +193,9 @@ const addonPickerConfirmBtn = document.getElementById("addon-picker-confirm-btn"
 
 let addonPickerProduct = null;
 let activeStockTake = null;
-let stockTakeCategoryFilter = "all";
+let stockTakeStationFilter = "all";
+const STOCK_TAKE_STATION_ORDER = ["kitchen", "bar", "shop"];
+const STOCK_TAKE_STATION_LABELS = { kitchen: "Kitchen", bar: "Bar", shop: "Shop" };
 const addonPickerSelections = new Map();
 
 function closeStockTakeRequiredModal() {
@@ -239,25 +247,25 @@ async function requireOperationsOnline(label) {
 function renderStockTake(stockTake) {
   activeStockTake = stockTake;
   const lines = stockTake.lines || [];
-  const categories = stockTakeCategoryCounts(lines);
+  const stations = stockTakeStationCounts(lines);
   if (
-    stockTakeCategoryFilter !== "all"
-    && !categories.some((cat) => cat.name === stockTakeCategoryFilter)
+    stockTakeStationFilter !== "all"
+    && !stations.some((station) => station.key === stockTakeStationFilter)
   ) {
-    stockTakeCategoryFilter = "all";
+    stockTakeStationFilter = "all";
   }
 
   stockTakeTitle.textContent = `${stockTake.stock_take_type_display || stockTake.stock_take_type} count · ${stockTake.count_date}`;
 
-  if (stockTakeCategoryFilters && categories.length > 1) {
+  if (stockTakeCategoryFilters && stations.length > 1) {
     stockTakeCategoryFilters.style.display = "flex";
     stockTakeCategoryFilters.innerHTML = `
-      <button type="button" class="category-tab${stockTakeCategoryFilter === "all" ? " active" : ""}" data-stock-category="all">
+      <button type="button" class="category-tab${stockTakeStationFilter === "all" ? " active" : ""}" data-stock-station="all">
         All (${lines.length})
       </button>
-      ${categories.map((cat) => `
-        <button type="button" class="category-tab${stockTakeCategoryFilter === cat.name ? " active" : ""}" data-stock-category="${escapeOperationHtml(cat.name)}">
-          ${escapeOperationHtml(cat.name)} (${cat.count})
+      ${stations.map((station) => `
+        <button type="button" class="category-tab${stockTakeStationFilter === station.key ? " active" : ""}" data-stock-station="${escapeOperationHtml(station.key)}">
+          ${escapeOperationHtml(station.name)} (${station.count})
         </button>
       `).join("")}
     `;
@@ -266,14 +274,14 @@ function renderStockTake(stockTake) {
     stockTakeCategoryFilters.innerHTML = "";
   }
 
-  const visibleLines = stockTakeCategoryFilter === "all"
+  const visibleLines = stockTakeStationFilter === "all"
     ? lines
-    : lines.filter((line) => stockTakeCategoryName(line) === stockTakeCategoryFilter);
+    : lines.filter((line) => stockTakeStationKey(line) === stockTakeStationFilter);
 
   if (!lines.length) {
     stockTakeLines.innerHTML = `<div class="empty-state"><p>No products are configured for this count.</p></div>`;
   } else if (!visibleLines.length) {
-    stockTakeLines.innerHTML = `<div class="empty-state"><p>No products in this category.</p></div>`;
+    stockTakeLines.innerHTML = `<div class="empty-state"><p>No products in this station.</p></div>`;
   } else {
     const groups = groupStockTakeLines(visibleLines);
     stockTakeLines.innerHTML = groups.map((group) => `
@@ -294,31 +302,41 @@ function renderStockTake(stockTake) {
   stockTakeCompleteBtn.hidden = false;
 }
 
-function stockTakeCategoryName(line) {
-  return line.category_name || "Uncategorized";
+function stockTakeStationName(line) {
+  return line.stock_take_station_display
+    || STOCK_TAKE_STATION_LABELS[line.stock_take_station]
+    || "Shop";
 }
 
-function stockTakeCategoryCounts(lines) {
+function stockTakeStationKey(line) {
+  return line.stock_take_station || "shop";
+}
+
+function stockTakeStationCounts(lines) {
   const counts = new Map();
   for (const line of lines) {
-    const name = stockTakeCategoryName(line);
-    counts.set(name, (counts.get(name) || 0) + 1);
+    const key = stockTakeStationKey(line);
+    counts.set(key, (counts.get(key) || 0) + 1);
   }
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, count]) => ({ name, count }));
+  return STOCK_TAKE_STATION_ORDER
+    .filter((key) => counts.has(key))
+    .map((key) => ({ key, name: STOCK_TAKE_STATION_LABELS[key], count: counts.get(key) }));
 }
 
 function groupStockTakeLines(lines) {
   const groups = new Map();
   for (const line of lines) {
-    const name = stockTakeCategoryName(line);
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(line);
+    const key = stockTakeStationKey(line);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(line);
   }
-  return [...groups.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, groupLines]) => ({ name, lines: groupLines }));
+  return STOCK_TAKE_STATION_ORDER
+    .filter((key) => groups.has(key))
+    .map((key) => ({
+      key,
+      name: STOCK_TAKE_STATION_LABELS[key],
+      lines: groups.get(key),
+    }));
 }
 
 function syncStockTakeLineDrafts() {
@@ -354,7 +372,7 @@ async function loadStockTakeDraft() {
     return;
   }
   activeStockTake = null;
-  stockTakeCategoryFilter = "all";
+  stockTakeStationFilter = "all";
   stockTakeTitle.textContent = "Start stock take";
   if (stockTakeCategoryFilters) {
     stockTakeCategoryFilters.style.display = "none";
@@ -369,7 +387,7 @@ async function loadStockTakeDraft() {
 async function openStockTakeModal() {
   if (!(await requireOperationsOnline("Stock take"))) return;
   closeStockTakeRequiredModal();
-  stockTakeCategoryFilter = "all";
+  stockTakeStationFilter = "all";
   stockTakeDate.value = getTodayISO();
   stockTakeModal.hidden = false;
   try {
@@ -439,6 +457,7 @@ async function openCustomerPaymentModal() {
   ).join("");
   if (baseCurrency) customerPaymentCurrency.value = String(baseCurrency.id);
   customerPaymentAmount.value = "";
+  customerPaymentAmount.min = session?.user?.is_superuser ? "" : "0.01";
   customerPaymentNotes.value = "";
   updateCustomerPaymentBalance();
   customerPaymentModal.hidden = false;
@@ -452,7 +471,10 @@ async function saveCustomerPayment() {
   const customerId = Number(customerPaymentCustomer.value);
   const amount = Number(customerPaymentAmount.value);
   if (!customerId) return showToast("Select a customer", true);
-  if (!Number.isFinite(amount) || amount <= 0) return showToast("Enter a valid amount", true);
+  if (!Number.isFinite(amount) || amount === 0) return showToast("Enter a valid amount", true);
+  if (amount < 0 && !session?.user?.is_superuser) {
+    return showToast("Amount must be greater than zero", true);
+  }
   customerPaymentSaveBtn.disabled = true;
   try {
     const result = await recordCustomerDeposit(session, customerId, {
@@ -464,7 +486,7 @@ async function saveCustomerPayment() {
     const customer = customers.find((item) => item.id === customerId);
     if (customer) customer.account_balance = result.account_balance;
     renderCustomerSelect();
-    showToast("Customer payment recorded");
+    showToast(amount < 0 ? "Account debit recorded" : "Customer payment recorded");
     closeCustomerPaymentModal();
   } catch (err) {
     showToast(err.message, true);
@@ -823,6 +845,70 @@ function openOrdersForTable(tableNumber) {
     (order) => order.order_type === "dine_in" && order.table_number === table
   );
 }
+
+function openTakeawayOrders() {
+  return openOrders.filter(
+    (order) => order.status === "open" && order.order_type === "takeaway"
+  );
+}
+
+function finishTakeawayPick(value) {
+  const resolve = takeawayPickerResolver;
+  takeawayPickerResolver = null;
+  if (takeawayPickerModal) takeawayPickerModal.hidden = true;
+  if (resolve) resolve(value);
+}
+
+function chooseTakeawayDestinationForPlace() {
+  return new Promise(async (resolve) => {
+    await loadOpenOrders();
+    const candidates = openTakeawayOrders();
+    if (!candidates.length) {
+      resolve(null);
+      return;
+    }
+    if (takeawayPickerResolver) takeawayPickerResolver(undefined);
+    takeawayPickerResolver = resolve;
+    const newOrderBtn = `
+      <button type="button" class="receipt-order-card" data-takeaway-new="1">
+        <div class="receipt-order-card-top"><strong>New takeaway</strong></div>
+        <div class="receipt-order-card-meta">Create a fresh takeaway order</div>
+      </button>
+    `;
+    takeawayPickerList.innerHTML =
+      newOrderBtn +
+      candidates
+        .map(
+          (order) => `
+      <button type="button" class="receipt-order-card" data-takeaway-client-id="${order.client_id}">
+        <div class="receipt-order-card-top">
+          <strong>${orderReceiptHeaderLabel(order)}</strong>
+          <span class="receipt-order-amount">${money(order.total_amount)}</span>
+        </div>
+        <div class="receipt-order-card-meta">${order.items?.length || 0} items · ${formatDate(order.created_at)}</div>
+      </button>
+    `
+        )
+        .join("");
+    takeawayPickerModal.hidden = false;
+  });
+}
+
+takeawayPickerList?.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-takeaway-client-id], [data-takeaway-new]");
+  if (!btn) return;
+  finishTakeawayPick(btn.dataset.takeawayClientId || null);
+});
+takeawayPickerCloseBtn?.addEventListener("click", () => finishTakeawayPick(undefined));
+takeawayPickerCancelBtn?.addEventListener("click", () => finishTakeawayPick(undefined));
+takeawayPickerModal?.addEventListener("click", (event) => {
+  if (event.target === takeawayPickerModal) finishTakeawayPick(undefined);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && takeawayPickerModal && !takeawayPickerModal.hidden) {
+    finishTakeawayPick(undefined);
+  }
+});
 
 function getReceiptOrders() {
   if (!selectedOrder) return [];
@@ -2406,14 +2492,14 @@ stockTakeSaveBtn?.addEventListener("click", () => saveStockTake(false));
 stockTakeCompleteBtn?.addEventListener("click", () => saveStockTake(true));
 stockTakeDate?.addEventListener("change", () => loadStockTakeDraft().catch((err) => showToast(err.message, true)));
 stockTakeType?.addEventListener("change", () => {
-  stockTakeCategoryFilter = "all";
+  stockTakeStationFilter = "all";
   loadStockTakeDraft().catch((err) => showToast(err.message, true));
 });
 stockTakeCategoryFilters?.addEventListener("click", (event) => {
-  const tab = event.target.closest("[data-stock-category]");
+  const tab = event.target.closest("[data-stock-station]");
   if (!tab) return;
   syncStockTakeLineDrafts();
-  stockTakeCategoryFilter = tab.dataset.stockCategory;
+  stockTakeStationFilter = tab.dataset.stockStation;
   if (activeStockTake) renderStockTake(activeStockTake);
 });
 stockTakeModal?.addEventListener("click", (event) => {
@@ -2448,6 +2534,14 @@ logoutBtn.addEventListener("click", async () => {
 
 async function placeOrder() {
   if (cart.size === 0) return;
+
+  let existingClientId = null;
+  if (orderType.value === "takeaway") {
+    const choice = await chooseTakeawayDestinationForPlace();
+    if (choice === undefined) return;
+    existingClientId = choice;
+  }
+
   checkoutBtn.disabled = true;
   try {
     const table = orderType.value === "dine_in" ? tableNumber.value.trim() : "";
@@ -2455,6 +2549,7 @@ async function placeOrder() {
     const order = await window.pos.createOrder({
       orderType: orderType.value,
       tableNumber: table,
+      existingClientId,
       createdByName: session.user?.display_name || session.user?.username || "",
       items: [...cart.values()].map((item) => ({
         product_id: item.id,
@@ -2469,7 +2564,8 @@ async function placeOrder() {
     renderCart();
     await updateSyncBadge();
     const addedToExisting =
-      existingTableOrder && order.client_id === existingTableOrder.client_id;
+      (existingClientId && order.client_id === existingClientId) ||
+      (existingTableOrder && order.client_id === existingTableOrder.client_id);
     showToast(
       addedToExisting
         ? `Items added to order — ${money(order.total_amount)}`

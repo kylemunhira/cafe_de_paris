@@ -45,7 +45,7 @@ class StockTakeActivity : KeepScreenOnActivity() {
     private var allStockTakes: List<StockTake> = emptyList()
     private var activeStockTake: StockTake? = null
     private var historyFilter: String = "all"
-    private var categoryFilter: String = "all"
+    private var stationFilter: String = "all"
     private var lineInputs: MutableMap<Int, LineInputs> = linkedMapOf()
     private var loading = false
     private var errorHideJob: Job? = null
@@ -172,7 +172,7 @@ class StockTakeActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             showLoading(true)
             try {
-                categoryFilter = "all"
+                stationFilter = "all"
                 activeStockTake = withContext(Dispatchers.IO) { api.fetchStockTake(id) }
                 renderActiveCount()
             } catch (err: ApiException) {
@@ -294,18 +294,26 @@ class StockTakeActivity : KeepScreenOnActivity() {
         binding.completeButton.visibility = if (isCompleted) View.GONE else View.VISIBLE
         binding.closeCountButton.visibility = if (isCompleted) View.VISIBLE else View.GONE
 
-        renderCategoryFilters(lines, isCompleted)
+        renderStationFilters(lines, isCompleted)
         renderLines(lines, isCompleted)
     }
 
-    private fun renderCategoryFilters(lines: List<StockTakeLine>, isCompleted: Boolean) {
-        binding.lineFilterChips.removeAllViews()
-        val categories = lines
-            .groupBy { it.categoryName?.takeIf { name -> name.isNotBlank() } ?: "Uncategorized" }
-            .map { (name, group) -> name to group.size }
-            .sortedBy { it.first }
+    private fun stockTakeStationKey(line: StockTakeLine): String {
+        return line.stockTakeStation.takeIf { it.isNotBlank() } ?: "shop"
+    }
 
-        if (categories.size <= 1 && !isCompleted) {
+    private fun stockTakeStationLabel(line: StockTakeLine): String {
+        return line.stockTakeStationDisplay.takeIf { it.isNotBlank() } ?: "Shop"
+    }
+
+    private fun renderStationFilters(lines: List<StockTakeLine>, isCompleted: Boolean) {
+        binding.lineFilterChips.removeAllViews()
+        val stations = STOCK_TAKE_STATION_ORDER.mapNotNull { key ->
+            val count = lines.count { stockTakeStationKey(it) == key }
+            if (count == 0) null else Triple(key, STOCK_TAKE_STATION_LABELS.getValue(key), count)
+        }
+
+        if (stations.size <= 1 && !isCompleted) {
             binding.lineFilterChips.visibility = View.GONE
             return
         }
@@ -318,38 +326,35 @@ class StockTakeActivity : KeepScreenOnActivity() {
                     isCheckable = true
                     isChecked = checked
                     setOnClickListener {
-                        categoryFilter = key
+                        stationFilter = key
                         val currentLines = activeStockTake?.lines ?: lines
                         renderLines(currentLines, isCompleted)
-                        renderCategoryFilters(currentLines, isCompleted)
+                        renderStationFilters(currentLines, isCompleted)
                     }
                 },
             )
         }
 
         addChip(
-            "All categories (${lines.size})",
+            "All stations (${lines.size})",
             "all",
-            categoryFilter == "all",
+            stationFilter == "all",
         )
-        categories.forEach { (name, count) ->
-            addChip("$name ($count)", name, categoryFilter == name)
+        stations.forEach { (key, label, count) ->
+            addChip("$label ($count)", key, stationFilter == key)
         }
     }
 
     private fun renderLines(lines: List<StockTakeLine>, isCompleted: Boolean) {
-        // Preserve typed values before rebuild when filtering categories.
+        // Preserve typed values before rebuild when filtering stations.
         syncVisibleDraftsIntoActive()
         binding.countLinesList.removeAllViews()
         lineInputs.clear()
 
-        val visible = if (categoryFilter == "all") {
+        val visible = if (stationFilter == "all") {
             lines
         } else {
-            lines.filter {
-                (it.categoryName?.takeIf { name -> name.isNotBlank() } ?: "Uncategorized") ==
-                    categoryFilter
-            }
+            lines.filter { stockTakeStationKey(it) == stationFilter }
         }
 
         if (visible.isEmpty()) {
@@ -357,9 +362,10 @@ class StockTakeActivity : KeepScreenOnActivity() {
             return
         }
 
-        val groups = visible
-            .groupBy { it.categoryName?.takeIf { name -> name.isNotBlank() } ?: "Uncategorized" }
-            .toSortedMap()
+        val groups = STOCK_TAKE_STATION_ORDER.mapNotNull { key ->
+            val groupLines = visible.filter { stockTakeStationKey(it) == key }
+            if (groupLines.isEmpty()) null else key to groupLines
+        }
 
         if (!isCompleted) {
             binding.countLinesList.addView(
@@ -384,9 +390,10 @@ class StockTakeActivity : KeepScreenOnActivity() {
             )
         }
 
-        groups.forEach { (category, groupLines) ->
+        groups.forEach { (stationKey, groupLines) ->
+            val stationLabel = STOCK_TAKE_STATION_LABELS[stationKey] ?: stockTakeStationLabel(groupLines.first())
             binding.countLinesList.addView(TextView(this).apply {
-                text = getString(R.string.stock_take_category_header, category, groupLines.size)
+                text = getString(R.string.stock_take_station_header, stationLabel, groupLines.size)
                 setTextColor(getColor(R.color.text_primary))
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setBackgroundColor(getColor(R.color.category_header_bg))
@@ -705,5 +712,11 @@ class StockTakeActivity : KeepScreenOnActivity() {
 
     companion object {
         private const val ERROR_BANNER_MS = 6_000L
+        private val STOCK_TAKE_STATION_ORDER = listOf("kitchen", "bar", "shop")
+        private val STOCK_TAKE_STATION_LABELS = mapOf(
+            "kitchen" to "Kitchen",
+            "bar" to "Bar",
+            "shop" to "Shop",
+        )
     }
 }

@@ -122,6 +122,8 @@ class CustomerAccountTransaction(models.Model):
     @property
     def statement_label(self):
         if self.transaction_type == CustomerAccountTransactionType.DEPOSIT:
+            if self.amount < 0:
+                return "Account debit"
             return "Payment received"
         if self.transaction_type == CustomerAccountTransactionType.REFUND:
             return "Refund"

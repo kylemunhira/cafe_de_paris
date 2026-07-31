@@ -1,9 +1,14 @@
+from decimal import ROUND_HALF_UP, Decimal
+
 from django.db import transaction
 from django.utils import timezone
 
+from catalog.constants import is_ingredient_product
 from inventory.services import adjust_inventory
 
 from .models import PurchaseOrder, PurchaseOrderStatus
+
+_PRICE_QUANT = Decimal("0.01")
 
 
 class InvalidPurchaseOrderStateError(Exception):
@@ -17,10 +22,24 @@ class InvalidPurchaseOrderStateError(Exception):
         )
 
 
+def _update_ingredient_price_from_line(line) -> None:
+    """Copy purchase unit cost onto the ingredient product cost (selling_price)."""
+    if line.unit_cost is None or line.unit_cost <= 0:
+        return
+    product = line.product
+    if not is_ingredient_product(product):
+        return
+    new_price = Decimal(line.unit_cost).quantize(_PRICE_QUANT, rounding=ROUND_HALF_UP)
+    if product.selling_price == new_price:
+        return
+    product.selling_price = new_price
+    product.save(update_fields=["selling_price"])
+
+
 def apply_purchase_order_inventory(purchase_order: PurchaseOrder) -> None:
     from inventory.models import StockMovementReason
 
-    for line in purchase_order.lines.select_related("product"):
+    for line in purchase_order.lines.select_related("product", "product__category"):
         adjust_inventory(
             purchase_order.branch,
             line.product,
@@ -30,6 +49,7 @@ def apply_purchase_order_inventory(purchase_order: PurchaseOrder) -> None:
             reference_id=purchase_order.pk,
             user=purchase_order.created_by,
         )
+        _update_ingredient_price_from_line(line)
 
 
 def submit_purchase_order(purchase_order: PurchaseOrder) -> PurchaseOrder:

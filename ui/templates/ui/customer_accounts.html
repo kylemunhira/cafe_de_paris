@@ -93,6 +93,29 @@
     </form>
   </div>
 
+  {% if can_adjust_customer_balance %}
+  <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; border: 1px solid #ffe082; background: #fffdf5;">
+    <h3 style="margin: 0 0 0.35rem; font-size: 1rem;">Adjust balance</h3>
+    <p class="settings-hint" style="margin: 0 0 1rem;">Enter a signed amount such as <strong>-12.00</strong> to debit, or a positive amount to credit. This posts a Balance adjustment on the customer statement.</p>
+    <form id="adjust-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="adjust-amount">Adjustment amount</label>
+          <input type="number" id="adjust-amount" step="0.01" placeholder="-12.00" required>
+        </div>
+        <div class="form-group">
+          <label for="adjust-notes">Notes (optional)</label>
+          <input type="text" id="adjust-notes" maxlength="200" placeholder="e.g. Correction">
+        </div>
+      </div>
+      <p id="adjust-preview" class="settings-hint" style="margin: 0 0 0.75rem;">New balance: —</p>
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary" id="adjust-btn">Apply adjustment</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
   <div class="card" style="padding: 0;">
     <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
       <h3 style="margin: 0; font-size: 1rem;">Transaction history</h3>
@@ -265,6 +288,7 @@ async function selectCustomer(customer) {
     creditLimitEl.textContent = `Credit limit: ${formatCurrency(customer.credit_limit || 0)}`;
   }
   renderCustomerPicker();
+  updateAdjustPreview();
   await loadTransactions();
 }
 
@@ -378,6 +402,30 @@ applyStatementFilters?.addEventListener("click", () => loadTransactions());
 statementFrom?.addEventListener("change", () => loadTransactions());
 statementTo?.addEventListener("change", () => loadTransactions());
 
+const preferredBranchId = "{{ staff_branch_id|default:'' }}";
+const canAdjustCustomerBalance = {{ can_adjust_customer_balance|yesno:"true,false" }};
+
+const adjustForm = document.getElementById("adjust-form");
+const adjustAmount = document.getElementById("adjust-amount");
+const adjustNotes = document.getElementById("adjust-notes");
+const adjustBtn = document.getElementById("adjust-btn");
+const adjustPreview = document.getElementById("adjust-preview");
+
+function updateAdjustPreview() {
+  if (!adjustPreview) return;
+  if (!selectedCustomer) {
+    adjustPreview.textContent = "New balance: —";
+    return;
+  }
+  const amount = Number(adjustAmount?.value);
+  if (!Number.isFinite(amount) || amount === 0) {
+    adjustPreview.textContent = `Current balance: ${formatCurrency(selectedCustomer.account_balance)}`;
+    return;
+  }
+  const next = Number(selectedCustomer.account_balance) + amount;
+  adjustPreview.textContent = `Current ${formatCurrency(selectedCustomer.account_balance)} → New ${formatCurrency(next)}`;
+}
+
 depositForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!selectedCustomer) return;
@@ -415,6 +463,7 @@ depositForm.addEventListener("submit", async (e) => {
     }
     await loadTransactions();
     renderCustomerPicker();
+    updateAdjustPreview();
   } catch (err) {
     showToast(err.message, true);
   } finally {
@@ -422,7 +471,42 @@ depositForm.addEventListener("submit", async (e) => {
   }
 });
 
-const preferredBranchId = "{{ staff_branch_id|default:'' }}";
+adjustForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!selectedCustomer) return;
+  const amount = Number(adjustAmount.value);
+  if (!Number.isFinite(amount) || amount === 0) {
+    showToast("Enter a non-zero adjustment amount (e.g. -12.00)", true);
+    return;
+  }
+
+  adjustBtn.disabled = true;
+  try {
+    const result = await apiPost(`/customers/${selectedCustomer.id}/adjust-balance/`, {
+      amount: amount.toFixed(2),
+      notes: adjustNotes.value.trim(),
+    });
+    selectedCustomer.account_balance = result.account_balance;
+    accountBalance.textContent = formatCurrency(result.account_balance);
+    const index = customers.findIndex(c => c.id === selectedCustomer.id);
+    if (index >= 0) customers[index].account_balance = result.account_balance;
+    adjustAmount.value = "";
+    adjustNotes.value = "";
+    showToast("Balance adjustment recorded");
+    if (result.transaction?.id) {
+      openStatementPrint(result.transaction.id, { auto: true });
+    }
+    await loadTransactions();
+    renderCustomerPicker();
+    updateAdjustPreview();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    adjustBtn.disabled = false;
+  }
+});
+
+adjustAmount?.addEventListener("input", updateAdjustPreview);
 
 async function init() {
   const defaults = defaultStatementDates();

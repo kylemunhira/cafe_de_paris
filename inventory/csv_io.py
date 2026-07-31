@@ -2,19 +2,21 @@ import csv
 import io
 from decimal import Decimal, InvalidOperation
 
+from catalog.constants import stock_take_station_display_for_product
+
 from .models import StockTake, StockTakeStatus
 from .services import InvalidStockTakeStateError, update_stock_take_lines
 
 CSV_HEADERS = [
     "line_id",
-    "category",
+    "station",
     "product_name",
     "counted_quantity",
 ]
 
 REPORT_CSV_HEADERS = [
     "line_id",
-    "category",
+    "station",
     "product_name",
     "system_quantity",
     "counted_quantity",
@@ -30,7 +32,7 @@ def export_stock_take_csv(stock_take: StockTake) -> str:
         writer.writerow(
             {
                 "line_id": line.id,
-                "category": line.product.category.name,
+                "station": stock_take_station_display_for_product(line.product),
                 "product_name": line.product.name,
                 "counted_quantity": line.counted_quantity if line.counted_quantity is not None else "",
             }
@@ -47,7 +49,7 @@ def export_stock_take_report_csv(stock_take: StockTake) -> str:
         writer.writerow(
             {
                 "line_id": line.id,
-                "category": line.product.category.name,
+                "station": stock_take_station_display_for_product(line.product),
                 "product_name": line.product.name,
                 "system_quantity": line.system_quantity,
                 "counted_quantity": line.counted_quantity if line.counted_quantity is not None else "",

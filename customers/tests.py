@@ -129,6 +129,133 @@ class CustomerAccountTests(TestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.account_balance, Decimal("0.00"))
 
+    def test_non_superuser_cannot_deposit_negative_amount(self):
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/deposit/",
+            {
+                "branch": self.branch.id,
+                "currency_id": self.usd.id,
+                "amount": "-10.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.account_balance, Decimal("0.00"))
+
+    def test_superuser_can_deposit_negative_amount(self):
+        self.customer.account_balance = Decimal("25.00")
+        self.customer.save(update_fields=["account_balance"])
+        admin = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="pass",
+        )
+        StaffProfile.objects.create(user=admin, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=admin)
+
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/deposit/",
+            {
+                "branch": self.branch.id,
+                "currency_id": self.usd.id,
+                "amount": "-10.00",
+                "notes": "Correction",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["account_balance"], Decimal("15.00"))
+        self.assertEqual(Decimal(str(response.data["transaction"]["amount"])), Decimal("-10.00"))
+        self.assertEqual(response.data["transaction"]["statement_label"], "Account debit")
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.account_balance, Decimal("15.00"))
+
+    def test_superuser_can_adjust_balance_negative(self):
+        self.customer.account_balance = Decimal("20.00")
+        self.customer.save(update_fields=["account_balance"])
+        admin = User.objects.create_superuser(
+            username="admin2",
+            email="admin2@example.com",
+            password="pass",
+        )
+        StaffProfile.objects.create(user=admin, branch=self.branch, pos_access=True)
+        self.client.force_authenticate(user=admin)
+
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/adjust-balance/",
+            {
+                "amount": "-12.00",
+                "notes": "Manual correction",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["account_balance"], Decimal("8.00"))
+        txn = response.data["transaction"]
+        self.assertEqual(txn["transaction_type"], "adjustment")
+        self.assertEqual(txn["statement_label"], "Balance adjustment")
+        self.assertTrue(txn["is_balance_adjustment"])
+        self.assertEqual(Decimal(str(txn["amount"])), Decimal("-12.00"))
+        self.assertEqual(txn["notes"], "Manual correction")
+
+        statement = self.client.get(f"/api/customers/{self.customer.id}/statement/?all=1")
+        self.assertEqual(statement.status_code, 200)
+        types = [t["transaction_type"] for t in statement.data["transactions"]]
+        self.assertIn("adjustment", types)
+        adj = next(t for t in statement.data["transactions"] if t["transaction_type"] == "adjustment")
+        self.assertEqual(Decimal(str(adj["amount"])), Decimal("-12.00"))
+        self.assertEqual(adj["statement_label"], "Balance adjustment")
+
+        self.ui_client.force_login(admin)
+        print_resp = self.ui_client.get(
+            f"/customer-accounts/transaction/{adj['id']}/print/"
+        )
+        self.assertEqual(print_resp.status_code, 200)
+        self.assertContains(print_resp, "Balance adjustment")
+        self.assertContains(print_resp, "-12.00")
+
+    def test_hq_admin_sees_adjust_balance_ui_and_can_adjust(self):
+        self.customer.account_balance = Decimal("20.00")
+        self.customer.save(update_fields=["account_balance"])
+        hq = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=hq,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+            pos_access=True,
+        )
+        self.client.force_authenticate(user=hq)
+        self.ui_client.force_login(hq)
+
+        page = self.ui_client.get("/customer-accounts/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Adjust balance")
+        self.assertContains(page, "adjust-amount")
+
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/adjust-balance/",
+            {
+                "amount": "-12.00",
+                "notes": "HQ correction",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["account_balance"], Decimal("8.00"))
+
+    def test_non_superuser_cannot_adjust_balance(self):
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/adjust-balance/",
+            {
+                "amount": "-12.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.account_balance, Decimal("0.00"))
+
     def test_pay_order_from_account(self):
         self.customer.account_balance = Decimal("20.00")
         self.customer.save(update_fields=["account_balance"])

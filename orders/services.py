@@ -74,6 +74,25 @@ def find_open_table_order(*, branch, table_number):
     )
 
 
+def find_open_order_for_append(*, branch, order_id, order_type):
+    """Return an open order that can receive more catalog items, or None."""
+    if order_id is None:
+        return None
+    try:
+        order_id = int(order_id)
+    except (TypeError, ValueError):
+        return None
+    return (
+        Order.objects.filter(
+            pk=order_id,
+            branch=branch,
+            order_type=order_type,
+            status=OrderStatus.OPEN,
+        )
+        .first()
+    )
+
+
 def add_items_to_order(order, items_data):
     if order.status != OrderStatus.OPEN:
         raise ValidationError("Only open orders can receive new items.")

@@ -512,6 +512,7 @@ class ApiClient(
         orderType: String,
         tableNumber: String?,
         items: List<CartLine>,
+        existingOrderId: Int? = null,
     ): KitchenOrder {
         val token = requireToken()
         val itemsJson = JSONArray()
@@ -537,6 +538,9 @@ class ApiClient(
             .put("items", itemsJson)
         if (!tableNumber.isNullOrBlank()) {
             payload.put("table_number", tableNumber.trim())
+        }
+        if (existingOrderId != null) {
+            payload.put("existing_order_id", existingOrderId)
         }
         val body = postJson("${config.serverUrl}/api/orders/", payload, token)
         return JsonParsers.parseOrder(body)

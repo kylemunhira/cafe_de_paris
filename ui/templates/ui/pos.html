@@ -332,10 +332,10 @@
 >
   <div class="card" style="width:min(520px, 100%); max-height:92vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 style="margin:0; font-size:1.05rem;">Transfer to order</h3>
+      <h3 id="order-transfer-title" style="margin:0; font-size:1.05rem;">Transfer to order</h3>
       <button type="button" class="btn btn-ghost btn-sm" id="order-transfer-close-btn">Close</button>
     </div>
-    <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
+    <p id="order-transfer-hint" style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
       Choose an open takeaway order, or start a new one.
     </p>
     <div id="order-transfer-list" class="receipt-orders-list" style="max-height:50vh; overflow:auto;"></div>
@@ -461,9 +461,15 @@ const tableManageToggleBtn = document.getElementById("table-manage-toggle-btn");
 const tablePickerCloseBtn = document.getElementById("table-picker-close-btn");
 const tablePickerCancelBtn = document.getElementById("table-picker-cancel-btn");
 const orderTransferModal = document.getElementById("order-transfer-modal");
+const orderTransferTitle = document.getElementById("order-transfer-title");
+const orderTransferHint = document.getElementById("order-transfer-hint");
 const orderTransferList = document.getElementById("order-transfer-list");
 const orderTransferCloseBtn = document.getElementById("order-transfer-close-btn");
 const orderTransferCancelBtn = document.getElementById("order-transfer-cancel-btn");
+/** @type {"transfer" | "place" | null} */
+let orderTransferPurpose = null;
+/** @type {((value: number | null | undefined) => void) | null} */
+let orderTransferResolver = null;
 const transferItemsBtn = document.getElementById("transfer-items-btn");
 const receiptActionsSection = document.getElementById("receipt-actions-section");
 const orderCustomerSelect = document.getElementById("order-customer");
@@ -2150,28 +2156,38 @@ function transferSourceOrderIds() {
   return new Set(getReceiptOrders().map(order => order.id));
 }
 
-function openTakeawayOrdersForTransfer() {
-  const sourceIds = transferSourceOrderIds();
+function openTakeawayOrders(excludeIds = new Set()) {
   return openOrders.filter(
     order => order.status === "open"
       && order.order_type === "takeaway"
-      && !sourceIds.has(order.id),
+      && !excludeIds.has(order.id),
   );
+}
+
+function openTakeawayOrdersForTransfer() {
+  return openTakeawayOrders(transferSourceOrderIds());
+}
+
+function finishOrderTransferPick(value) {
+  const resolve = orderTransferResolver;
+  orderTransferResolver = null;
+  orderTransferPurpose = null;
+  closeOrderTransferModal();
+  if (resolve) resolve(value);
 }
 
 function closeOrderTransferModal() {
   if (orderTransferModal) orderTransferModal.style.display = "none";
 }
 
-function renderOrderTransferList() {
+function renderOrderTransferList(candidates, { newOrderLabel, newOrderMeta }) {
   if (!orderTransferList) return;
-  const candidates = openTakeawayOrdersForTransfer();
   const newOrderBtn = `
     <button type="button" class="receipt-order-card" data-transfer-new="1">
       <div class="receipt-order-card-top">
-        <strong>New order</strong>
+        <strong>${newOrderLabel}</strong>
       </div>
-      <div class="receipt-order-card-meta">Start a fresh takeaway order with selected lines</div>
+      <div class="receipt-order-card-meta">${newOrderMeta}</div>
     </button>
   `;
   if (!candidates.length) {
@@ -2189,33 +2205,75 @@ function renderOrderTransferList() {
   `).join("");
 }
 
+function openTakeawayOrderPicker({
+  purpose,
+  title,
+  hint,
+  newOrderLabel,
+  newOrderMeta,
+  candidates,
+}) {
+  return new Promise((resolve) => {
+    if (orderTransferResolver) {
+      orderTransferResolver(undefined);
+    }
+    orderTransferPurpose = purpose;
+    orderTransferResolver = resolve;
+    if (orderTransferTitle) orderTransferTitle.textContent = title;
+    if (orderTransferHint) orderTransferHint.textContent = hint;
+    renderOrderTransferList(candidates, { newOrderLabel, newOrderMeta });
+    if (orderTransferModal) orderTransferModal.style.display = "flex";
+  });
+}
+
 async function openOrderTransferModal() {
   if (!branchSelect.value) {
     showToast("Select a branch first", true);
     return;
   }
   await loadOpenOrders();
-  renderOrderTransferList();
-  if (orderTransferModal) orderTransferModal.style.display = "flex";
+  const destinationOrderId = await openTakeawayOrderPicker({
+    purpose: "transfer",
+    title: "Transfer to order",
+    hint: "Choose an open takeaway order, or start a new one.",
+    newOrderLabel: "New order",
+    newOrderMeta: "Start a fresh takeaway order with selected lines",
+    candidates: openTakeawayOrdersForTransfer(),
+  });
+  if (destinationOrderId === undefined) return;
+  await transferSelectedItemsToOrder(destinationOrderId);
 }
 
-orderTransferList?.addEventListener("click", async (event) => {
+async function chooseTakeawayDestinationForPlace() {
+  await loadOpenOrders();
+  const candidates = openTakeawayOrders();
+  if (!candidates.length) return null;
+  return openTakeawayOrderPicker({
+    purpose: "place",
+    title: "Add to takeaway",
+    hint: "Add these items to an open takeaway order, or start a new one.",
+    newOrderLabel: "New takeaway",
+    newOrderMeta: "Create a fresh takeaway order",
+    candidates,
+  });
+}
+
+orderTransferList?.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-transfer-order-id], [data-transfer-new]");
   if (!btn) return;
   const destinationOrderId = btn.dataset.transferOrderId
     ? Number(btn.dataset.transferOrderId)
     : null;
-  closeOrderTransferModal();
-  await transferSelectedItemsToOrder(destinationOrderId);
+  finishOrderTransferPick(destinationOrderId);
 });
 
-orderTransferCloseBtn?.addEventListener("click", closeOrderTransferModal);
-orderTransferCancelBtn?.addEventListener("click", closeOrderTransferModal);
+orderTransferCloseBtn?.addEventListener("click", () => finishOrderTransferPick(undefined));
+orderTransferCancelBtn?.addEventListener("click", () => finishOrderTransferPick(undefined));
 orderTransferModal?.addEventListener("click", (event) => {
-  if (event.target === orderTransferModal) closeOrderTransferModal();
+  if (event.target === orderTransferModal) finishOrderTransferPick(undefined);
 });
 orderTransferModal?.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeOrderTransferModal();
+  if (event.key === "Escape") finishOrderTransferPick(undefined);
 });
 
 async function transferSelectedItemsToOrder(destinationOrderId) {
@@ -2368,6 +2426,13 @@ checkoutBtn.addEventListener("click", async () => {
 async function placeOrder() {
   if (!branchSelect.value || cart.size === 0) return;
 
+  let existingOrderId = null;
+  if (orderType.value === "takeaway") {
+    const choice = await chooseTakeawayDestinationForPlace();
+    if (choice === undefined) return;
+    existingOrderId = choice;
+  }
+
   checkoutBtn.disabled = true;
   checkoutBtn.innerHTML = `<span class="loading-spinner"></span> Processing…`;
 
@@ -2385,6 +2450,9 @@ async function placeOrder() {
     if (orderType.value === "dine_in" && tableNumber.value.trim()) {
       payload.table_number = tableNumber.value.trim();
     }
+    if (existingOrderId) {
+      payload.existing_order_id = existingOrderId;
+    }
     if (orderCustomerSelect.value) {
       payload.customer = Number(orderCustomerSelect.value);
     }
@@ -2396,7 +2464,10 @@ async function placeOrder() {
     const order = await apiPost("/orders/", payload);
     cart.clear();
     renderCart();
-    const addedToExisting = existingTableOrderId && order.id === existingTableOrderId;
+    const addedToExisting = Boolean(
+      (existingOrderId && order.id === existingOrderId)
+      || (existingTableOrderId && order.id === existingTableOrderId)
+    );
     if (addedToExisting) {
       showToast(`Items added to Order #${order.id} — ${formatCurrency(order.total_amount)}`);
     } else {

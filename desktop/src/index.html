@@ -188,6 +188,24 @@
     </div>
   </div>
 
+  <div id="takeaway-picker-modal" class="modal-overlay" hidden>
+    <div class="modal card" role="dialog" aria-labelledby="takeaway-picker-title" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="takeaway-picker-title">Add to takeaway</h3>
+        <button type="button" class="btn btn-ghost modal-close-btn" id="takeaway-picker-close-btn" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p class="settings-hint" style="margin-bottom:0.75rem;">
+          Add these items to an open takeaway order, or start a new one.
+        </p>
+        <div id="takeaway-picker-list" class="receipt-orders-list" style="max-height:50vh; overflow:auto;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+          <button type="button" class="btn btn-ghost" id="takeaway-picker-cancel-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="fiscal-day-modal" class="modal-overlay" hidden>
     <div class="modal card" role="dialog" aria-labelledby="fiscal-day-title" aria-modal="true">
       <div class="modal-header">

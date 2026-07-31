@@ -508,10 +508,16 @@ class CustomerAccountsView(BaseUIView):
         return user_can_access_pos(user)
 
     def get_context_data(self, **kwargs):
-        from accounts.branch_access import get_staff_branch_id
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_can_adjust_customer_balance,
+        )
 
         context = super().get_context_data(**kwargs)
         context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        context["can_adjust_customer_balance"] = user_can_adjust_customer_balance(
+            self.request.user
+        )
         return context
 
 

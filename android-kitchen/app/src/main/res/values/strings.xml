@@ -69,6 +69,9 @@
     <string name="transfer_order_hint">Choose an open takeaway order, or start a new one.</string>
     <string name="transfer_new_order">New order</string>
     <string name="transfer_no_other_orders">No other open takeaway orders</string>
+    <string name="place_takeaway_title">Add to takeaway</string>
+    <string name="place_takeaway_hint">Add these items to an open takeaway order, or start a new one.</string>
+    <string name="place_takeaway_new">New takeaway</string>
     <string name="select_for_transfer">Select for transfer</string>
     <string name="table_current">Current table</string>
     <string name="transfer_select_items">Select at least one item to transfer</string>
@@ -179,7 +182,7 @@
     <string name="stock_take_active_completed_title">Completed %1$s stock take #%2$d</string>
     <string name="stock_take_active_meta">%1$s · %2$s · %3$d ingredients</string>
     <string name="stock_take_active_meta_variances">%1$s · %2$s · %3$d ingredients · %4$d variances posted</string>
-    <string name="stock_take_category_header">%1$s · %2$d items</string>
+    <string name="stock_take_station_header">%1$s · %2$d items</string>
     <string name="stock_take_history_meta">#%1$d · %2$s · %3$s · %4$d lines · %5$s</string>
     <string name="stock_take_load_failed">Failed to load stock takes.</string>
     <string name="stock_take_access_denied">Stock take is only available for POS users.</string>

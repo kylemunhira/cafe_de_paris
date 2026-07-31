@@ -1259,6 +1259,83 @@ class TableOrderCombineTests(TestCase):
         self.assertFalse(Order.objects.filter(pk=second.pk).exists())
         self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN, table_number="T2").count(), 0)
 
+    def _create_takeaway_order(self, product=None, quantity=Decimal("1")):
+        product = product or self.product
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            kitchen_status=KitchenStatus.READY,
+        )
+        order.items.create(product=product, quantity=quantity, price=product.selling_price)
+        order.recalculate_total()
+        return order
+
+    def test_adding_to_open_takeaway_with_existing_order_id(self):
+        existing = self._create_takeaway_order()
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.TAKEAWAY,
+                "existing_order_id": existing.id,
+                "items": [{"product_id": self.latte.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["id"], existing.id)
+        self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN).count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.items.count(), 2)
+        self.assertEqual(existing.total_amount, Decimal("11.50"))
+        self.assertEqual(existing.kitchen_status, KitchenStatus.PENDING)
+
+    def test_existing_order_id_rejects_paid_takeaway(self):
+        existing = self._create_takeaway_order()
+        existing.status = OrderStatus.PAID
+        existing.save(update_fields=["status"])
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.TAKEAWAY,
+                "existing_order_id": existing.id,
+                "items": [{"product_id": self.latte.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("existing_order_id", response.data)
+
+    def test_existing_order_id_rejects_dine_in_target_for_takeaway(self):
+        existing = self._create_table_order("T9")
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.TAKEAWAY,
+                "existing_order_id": existing.id,
+                "items": [{"product_id": self.latte.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("existing_order_id", response.data)
+
+    def test_takeaway_without_existing_order_id_creates_new(self):
+        self._create_takeaway_order()
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.TAKEAWAY,
+                "items": [{"product_id": self.latte.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN).count(), 2)
+
 
 class OrderCancelVoidTests(TestCase):
     def setUp(self):

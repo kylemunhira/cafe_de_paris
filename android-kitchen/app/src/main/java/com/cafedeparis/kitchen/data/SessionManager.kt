@@ -29,6 +29,10 @@ class SessionManager(context: Context) {
         get() = prefs.getBoolean(KEY_CAN_COLLECT_PAYMENT, true)
         set(value) = prefs.edit().putBoolean(KEY_CAN_COLLECT_PAYMENT, value).apply()
 
+    var isSuperuser: Boolean
+        get() = prefs.getBoolean(KEY_IS_SUPERUSER, false)
+        set(value) = prefs.edit().putBoolean(KEY_IS_SUPERUSER, value).apply()
+
     var kitchenStation: String?
         get() = prefs.getString(KEY_KITCHEN_STATION, null)
         set(value) = prefs.edit().putString(KEY_KITCHEN_STATION, value?.trim()).apply()
@@ -86,6 +90,7 @@ class SessionManager(context: Context) {
         canAccessPos = response.can_access_pos
         canAccessBakery = response.can_access_bakery
         canCollectPayment = response.user.can_collect_payment
+        isSuperuser = response.user.is_superuser
         kitchenStation = response.user.kitchen_station
         kitchenStationDisplay = response.user.kitchen_station_display
         fiscalizationEnabled = response.branch.fiscalization_enabled
@@ -103,6 +108,7 @@ class SessionManager(context: Context) {
             .remove(KEY_CAN_ACCESS_POS)
             .remove(KEY_CAN_ACCESS_BAKERY)
             .remove(KEY_CAN_COLLECT_PAYMENT)
+            .remove(KEY_IS_SUPERUSER)
             .remove(KEY_KITCHEN_STATION)
             .remove(KEY_KITCHEN_STATION_DISPLAY)
             .remove(KEY_FISCALIZATION_ENABLED)
@@ -295,6 +301,7 @@ class SessionManager(context: Context) {
         private const val KEY_CAN_ACCESS_POS = "can_access_pos"
         private const val KEY_CAN_ACCESS_BAKERY = "can_access_bakery"
         private const val KEY_CAN_COLLECT_PAYMENT = "can_collect_payment"
+        private const val KEY_IS_SUPERUSER = "is_superuser"
         private const val KEY_KITCHEN_STATION = "kitchen_station"
         private const val KEY_KITCHEN_STATION_DISPLAY = "kitchen_station_display"
         private const val KEY_FISCALIZATION_ENABLED = "fiscalization_enabled"
@@ -349,6 +356,7 @@ object JsonParsers {
                 can_manage_fiscal_day = user.optBoolean("can_manage_fiscal_day", false),
                 can_manage_dining_tables = user.optBoolean("can_manage_dining_tables", false),
                 can_collect_payment = user.optBoolean("can_collect_payment", true),
+                is_superuser = user.optBoolean("is_superuser", false),
                 kitchen_station = user.optString("kitchen_station", null)?.takeIf { it.isNotBlank() },
                 kitchen_station_display = user.optString("kitchen_station_display", null)?.takeIf { it.isNotBlank() },
             ),
@@ -841,6 +849,10 @@ object JsonParsers {
                 productName = line.optString("product_name", "Product"),
                 categoryName = line.optString("category_name", null)
                     ?.takeIf { it.isNotBlank() && it != "null" },
+                stockTakeStation = line.optString("stock_take_station", "shop")
+                    .takeIf { it.isNotBlank() && it != "null" } ?: "shop",
+                stockTakeStationDisplay = line.optString("stock_take_station_display", "Shop")
+                    .takeIf { it.isNotBlank() && it != "null" } ?: "Shop",
                 systemQuantity = systemQty,
                 countedQuantity = counted,
                 variance = variance,

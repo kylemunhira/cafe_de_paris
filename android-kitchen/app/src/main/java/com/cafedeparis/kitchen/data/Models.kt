@@ -17,6 +17,7 @@ data class UserInfo(
     val can_manage_fiscal_day: Boolean = false,
     val can_manage_dining_tables: Boolean = false,
     val can_collect_payment: Boolean = true,
+    val is_superuser: Boolean = false,
     val kitchen_station: String? = null,
     val kitchen_station_display: String? = null,
 )
@@ -295,6 +296,8 @@ data class StockTakeLine(
     val productId: Int,
     val productName: String,
     val categoryName: String?,
+    val stockTakeStation: String = "shop",
+    val stockTakeStationDisplay: String = "Shop",
     val systemQuantity: String? = null,
     val countedQuantity: String?,
     val variance: String? = null,

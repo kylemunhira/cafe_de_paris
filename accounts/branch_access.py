@@ -123,6 +123,15 @@ def user_is_hq_admin(user):
     return profile.role == StaffRole.HQ_ADMIN
 
 
+def user_can_adjust_customer_balance(user):
+    """Django superusers and HQ admins may post signed balance adjustments."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser or user_has_global_branch_access(user):
+        return True
+    return user_is_hq_admin(user)
+
+
 def user_is_branch_manager(user):
     """Branch manager — operational console without HQ dashboard or stores transfers."""
     if not user or not user.is_authenticated:

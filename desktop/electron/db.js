@@ -278,7 +278,11 @@ function newClientId() {
   return crypto.randomUUID();
 }
 
-function createOrder({ orderType, tableNumber, items, createdByName = "" }) {
+function createOrder({ orderType, tableNumber, items, createdByName = "", existingClientId = null }) {
+  if (existingClientId) {
+    return addItemsToOrder(existingClientId, items);
+  }
+
   const trimmedTable = (tableNumber || "").trim();
   if (orderType === "dine_in" && trimmedTable) {
     const existing = db

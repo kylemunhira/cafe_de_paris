@@ -8,9 +8,11 @@ from branches.models import Branch, BranchType
 from catalog.constants import (
     ALL_INGREDIENT_CATEGORIES,
     BAKERY_SELLABLE_CATEGORIES,
+    STOCK_TAKE_STATION_LABELS,
     ingredient_categories_for_branch_type,
     is_bakery_transfer_product,
     is_ingredient_product,
+    stock_take_station_for_product,
 )
 from catalog.models import Product
 from customers.models import Customer
@@ -471,6 +473,8 @@ class StockTakeLineSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(
         source="product.category.name", read_only=True
     )
+    stock_take_station = serializers.SerializerMethodField()
+    stock_take_station_display = serializers.SerializerMethodField()
     variance = serializers.SerializerMethodField()
 
     class Meta:
@@ -480,11 +484,19 @@ class StockTakeLineSerializer(serializers.ModelSerializer):
             "product",
             "product_name",
             "category_name",
+            "stock_take_station",
+            "stock_take_station_display",
             "system_quantity",
             "counted_quantity",
             "variance",
             "notes",
         ]
+
+    def get_stock_take_station(self, obj):
+        return stock_take_station_for_product(obj.product)
+
+    def get_stock_take_station_display(self, obj):
+        return STOCK_TAKE_STATION_LABELS[self.get_stock_take_station(obj)]
 
     def get_variance(self, obj):
         if obj.variance is None:

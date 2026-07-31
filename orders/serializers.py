@@ -21,7 +21,12 @@ from .models import (
     PaymentMethod,
     TenderMethod,
 )
-from .services import add_items_to_order, find_open_table_order, reprice_order_items
+from .services import (
+    add_items_to_order,
+    find_open_order_for_append,
+    find_open_table_order,
+    reprice_order_items,
+)
 
 
 def staff_display_name(user):
@@ -357,13 +362,26 @@ class OrderUpdateSerializer(serializers.ModelSerializer):
 
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemCreateSerializer(many=True)
+    existing_order_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
 
     class Meta:
         model = Order
-        fields = ["branch", "customer", "order_type", "table_number", "items"]
+        fields = [
+            "branch",
+            "customer",
+            "order_type",
+            "table_number",
+            "items",
+            "existing_order_id",
+        ]
 
     def create(self, validated_data):
         items_data = validated_data.pop("items")
+        existing_order_id = validated_data.pop("existing_order_id", None)
         request = self.context.get("request")
         user = request.user if request and request.user.is_authenticated else None
 
@@ -372,7 +390,21 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         order_type = validated_data.get("order_type")
 
         existing = None
-        if order_type == OrderType.DINE_IN and table_number:
+        if existing_order_id is not None:
+            existing = find_open_order_for_append(
+                branch=branch,
+                order_id=existing_order_id,
+                order_type=order_type,
+            )
+            if existing is None:
+                raise serializers.ValidationError(
+                    {
+                        "existing_order_id": (
+                            "Order is not available to receive new items."
+                        )
+                    }
+                )
+        elif order_type == OrderType.DINE_IN and table_number:
             existing = find_open_table_order(branch=branch, table_number=table_number)
 
         if existing:

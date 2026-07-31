@@ -68,7 +68,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 class PosActivity : KeepScreenOnActivity() {
 
@@ -77,6 +79,12 @@ class PosActivity : KeepScreenOnActivity() {
         val value: T,
     ) {
         override fun toString(): String = label
+    }
+
+    private sealed class TakeawayPick {
+        data object Cancelled : TakeawayPick()
+        data object NewOrder : TakeawayPick()
+        data class Existing(val orderId: Int) : TakeawayPick()
     }
 
     private lateinit var binding: ActivityPosBinding
@@ -600,7 +608,7 @@ class PosActivity : KeepScreenOnActivity() {
             return
         }
         val amount = parseDepositAmount(amountRaw)
-        if (amount == null || amount <= 0.0) {
+        if (amount == null || amount == 0.0 || (amount < 0.0 && !session.isSuperuser)) {
             dialogBinding.customerPaymentAmountInput.error =
                 getString(R.string.customer_payment_amount_required)
             dialogBinding.customerPaymentAmountInput.requestFocus()
@@ -1944,12 +1952,53 @@ class PosActivity : KeepScreenOnActivity() {
                 && it.order_type == "takeaway"
                 && it.id !in sourceIds
         }
-        val dialogBinding = DialogOrderPickerBinding.inflate(layoutInflater)
-        val adapter = ReceiptOrderAdapter(
-            onOrderClick = { order ->
-                orderPickerDialog?.dismiss()
-                confirmTransferToOrder(order.id, order.receiptHeaderLabel())
+        showTakeawayOrderPicker(
+            candidates = candidates,
+            titleRes = R.string.transfer_order_title,
+            hintRes = R.string.transfer_order_hint,
+            newOrderLabelRes = R.string.transfer_new_order,
+            emptyLabelRes = R.string.transfer_no_other_orders,
+            onPick = { orderId ->
+                confirmTransferToOrder(
+                    orderId,
+                    if (orderId == null) {
+                        getString(R.string.transfer_new_order)
+                    } else {
+                        orders.firstOrNull { it.id == orderId }?.receiptHeaderLabel()
+                            ?: "#$orderId"
+                    },
+                )
             },
+        )
+    }
+
+    private fun showTakeawayOrderPicker(
+        candidates: List<KitchenOrder>,
+        titleRes: Int,
+        hintRes: Int,
+        newOrderLabelRes: Int,
+        emptyLabelRes: Int,
+        onPick: (Int?) -> Unit,
+        onCancel: (() -> Unit)? = null,
+    ) {
+        var settled = false
+        fun settlePick(orderId: Int?) {
+            if (settled) return
+            settled = true
+            orderPickerDialog?.dismiss()
+            onPick(orderId)
+        }
+        fun settleCancel() {
+            if (settled) return
+            settled = true
+            onCancel?.invoke()
+        }
+        val dialogBinding = DialogOrderPickerBinding.inflate(layoutInflater)
+        dialogBinding.orderPickerHint.setText(hintRes)
+        dialogBinding.newOrderButton.setText(newOrderLabelRes)
+        dialogBinding.orderEmptyLabel.setText(emptyLabelRes)
+        val adapter = ReceiptOrderAdapter(
+            onOrderClick = { order -> settlePick(order.id) },
         )
         dialogBinding.orderList.layoutManager = LinearLayoutManager(this)
         dialogBinding.orderList.adapter = adapter
@@ -1959,15 +2008,62 @@ class PosActivity : KeepScreenOnActivity() {
         dialogBinding.orderList.visibility =
             if (candidates.isEmpty()) View.GONE else View.VISIBLE
         dialogBinding.newOrderButton.setOnClickListener {
-            orderPickerDialog?.dismiss()
-            confirmTransferToOrder(null, getString(R.string.transfer_new_order))
+            settlePick(null)
         }
         orderPickerDialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.transfer_order_title)
+            .setTitle(titleRes)
             .setView(dialogBinding.root)
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                settleCancel()
+            }
+            .setOnCancelListener {
+                settleCancel()
+            }
             .create()
         orderPickerDialog?.show()
+    }
+
+    private suspend fun chooseTakeawayDestinationForPlace(): TakeawayPick {
+        binding.refreshProgress.visibility = View.VISIBLE
+        val orders = try {
+            withContext(Dispatchers.IO) { api.fetchPayableOrders() }.also { openOrders = it }
+        } catch (err: ApiException) {
+            handleApiError(err)
+            return TakeawayPick.Cancelled
+        } catch (err: Exception) {
+            showError(getString(R.string.connection_failed, err.message ?: ""))
+            return TakeawayPick.Cancelled
+        } finally {
+            binding.refreshProgress.visibility = View.GONE
+        }
+        val candidates = orders.filter {
+            it.status == "open" && it.order_type == "takeaway"
+        }
+        if (candidates.isEmpty()) return TakeawayPick.NewOrder
+
+        return suspendCancellableCoroutine { cont ->
+            showTakeawayOrderPicker(
+                candidates = candidates,
+                titleRes = R.string.place_takeaway_title,
+                hintRes = R.string.place_takeaway_hint,
+                newOrderLabelRes = R.string.place_takeaway_new,
+                emptyLabelRes = R.string.transfer_no_other_orders,
+                onPick = { orderId ->
+                    if (cont.isActive) {
+                        cont.resume(
+                            if (orderId == null) TakeawayPick.NewOrder
+                            else TakeawayPick.Existing(orderId),
+                        )
+                    }
+                },
+                onCancel = {
+                    if (cont.isActive) cont.resume(TakeawayPick.Cancelled)
+                },
+            )
+            cont.invokeOnCancellation {
+                orderPickerDialog?.dismiss()
+            }
+        }
     }
 
     private fun confirmTransferToOrder(destinationOrderId: Int?, destinationLabel: String) {
@@ -2079,21 +2175,39 @@ class PosActivity : KeepScreenOnActivity() {
         binding.checkoutButton.isEnabled = false
         lifecycleScope.launch {
             try {
-                val tableNumber = if (currentOrderType() == "dine_in") selectedTableName else null
+                val orderType = currentOrderType()
+                var existingOrderId: Int? = null
+                if (orderType == "takeaway") {
+                    when (val pick = chooseTakeawayDestinationForPlace()) {
+                        TakeawayPick.Cancelled -> {
+                            renderCart()
+                            return@launch
+                        }
+                        TakeawayPick.NewOrder -> existingOrderId = null
+                        is TakeawayPick.Existing -> existingOrderId = pick.orderId
+                    }
+                }
+                val tableNumber = if (orderType == "dine_in") selectedTableName else null
                 val existingTableOrderId = tableNumber?.trim()?.takeIf { it.isNotEmpty() }?.let { table ->
                     openOrdersForTable(table).firstOrNull()?.id
                 }
                 val order = withContext(Dispatchers.IO) {
-                    api.createOrder(currentOrderType(), tableNumber, cart.values.toList())
+                    api.createOrder(
+                        orderType,
+                        tableNumber,
+                        cart.values.toList(),
+                        existingOrderId = existingOrderId,
+                    )
                 }
                 cart.clear()
-                if (currentOrderType() == "dine_in") {
+                if (orderType == "dine_in") {
                     setSelectedTable(null)
                 }
                 renderCart()
                 loadOpenOrders(silent = true)
                 printOrderTicket(order)
-                val addedToExisting = existingTableOrderId != null && order.id == existingTableOrderId
+                val addedToExisting = (existingOrderId != null && order.id == existingOrderId) ||
+                    (existingTableOrderId != null && order.id == existingTableOrderId)
                 Toast.makeText(
                     this@PosActivity,
                     if (addedToExisting) {

@@ -33,8 +33,11 @@ def deposit_to_account(
     amount_received: Decimal,
     notes: str = "",
     recorded_by=None,
+    allow_negative: bool = False,
 ) -> CustomerAccountTransaction:
-    if amount_received <= Decimal("0"):
+    if amount_received == Decimal("0"):
+        raise CustomerAccountError("Deposit amount must not be zero.")
+    if amount_received < Decimal("0") and not allow_negative:
         raise CustomerAccountError("Deposit amount must be greater than zero.")
 
     rate = currency.get_current_rate()
@@ -170,6 +173,54 @@ def apply_account_balance_adjustment(
         amount=delta,
         balance_after=target,
         notes=(notes or "Imported account balance").strip()[:200],
+        recorded_by=recorded_by,
+    )
+
+
+@transaction.atomic
+def adjust_account_balance_by_amount(
+    *,
+    customer: Customer,
+    amount: Decimal,
+    notes: str = "",
+    recorded_by=None,
+    branch=None,
+) -> CustomerAccountTransaction:
+    """Apply a signed balance delta (e.g. -12.00) and record an adjustment.
+
+    Customers are company-wide; ``branch`` is only for audit history and is
+    auto-resolved when omitted.
+    """
+    from accounts.branch_access import get_staff_branch_id
+    from branches.models import Branch
+
+    delta = _quantize(amount)
+    if delta == Decimal("0"):
+        raise CustomerAccountError("Adjustment amount must not be zero.")
+
+    if branch is None:
+        branch_id = get_staff_branch_id(recorded_by) if recorded_by else None
+        if branch_id is not None:
+            branch = Branch.objects.filter(pk=branch_id).first()
+        if branch is None:
+            branch = Branch.objects.filter(is_active=True).order_by("id").first()
+        if branch is None:
+            raise CustomerAccountError(
+                "No active branch found to record the balance adjustment."
+            )
+
+    customer = Customer.objects.select_for_update().get(pk=customer.pk)
+    new_balance = _quantize(customer.account_balance + delta)
+    customer.account_balance = new_balance
+    customer.save(update_fields=["account_balance"])
+
+    return CustomerAccountTransaction.objects.create(
+        customer=customer,
+        branch=branch,
+        transaction_type=CustomerAccountTransactionType.ADJUSTMENT,
+        amount=delta,
+        balance_after=new_balance,
+        notes=(notes or "Balance adjustment").strip()[:200],
         recorded_by=recorded_by,
     )
 
