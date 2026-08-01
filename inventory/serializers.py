@@ -584,8 +584,11 @@ class StockTakeCreateSerializer(serializers.Serializer):
         notes = validated_data.pop("notes", "")
         request = self.context.get("request")
         created_by = request.user if request and request.user.is_authenticated else None
-        stock_take = create_stock_take(created_by=created_by, **validated_data)
-        if notes:
+        stock_take, created = create_stock_take(
+            created_by=created_by, **validated_data
+        )
+        self.stock_take_created = created
+        if created and notes:
             stock_take.notes = notes
             stock_take.save(update_fields=["notes"])
         return stock_take

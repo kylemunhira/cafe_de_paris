@@ -277,6 +277,11 @@ class StockTake(models.Model):
                 condition=models.Q(status=StockTakeStatus.COMPLETED),
                 name="unique_completed_stock_take_per_branch_period",
             ),
+            models.UniqueConstraint(
+                fields=["branch", "stock_take_type", "count_date"],
+                condition=models.Q(status=StockTakeStatus.DRAFT),
+                name="unique_draft_stock_take_per_branch_period",
+            ),
         ]
 
     def __str__(self):

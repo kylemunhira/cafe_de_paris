@@ -501,11 +501,6 @@ async function loadStockTakes() {
   allStockTakes = unwrapList(await apiGet(`/stock-takes/${query}`));
   renderStats();
   renderStockTakes();
-
-  const draft = allStockTakes.find(s => s.status === "draft");
-  if (draft && !activeStockTake) {
-    await openStockTake(draft.id);
-  }
 }
 
 async function openStockTake(id) {
@@ -540,7 +535,13 @@ async function startStockTake(stockTakeType) {
       stock_take_type: stockTakeType,
       count_date: countDateInput.value,
     });
-    showToast(`${created.stock_take_type_display} stock take started.`, "success");
+    const startedFresh = !allStockTakes.some((item) => item.id === created.id);
+    showToast(
+      startedFresh
+        ? `${created.stock_take_type_display} stock take started.`
+        : `Opened existing ${created.stock_take_type_display.toLowerCase()} draft.`,
+      "success"
+    );
     await loadStockTakes();
     await openStockTake(created.id);
   } catch (err) {

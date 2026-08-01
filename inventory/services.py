@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from django.db.models import Q
@@ -821,10 +821,31 @@ def require_daily_stock_take_for_day_end(branch, count_date: date | str | None =
         )
 
 
-def create_stock_take(branch, stock_take_type: str, count_date: date, created_by=None) -> StockTake:
+def _draft_stock_take(branch, stock_take_type: str, count_date: date):
+    return StockTake.objects.filter(
+        branch=branch,
+        stock_take_type=stock_take_type,
+        count_date=count_date,
+        status=StockTakeStatus.DRAFT,
+    ).first()
+
+
+def create_stock_take(
+    branch, stock_take_type: str, count_date: date, created_by=None
+) -> tuple[StockTake, bool]:
+    """Create a draft stock take, or return the existing draft for the period.
+
+    Returns ``(stock_take, created)`` where ``created`` is False when an
+    in-progress draft for the same branch / type / date was reused.
+    """
     count_date = _normalize_count_date(stock_take_type, count_date)
     if _completed_stock_take_exists(branch, stock_take_type, count_date):
         raise DuplicateStockTakeError(branch, stock_take_type, count_date)
+
+    existing = _draft_stock_take(branch, stock_take_type, count_date)
+    if existing:
+        sync_stock_take_lines(existing)
+        return existing, False
 
     inventory_map = {
         row.product_id: row.quantity
@@ -833,24 +854,32 @@ def create_stock_take(branch, stock_take_type: str, count_date: date, created_by
         )
     }
 
-    with transaction.atomic():
-        stock_take = StockTake.objects.create(
-            branch=branch,
-            stock_take_type=stock_take_type,
-            count_date=count_date,
-            created_by=created_by,
-        )
-        StockTakeLine.objects.bulk_create(
-            [
-                StockTakeLine(
-                    stock_take=stock_take,
-                    product=product,
-                    system_quantity=inventory_map.get(product.id, Decimal("0")),
-                )
-                for product in products_for_stock_take(stock_take_type, branch)
-            ]
-        )
-    return stock_take
+    try:
+        with transaction.atomic():
+            stock_take = StockTake.objects.create(
+                branch=branch,
+                stock_take_type=stock_take_type,
+                count_date=count_date,
+                created_by=created_by,
+            )
+            StockTakeLine.objects.bulk_create(
+                [
+                    StockTakeLine(
+                        stock_take=stock_take,
+                        product=product,
+                        system_quantity=inventory_map.get(product.id, Decimal("0")),
+                    )
+                    for product in products_for_stock_take(stock_take_type, branch)
+                ]
+            )
+        return stock_take, True
+    except IntegrityError:
+        # Concurrent create raced past the draft check; reuse the winner.
+        existing = _draft_stock_take(branch, stock_take_type, count_date)
+        if existing is None:
+            raise
+        sync_stock_take_lines(existing)
+        return existing, False
 
 
 def sync_stock_take_lines(stock_take: StockTake) -> StockTake:

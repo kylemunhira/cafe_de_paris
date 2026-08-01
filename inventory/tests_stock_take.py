@@ -237,6 +237,104 @@ class StockTakeWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("already exists", response.data["detail"])
 
+    def test_create_reuses_existing_draft_for_same_period(self):
+        first = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-09",
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201)
+        first_id = first.data["id"]
+
+        second = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-09",
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data["id"], first_id)
+        self.assertEqual(
+            StockTake.objects.filter(
+                branch=self.branch,
+                stock_take_type=StockTakeType.DAILY,
+                count_date=date(2026, 6, 9),
+                status=StockTakeStatus.DRAFT,
+            ).count(),
+            1,
+        )
+
+    def test_create_reuses_existing_monthly_draft_for_same_month(self):
+        first = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.MONTHLY,
+                "count_date": "2026-06-15",
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201)
+
+        second = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.MONTHLY,
+                "count_date": "2026-06-28",
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data["id"], first.data["id"])
+        self.assertEqual(second.data["count_date"], "2026-06-01")
+        self.assertEqual(
+            StockTake.objects.filter(
+                branch=self.branch,
+                stock_take_type=StockTakeType.MONTHLY,
+                count_date=date(2026, 6, 1),
+                status=StockTakeStatus.DRAFT,
+            ).count(),
+            1,
+        )
+
+    def test_new_draft_allowed_after_cancel(self):
+        first = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-09",
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201)
+        cancel = self.client.post(
+            f"/api/stock-takes/{first.data['id']}/cancel/",
+            {},
+            format="json",
+        )
+        self.assertEqual(cancel.status_code, 200)
+
+        second = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-09",
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, 201)
+        self.assertNotEqual(second.data["id"], first.data["id"])
+
     def test_export_and_import_stock_take_csv(self):
         create_response = self.client.post(
             "/api/stock-takes/",

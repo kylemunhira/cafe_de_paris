@@ -535,9 +535,10 @@ class StockTakeViewSet(viewsets.ModelViewSet):
         except DuplicateStockTakeError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         stock_take = self.get_queryset().get(pk=stock_take.pk)
+        created = getattr(serializer, "stock_take_created", True)
         return Response(
             StockTakeSerializer(stock_take).data,
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
     def _run_transition(self, request, pk, handler):
