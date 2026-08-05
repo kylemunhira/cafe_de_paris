@@ -903,6 +903,7 @@ object JsonParsers {
                 amount = jsonNumberAsString(item, "amount", "0"),
                 balanceAfter = jsonNumberAsString(item, "balance_after", "0"),
                 currencyCode = item.optString("currency_code", null)?.takeIf { it.isNotBlank() },
+                currencyName = item.optString("currency_name", null)?.takeIf { it.isNotBlank() },
                 currencySymbol = item.optString("currency_symbol", null)?.takeIf { it.isNotBlank() },
                 amountReceived = if (item.has("amount_received") && !item.isNull("amount_received")) {
                     jsonNumberAsString(item, "amount_received", "0")

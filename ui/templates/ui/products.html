@@ -496,7 +496,7 @@ function render() {
 async function loadProducts() {
   const listParams = productListMode === "bakery"
     ? { bakery_manufactured: "true" }
-    : { exclude_category: "Ingredients", exclude_bakery: "true" };
+    : { exclude_ingredients: "true", exclude_bakery: "true" };
   const productsData = await fetchAllPages("/products/", listParams);
   products = productsData.map(product => ({
     ...product,
@@ -534,7 +534,9 @@ async function loadCategories() {
   const data = await apiGet("/categories/?page_size=500");
   categories = unwrapList(data).filter(c => {
     if (productListMode === "bakery") return BAKERY_CATEGORY_NAMES.has(c.name);
-    return c.name !== "Ingredients" && !BAKERY_CATEGORY_NAMES.has(c.name);
+    return c.name !== "Ingredients"
+      && c.name !== "Branch Ingredients"
+      && !BAKERY_CATEGORY_NAMES.has(c.name);
   });
   renderCategoryOptions();
 }

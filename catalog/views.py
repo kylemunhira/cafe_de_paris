@@ -15,6 +15,7 @@ from .csv_io import (
 )
 from .menu_items_import import export_menu_items_csv, import_menu_items_csv
 from .constants import (
+    ALL_INGREDIENT_CATEGORIES,
     ARCHIVED_CATEGORY,
     BAKERY_CATEGORIES,
     BAKERY_SELLABLE_CATEGORIES,
@@ -198,6 +199,7 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         queryset = super().get_queryset()
         category = self.request.query_params.get("category")
         exclude_category = self.request.query_params.get("exclude_category")
+        exclude_ingredients = self.request.query_params.get("exclude_ingredients")
         bakery_transfer = self.request.query_params.get("bakery_transfer")
         bakery_manufactured = self.request.query_params.get("bakery_manufactured")
         exclude_bakery = self.request.query_params.get("exclude_bakery")
@@ -222,6 +224,8 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                         queryset = queryset.none()
         if exclude_category:
             queryset = queryset.exclude(category__name=exclude_category)
+        if exclude_ingredients and exclude_ingredients.lower() in ("1", "true", "yes"):
+            queryset = queryset.exclude(category__name__in=ALL_INGREDIENT_CATEGORIES)
         if bakery_transfer and bakery_transfer.lower() in ("1", "true", "yes"):
             queryset = queryset.filter(
                 is_active=True,

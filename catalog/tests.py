@@ -136,6 +136,24 @@ class BakeryTransferProductFilterTests(TestCase):
         names = {item["name"] for item in response.data["results"]}
         self.assertEqual(names, {"Espresso"})
 
+    def test_exclude_ingredients_filter_omits_all_ingredient_categories(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        branch_ingredients = ProductCategory.objects.create(name=BRANCH_INGREDIENTS_CATEGORY)
+        Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price="1.00",
+        )
+        Product.objects.create(
+            name="12 CM SAUCERS",
+            category=branch_ingredients,
+            selling_price="10.74",
+        )
+        response = self.client.get("/api/products/?exclude_ingredients=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Croissant", "Pastry Cream", "Espresso"})
+
     def test_pos_catalog_includes_bakery_finished_goods(self):
         response = self.client.get("/api/products/?pos_catalog=true")
         self.assertEqual(response.status_code, 200)

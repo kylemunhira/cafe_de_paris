@@ -338,6 +338,7 @@ data class CustomerStatementTransaction(
     val amount: String,
     val balanceAfter: String,
     val currencyCode: String? = null,
+    val currencyName: String? = null,
     val currencySymbol: String? = null,
     val amountReceived: String? = null,
     val orderId: Int? = null,

@@ -684,9 +684,10 @@ class EscPosPrinter {
             val received = txn.optString("amount_received", "")
             if (received.isNotBlank() && received != "0" && received != "0.00") {
               val symbol = txn.optString("currency__symbol", "")
-              val code = txn.optString("currency__code", txn.optString("currency__name", ""))
+              val label = txn.optString("currency__name", "")
+                .ifBlank { txn.optString("currency__code", "") }
               val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(received)}" else formatMoney(received)
-              add("$formatted $code".trim())
+              add("$formatted $label".trim())
             }
           }
           txn.optString("notes", "").takeIf { it.isNotBlank() }?.let { add(it) }
@@ -985,13 +986,17 @@ class EscPosPrinter {
         output.write(textLine(formatDateTime(txn.createdAt)))
         output.write(textLine(label, bold = true, suffix = formatSignedAmount(txn.amount)))
         output.write(textLine("Balance", suffix = formatPlainAmount(txn.balanceAfter)))
-        if (txn.transactionType == "deposit" && !txn.currencyCode.isNullOrBlank()) {
-          val received = txn.amountReceived?.let { amount ->
-            val symbol = txn.currencySymbol.orEmpty()
-            if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatPlainAmount(amount)
+        if (txn.transactionType == "deposit") {
+          val currencyLabel = txn.currencyName?.takeIf { it.isNotBlank() }
+            ?: txn.currencyCode?.takeIf { it.isNotBlank() }
+          if (currencyLabel != null) {
+            val received = txn.amountReceived?.let { amount ->
+              val symbol = txn.currencySymbol.orEmpty()
+              if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatPlainAmount(amount)
+            }
+            val receivedPart = received?.let { " $it" }.orEmpty()
+            output.write(textLine("  Received in $currencyLabel$receivedPart"))
           }
-          val receivedPart = received?.let { " $it" }.orEmpty()
-          output.write(textLine("  Received in ${txn.currencyCode}$receivedPart"))
         }
         txn.orderId?.let {
           output.write(textLine("  Order #$it"))
