@@ -3,6 +3,7 @@ from accounts.branch_access import (
     filter_by_branch_field,
     filter_by_branch_participation,
     user_can_access_bakery_transfers,
+    user_can_access_branch_transfers,
     user_can_access_cashier_invoices,
     user_can_access_central_invoices,
     user_can_access_fiscal_receipts,
@@ -408,6 +409,33 @@ class StoresTransfersView(BaseUIView):
         return user_can_access_stores_transfers(user)
 
 
+class BranchTransfersView(BaseUIView):
+    template_name = "ui/branch_transfers.html"
+    active_nav = "branch_transfers"
+    allow_cashier = True
+
+    def access_allowed(self, user):
+        return user_can_access_branch_transfers(user)
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_branch_transfers(user)
+
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_has_global_branch_access,
+        )
+
+        context = super().get_context_data(**kwargs)
+        context["staff_branch_id"] = get_staff_branch_id(self.request.user)
+        context["can_filter_any_branch"] = user_has_global_branch_access(
+            self.request.user
+        )
+        # Destination cashiers/managers receive on this page (no GRV for cashiers).
+        context["can_receive_branch_transfers"] = True
+        return context
+
+
 class CentralInvoicesView(BaseUIView):
     template_name = "ui/central_invoices.html"
     active_nav = "central_invoices"
@@ -714,12 +742,16 @@ class DeliveryNotePrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, De
     context_object_name = "note"
     allow_baker = True
     allow_grv_staff = True
+    allow_cashier = True
 
     def baker_access_allowed(self, user):
         return user_can_access_bakery_transfers(user)
 
     def grv_staff_access_allowed(self, user):
         return user_can_access_grv(user)
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_branch_transfers(user)
 
     def get_queryset(self):
         queryset = DeliveryNote.objects.select_related(

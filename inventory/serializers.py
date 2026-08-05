@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from accounts.branch_access import effective_branch_id
+from accounts.branch_access import effective_branch_id, user_has_global_branch_access
 from django.db import transaction
 from rest_framework import serializers
 
@@ -148,6 +148,7 @@ class StockTransferCreateSerializer(serializers.ModelSerializer):
 
 BAKERY_TRANSFER_DESTINATION_TYPES = (BranchType.STORES, BranchType.BRANCH)
 STORES_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH, BranchType.HQ, BranchType.BAKERY)
+BRANCH_TRANSFER_DESTINATION_TYPES = (BranchType.BRANCH,)
 
 
 class BakeryTransferCreateSerializer(serializers.ModelSerializer):
@@ -404,6 +405,73 @@ class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):
         if value <= Decimal("0"):
             raise serializers.ValidationError("Quantity must be greater than zero.")
         return value
+
+
+class BranchDeliveryNoteLineCreateSerializer(serializers.Serializer):
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3)
+
+    def validate_quantity(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Quantity must be greater than zero.")
+        return value
+
+
+class BranchDeliveryNoteCreateSerializer(serializers.Serializer):
+    """Inter-branch stock transfer — stock leaves on dispatch."""
+
+    from_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.BRANCH)
+    )
+    to_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(
+            is_active=True,
+            branch_type__in=BRANCH_TRANSFER_DESTINATION_TYPES,
+        )
+    )
+    lines = BranchDeliveryNoteLineCreateSerializer(many=True)
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("Add at least one product line.")
+        product_ids = [line["product"].id for line in value]
+        if len(product_ids) != len(set(product_ids)):
+            raise serializers.ValidationError("Each product may only appear once.")
+        return value
+
+    def validate(self, attrs):
+        if attrs["from_branch"] == attrs["to_branch"]:
+            raise serializers.ValidationError(
+                {"to_branch": "Source and destination branches must differ."}
+            )
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        if user and not user_has_global_branch_access(user):
+            from accounts.branch_access import get_staff_branch_id
+
+            staff_branch_id = get_staff_branch_id(user)
+            if staff_branch_id is None or staff_branch_id != attrs["from_branch"].id:
+                raise serializers.ValidationError(
+                    {"from_branch": "You can only transfer stock from your own branch."}
+                )
+        return attrs
+
+    def create(self, validated_data):
+        lines_data = validated_data.pop("lines")
+        note = DeliveryNote.objects.create(**validated_data)
+        DeliveryNoteLine.objects.bulk_create(
+            [
+                DeliveryNoteLine(
+                    delivery_note=note,
+                    product=line["product"],
+                    quantity=line["quantity"],
+                )
+                for line in lines_data
+            ]
+        )
+        return note
 
 
 class StoresDeliveryNoteCreateSerializer(serializers.Serializer):

@@ -33,6 +33,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "category",
+        "group_category",
         "selling_price",
         "remaining_qty",
         "tax_rate",
@@ -40,6 +41,6 @@ class ProductAdmin(admin.ModelAdmin):
         "daily_stock_take",
         "created_at",
     )
-    list_filter = ("category", "is_active", "daily_stock_take")
+    list_filter = ("category", "group_category", "is_active", "daily_stock_take")
     search_fields = ("name",)
     inlines = [ProductMenuAddonGroupInline]

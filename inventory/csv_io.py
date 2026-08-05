@@ -28,7 +28,10 @@ def export_stock_take_csv(stock_take: StockTake) -> str:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_HEADERS)
     writer.writeheader()
-    for line in stock_take.lines.select_related("product__category"):
+    for line in stock_take.lines.select_related(
+        "product__category",
+        "product__group_category",
+    ):
         writer.writerow(
             {
                 "line_id": line.id,
@@ -44,7 +47,10 @@ def export_stock_take_report_csv(stock_take: StockTake) -> str:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=REPORT_CSV_HEADERS)
     writer.writeheader()
-    for line in stock_take.lines.select_related("product__category"):
+    for line in stock_take.lines.select_related(
+        "product__category",
+        "product__group_category",
+    ):
         variance = line.variance
         writer.writerow(
             {

@@ -253,6 +253,21 @@ def user_can_access_stores_transfers(user):
     return get_staff_branch_type(user) == BranchType.STORES
 
 
+def user_can_access_branch_transfers(user):
+    """Cashiers and branch managers at retail branches, plus HQ/global admins."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    if profile.branch.branch_type != BranchType.BRANCH:
+        return False
+    return profile.role in (StaffRole.CASHIER, StaffRole.BRANCH_MANAGER)
+
+
 def user_can_access_central_invoices(user):
     """Central stores staff selling bakery products to external customers."""
     return user_can_access_stores_transfers(user)
@@ -335,6 +350,12 @@ def user_can_manage_outgoing_delivery(user, note):
         return user_can_access_bakery_transfers(user)
     if note.from_branch.branch_type == BranchType.STORES:
         return user_can_access_stores_transfers(user)
+    if note.from_branch.branch_type == BranchType.BRANCH:
+        if not user_can_access_branch_transfers(user):
+            return False
+        if user_has_global_branch_access(user):
+            return True
+        return get_staff_branch_id(user) == note.from_branch_id
     return False
 
 

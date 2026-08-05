@@ -9,7 +9,8 @@ class Command(BaseCommand):
     help = (
         "Import actual customer account balances from Customer_Accounts_final.xlsx. "
         "Sets each matched customer's balance to the Excel value and records a "
-        "highlighted balance-adjustment entry in customer history."
+        "highlighted balance-adjustment entry in customer history. "
+        "Convention: negative = prepaid credit, positive = amount owed."
     )
 
     def add_arguments(self, parser):

@@ -42,6 +42,18 @@ class Product(models.Model):
         on_delete=models.PROTECT,
         related_name="products",
     )
+    group_category = models.ForeignKey(
+        ProductCategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="grouped_products",
+        help_text=(
+            "Optional grouping for ingredients. Ingredients stay under "
+            "Ingredients / Branch Ingredients for stock; this picks a "
+            "product category for display and filtering."
+        ),
+    )
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     remaining_qty = models.DecimalField(
         max_digits=12,

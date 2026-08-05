@@ -53,7 +53,8 @@ def deposit_to_account(
         credit_amount = _quantize(amount_received / rate)
 
     customer = Customer.objects.select_for_update().get(pk=customer.pk)
-    new_balance = _quantize(customer.account_balance + credit_amount)
+    # Deposits reduce balance (more negative = more prepaid credit).
+    new_balance = _quantize(customer.account_balance - credit_amount)
     customer.account_balance = new_balance
     customer.save(update_fields=["account_balance"])
 
@@ -61,7 +62,7 @@ def deposit_to_account(
         customer=customer,
         branch=branch,
         transaction_type=CustomerAccountTransactionType.DEPOSIT,
-        amount=credit_amount,
+        amount=-credit_amount,
         balance_after=new_balance,
         currency=currency,
         amount_received=_quantize(amount_received),
@@ -85,10 +86,11 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
         raise CustomerAccountError("Order total must be greater than zero.")
 
     customer = Customer.objects.select_for_update().get(pk=order.customer_id)
-    min_allowed = _quantize(-customer.credit_limit)
-    new_balance = _quantize(customer.account_balance - charge_amount)
-    if new_balance < min_allowed:
-        available = _quantize(customer.account_balance + customer.credit_limit)
+    # Charges increase balance (more positive = more owed).
+    max_allowed = _quantize(customer.credit_limit)
+    new_balance = _quantize(customer.account_balance + charge_amount)
+    if new_balance > max_allowed:
+        available = _quantize(customer.credit_limit - customer.account_balance)
         raise InsufficientAccountBalance(
             f"Insufficient account credit. Available: {available}, "
             f"required: {charge_amount}."
@@ -138,7 +140,7 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
         customer=customer,
         branch=order.branch,
         transaction_type=CustomerAccountTransactionType.PAYMENT,
-        amount=-charge_amount,
+        amount=charge_amount,
         balance_after=new_balance,
         order=order,
         notes=f"Order #{order.pk}",
@@ -240,7 +242,8 @@ def refund_order_to_account(*, order: Order, recorded_by=None) -> CustomerAccoun
         raise CustomerAccountError("Refund amount must be greater than zero.")
 
     customer = Customer.objects.select_for_update().get(pk=order.customer_id)
-    new_balance = _quantize(customer.account_balance + refund_amount)
+    # Refund reverses a charge — reduce balance (less owed / more prepaid).
+    new_balance = _quantize(customer.account_balance - refund_amount)
     customer.account_balance = new_balance
     customer.save(update_fields=["account_balance"])
 
@@ -248,7 +251,7 @@ def refund_order_to_account(*, order: Order, recorded_by=None) -> CustomerAccoun
         customer=customer,
         branch=order.branch,
         transaction_type=CustomerAccountTransactionType.REFUND,
-        amount=refund_amount,
+        amount=-refund_amount,
         balance_after=new_balance,
         order=order,
         notes=f"Void order #{order.pk}",

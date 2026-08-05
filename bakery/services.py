@@ -91,7 +91,10 @@ def preview_production(branch, product, quantity: Decimal) -> dict:
     availability = ingredient_availability(branch, ingredient_ids)
     ingredients = {
         row.id: row
-        for row in Product.objects.filter(id__in=ingredient_ids).select_related("category")
+        for row in Product.objects.filter(id__in=ingredient_ids).select_related(
+            "category",
+            "group_category",
+        )
     }
 
     lines = []
@@ -102,7 +105,11 @@ def preview_production(branch, product, quantity: Decimal) -> dict:
         line = {
             "ingredient_id": ingredient_id,
             "ingredient_name": ingredient.name,
-            "ingredient_category": ingredient.category.name,
+            "ingredient_category": (
+                ingredient.group_category.name
+                if ingredient.group_category_id
+                else ingredient.category.name
+            ),
             "required": required,
             "available": available,
             "sufficient": available >= required,

@@ -261,11 +261,26 @@ class IngredientCsvTests(TestCase):
             remaining_qty="12",
         )
 
+    def test_product_api_sets_group_category(self):
+        dairy = ProductCategory.objects.create(name="Dairy")
+        response = self.client.patch(
+            f"/api/products/{self.ingredient.id}/",
+            {"group_category": dairy.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["group_category"], dairy.id)
+        self.assertEqual(response.data["group_category_name"], "Dairy")
+        self.assertEqual(response.data["category_name"], INGREDIENTS_CATEGORY)
+        self.ingredient.refresh_from_db()
+        self.assertEqual(self.ingredient.group_category_id, dairy.id)
+        self.assertEqual(self.ingredient.category_id, self.category.id)
+
     def test_export_ingredients_csv(self):
         csv_text = export_ingredients_csv()
         self.assertIn("unit_cost", csv_text)
         self.assertIn("Butter", csv_text)
-        self.assertNotIn("category", csv_text)
+        self.assertIn("category", csv_text.splitlines()[0])
 
     def test_import_ingredients_csv_creates(self):
         csv_file = io.BytesIO(b"name,unit_cost,remaining_qty\nFlour,1.00,50\n")
@@ -273,6 +288,25 @@ class IngredientCsvTests(TestCase):
         self.assertEqual(result["created"], 1)
         product = Product.objects.get(name="Flour")
         self.assertEqual(product.category.name, INGREDIENTS_CATEGORY)
+
+    def test_import_ingredients_csv_sets_group_category(self):
+        csv_file = io.BytesIO(
+            b"name,category,unit_cost,remaining_qty\nMilk,Dairy,2.50,10\n"
+        )
+        result = import_ingredients_csv(csv_file)
+        self.assertEqual(result["created"], 1)
+        product = Product.objects.get(name="Milk")
+        self.assertEqual(product.category.name, INGREDIENTS_CATEGORY)
+        self.assertEqual(product.group_category.name, "Dairy")
+
+    def test_import_ingredients_csv_rejects_reserved_group_category(self):
+        csv_file = io.BytesIO(
+            b"name,category,unit_cost\nMilk,Ingredients,2.50\n"
+        )
+        result = import_ingredients_csv(csv_file)
+        self.assertEqual(result["created"], 0)
+        self.assertTrue(result["errors"])
+        self.assertIn("reserved", result["errors"][0]["message"])
 
     def test_import_ingredients_csv_falls_back_to_name_when_id_missing(self):
         csv_file = io.BytesIO(b"id,name,unit_cost\n99999,Butter,9.50\n")

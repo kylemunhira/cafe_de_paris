@@ -1,0 +1,517 @@
+{% extends "ui/base.html" %}
+{% load static %}
+
+{% block title %}Branch Transfers — Café de Paris{% endblock %}
+{% block page_title %}Branch → Branch{% endblock %}
+
+{% block content %}
+<div class="stat-grid" id="branch-stats" style="margin-bottom: 1.25rem;">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
+</div>
+
+<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New branch transfer</h3>
+  <form id="transfer-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="from-branch">From branch</label>
+        <select id="from-branch" required{% if not can_filter_any_branch %} disabled{% endif %}>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="to-branch">To branch</label>
+        <select id="to-branch" required>
+          <option value="">Select destination…</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row" style="align-items: end;">
+      <div class="form-group" style="flex: 2;">
+        <label for="product">Product</label>
+        <select id="product" class="searchable-select">
+          <option value="">Select product…</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 120px;">
+        <label for="quantity">Qty</label>
+        <input type="number" id="quantity" min="0.001" step="0.001" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 0 0 auto;">
+        <button type="button" id="add-line-btn" class="btn btn-ghost">Add product</button>
+      </div>
+    </div>
+    <p id="stock-hint" style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-muted);"></p>
+
+    <div class="table-wrap" id="lines-wrap" style="display: none; margin-bottom: 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th style="text-align: right;">Qty</th>
+            <th style="text-align: right;">Available</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body"></tbody>
+      </table>
+    </div>
+
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create transfer</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button class="category-tab active" data-filter="all">All</button>
+    <button class="category-tab" data-filter="requested">Requested</button>
+    <button class="category-tab" data-filter="approved">Approved</button>
+    <button class="category-tab" data-filter="dispatched">Dispatched</button>
+    <button class="category-tab" data-filter="delivered">Delivered</button>
+    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+  </div>
+  <div class="table-wrap" id="transfers-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
+const CAN_RECEIVE_BRANCH = "{{ can_receive_branch_transfers|yesno:'true,false' }}" === "true";
+const CAN_FILTER_ANY = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
+const STAFF_BRANCH_ID = "{{ staff_branch_id|default_if_none:'' }}";
+const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
+
+let allNotes = [];
+let sourceInventory = [];
+let sourceBranches = [];
+let destinationBranches = [];
+let products = [];
+let draftLines = [];
+let activeFilter = "all";
+let submitFrozenUntil = 0;
+const sortState = createSortState("created_at", "desc");
+
+const NOTE_SORT = {
+  id: (n) => Number(n.id),
+  products: (n) => formatLineSummary(n),
+  line_count: (n) => Number(n.line_count ?? n.lines?.length ?? 0),
+  total_quantity: (n) => Number(n.total_quantity),
+  from_branch_name: (n) => n.from_branch_name || "",
+  to_branch_name: (n) => n.to_branch_name || "",
+  status: (n) => n.status || "",
+  created_at: (n) => n.created_at || "",
+};
+
+const fromBranchSelect = document.getElementById("from-branch");
+const toBranchSelect = document.getElementById("to-branch");
+const productSelect = document.getElementById("product");
+const quantityInput = document.getElementById("quantity");
+const stockHint = document.getElementById("stock-hint");
+const transfersTable = document.getElementById("transfers-table");
+const branchStats = document.getElementById("branch-stats");
+const transferForm = document.getElementById("transfer-form");
+const linesWrap = document.getElementById("lines-wrap");
+const linesBody = document.getElementById("lines-body");
+const submitBtn = document.getElementById("submit-btn");
+const addLineBtn = document.getElementById("add-line-btn");
+
+initSearchableSelect(productSelect);
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "0";
+}
+
+function getSourceStock(productId) {
+  const row = sourceInventory.find(i => String(i.product) === String(productId));
+  return row ? Number(row.quantity) : 0;
+}
+
+function getProductName(productId) {
+  return products.find(p => String(p.id) === String(productId))?.name || `Product #${productId}`;
+}
+
+function updateStockHint() {
+  const productId = productSelect.value;
+  if (!productId) {
+    stockHint.textContent = "Stock leaves the sending branch when you dispatch.";
+    return;
+  }
+  const available = getSourceStock(productId);
+  stockHint.textContent = `${formatQty(available)} available at source · deducted on dispatch`;
+}
+
+function renderDraftLines() {
+  linesWrap.style.display = draftLines.length ? "block" : "none";
+  submitBtn.disabled = draftLines.length === 0 || Date.now() < submitFrozenUntil;
+  linesBody.innerHTML = draftLines.map((line, index) => `
+    <tr>
+      <td>${line.product_name}</td>
+      <td style="text-align: right;">${formatQty(line.quantity)}</td>
+      <td style="text-align: right;">${formatQty(getSourceStock(line.product))}</td>
+      <td style="text-align: right;">
+        <button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderBranchStats() {
+  const totalSkus = sourceInventory.filter(i => Number(i.quantity) > 0).length;
+  const pending = allNotes.filter(n => ["requested", "approved", "dispatched"].includes(n.status)).length;
+
+  branchStats.innerHTML = `
+    <div class="card stat-card">
+      <div class="label">SKUs in stock (source)</div>
+      <div class="value">${totalSkus}</div>
+      <div class="sub">${sourceBranches[0]?.name || "—"}</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Active transfers</div>
+      <div class="value">${pending}</div>
+      <div class="sub">Requested / approved / in transit</div>
+    </div>
+  `;
+}
+
+function noteActions(note) {
+  const id = note.id;
+  const actions = [
+    `<a href="${printUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-ghost btn-sm">Print</a>`,
+  ];
+
+  const isSourceStaff = CAN_FILTER_ANY || String(note.from_branch) === String(STAFF_BRANCH_ID);
+  const isDestStaff = CAN_FILTER_ANY || String(note.to_branch) === String(STAFF_BRANCH_ID);
+
+  if (note.status === "requested" && isSourceStaff) {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  } else if (note.status === "approved" && isSourceStaff) {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="dispatch" data-id="${id}">Dispatch</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
+  } else if (note.status === "dispatched" && (CAN_RECEIVE || (CAN_RECEIVE_BRANCH && isDestStaff))) {
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="deliver" data-id="${id}">Receive</button>`);
+  }
+
+  return actions.join(" ");
+}
+
+function formatLineSummary(note) {
+  if (!note.lines?.length) return "—";
+  const preview = note.lines.slice(0, 2).map(l => `${l.product_name} (${formatQty(l.quantity)})`);
+  const extra = note.lines.length > 2 ? ` +${note.lines.length - 2} more` : "";
+  return preview.join(", ") + extra;
+}
+
+function formatReceiptSummary(note) {
+  if (!note.lines?.length) return "";
+  return note.lines
+    .map(l => `${l.product_name} (${formatQty(l.quantity)})`)
+    .join(", ");
+}
+
+function transferActionToast(action, updated) {
+  const noteRef = `DN-${String(updated.id).padStart(5, "0")}`;
+  const summary = formatReceiptSummary(updated);
+  if (action === "approve") {
+    return `${noteRef} approved — ready to dispatch from ${updated.from_branch_name}.`;
+  }
+  if (action === "dispatch") {
+    return `${noteRef} dispatched from ${updated.from_branch_name}. Awaiting GRV at ${updated.to_branch_name}.`;
+  }
+  if (action === "deliver") {
+    return summary
+      ? `Stock added at ${updated.to_branch_name}: ${summary}`
+      : `Stock added at ${updated.to_branch_name} (${noteRef})`;
+  }
+  return `Transfer ${noteRef} ${action}d`;
+}
+
+function renderNotes() {
+  const filtered = sortItems(
+    activeFilter === "all" ? allNotes : allNotes.filter(n => n.status === activeFilter),
+    sortState,
+    NOTE_SORT,
+  );
+
+  if (!filtered.length) {
+    transfersTable.innerHTML = `<div class="empty-state"><p>No branch transfers found</p></div>`;
+    return;
+  }
+
+  transfersTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh("Note", "id", sortState)}
+          ${sortTh("Products", "products", sortState)}
+          ${sortTh("Items", "line_count", sortState)}
+          ${sortTh("Total qty", "total_quantity", sortState)}
+          ${sortTh("From", "from_branch_name", sortState)}
+          ${sortTh("To", "to_branch_name", sortState)}
+          ${sortTh("Status", "status", sortState)}
+          ${sortTh("Date", "created_at", sortState)}
+          ${actionTh()}
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(n => `
+          <tr>
+            <td><strong>DN-${String(n.id).padStart(5, "0")}</strong></td>
+            <td style="max-width: 260px;">${formatLineSummary(n)}</td>
+            <td>${n.line_count || n.lines?.length || 0}</td>
+            <td>${formatQty(n.total_quantity)}</td>
+            <td>${n.from_branch_name}</td>
+            <td>${n.to_branch_name}</td>
+            <td>${statusBadge(n.status)}</td>
+            <td>${formatDate(n.created_at)}</td>
+            <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${noteActions(n)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function populateFormOptions() {
+  const selectedFrom = fromBranchSelect.value;
+  const selectedTo = toBranchSelect.value;
+
+  fromBranchSelect.innerHTML = sourceBranches.map(b => `
+    <option value="${b.id}">${b.name}</option>
+  `).join("");
+  if (selectedFrom && sourceBranches.some(b => String(b.id) === String(selectedFrom))) {
+    fromBranchSelect.value = selectedFrom;
+  } else if (STAFF_BRANCH_ID && sourceBranches.some(b => String(b.id) === String(STAFF_BRANCH_ID))) {
+    fromBranchSelect.value = String(STAFF_BRANCH_ID);
+  } else if (sourceBranches.length) {
+    fromBranchSelect.value = String(sourceBranches[0].id);
+  }
+
+  const fromId = fromBranchSelect.value;
+  const destinations = destinationBranches.filter(b => String(b.id) !== String(fromId));
+  toBranchSelect.innerHTML = `
+    <option value="">Select destination…</option>
+    ${destinations.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
+  `;
+  if (selectedTo && destinations.some(b => String(b.id) === String(selectedTo))) {
+    toBranchSelect.value = selectedTo;
+  }
+
+  const availableProducts = products
+    .filter(p => p.is_active)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  productSelect.innerHTML = `
+    <option value="">Select product…</option>
+    ${availableProducts.map(p => {
+      const stock = formatQty(getSourceStock(p.id));
+      return `<option value="${p.id}">${p.name} (${stock})</option>`;
+    }).join("")}
+  `;
+  syncSearchableSelect(productSelect);
+}
+
+async function refreshSourceInventory() {
+  const fromId = fromBranchSelect.value;
+  if (!fromId) {
+    sourceInventory = [];
+    return;
+  }
+  sourceInventory = await fetchAllPages("/inventory/", { branch: String(fromId) });
+  populateFormOptions();
+  updateStockHint();
+  renderDraftLines();
+  renderBranchStats();
+}
+
+async function loadData() {
+  const [branchesData, productsData, notesData] = await Promise.all([
+    apiGet("/branches/"),
+    apiGet("/products/?page_size=1000"),
+    apiGet("/delivery-notes/?branch_only=true"),
+  ]);
+
+  const branches = unwrapList(branchesData);
+  products = unwrapList(productsData);
+  allNotes = unwrapList(notesData);
+
+  const retailBranches = branches.filter(b => b.branch_type === "branch" && b.is_active);
+  destinationBranches = retailBranches;
+
+  if (CAN_FILTER_ANY) {
+    sourceBranches = retailBranches;
+  } else if (STAFF_BRANCH_ID) {
+    sourceBranches = retailBranches.filter(b => String(b.id) === String(STAFF_BRANCH_ID));
+  } else {
+    sourceBranches = [];
+  }
+
+  if (!sourceBranches.length) {
+    transferForm.innerHTML = `<div class="empty-state"><p>No retail branch available for transfers.</p></div>`;
+    transfersTable.innerHTML = `<div class="empty-state"><p>Cannot load branch transfers.</p></div>`;
+    branchStats.innerHTML = "";
+    return;
+  }
+
+  populateFormOptions();
+  await refreshSourceInventory();
+  renderNotes();
+}
+
+productSelect.addEventListener("change", updateStockHint);
+
+fromBranchSelect.addEventListener("change", async () => {
+  draftLines = [];
+  renderDraftLines();
+  populateFormOptions();
+  await refreshSourceInventory();
+});
+
+addLineBtn.addEventListener("click", () => {
+  const productId = productSelect.value;
+  const quantity = Number(quantityInput.value);
+
+  if (!productId) {
+    showToast("Select a product first", true);
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showToast("Enter a valid quantity", true);
+    return;
+  }
+  if (draftLines.some(line => String(line.product) === String(productId))) {
+    showToast("Product already added — remove it first to change quantity", true);
+    return;
+  }
+  const available = getSourceStock(productId);
+  if (quantity > available) {
+    showToast(
+      `Insufficient stock for ${getProductName(productId)}: available ${formatQty(available)}, requested ${formatQty(quantity)}`,
+      true,
+    );
+    return;
+  }
+
+  draftLines.push({
+    product: Number(productId),
+    product_name: getProductName(productId),
+    quantity: String(quantity),
+  });
+
+  productSelect.value = "";
+  quantityInput.value = "";
+  updateStockHint();
+  renderDraftLines();
+});
+
+linesBody.addEventListener("click", (e) => {
+  const btn = e.target.closest(".remove-line-btn");
+  if (!btn) return;
+  draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+transferForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (Date.now() < submitFrozenUntil || submitBtn.disabled) {
+    return;
+  }
+
+  if (!toBranchSelect.value) {
+    showToast("Select a destination branch", true);
+    return;
+  }
+  if (!draftLines.length) {
+    showToast("Add at least one product", true);
+    return;
+  }
+
+  const payload = {
+    from_branch: Number(fromBranchSelect.value),
+    to_branch: Number(toBranchSelect.value),
+    lines: draftLines.map(line => ({
+      product: line.product,
+      quantity: line.quantity,
+    })),
+  };
+
+  const submitLabel = submitBtn.textContent;
+  submitFrozenUntil = Date.now() + 6000;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Creating…";
+
+  const unlockSubmit = () => {
+    submitFrozenUntil = 0;
+    submitBtn.textContent = submitLabel;
+    submitBtn.disabled = draftLines.length === 0;
+  };
+
+  try {
+    const note = await apiPost("/delivery-notes/from-branch/", payload);
+    allNotes.unshift(note);
+    draftLines = [];
+    renderDraftLines();
+    toBranchSelect.value = "";
+    renderNotes();
+    renderBranchStats();
+    showToast(`Transfer DN-${String(note.id).padStart(5, "0")} created`);
+    window.open(printUrlTemplate.replace("{id}", note.id), "_blank");
+    unlockSubmit();
+  } catch (err) {
+    showToast(err.message, true);
+    unlockSubmit();
+  }
+});
+
+transfersTable.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(`/delivery-notes/${id}/${action}/`);
+    const idx = allNotes.findIndex(n => String(n.id) === String(id));
+    if (idx >= 0) allNotes[idx] = updated;
+    else allNotes.unshift(updated);
+    await refreshSourceInventory();
+    renderNotes();
+    showToast(transferActionToast(action, updated));
+  } catch (err) {
+    showToast(err.message, true);
+    renderNotes();
+  }
+});
+
+document.querySelectorAll("[data-filter]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    activeFilter = tab.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach(t => {
+      t.classList.toggle("active", t.dataset.filter === activeFilter);
+    });
+    renderNotes();
+  });
+});
+
+bindTableSort(transfersTable, sortState, renderNotes);
+
+loadData().catch(err => {
+  transfersTable.innerHTML = `<div class="empty-state">Failed to load transfers: ${err.message}</div>`;
+});
+</script>
+{% endblock %}

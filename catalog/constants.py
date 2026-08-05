@@ -84,11 +84,33 @@ STOCK_TAKE_STATION_ORDER = (
     StockTakeStation.SHOP,
 )
 
+# Branch/bakery ingredients tagged with these group categories are counted
+# with shop stock (bottled drinks, retail beverages), not kitchen prep.
+STOCK_TAKE_SHOP_GROUP_CATEGORIES = frozenset({
+    "beverages",
+})
+
+
+def _group_category_name(product):
+    group = getattr(product, "group_category", None)
+    if group is None:
+        return ""
+    return (group.name or "").strip().casefold()
+
+
+def is_stock_take_shop_grouped_ingredient(product):
+    """Ingredient whose group_category should count under Shop."""
+    if not is_ingredient_product(product):
+        return False
+    return _group_category_name(product) in STOCK_TAKE_SHOP_GROUP_CATEGORIES
+
 
 def stock_take_station_for_product(product):
     """Prep area for stock-take grouping: ingredients, bar, or shop."""
     from catalog.models import PosStation
 
+    if is_stock_take_shop_grouped_ingredient(product):
+        return StockTakeStation.SHOP
     if is_ingredient_product(product):
         return StockTakeStation.KITCHEN
     if is_stock_take_bakery_product(product):

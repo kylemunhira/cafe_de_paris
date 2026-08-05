@@ -91,6 +91,11 @@ class ProductAddonGroupSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
+    group_category_name = serializers.CharField(
+        source="group_category.name",
+        read_only=True,
+        allow_null=True,
+    )
     unit_cost = serializers.SerializerMethodField()
     addon_groups = serializers.SerializerMethodField()
     addon_group_ids = serializers.ListField(
@@ -106,6 +111,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "name",
             "category",
             "category_name",
+            "group_category",
+            "group_category_name",
             "selling_price",
             "unit_cost",
             "remaining_qty",
@@ -118,6 +125,9 @@ class ProductSerializer(serializers.ModelSerializer):
             "addon_group_ids",
         ]
         read_only_fields = ["created_at"]
+        extra_kwargs = {
+            "group_category": {"required": False, "allow_null": True},
+        }
 
     def validate_name(self, value):
         name = (value or "").strip()

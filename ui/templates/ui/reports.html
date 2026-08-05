@@ -115,7 +115,7 @@ function renderReport(data) {
       <tbody>
         ${sorted.map(c => {
           const balance = Number(c.account_balance || 0);
-          const balanceClass = balance > 0 ? "text-success" : "";
+          const balanceClass = balance < 0 ? "text-success" : "";
           return `
             <tr>
               <td><strong>${c.full_name}</strong></td>

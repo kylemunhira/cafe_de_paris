@@ -1,5 +1,6 @@
 from .branch_access import (
     user_can_access_bakery_transfers,
+    user_can_access_branch_transfers,
     user_can_access_cashier_invoices,
     user_can_access_central_invoices,
     user_can_access_dashboard,
@@ -44,6 +45,8 @@ def nav_access(request):
         "show_bakery_transfers_nav": (management or bakery)
         and user_can_access_bakery_transfers(user),
         "show_stores_transfers_nav": management and user_can_access_stores_transfers(user),
+        "show_branch_transfers_nav": user_can_access_branch_transfers(user)
+        and (management or user_is_cashier(user)),
         "show_central_invoices_nav": management and user_can_access_central_invoices(user),
         "show_grv_nav": user_can_access_grv(user)
         and (management or user_is_grv_staff(user)),

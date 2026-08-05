@@ -8,6 +8,7 @@ from orders.models import Order
 
 from .branch_access import (
     user_can_access_bakery_transfers,
+    user_can_access_branch_transfers,
     user_can_access_cashier_invoices,
     user_can_access_dashboard,
     user_can_access_fiscal_receipts,
@@ -351,6 +352,15 @@ class TransferNavAccessTests(APITestCase):
             role=StaffRole.BRANCH_MANAGER,
         )
 
+        self.retail_manager = User.objects.create_user(
+            username="retailmgr", password="pass"
+        )
+        StaffProfile.objects.create(
+            user=self.retail_manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+        )
+
     def test_bakery_staff_access_flags(self):
         self.assertTrue(user_can_access_bakery_transfers(self.baker))
         self.assertTrue(user_is_baker(self.baker))
@@ -401,6 +411,10 @@ class TransferNavAccessTests(APITestCase):
         self.assertTrue(user_can_collect_payment(self.cashier))
         self.assertTrue(user_is_cashier(self.cashier))
         self.assertFalse(user_can_access_management_console(self.cashier))
+        self.assertTrue(user_can_access_branch_transfers(self.cashier))
+        self.assertTrue(user_can_access_branch_transfers(self.retail_manager))
+        self.assertFalse(user_can_access_branch_transfers(self.branch_manager))
+        self.assertFalse(user_can_access_branch_transfers(self.waiter))
 
     def test_hq_staff_access_flags(self):
         self.assertFalse(user_can_access_bakery_transfers(self.hq_staff))
@@ -536,6 +550,24 @@ class TransferNavAccessTests(APITestCase):
 
         self.client.force_login(self.hq_admin)
         response = self.client.get(reverse("ui:stores-transfers"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_branch_transfers_page_allows_cashier_and_admins(self):
+        self.client.force_login(self.waiter)
+        response = self.client.get(reverse("ui:branch-transfers"))
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_login(self.cashier)
+        response = self.client.get(reverse("ui:branch-transfers"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["show_branch_transfers_nav"])
+
+        self.client.force_login(self.retail_manager)
+        response = self.client.get(reverse("ui:branch-transfers"))
+        self.assertEqual(response.status_code, 200)
+
+        self.client.force_login(self.hq_admin)
+        response = self.client.get(reverse("ui:branch-transfers"))
         self.assertEqual(response.status_code, 200)
 
     def test_grv_page_requires_branch_access(self):

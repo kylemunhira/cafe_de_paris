@@ -626,7 +626,22 @@ class StockTakeStationGroupingTests(TestCase):
             selling_price=Decimal("12.00"),
             daily_stock_take=True,
         )
-        for product in (self.flour, self.gin, self.croissant, self.carrot_cake, self.mug):
+        self.beverages_group = ProductCategory.objects.create(name="Beverages")
+        self.seven_up = Product.objects.create(
+            name="7 UP",
+            category=self.ingredient_cat,
+            group_category=self.beverages_group,
+            selling_price=Decimal("2.00"),
+            daily_stock_take=True,
+        )
+        for product in (
+            self.flour,
+            self.gin,
+            self.croissant,
+            self.carrot_cake,
+            self.mug,
+            self.seven_up,
+        ):
             BranchInventory.objects.create(
                 branch=self.branch,
                 product=product,
@@ -655,3 +670,5 @@ class StockTakeStationGroupingTests(TestCase):
         self.assertEqual(lines["Carrot Cake"]["stock_take_station_display"], "Shop")
         self.assertEqual(lines["Mug"]["stock_take_station"], "shop")
         self.assertEqual(lines["Mug"]["stock_take_station_display"], "Shop")
+        self.assertEqual(lines["7 UP"]["stock_take_station"], "shop")
+        self.assertEqual(lines["7 UP"]["stock_take_station_display"], "Shop")

@@ -23,11 +23,12 @@ def build_customer_balances_report(*, search=None, non_zero_only=False):
             )
 
     if non_zero_only:
-        qs = qs.filter(account_balance__gt=0)
+        qs = qs.exclude(account_balance=0)
 
-    customers = list(qs.order_by("-account_balance", "first_name", "last_name", "id"))
+    # Most prepaid credit (most negative) first, then debtors.
+    customers = list(qs.order_by("account_balance", "first_name", "last_name", "id"))
     total_balance = qs.aggregate(total=Sum("account_balance"))["total"] or Decimal("0")
-    with_balance = sum(1 for customer in customers if customer.account_balance > 0)
+    with_balance = sum(1 for customer in customers if customer.account_balance != 0)
 
     return {
         "filters": {

@@ -76,11 +76,13 @@ def build_customer_statement_report(
         )
         period = {"from": from_date.isoformat(), "to": to_date.isoformat()}
 
+    # Credits reduce what is owed / increase prepaid (negative deltas).
+    # Debits increase what is owed (positive deltas).
     total_credits = _quantize(
-        sum((txn.amount for txn in transactions if txn.amount > 0), Decimal("0"))
+        sum((-txn.amount for txn in transactions if txn.amount < 0), Decimal("0"))
     )
     total_debits = _quantize(
-        sum((-txn.amount for txn in transactions if txn.amount < 0), Decimal("0"))
+        sum((txn.amount for txn in transactions if txn.amount > 0), Decimal("0"))
     )
 
     return {

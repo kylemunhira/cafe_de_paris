@@ -1082,6 +1082,175 @@ class StoresTransferTests(TestCase):
         self.assertEqual(response.data["payment_status"], "unpaid")
 
 
+class BranchTransferTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.branch_a = Branch.objects.create(
+            name="Highland",
+            branch_type=BranchType.BRANCH,
+            code="HIG",
+        )
+        self.branch_b = Branch.objects.create(
+            name="Churchill",
+            branch_type=BranchType.BRANCH,
+            code="CHU",
+        )
+        self.stores = Branch.objects.create(
+            name="Central Stores",
+            branch_type=BranchType.STORES,
+            code="STR",
+        )
+        self.cashier = User.objects.create_user(username="cashier_a", password="pass")
+        StaffProfile.objects.create(
+            user=self.cashier,
+            branch=self.branch_a,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.manager = User.objects.create_user(username="manager_a", password="pass")
+        StaffProfile.objects.create(
+            user=self.manager,
+            branch=self.branch_a,
+            role=StaffRole.BRANCH_MANAGER,
+        )
+        self.cashier_b = User.objects.create_user(username="cashier_b", password="pass")
+        StaffProfile.objects.create(
+            user=self.cashier_b,
+            branch=self.branch_b,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.hq_admin = User.objects.create_user(username="hqboss", password="pass")
+        StaffProfile.objects.create(
+            user=self.hq_admin,
+            branch=self.branch_a,
+            role=StaffRole.HQ_ADMIN,
+        )
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Espresso Beans",
+            category=category,
+            selling_price=Decimal("5.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch_a,
+            product=self.product,
+            quantity=Decimal("20"),
+        )
+
+    def test_branch_to_branch_workflow_deducts_on_dispatch(self):
+        self.client.force_authenticate(user=self.cashier)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-branch/",
+            {
+                "from_branch": self.branch_a.id,
+                "to_branch": self.branch_b.id,
+                "lines": [{"product": self.product.id, "quantity": "5"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.data["status"], "requested")
+        note_id = create_response.data["id"]
+
+        source = BranchInventory.objects.get(branch=self.branch_a, product=self.product)
+        self.assertEqual(source.quantity, Decimal("20"))
+
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], "approved")
+        source.refresh_from_db()
+        self.assertEqual(source.quantity, Decimal("20"))
+
+        dispatch_response = self.client.post(f"/api/delivery-notes/{note_id}/dispatch/")
+        self.assertEqual(dispatch_response.status_code, 200)
+        self.assertEqual(dispatch_response.data["status"], "dispatched")
+        source.refresh_from_db()
+        self.assertEqual(source.quantity, Decimal("15"))
+        self.assertFalse(
+            BranchInventory.objects.filter(
+                branch=self.branch_b, product=self.product
+            ).exists()
+        )
+
+        self.client.force_authenticate(user=self.cashier_b)
+        deliver_response = self.client.post(f"/api/delivery-notes/{note_id}/deliver/")
+        self.assertEqual(deliver_response.status_code, 200)
+        self.assertEqual(deliver_response.data["status"], "delivered")
+        dest = BranchInventory.objects.get(branch=self.branch_b, product=self.product)
+        self.assertEqual(dest.quantity, Decimal("5"))
+
+    def test_cashier_cannot_transfer_from_other_branch(self):
+        self.client.force_authenticate(user=self.cashier_b)
+        response = self.client.post(
+            "/api/delivery-notes/from-branch/",
+            {
+                "from_branch": self.branch_a.id,
+                "to_branch": self.branch_b.id,
+                "lines": [{"product": self.product.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_transfer_to_stores(self):
+        self.client.force_authenticate(user=self.cashier)
+        response = self.client.post(
+            "/api/delivery-notes/from-branch/",
+            {
+                "from_branch": self.branch_a.id,
+                "to_branch": self.stores.id,
+                "lines": [{"product": self.product.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_hq_admin_can_create_branch_transfer(self):
+        self.client.force_authenticate(user=self.hq_admin)
+        response = self.client.post(
+            "/api/delivery-notes/from-branch/",
+            {
+                "from_branch": self.branch_a.id,
+                "to_branch": self.branch_b.id,
+                "lines": [{"product": self.product.id, "quantity": "3"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_branch_manager_can_create_branch_transfer(self):
+        self.client.force_authenticate(user=self.manager)
+        response = self.client.post(
+            "/api/delivery-notes/from-branch/",
+            {
+                "from_branch": self.branch_a.id,
+                "to_branch": self.branch_b.id,
+                "lines": [{"product": self.product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_dispatch_requires_sufficient_stock(self):
+        self.client.force_authenticate(user=self.cashier)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-branch/",
+            {
+                "from_branch": self.branch_a.id,
+                "to_branch": self.branch_b.id,
+                "lines": [{"product": self.product.id, "quantity": "25"}],
+            },
+            format="json",
+        )
+        note_id = create_response.data["id"]
+        self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        dispatch_response = self.client.post(f"/api/delivery-notes/{note_id}/dispatch/")
+        self.assertEqual(dispatch_response.status_code, 400)
+        source = BranchInventory.objects.get(branch=self.branch_a, product=self.product)
+        self.assertEqual(source.quantity, Decimal("20"))
+
+
 class OrderRecipeConsumptionTests(TestCase):
     def setUp(self):
         self.client = APIClient()

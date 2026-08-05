@@ -89,7 +89,7 @@ class ImportCustomerBalancesWorkbookTests(TestCase):
         self.customer = Customer.objects.create(
             first_name="Claire",
             phone="783606275",
-            account_balance=Decimal("8.50"),
+            account_balance=Decimal("-8.50"),
         )
         self.owing = Customer.objects.create(
             first_name="Abbas",
@@ -114,8 +114,8 @@ class ImportCustomerBalancesWorkbookTests(TestCase):
     def test_import_sets_balance_and_records_adjustment(self):
         path = self._write_workbook(
             [
-                ["Claire", "0783606275", "+8.50"],
-                ["Abbas Kanthraria", "0712602509", "-0.50"],
+                ["Claire", "0783606275", "-8.50"],
+                ["Abbas Kanthraria", "0712602509", "0.50"],
                 ["Ghost Customer", "0700000000", "5.00"],
             ]
         )
@@ -125,8 +125,8 @@ class ImportCustomerBalancesWorkbookTests(TestCase):
         self.assertEqual(result["missing"], 1)
 
         self.owing.refresh_from_db()
-        self.assertEqual(self.owing.account_balance, Decimal("-0.50"))
+        self.assertEqual(self.owing.account_balance, Decimal("0.50"))
         txn = CustomerAccountTransaction.objects.get(customer=self.owing)
         self.assertEqual(txn.transaction_type, CustomerAccountTransactionType.ADJUSTMENT)
-        self.assertEqual(txn.amount, Decimal("-0.50"))
+        self.assertEqual(txn.amount, Decimal("0.50"))
         self.assertTrue(txn.is_balance_adjustment)

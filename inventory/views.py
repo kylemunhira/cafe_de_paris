@@ -4,6 +4,7 @@ from accounts.branch_access import (
     filter_by_branch_participation,
     get_staff_branch_id,
     user_can_access_bakery_transfers,
+    user_can_access_branch_transfers,
     user_can_access_central_invoices,
     user_can_access_stores_transfers,
     user_can_approve_delivery,
@@ -42,8 +43,10 @@ from branches.models import Branch, BranchType
 
 from .serializers import (
     BAKERY_TRANSFER_DESTINATION_TYPES,
+    BRANCH_TRANSFER_DESTINATION_TYPES,
     BakeryDeliveryNoteCreateSerializer,
     BakeryTransferCreateSerializer,
+    BranchDeliveryNoteCreateSerializer,
     BranchInventorySerializer,
     CentralInvoiceCreateSerializer,
     CentralInvoiceSerializer,
@@ -303,6 +306,7 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         branch_id = self.request.query_params.get("branch")
         bakery_only = self.request.query_params.get("bakery_only")
         stores_only = self.request.query_params.get("stores_only")
+        branch_only = self.request.query_params.get("branch_only")
         invoiced_only = self.request.query_params.get("invoiced_only")
         payment_status = self.request.query_params.get("payment_status")
         incoming = self.request.query_params.get("incoming")
@@ -338,6 +342,11 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
                 from_branch__branch_type=BranchType.STORES,
                 to_branch__branch_type__in=STORES_TRANSFER_DESTINATION_TYPES,
             )
+        if branch_only and branch_only.lower() in ("1", "true", "yes"):
+            queryset = queryset.filter(
+                from_branch__branch_type=BranchType.BRANCH,
+                to_branch__branch_type__in=BRANCH_TRANSFER_DESTINATION_TYPES,
+            )
         if invoiced_only and invoiced_only.lower() in ("1", "true", "yes"):
             queryset = queryset.exclude(invoice_number__isnull=True).exclude(
                 invoice_number=""
@@ -353,6 +362,23 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
                 "Only central stores staff or HQ admins can create delivery notes."
             )
         serializer = StoresDeliveryNoteCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save()
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(
+            DeliveryNoteSerializer(note).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=["post"], url_path="from-branch")
+    def create_from_branch(self, request):
+        if not user_can_access_branch_transfers(request.user):
+            raise PermissionDenied(
+                "Only cashiers, branch managers, or HQ admins can create branch transfers."
+            )
+        serializer = BranchDeliveryNoteCreateSerializer(
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         note = serializer.save()
         note = self.get_queryset().get(pk=note.pk)
@@ -396,6 +422,8 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
                 detail = "Only the receiving branch can approve this delivery."
             elif from_branch_type == BranchType.STORES:
                 detail = "Only central stores or the receiving branch can approve this delivery."
+            elif from_branch_type == BranchType.BRANCH:
+                detail = "Only the sending or receiving branch can approve this transfer."
             else:
                 detail = "Only the sending or receiving branch can approve this delivery."
             raise PermissionDenied(detail)
@@ -405,6 +433,8 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
                 detail = "Only central bakery staff or HQ admins can manage outgoing deliveries."
             elif from_branch_type == BranchType.STORES:
                 detail = "Only central stores staff or HQ admins can manage outgoing deliveries."
+            elif from_branch_type == BranchType.BRANCH:
+                detail = "Only cashiers or admins at the sending branch can manage this transfer."
             else:
                 detail = "Only the sending branch can manage outgoing deliveries."
             raise PermissionDenied(detail)
@@ -494,7 +524,10 @@ class StockTakeViewSet(viewsets.ModelViewSet):
     queryset = StockTake.objects.select_related(
         "branch",
         "created_by",
-    ).prefetch_related("lines__product__category").all()
+    ).prefetch_related(
+        "lines__product__category",
+        "lines__product__group_category",
+    ).all()
     serializer_class = StockTakeSerializer
     http_method_names = ["get", "post", "patch", "head", "options"]
 

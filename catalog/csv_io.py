@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 
-from .constants import ALL_INGREDIENT_CATEGORIES, INGREDIENTS_CATEGORY
+from .constants import ALL_INGREDIENT_CATEGORIES, ARCHIVED_CATEGORY, INGREDIENTS_CATEGORY
 from .models import Product, ProductCategory
 
 
@@ -45,6 +45,7 @@ CSV_HEADERS = [
 INGREDIENT_CSV_HEADERS = [
     "id",
     "name",
+    "category",
     "unit_cost",
     "remaining_qty",
     "is_active",
@@ -76,7 +77,7 @@ def export_ingredients_csv(*, category_name=None, branch=None):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=INGREDIENT_CSV_HEADERS)
     writer.writeheader()
-    queryset = Product.objects.select_related("category").filter(
+    queryset = Product.objects.select_related("category", "group_category").filter(
         category__name__in=ALL_INGREDIENT_CATEGORIES,
     )
     if category_name:
@@ -98,6 +99,7 @@ def export_ingredients_csv(*, category_name=None, branch=None):
             {
                 "id": product.id,
                 "name": product.name,
+                "category": product.group_category.name if product.group_category_id else "",
                 "unit_cost": product.selling_price,
                 "remaining_qty": remaining_qty,
                 "is_active": "true" if product.is_active else "false",
@@ -319,6 +321,19 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY, bran
                     default=False,
                 )
 
+                group_category = None
+                category_header = normalized_headers.get("category")
+                if category_header is not None:
+                    group_name = str(row.get(category_header, "") or "").strip()
+                    if group_name:
+                        if group_name in ALL_INGREDIENT_CATEGORIES or group_name == ARCHIVED_CATEGORY:
+                            raise ValueError(
+                                f"category {group_name!r} is reserved — pick a product category"
+                            )
+                        group_category, _ = ProductCategory.objects.get_or_create(
+                            name=group_name
+                        )
+
                 id_header = normalized_headers.get("id")
                 product_id = str(row.get(id_header, "")).strip() if id_header else ""
 
@@ -349,12 +364,15 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY, bran
                         product.remaining_qty = remaining_qty
                     product.is_active = is_active
                     product.daily_stock_take = daily_stock_take
+                    if category_header is not None:
+                        product.group_category = group_category
                     product.save()
                     updated += 1
                 else:
                     product = Product.objects.create(
                         name=name,
                         category=category,
+                        group_category=group_category,
                         selling_price=unit_cost,
                         remaining_qty=remaining_qty or Decimal("0"),
                         is_active=is_active,

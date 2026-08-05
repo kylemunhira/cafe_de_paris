@@ -1287,7 +1287,7 @@ function usesCostPrice(customer) {
 
 function customerAvailableCredit(customer) {
   if (!customer) return 0;
-  return Number(customer.account_balance) + Number(customer.credit_limit || 0);
+  return Number(customer.credit_limit || 0) - Number(customer.account_balance);
 }
 
 function updateAccountBalanceHint() {

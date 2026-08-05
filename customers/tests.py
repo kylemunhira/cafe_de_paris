@@ -74,9 +74,10 @@ class CustomerAccountTests(TestCase):
             recorded_by=self.user,
         )
         self.customer.refresh_from_db()
-        self.assertEqual(self.customer.account_balance, Decimal("20.00"))
+        self.assertEqual(self.customer.account_balance, Decimal("-20.00"))
         self.assertEqual(txn.transaction_type, CustomerAccountTransactionType.DEPOSIT)
-        self.assertEqual(txn.balance_after, Decimal("20.00"))
+        self.assertEqual(txn.amount, Decimal("-20.00"))
+        self.assertEqual(txn.balance_after, Decimal("-20.00"))
 
     def test_deposit_in_foreign_currency(self):
         deposit_to_account(
@@ -87,7 +88,7 @@ class CustomerAccountTests(TestCase):
             recorded_by=self.user,
         )
         self.customer.refresh_from_db()
-        self.assertEqual(self.customer.account_balance, Decimal("10.00"))
+        self.assertEqual(self.customer.account_balance, Decimal("-10.00"))
 
     def test_deposit_api(self):
         response = self.client.post(
@@ -101,9 +102,9 @@ class CustomerAccountTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["account_balance"], Decimal("50.00"))
+        self.assertEqual(response.data["account_balance"], Decimal("-50.00"))
         self.customer.refresh_from_db()
-        self.assertEqual(self.customer.account_balance, Decimal("50.00"))
+        self.assertEqual(self.customer.account_balance, Decimal("-50.00"))
 
     def test_waiter_cannot_record_deposit(self):
         waiter = User.objects.create_user(username="waiter", password="pass")
@@ -144,7 +145,8 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(self.customer.account_balance, Decimal("0.00"))
 
     def test_superuser_can_deposit_negative_amount(self):
-        self.customer.account_balance = Decimal("25.00")
+        # Prepaid credit of 25 becomes less prepaid after a 10 debit.
+        self.customer.account_balance = Decimal("-25.00")
         self.customer.save(update_fields=["account_balance"])
         admin = User.objects.create_superuser(
             username="admin",
@@ -165,11 +167,11 @@ class CustomerAccountTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["account_balance"], Decimal("15.00"))
-        self.assertEqual(Decimal(str(response.data["transaction"]["amount"])), Decimal("-10.00"))
+        self.assertEqual(response.data["account_balance"], Decimal("-15.00"))
+        self.assertEqual(Decimal(str(response.data["transaction"]["amount"])), Decimal("10.00"))
         self.assertEqual(response.data["transaction"]["statement_label"], "Account debit")
         self.customer.refresh_from_db()
-        self.assertEqual(self.customer.account_balance, Decimal("15.00"))
+        self.assertEqual(self.customer.account_balance, Decimal("-15.00"))
 
     def test_superuser_can_adjust_balance_negative(self):
         self.customer.account_balance = Decimal("20.00")
@@ -257,7 +259,7 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(self.customer.account_balance, Decimal("0.00"))
 
     def test_pay_order_from_account(self):
-        self.customer.account_balance = Decimal("20.00")
+        self.customer.account_balance = Decimal("-20.00")
         self.customer.save(update_fields=["account_balance"])
         order = Order.objects.create(branch=self.branch, customer=self.customer)
         order.items.create(
@@ -274,7 +276,7 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(order.status, OrderStatus.PAID)
         self.assertEqual(order.payment_method, PaymentMethod.ACCOUNT)
         self.assertEqual(order.amount_paid, Decimal("7.00"))
-        self.assertEqual(self.customer.account_balance, Decimal("13.00"))
+        self.assertEqual(self.customer.account_balance, Decimal("-13.00"))
         self.assertEqual(
             CustomerAccountTransaction.objects.filter(
                 transaction_type=CustomerAccountTransactionType.PAYMENT
@@ -283,7 +285,7 @@ class CustomerAccountTests(TestCase):
         )
 
     def test_pay_order_from_account_via_api(self):
-        self.customer.account_balance = Decimal("20.00")
+        self.customer.account_balance = Decimal("-20.00")
         self.customer.save(update_fields=["account_balance"])
         order = Order.objects.create(branch=self.branch, customer=self.customer)
         order.items.create(
@@ -300,10 +302,10 @@ class CustomerAccountTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.customer.refresh_from_db()
-        self.assertEqual(self.customer.account_balance, Decimal("13.00"))
+        self.assertEqual(self.customer.account_balance, Decimal("-13.00"))
 
     def test_pay_order_from_account_insufficient_balance(self):
-        self.customer.account_balance = Decimal("5.00")
+        self.customer.account_balance = Decimal("-5.00")
         self.customer.save(update_fields=["account_balance"])
         order = Order.objects.create(branch=self.branch, customer=self.customer)
         order.items.create(
@@ -338,7 +340,7 @@ class CustomerAccountTests(TestCase):
         self.customer.refresh_from_db()
 
         self.assertEqual(order.status, OrderStatus.PAID)
-        self.assertEqual(self.customer.account_balance, Decimal("-3.50"))
+        self.assertEqual(self.customer.account_balance, Decimal("3.50"))
 
     def test_pay_order_from_account_exceeds_credit_limit(self):
         self.customer.account_balance = Decimal("0.00")
@@ -377,7 +379,7 @@ class CustomerAccountTests(TestCase):
         )
         response = self.client.get(f"/api/customers/{self.customer.id}/transactions/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["account_balance"], Decimal("10.00"))
+        self.assertEqual(response.data["account_balance"], Decimal("-10.00"))
         self.assertEqual(len(response.data["transactions"]), 1)
 
     def test_transaction_statement_print(self):
@@ -421,7 +423,7 @@ class CustomerAccountTests(TestCase):
         response = self.client.get(f"/api/customers/{self.customer.id}/statement/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Decimal(str(response.data["opening_balance"])), Decimal("0"))
-        self.assertEqual(Decimal(str(response.data["closing_balance"])), Decimal("10.00"))
+        self.assertEqual(Decimal(str(response.data["closing_balance"])), Decimal("-10.00"))
         self.assertEqual(Decimal(str(response.data["total_credits"])), Decimal("10.00"))
         self.assertEqual(len(response.data["transactions"]), 1)
 
@@ -438,8 +440,8 @@ class CustomerAccountTests(TestCase):
             from_date="2099-01-01",
             to_date="2099-01-31",
         )
-        self.assertEqual(report["opening_balance"], Decimal("10.00"))
-        self.assertEqual(report["closing_balance"], Decimal("10.00"))
+        self.assertEqual(report["opening_balance"], Decimal("-10.00"))
+        self.assertEqual(report["closing_balance"], Decimal("-10.00"))
         self.assertEqual(report["transaction_count"], 0)
 
     def test_statement_all_time_print(self):
@@ -470,9 +472,9 @@ class CustomerAccountTests(TestCase):
         report = build_customer_balances_report()
         self.assertEqual(report["summary"]["customer_count"], 2)
         self.assertEqual(report["summary"]["customers_with_balance"], 1)
-        self.assertEqual(report["summary"]["total_balance"], Decimal("15.00"))
+        self.assertEqual(report["summary"]["total_balance"], Decimal("-15.00"))
         self.assertEqual(report["customers"][0]["full_name"], "John Doe")
-        self.assertEqual(report["customers"][0]["account_balance"], Decimal("15.00"))
+        self.assertEqual(report["customers"][0]["account_balance"], Decimal("-15.00"))
 
     def test_customer_balances_report_non_zero_filter(self):
         deposit_to_account(
@@ -501,7 +503,7 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(response.data["summary"]["customer_count"], 1)
         self.assertEqual(
             Decimal(str(response.data["summary"]["total_balance"])),
-            Decimal("12.50"),
+            Decimal("-12.50"),
         )
 
     def test_customer_balances_report_page(self):
@@ -510,7 +512,7 @@ class CustomerAccountTests(TestCase):
         self.assertContains(response, "Customer Balances Report")
 
     def test_account_payment_receipt_includes_statement(self):
-        self.customer.account_balance = Decimal("20.00")
+        self.customer.account_balance = Decimal("-20.00")
         self.customer.save(update_fields=["account_balance"])
         order = Order.objects.create(branch=self.branch, customer=self.customer)
         order.items.create(

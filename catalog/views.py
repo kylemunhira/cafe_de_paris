@@ -164,7 +164,10 @@ class MenuAddonViewSet(AuditedModelMixin, viewsets.ModelViewSet):
 
 
 class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
-    queryset = Product.objects.select_related("category").prefetch_related(
+    queryset = Product.objects.select_related(
+        "category",
+        "group_category",
+    ).prefetch_related(
         "addon_group_links__group__addons",
     ).all()
     serializer_class = ProductSerializer
@@ -172,6 +175,7 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     audit_fields = (
         "name",
         "category",
+        "group_category",
         "selling_price",
         "remaining_qty",
         "tax_rate",

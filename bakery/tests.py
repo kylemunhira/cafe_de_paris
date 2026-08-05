@@ -45,15 +45,35 @@ class RecipeApiTests(TestCase):
         self.assertEqual(create_response.data["ingredient_name"], "Flour")
         self.assertEqual(create_response.data["ingredient_unit_cost"], "5.00")
         self.assertEqual(create_response.data["line_cost"], Decimal("1.25"))
+        self.assertEqual(create_response.data["ingredient_category"], "Ingredients")
+
+        dairy = ProductCategory.objects.create(name="Dairy")
+        self.butter.group_category = dairy
+        self.butter.save(update_fields=["group_category"])
+        butter_response = self.client.post(
+            "/api/recipes/",
+            {
+                "product": self.croissant.id,
+                "ingredient": self.butter.id,
+                "quantity_required": "0.10",
+            },
+            format="json",
+        )
+        self.assertEqual(butter_response.status_code, 201)
+        self.assertEqual(butter_response.data["ingredient_category"], "Dairy")
 
         list_response = self.client.get(
             f"/api/recipes/?product={self.croissant.id}"
         )
         self.assertEqual(list_response.status_code, 200)
         results = list_response.data.get("results", list_response.data)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(Decimal(results[0]["quantity_required"]), Decimal("0.25"))
-        self.assertEqual(results[0]["line_cost"], Decimal("1.25"))
+        self.assertEqual(len(results), 2)
+        flour_line = next(r for r in results if r["ingredient_name"] == "Flour")
+        self.assertEqual(Decimal(flour_line["quantity_required"]), Decimal("0.25"))
+        self.assertEqual(flour_line["line_cost"], Decimal("1.25"))
+        self.assertEqual(flour_line["ingredient_category"], "Ingredients")
+        butter_line = next(r for r in results if r["ingredient_name"] == "Butter")
+        self.assertEqual(butter_line["ingredient_category"], "Dairy")
 
     def test_accepts_small_fractional_quantities(self):
         response = self.client.post(

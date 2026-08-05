@@ -789,7 +789,7 @@ class DayEndReportTests(TestCase):
         customer = Customer.objects.create(
             first_name="Jane",
             last_name="Doe",
-            account_balance=Decimal("20.00"),
+            account_balance=Decimal("-20.00"),
         )
         deposit_to_account(
             customer=customer,
@@ -816,9 +816,9 @@ class DayEndReportTests(TestCase):
         self.assertEqual(len(report["account_transactions"]), 2)
         self.assertEqual(report["account_transactions"][0]["customer_name"], "Jane Doe")
         self.assertEqual(report["account_transactions"][0]["statement_label"], "Payment received")
-        self.assertEqual(report["account_transactions"][0]["amount"], Decimal("10.00"))
+        self.assertEqual(report["account_transactions"][0]["amount"], Decimal("-10.00"))
         self.assertEqual(report["account_transactions"][1]["statement_label"], "Withdrawal")
-        self.assertEqual(report["account_transactions"][1]["amount"], Decimal("-4.00"))
+        self.assertEqual(report["account_transactions"][1]["amount"], Decimal("4.00"))
         self.assertEqual(report["account_transactions"][1]["order_id"], order.id)
 
     def test_build_day_end_report_groups_payments_by_currency_name(self):
@@ -1521,7 +1521,7 @@ class OrderCancelVoidTests(TestCase):
         customer = Customer.objects.create(
             first_name="Ada",
             last_name="Lovelace",
-            account_balance=Decimal("20.00"),
+            account_balance=Decimal("-20.00"),
         )
         order = Order.objects.create(branch=self.branch, customer=customer)
         order.items.create(
@@ -1537,7 +1537,7 @@ class OrderCancelVoidTests(TestCase):
         )
         self.assertEqual(pay_response.status_code, 200, pay_response.data)
         customer.refresh_from_db()
-        self.assertEqual(customer.account_balance, Decimal("13.00"))
+        self.assertEqual(customer.account_balance, Decimal("-13.00"))
 
         response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
@@ -1545,7 +1545,7 @@ class OrderCancelVoidTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.UNPAID)
         self.assertEqual(order.payment_method, "")
-        self.assertEqual(customer.account_balance, Decimal("20.00"))
+        self.assertEqual(customer.account_balance, Decimal("-20.00"))
         self.assertTrue(
             customer.account_transactions.filter(
                 transaction_type=CustomerAccountTransactionType.REFUND,
@@ -1563,7 +1563,7 @@ class OrderCancelVoidTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.PAID)
         self.assertEqual(order.payment_method, PaymentMethod.ACCOUNT)
-        self.assertEqual(customer.account_balance, Decimal("13.00"))
+        self.assertEqual(customer.account_balance, Decimal("-13.00"))
         self.assertEqual(
             customer.account_transactions.filter(
                 transaction_type=CustomerAccountTransactionType.PAYMENT,
@@ -2211,19 +2211,19 @@ class FamilyStaffCostPriceTests(TestCase):
             first_name="Fam",
             last_name="Ily",
             account_type=CustomerAccountType.FAMILY,
-            account_balance=Decimal("50.00"),
+            account_balance=Decimal("-50.00"),
         )
         self.staff = Customer.objects.create(
             first_name="Staff",
             last_name="Member",
             account_type=CustomerAccountType.STAFF,
-            account_balance=Decimal("50.00"),
+            account_balance=Decimal("-50.00"),
         )
         self.regular = Customer.objects.create(
             first_name="Reg",
             last_name="Ular",
             account_type=CustomerAccountType.REGULAR,
-            account_balance=Decimal("50.00"),
+            account_balance=Decimal("-50.00"),
         )
         self.usd = Currency.objects.create(
             code="USD",
@@ -2347,7 +2347,7 @@ class FamilyStaffCostPriceTests(TestCase):
         )
         self.assertEqual(pay.status_code, 200, pay.data)
         self.family.refresh_from_db()
-        self.assertEqual(self.family.account_balance, Decimal("49.00"))
+        self.assertEqual(self.family.account_balance, Decimal("-49.00"))
 
     def test_customer_serializer_includes_account_type(self):
         response = self.client.get(f"/api/customers/{self.family.id}/")

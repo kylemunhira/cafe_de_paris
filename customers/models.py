@@ -31,13 +31,16 @@ class Customer(models.Model):
         max_digits=12,
         decimal_places=2,
         default=Decimal("0"),
-        help_text="Prepaid balance in base currency.",
+        help_text=(
+            "Account balance in base currency. "
+            "Negative = prepaid credit; positive = amount owed."
+        ),
     )
     credit_limit = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=Decimal("0"),
-        help_text="Maximum allowed negative balance (base currency).",
+        help_text="Maximum allowed positive balance / amount owed (base currency).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -74,7 +77,10 @@ class CustomerAccountTransaction(models.Model):
     amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        help_text="Positive for deposits, negative for payments (base currency).",
+        help_text=(
+            "Signed balance delta in base currency. "
+            "Negative for deposits/refunds, positive for charges."
+        ),
     )
     balance_after = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.ForeignKey(
@@ -122,7 +128,7 @@ class CustomerAccountTransaction(models.Model):
     @property
     def statement_label(self):
         if self.transaction_type == CustomerAccountTransactionType.DEPOSIT:
-            if self.amount < 0:
+            if self.amount > 0:
                 return "Account debit"
             return "Payment received"
         if self.transaction_type == CustomerAccountTransactionType.REFUND:

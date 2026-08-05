@@ -41,6 +41,7 @@ class RecipeViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         "product__category",
         "ingredient",
         "ingredient__category",
+        "ingredient__group_category",
     ).all()
     serializer_class = RecipeSerializer
     audit_entity_type = "recipe"

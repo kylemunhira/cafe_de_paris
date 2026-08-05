@@ -34,10 +34,7 @@ class RecipeSerializer(serializers.ModelSerializer):
         source="product.category.name",
         read_only=True,
     )
-    ingredient_category = serializers.CharField(
-        source="ingredient.category.name",
-        read_only=True,
-    )
+    ingredient_category = serializers.SerializerMethodField()
     ingredient_unit_cost = serializers.DecimalField(
         source="ingredient.selling_price",
         max_digits=10,
@@ -60,6 +57,12 @@ class RecipeSerializer(serializers.ModelSerializer):
             "ingredient_unit_cost",
             "line_cost",
         ]
+
+    def get_ingredient_category(self, obj):
+        group = obj.ingredient.group_category
+        if group is not None:
+            return group.name
+        return obj.ingredient.category.name
 
     def get_line_cost(self, obj):
         return (obj.quantity_required * obj.ingredient.selling_price).quantize(
