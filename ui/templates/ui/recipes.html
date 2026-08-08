@@ -102,7 +102,8 @@ const KITCHEN_CATEGORY_NAMES = new Set([
 const BAKERY_CATEGORY_NAMES = new Set([
   "Breads & pastries", "Cakes & desserts", "Savory",
 ]);
-const INGREDIENT_CATEGORIES = new Set(["Ingredients", "Components"]);
+const RAW_INGREDIENT_CATEGORIES = new Set(["Ingredients", "Branch Ingredients"]);
+const INGREDIENT_CATEGORIES = new Set([...RAW_INGREDIENT_CATEGORIES, "Components"]);
 
 let products = [];
 let recipes = [];
@@ -192,7 +193,7 @@ function updateEditorMetrics(totalCost, sellingPrice) {
 }
 
 function outputProducts() {
-  return products.filter(p => p.category_name !== "Ingredients" && p.is_active);
+  return products.filter(p => p.is_active && !RAW_INGREDIENT_CATEGORIES.has(p.category_name));
 }
 
 function matchesCategoryFilter(categoryName) {
@@ -228,7 +229,7 @@ function recipesByProduct() {
   const grouped = new Map();
   for (const line of recipes) {
     const product = products.find(p => Number(p.id) === Number(line.product));
-    if (!product || !product.is_active || product.category_name === "Ingredients") continue;
+    if (!product || !product.is_active || RAW_INGREDIENT_CATEGORIES.has(product.category_name)) continue;
     if (!matchesCategoryFilter(product.category_name)) continue;
 
     if (!grouped.has(line.product)) {
@@ -249,13 +250,15 @@ function recipesByProduct() {
 }
 
 function availableIngredients(productId) {
-  const usedIds = new Set(recipesForProduct(productId).map(r => r.ingredient));
+  const usedIds = new Set(
+    recipesForProduct(productId).map(r => Number(r.ingredient))
+  );
   return products
     .filter(p =>
       p.is_active &&
       Number(p.id) !== Number(productId) &&
       INGREDIENT_CATEGORIES.has(p.category_name) &&
-      !usedIds.has(p.id)
+      !usedIds.has(Number(p.id))
     )
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -289,7 +292,9 @@ function populateAddIngredientSelect() {
   }
   const options = availableIngredients(selectedProductId);
   addIngredientSelect.innerHTML = `<option value="">Select ingredient…</option>` +
-    options.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+    options.map(p =>
+      `<option value="${p.id}">${p.name} (${p.category_name})</option>`
+    ).join("");
   syncSearchableSelect(addIngredientSelect);
 }
 

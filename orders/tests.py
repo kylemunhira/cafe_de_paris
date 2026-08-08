@@ -390,7 +390,8 @@ class KitchenStationFilterTests(TestCase):
         self.assertIn(self.mixed_order.id, ids)
         self.assertNotIn(kitchen_only.id, ids)
 
-    def test_unassigned_station_items_visible_on_all_kitchen_stations(self):
+    def test_unassigned_station_items_hidden_from_kitchen_stations(self):
+        """No pos_station → not shown or auto-printed on kitchen/bar tablets."""
         unassigned_category = ProductCategory.objects.create(name="Kiddies")
         unassigned_product = Product.objects.create(
             name="Fish Strips",
@@ -398,6 +399,11 @@ class KitchenStationFilterTests(TestCase):
             selling_price=Decimal("6.00"),
         )
         order = Order.objects.create(branch=self.branch, status=OrderStatus.OPEN)
+        order.items.create(
+            product=self.kitchen_product,
+            quantity=Decimal("1"),
+            price=Decimal("8.00"),
+        )
         order.items.create(
             product=unassigned_product,
             quantity=Decimal("1"),
@@ -417,30 +423,24 @@ class KitchenStationFilterTests(TestCase):
         response = self.client.get("/api/orders/?status=open")
         self.assertEqual(response.status_code, 200)
         results = response.data["results"]
-        self.assertEqual(len(results), 3)
-        unassigned = next(row for row in results if row["id"] == order.id)
+        ids = {row["id"] for row in results}
+        self.assertIn(self.mixed_order.id, ids)
+        self.assertIn(order.id, ids)
+        self.assertNotIn(only_unassigned.id, ids)
+        mixed_items = next(row for row in results if row["id"] == order.id)["items"]
         self.assertEqual(
-            [item["product_name"] for item in unassigned["items"]],
-            ["Fish Strips"],
-        )
-        only_unassigned_row = next(
-            row for row in results if row["id"] == only_unassigned.id
-        )
-        self.assertEqual(
-            [item["product_name"] for item in only_unassigned_row["items"]],
-            ["Fish Strips"],
+            [item["product_name"] for item in mixed_items],
+            ["Burger"],
         )
 
         self.client.force_authenticate(user=self.bar_user)
         response = self.client.get("/api/orders/?status=open")
         self.assertEqual(response.status_code, 200)
         results = response.data["results"]
-        self.assertEqual(len(results), 3)
-        unassigned = next(row for row in results if row["id"] == order.id)
-        self.assertEqual(
-            [item["product_name"] for item in unassigned["items"]],
-            ["Fish Strips"],
-        )
+        ids = {row["id"] for row in results}
+        self.assertIn(self.mixed_order.id, ids)
+        self.assertNotIn(order.id, ids)
+        self.assertNotIn(only_unassigned.id, ids)
 
     def test_cancelled_since_excludes_older_cancellations(self):
         from orders.services import cancel_order

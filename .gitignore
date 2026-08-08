@@ -28,6 +28,7 @@ db.sqlite3
 *.sqlite3
 staticfiles/
 media/
+logs/
 
 # Environment & secrets
 .env

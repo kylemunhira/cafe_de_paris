@@ -4,9 +4,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Project .env wins over machine/user env (same server may host other apps).
+load_dotenv(BASE_DIR / ".env", override=True)
 
 SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",

@@ -1,5 +1,3 @@
-from django.db.models import Q
-
 from catalog.models import PosStation
 
 
@@ -16,12 +14,14 @@ def resolve_kitchen_station_filter(user, requested_station=None):
 
 
 def filter_orders_for_kitchen_station(queryset, station):
-    """Keep open orders that include at least one item for this prep station."""
+    """Keep open orders that include at least one item for this prep station.
+
+    Categories with no pos_station are excluded from every station ticket/print.
+    """
     if not station:
         return queryset
     return queryset.filter(
-        Q(items__product__category__pos_station=station)
-        | Q(items__product__category__pos_station="")
+        items__product__category__pos_station=station,
     ).distinct()
 
 
@@ -29,4 +29,4 @@ def order_item_matches_kitchen_station(item, station):
     if not station:
         return True
     category = item.product.category
-    return not category.pos_station or category.pos_station == station
+    return bool(category.pos_station) and category.pos_station == station
