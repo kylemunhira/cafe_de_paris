@@ -199,6 +199,12 @@ function roundMoney(value) {
   return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
+function roundDecimal(value, decimals = 4) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  return Number(amount.toFixed(decimals));
+}
+
 function formatLineAmount(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return formatCurrency(0);
@@ -535,11 +541,11 @@ addLineBtn.addEventListener("click", () => {
   }
 
   const product = products.find(p => String(p.id) === productId);
-  const unitCost = lineTotal / quantity;
+  const unitCost = roundDecimal(lineTotal / quantity);
   draftLines.push({
     product: Number(productId),
     product_name: product.name,
-    quantity,
+    quantity: roundDecimal(quantity),
     unit_cost: unitCost,
   });
 
@@ -594,8 +600,8 @@ poForm.addEventListener("submit", async (e) => {
       notes: notesInput.value.trim(),
       lines: draftLines.map(l => ({
         product: l.product,
-        quantity: l.quantity,
-        unit_cost: l.unit_cost,
+        quantity: roundDecimal(l.quantity),
+        unit_cost: roundDecimal(l.unit_cost),
       })),
     });
     allOrders.unshift(created);
