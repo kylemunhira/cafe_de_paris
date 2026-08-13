@@ -145,7 +145,7 @@ function renderOrders() {
               ${o.status === "open" || o.status === "unpaid" ? `
                 <button class="btn btn-accent btn-sm pay-btn" data-id="${o.id}">Pay</button>
               ` : ""}
-              ${o.status === "open" ? `
+              ${o.status === "open" || o.status === "unpaid" ? `
                 <button class="btn btn-ghost btn-sm cancel-btn" data-id="${o.id}">Cancel</button>
               ` : ""}
               ${o.status === "paid" && o.fiscal_approval_status !== "approved" ? `

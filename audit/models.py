@@ -6,6 +6,8 @@ class AuditAction(models.TextChoices):
     UPDATE = "update", "Update"
     DELETE = "delete", "Delete"
     DEACTIVATE = "deactivate", "Deactivate"
+    CANCEL = "cancel", "Cancel"
+    VOID = "void", "Void"
 
 
 class AuditEvent(models.Model):

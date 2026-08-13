@@ -189,6 +189,85 @@ class BakeryTransferProductFilterTests(TestCase):
         names = {item["name"] for item in response.data["results"]}
         self.assertEqual(names, set())
 
+    def test_pos_catalog_filters_by_branch_availability(self):
+        from branches.models import Branch, BranchType
+
+        highland = Branch.objects.create(name="Highland", branch_type=BranchType.BRANCH)
+        churchill = Branch.objects.create(name="Churchill", branch_type=BranchType.BRANCH)
+        self.croissant.available_at_branches.set([highland.id])
+
+        highland_response = self.client.get(
+            f"/api/products/?pos_catalog=true&branch={highland.id}"
+        )
+        self.assertEqual(highland_response.status_code, 200)
+        highland_names = {item["name"] for item in highland_response.data["results"]}
+        self.assertEqual(highland_names, {"Croissant", "Espresso"})
+
+        churchill_response = self.client.get(
+            f"/api/products/?pos_catalog=true&branch={churchill.id}"
+        )
+        self.assertEqual(churchill_response.status_code, 200)
+        churchill_names = {item["name"] for item in churchill_response.data["results"]}
+        self.assertEqual(churchill_names, {"Espresso"})
+
+    def test_pos_catalog_without_branch_returns_all_unrestricted_products(self):
+        from branches.models import Branch, BranchType
+
+        highland = Branch.objects.create(name="Highland", branch_type=BranchType.BRANCH)
+        self.croissant.available_at_branches.set([highland.id])
+
+        response = self.client.get("/api/products/?pos_catalog=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Croissant", "Espresso"})
+
+
+class ProductBranchAvailabilityApiTests(TestCase):
+    def setUp(self):
+        from branches.models import Branch, BranchType
+
+        self.client = APIClient()
+        self.category = ProductCategory.objects.create(name="Coffee")
+        self.highland = Branch.objects.create(name="Highland", branch_type=BranchType.BRANCH)
+        self.churchill = Branch.objects.create(name="Churchill", branch_type=BranchType.BRANCH)
+
+    def test_create_product_with_branch_ids(self):
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Branch Latte",
+                "category": self.category.id,
+                "selling_price": "4.50",
+                "branch_ids": [self.highland.id],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        product = Product.objects.get(name="Branch Latte")
+        self.assertEqual(
+            set(product.available_at_branches.values_list("id", flat=True)),
+            {self.highland.id},
+        )
+        self.assertEqual(response.data["branches"], [{"id": self.highland.id, "name": "Highland"}])
+
+    def test_clear_branch_ids_makes_product_available_everywhere(self):
+        product = Product.objects.create(
+            name="Everywhere Cappuccino",
+            category=self.category,
+            selling_price="4.00",
+        )
+        product.available_at_branches.set([self.highland.id])
+
+        response = self.client.patch(
+            f"/api/products/{product.id}/",
+            {"branch_ids": []},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        self.assertFalse(product.available_at_branches.exists())
+        self.assertEqual(response.data["branches"], [])
+
 
 class ProductNameUniquenessTests(TestCase):
     def setUp(self):

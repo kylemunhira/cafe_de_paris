@@ -85,7 +85,7 @@
     <div id="receipt-mode-panel" class="card" style="padding: 0; display: none;">
       <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
         <h3 style="margin: 0; font-size: 1rem;">Open orders</h3>
-        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Takeaway and dine-in · not yet billed · select to collect payment</p>
+        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Open and unpaid · select to collect payment or cancel</p>
       </div>
       <div class="receipt-orders-list" id="receipt-orders-list">
         <div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders</p></div>
@@ -698,11 +698,15 @@ function setSelectedTable(name) {
   tableSelectBtn.classList.toggle("has-value", Boolean(value));
 }
 
+function isAwaitingPaymentOrder(order) {
+  return Boolean(order && (order.status === "open" || order.status === "unpaid"));
+}
+
 function occupiedTableNames() {
   const names = new Set();
   for (const order of openOrders) {
     if (
-      order.status === "open" &&
+      isAwaitingPaymentOrder(order) &&
       order.order_type === "dine_in" &&
       order.table_number
     ) {
@@ -717,7 +721,7 @@ function openOrdersForTable(tableNumber) {
   if (!table) return [];
   return openOrders.filter(
     order =>
-      order.status === "open" &&
+      isAwaitingPaymentOrder(order) &&
       order.order_type === "dine_in" &&
       order.table_number === table
   );
@@ -744,7 +748,7 @@ function orderReceiptHeaderLabel(order) {
 }
 
 function canCancelOrder(order) {
-  return Boolean(order && order.status === "open");
+  return isAwaitingPaymentOrder(order);
 }
 
 function getReceiptInclusiveTotal() {
@@ -1633,7 +1637,7 @@ function renderReceiptPanel() {
     : `Order #${selectedOrder.id} · ${orderTypeText}`;
   clearBtn.style.display = "none";
   const canCancel = canCancelOrder(selectedOrder);
-  const canTransferItems = selectedOrder.status === "open" && (
+  const canTransferItems = isAwaitingPaymentOrder(selectedOrder) && (
     selectedOrder.order_type === "dine_in"
     || selectedOrder.order_type === "takeaway"
   );
@@ -1650,7 +1654,7 @@ function renderReceiptPanel() {
     ? `<span class="cart-meta-chip">${receiptOrders.length} orders · Table ${selectedOrder.table_number}</span>`
     : "";
 
-  const canRemoveItems = canManagePosOrders && selectedOrder.status === "open";
+  const canRemoveItems = canManagePosOrders && isAwaitingPaymentOrder(selectedOrder);
   const removeHint = canRemoveItems
     ? (canTransferItems
       ? "Use Remove on a line, transfer lines, or Cancel entire order below"
@@ -1756,7 +1760,10 @@ function renderReceiptOrderCard(o) {
       <div class="receipt-order-card-meta">${combinedLabel}${o.items?.length || 0} items</div>
       <div class="receipt-order-card-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
         <span>${formatDate(o.created_at)}</span>
-        ${kitchenStatusBadge(o.kitchen_status || "pending")}
+        <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
+          ${o.status === "unpaid" ? statusBadge("unpaid") : ""}
+          ${kitchenStatusBadge(o.kitchen_status || "pending")}
+        </span>
       </div>
     </button>
   `;
@@ -1764,7 +1771,7 @@ function renderReceiptOrderCard(o) {
 
 function renderOpenOrdersList() {
   if (!openOrders.length) {
-    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders awaiting payment</p></div>`;
+    receiptOrdersList.innerHTML = `<div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open or unpaid orders awaiting payment</p></div>`;
     return;
   }
   receiptOrdersList.innerHTML = openOrders.map(o => renderReceiptOrderCard(o)).join("");
@@ -1782,14 +1789,14 @@ async function loadOpenOrders({ notifyReady = false } = {}) {
     : null;
 
   try {
-    const data = await apiGet(`/orders/?status=open&branch=${branchSelect.value}&page_size=500`);
+    const data = await apiGet(`/orders/?status=open,unpaid&branch=${branchSelect.value}&page_size=500`);
     openOrders = unwrapList(data);
     if (selectedOrder) {
       selectedOrder = findReceiptOrder(selectedOrder.id);
     }
     if (notifyReady && previousStatuses) {
       for (const order of openOrders) {
-        if (order.status !== "open") continue;
+        if (!isAwaitingPaymentOrder(order)) continue;
         const previous = previousStatuses.get(order.id);
         if (previous === "preparing" && order.kitchen_status === "ready") {
           showToast(`Order #${order.id} is ready for pickup`);
@@ -2158,7 +2165,7 @@ function transferSourceOrderIds() {
 
 function openTakeawayOrders(excludeIds = new Set()) {
   return openOrders.filter(
-    order => order.status === "open"
+    order => isAwaitingPaymentOrder(order)
       && order.order_type === "takeaway"
       && !excludeIds.has(order.id),
   );

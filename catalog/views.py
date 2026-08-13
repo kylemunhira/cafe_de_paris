@@ -26,6 +26,7 @@ from .pos_catalog import pos_catalog_categories, pos_catalog_products
 from .serializers import (
     MenuAddonGroupSerializer,
     MenuAddonSerializer,
+    PosProductSerializer,
     ProductCategorySerializer,
     ProductSerializer,
 )
@@ -39,6 +40,21 @@ PRODUCT_PROTECTED_RELATIONS = (
     "delivery_note_lines",
     "central_invoice_lines",
 )
+
+
+def _branch_id_from_request(request):
+    branch_param = request.query_params.get("branch")
+    if not branch_param or str(branch_param).lower() in ("", "null", "none", "undefined"):
+        return None
+    try:
+        branch_id = int(branch_param)
+    except (TypeError, ValueError):
+        return None
+    from branches.models import Branch
+
+    if not Branch.objects.filter(pk=branch_id, is_active=True).exists():
+        return None
+    return branch_id
 
 
 def product_has_protected_references(product):
@@ -56,7 +72,7 @@ class ProductCategoryViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         queryset = super().get_queryset()
         pos_catalog = self.request.query_params.get("pos_catalog")
         if pos_catalog and pos_catalog.lower() in ("1", "true", "yes"):
-            queryset = pos_catalog_categories(queryset)
+            queryset = pos_catalog_categories(queryset, branch=_branch_id_from_request(self.request))
         return queryset
 
     def destroy(self, request, *args, **kwargs):
@@ -170,6 +186,7 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         "group_category",
     ).prefetch_related(
         "addon_group_links__group__addons",
+        "available_at_branches",
     ).all()
     serializer_class = ProductSerializer
     audit_entity_type = "product"
@@ -187,12 +204,26 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         "daily_stock_take",
     )
     audit_label_field = "name"
+
+    def _is_pos_catalog_request(self):
+        pos_catalog = self.request.query_params.get("pos_catalog")
+        return bool(pos_catalog and pos_catalog.lower() in ("1", "true", "yes"))
+
+    def get_serializer_class(self):
+        if self.action == "list" and self._is_pos_catalog_request():
+            return PosProductSerializer
+        return super().get_serializer_class()
+
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.action == "list":
-            from bakery.costing import product_unit_costs
+            # POS terminals do not display unit cost; skip bakery costing for speed.
+            if self._is_pos_catalog_request():
+                context["unit_costs"] = {}
+            else:
+                from bakery.costing import product_unit_costs
 
-            context["unit_costs"] = product_unit_costs()
+                context["unit_costs"] = product_unit_costs()
         return context
 
     def get_queryset(self):
@@ -241,7 +272,10 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 category__name__in=BAKERY_CATEGORIES
             )
         if pos_catalog and pos_catalog.lower() in ("1", "true", "yes"):
-            queryset = pos_catalog_products(queryset)
+            queryset = pos_catalog_products(
+                queryset,
+                branch=_branch_id_from_request(self.request),
+            )
         return queryset
 
     def destroy(self, request, *args, **kwargs):

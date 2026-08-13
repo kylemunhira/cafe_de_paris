@@ -50,6 +50,7 @@
     <string name="search_products">Search products</string>
     <string name="pos_categories">Categories</string>
     <string name="pos_products">Products</string>
+    <string name="pos_no_products">No sellable products found. Check that categories are marked Show on POS.</string>
     <string name="category_all">All</string>
     <string name="order_type_takeaway">Takeaway</string>
     <string name="order_type_dine_in">Dine in</string>

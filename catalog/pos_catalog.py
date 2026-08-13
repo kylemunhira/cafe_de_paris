@@ -1,23 +1,23 @@
+from django.db.models import Count, Q
+
 from .constants import (
     ARCHIVED_CATEGORY,
-
-  
 )
 
 # Internal sub-recipes are not sold directly on POS terminals.
-POS_EXCLUDED_CATEGORIES =  {
+POS_EXCLUDED_CATEGORIES = {
     ARCHIVED_CATEGORY,
     "Components",
     "Extras",
 }
 
 
-def pos_catalog_products(queryset=None):
+def pos_catalog_products(queryset=None, branch=None):
     """Menu items and bakery finished goods sold on POS terminals."""
     from .models import Product
 
     qs = queryset if queryset is not None else Product.objects.all()
-    return (
+    qs = (
         qs.filter(
             is_active=True,
             category__is_asset=False,
@@ -27,14 +27,26 @@ def pos_catalog_products(queryset=None):
         .exclude(name__istartswith="add ")
         .select_related("category")
         .prefetch_related("addon_group_links__group__addons")
-        .order_by("name")
     )
+    if branch is not None:
+        qs = (
+            qs.annotate(_branch_availability_count=Count("available_at_branches"))
+            .filter(
+                Q(_branch_availability_count=0)
+                | Q(available_at_branches=branch)
+            )
+            .distinct()
+        )
+    return qs.order_by("name")
 
 
-def pos_catalog_categories(queryset=None):
+def pos_catalog_categories(queryset=None, branch=None):
     """Categories marked to show on POS that contain at least one sellable product."""
     from .models import ProductCategory
 
-    category_ids = pos_catalog_products().values_list("category_id", flat=True).distinct()
+    category_ids = pos_catalog_products(branch=branch).values_list(
+        "category_id",
+        flat=True,
+    ).distinct()
     qs = queryset if queryset is not None else ProductCategory.objects.all()
     return qs.filter(id__in=category_ids, show_on_pos=True).order_by("name")

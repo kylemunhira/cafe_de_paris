@@ -9,7 +9,15 @@ from django.utils import timezone
 
 from bakery.costing import product_unit_costs
 from catalog.models import Product
-from orders.models import Expense, Order, OrderItem, OrderStatus
+from orders.models import (
+    Expense,
+    Order,
+    OrderItem,
+    OrderPayment,
+    OrderStatus,
+    PaymentMethod,
+    TenderMethod,
+)
 from orders.tax import get_inclusive_tax_rate, split_inclusive_total
 
 LOW_STOCK_THRESHOLD = Decimal("10")
@@ -130,9 +138,97 @@ def _aggregate_item_sales(items):
         product_buckets.values(),
         key=lambda row: row["revenue"],
         reverse=True,
-    )[:10]
+    )[:12]
 
     return by_category, top_products, tax_collected
+
+
+PAYMENT_METHOD_LABELS = {
+    **dict(TenderMethod.choices),
+    PaymentMethod.ACCOUNT: PaymentMethod.ACCOUNT.label,
+}
+
+
+def _payment_line_base_amount(amount, exchange_rate):
+    amount = _decimal(amount)
+    rate = _decimal(exchange_rate)
+    if rate > 0:
+        return (amount / rate).quantize(Decimal("0.01"))
+    return amount
+
+
+def _aggregate_payment_methods(paid_orders):
+    buckets = {}
+
+    def add_bucket(key, label, amount, order_id, payment_count=1):
+        row = buckets.setdefault(
+            key,
+            {
+                "method": key,
+                "method_label": label,
+                "revenue": Decimal("0"),
+                "order_ids": set(),
+                "payment_count": 0,
+            },
+        )
+        row["revenue"] += _decimal(amount)
+        row["order_ids"].add(order_id)
+        row["payment_count"] += payment_count
+
+    account_label = PAYMENT_METHOD_LABELS[PaymentMethod.ACCOUNT]
+    for row in paid_orders.filter(payment_method=PaymentMethod.ACCOUNT).values(
+        "id", "total_amount"
+    ):
+        add_bucket(PaymentMethod.ACCOUNT, account_label, row["total_amount"], row["id"])
+
+    tender_order_ids = paid_orders.exclude(
+        payment_method=PaymentMethod.ACCOUNT
+    ).values_list("id", flat=True)
+    payments = OrderPayment.objects.filter(
+        order_id__in=tender_order_ids
+    ).select_related("currency")
+    for payment in payments:
+        base_amount = _payment_line_base_amount(payment.amount, payment.exchange_rate)
+        currency_name = (payment.currency.name or "").strip() if payment.currency_id else ""
+        if currency_name:
+            add_bucket(currency_name, currency_name, base_amount, payment.order_id)
+        else:
+            method = payment.method or TenderMethod.CASH
+            add_bucket(
+                method,
+                PAYMENT_METHOD_LABELS.get(method, method),
+                base_amount,
+                payment.order_id,
+            )
+
+    legacy_orders = (
+        paid_orders.exclude(payment_method=PaymentMethod.ACCOUNT)
+        .annotate(payment_line_count=Count("payments"))
+        .filter(payment_line_count=0)
+    )
+    for row in legacy_orders.values("id", "payment_method", "total_amount"):
+        method = row["payment_method"] or PaymentMethod.CASH
+        if method == PaymentMethod.MULTI:
+            method = PaymentMethod.CASH
+        add_bucket(
+            method,
+            PAYMENT_METHOD_LABELS.get(method, method),
+            row["total_amount"],
+            row["id"],
+        )
+
+    by_payment_method = [
+        {
+            "method": row["method"],
+            "method_label": row["method_label"],
+            "revenue": row["revenue"],
+            "order_count": len(row["order_ids"]),
+            "payment_count": row["payment_count"],
+        }
+        for row in buckets.values()
+    ]
+    by_payment_method.sort(key=lambda row: (-row["revenue"], row["method_label"]))
+    return by_payment_method
 
 
 def _low_stock_products():
@@ -181,6 +277,7 @@ def build_report_summary(from_date=None, to_date=None, branch_id=None):
     ]
 
     low_stock = _low_stock_products()
+    by_payment_method = _aggregate_payment_methods(paid_orders)
 
     return {
         "period": {
@@ -196,6 +293,7 @@ def build_report_summary(from_date=None, to_date=None, branch_id=None):
         },
         "by_branch": by_branch,
         "by_category": by_category,
+        "by_payment_method": by_payment_method,
         "top_products": top_products,
         "low_stock": low_stock,
         "low_stock_threshold": LOW_STOCK_THRESHOLD,

@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 from branches.models import Branch, BranchType
 from bakery.models import Recipe
 from catalog.models import Product, ProductCategory
-from orders.models import Expense, Order, OrderItem, OrderStatus, OrderType
+from orders.models import Expense, Order, OrderItem, OrderPayment, OrderStatus, OrderType, PaymentMethod
 from orders.tax import split_inclusive_total
 from reports.services import build_profit_report, build_report_summary, export_sales_csv
 
@@ -68,6 +68,74 @@ class ReportServiceTests(TestCase):
             to_date=today.isoformat(),
         )
         self.assertEqual(report["summary"]["order_count"], 1)
+
+    def test_summary_groups_payment_methods(self):
+        from payments.models import Currency
+
+        branch = Branch.objects.create(name="Payments Branch", branch_type=BranchType.BRANCH)
+        usd = Currency.objects.create(code="USD", name="US Dollar", symbol="$", is_base=True)
+        zwl = Currency.objects.create(code="ZWL", name="Zimbabwe Dollar", symbol="$")
+        zwl.rates.create(rate=Decimal("25"), effective_from=timezone.localdate())
+
+        cash_order = Order.objects.create(
+            branch=branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("10.00"),
+            payment_method=PaymentMethod.CASH,
+        )
+        OrderPayment.objects.create(
+            order=cash_order,
+            method="cash",
+            currency=usd,
+            amount=Decimal("10.00"),
+            exchange_rate=Decimal("1"),
+        )
+
+        account_order = Order.objects.create(
+            branch=branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("5.00"),
+            payment_method=PaymentMethod.ACCOUNT,
+        )
+
+        split_order = Order.objects.create(
+            branch=branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("7.00"),
+            payment_method=PaymentMethod.MULTI,
+        )
+        OrderPayment.objects.create(
+            order=split_order,
+            method="cash",
+            currency=usd,
+            amount=Decimal("5.00"),
+            exchange_rate=Decimal("1"),
+        )
+        OrderPayment.objects.create(
+            order=split_order,
+            method="ecocash",
+            currency=zwl,
+            amount=Decimal("51.00"),
+            exchange_rate=Decimal("25"),
+        )
+
+        today = timezone.localdate()
+        report = build_report_summary(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            branch_id=branch.id,
+        )
+        by_label = {row["method_label"]: row for row in report["by_payment_method"]}
+        self.assertEqual(by_label["US Dollar"]["revenue"], Decimal("15.00"))
+        self.assertEqual(by_label["US Dollar"]["order_count"], 2)
+        self.assertEqual(by_label["US Dollar"]["payment_count"], 2)
+        self.assertEqual(by_label["Zimbabwe Dollar"]["revenue"], Decimal("2.04"))
+        self.assertEqual(by_label["Zimbabwe Dollar"]["payment_count"], 1)
+        self.assertEqual(by_label["Customer account"]["revenue"], Decimal("5.00"))
+        self.assertEqual(by_label["Customer account"]["order_count"], 1)
 
     def test_export_sales_csv(self):
         today = timezone.localdate()

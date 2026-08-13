@@ -89,6 +89,60 @@ class ProductAddonGroupSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "selection_type", "addons"]
 
 
+class PosMenuAddonSerializer(serializers.ModelSerializer):
+    """Lean addon payload for Android POS (omit tax/sort fields)."""
+
+    class Meta:
+        model = MenuAddon
+        fields = ["id", "name", "selling_price", "is_active"]
+
+
+class PosProductAddonGroupSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source="group.id")
+    name = serializers.CharField(source="group.name", read_only=True)
+    selection_type = serializers.CharField(source="group.selection_type", read_only=True)
+    addons = PosMenuAddonSerializer(source="group.addons", many=True, read_only=True)
+
+    class Meta:
+        model = ProductMenuAddonGroup
+        fields = ["id", "name", "selection_type", "addons"]
+
+
+class PosProductSerializer(serializers.ModelSerializer):
+    """Minimal product shape for Android POS catalog downloads."""
+
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    addon_groups = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "name",
+            "category",
+            "category_name",
+            "selling_price",
+            "addon_groups",
+        ]
+
+    def get_addon_groups(self, obj):
+        cache = getattr(obj, "_prefetched_objects_cache", None)
+        if cache is not None and "addon_group_links" in cache:
+            links = obj.addon_group_links.all()
+        else:
+            links = (
+                ProductMenuAddonGroup.objects.filter(product=obj)
+                .select_related("group")
+                .prefetch_related("group__addons")
+            )
+        return PosProductAddonGroupSerializer(links, many=True).data
+
+
+class ProductBranchSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     group_category_name = serializers.CharField(
@@ -99,6 +153,12 @@ class ProductSerializer(serializers.ModelSerializer):
     unit_cost = serializers.SerializerMethodField()
     addon_groups = serializers.SerializerMethodField()
     addon_group_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+    )
+    branches = serializers.SerializerMethodField()
+    branch_ids = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
         required=False,
@@ -123,6 +183,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "created_at",
             "addon_groups",
             "addon_group_ids",
+            "branches",
+            "branch_ids",
         ]
         read_only_fields = ["created_at"]
         extra_kwargs = {
@@ -189,6 +251,17 @@ class ProductSerializer(serializers.ModelSerializer):
             )
         return ProductAddonGroupSerializer(links, many=True).data
 
+    def get_branches(self, obj):
+        cache = getattr(obj, "_prefetched_objects_cache", None)
+        if cache is not None and "available_at_branches" in cache:
+            branch_rows = obj.available_at_branches.all()
+        else:
+            branch_rows = obj.available_at_branches.filter(is_active=True).order_by("name")
+        return ProductBranchSerializer(
+            [{"id": branch.id, "name": branch.name} for branch in branch_rows],
+            many=True,
+        ).data
+
     def _save_addon_groups(self, product, group_ids):
         group_ids = list(dict.fromkeys(group_ids or []))
         valid_ids = set(
@@ -206,8 +279,23 @@ class ProductSerializer(serializers.ModelSerializer):
             if group_id not in existing:
                 ProductMenuAddonGroup.objects.create(product=product, group_id=group_id)
 
+    def _save_branch_availability(self, product, branch_ids):
+        if branch_ids is None:
+            return
+        from branches.models import Branch
+
+        if not branch_ids:
+            product.available_at_branches.clear()
+            return
+        valid_ids = list(
+            Branch.objects.filter(id__in=branch_ids, is_active=True)
+            .values_list("id", flat=True)
+        )
+        product.available_at_branches.set(valid_ids)
+
     def create(self, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
+        branch_ids = validated_data.pop("branch_ids", None)
         name = validated_data["name"]
         inactive = (
             Product.objects.filter(name__iexact=name, is_active=False)
@@ -224,11 +312,16 @@ class ProductSerializer(serializers.ModelSerializer):
             product = super().create(validated_data)
         if group_ids is not None:
             self._save_addon_groups(product, group_ids)
+        if branch_ids is not None:
+            self._save_branch_availability(product, branch_ids)
         return product
 
     def update(self, instance, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
+        branch_ids = validated_data.pop("branch_ids", None)
         product = super().update(instance, validated_data)
         if group_ids is not None:
             self._save_addon_groups(product, group_ids)
+        if branch_ids is not None:
+            self._save_branch_availability(product, branch_ids)
         return product

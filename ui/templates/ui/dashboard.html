@@ -45,6 +45,25 @@
 </div>
 
 <div class="report-section-header">
+  <h2>Payments</h2>
+  <p class="report-section-note">Paid collections by currency name for the selected period (amounts in base currency).</p>
+</div>
+
+<div class="report-grid">
+  <div class="card report-panel chart-panel">
+    <div class="report-panel-header"><h3>By Currency</h3></div>
+    <div class="chart-wrap"><canvas id="chart-by-payment-method"></canvas></div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header"><h3>By Currency</h3></div>
+    <div class="table-wrap" id="by-payment-method-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="report-section-header">
   <h2>Profit</h2>
   <p id="profit-note" class="report-section-note"></p>
 </div>
@@ -103,14 +122,20 @@
   </div>
 
   <div class="card report-panel">
-    <div class="report-panel-header"><h3>Top Products</h3></div>
+    <div class="report-panel-header">
+      <h3>Top Products</h3>
+      <span class="report-panel-note" id="top-products-note"></span>
+    </div>
     <div class="table-wrap" id="top-products-table">
       <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
     </div>
   </div>
 
   <div class="card report-panel">
-    <div class="report-panel-header"><h3>Gross Profit by Product</h3></div>
+    <div class="report-panel-header">
+      <h3>Gross Profit by Product</h3>
+      <span class="report-panel-note" id="profit-by-product-note"></span>
+    </div>
     <div class="table-wrap" id="profit-by-product-table">
       <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
     </div>
@@ -122,6 +147,16 @@
       <span class="report-panel-note" id="low-stock-note"></span>
     </div>
     <div class="table-wrap" id="low-stock-table">
+      <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+    </div>
+  </div>
+
+  <div class="card report-panel">
+    <div class="report-panel-header">
+      <h3>Products Without Recipe</h3>
+      <span class="report-panel-note" id="without-recipe-note"></span>
+    </div>
+    <div class="table-wrap" id="without-recipe-table">
       <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
     </div>
   </div>
@@ -148,6 +183,14 @@ const CHART_COLORS = [
   "#2c1810", "#c4a77d", "#d4a054", "#8b6914", "#a67b5b",
   "#6b5c52", "#e8d5b7", "#5c4033", "#b8956a", "#3d2817",
 ];
+
+const SNAPSHOT_LIMIT = 12;
+
+function snapshotNote(total, emptyLabel = "") {
+  if (!total) return emptyLabel;
+  if (total > SNAPSHOT_LIMIT) return `Top ${SNAPSHOT_LIMIT} of ${total}`;
+  return `Top ${total}`;
+}
 
 const chartInstances = {};
 
@@ -339,6 +382,13 @@ function renderSalesCharts(report) {
     "No category sales for this period",
   );
 
+  renderPieChart(
+    "chart-by-payment-method",
+    report.by_payment_method.map(row => row.method_label),
+    report.by_payment_method.map(row => Number(row.revenue)),
+    "No payment data for this period",
+  );
+
   const top = report.top_products.slice(0, 8);
   renderHorizontalBarChart(
     "chart-top-products",
@@ -527,8 +577,43 @@ async function loadProfitReport() {
       { label: "Gross Profit", key: "gross_profit", align: "right", getSortValue: row => Number(row.gross_profit), render: row => formatCurrency(row.gross_profit) },
       { label: "GP%", key: "gp_percent", align: "right", getSortValue: row => row.gp_percent == null ? null : Number(row.gp_percent), render: row => formatPercent(row.gp_percent) },
     ],
-    report.by_product,
+    report.by_product.slice(0, SNAPSHOT_LIMIT),
     "No paid sales for this period",
+  );
+
+  document.getElementById("profit-by-product-note").textContent =
+    snapshotNote(report.by_product.length);
+
+  const withoutRecipeAll = report.by_product
+    .filter(row => row.unit_cost === null)
+    .sort((a, b) => Number(b.revenue) - Number(a.revenue) || String(a.product_name).localeCompare(String(b.product_name)));
+  const withoutRecipe = withoutRecipeAll.slice(0, SNAPSHOT_LIMIT);
+
+  const withoutRecipeNote = document.getElementById("without-recipe-note");
+  if (withoutRecipeAll.length > 0) {
+    const countLabel = snapshotNote(withoutRecipeAll.length);
+    withoutRecipeNote.textContent =
+      `${countLabel} · ${formatCurrency(summary.revenue_without_recipe)} revenue`;
+  } else {
+    withoutRecipeNote.textContent = "All sold products have recipes";
+  }
+
+  renderTable(
+    "without-recipe-table",
+    [
+      { label: "Product", key: "product_name", getSortValue: row => row.product_name || "", render: row => row.product_name },
+      { label: "Category", key: "category", getSortValue: row => row.category || "", render: row => row.category || "—" },
+      { label: "Qty Sold", key: "quantity", align: "right", getSortValue: row => Number(row.quantity), render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      { label: "Revenue", key: "revenue", align: "right", getSortValue: row => Number(row.revenue), render: row => formatCurrency(row.revenue) },
+      {
+        action: true,
+        render: row => row.product_id
+          ? `<a href="{% url 'ui:recipes' %}?product=${row.product_id}" class="btn btn-ghost btn-sm">Edit recipe</a>`
+          : "—",
+      },
+    ],
+    withoutRecipe,
+    "All sold products have recipes for this period",
   );
 
   renderProfitChart(summary);
@@ -583,6 +668,33 @@ async function loadReport() {
     "No category sales for this period",
   );
 
+  const paymentTotal = report.by_payment_method.reduce(
+    (sum, row) => sum + Number(row.revenue),
+    0,
+  );
+  renderTable(
+    "by-payment-method-table",
+    [
+      { label: "Currency", key: "method_label", getSortValue: row => row.method_label || "", render: row => row.method_label },
+      { label: "Orders", key: "order_count", align: "right", getSortValue: row => Number(row.order_count), render: row => row.order_count },
+      { label: "Payments", key: "payment_count", align: "right", getSortValue: row => Number(row.payment_count), render: row => row.payment_count },
+      { label: "Amount", key: "revenue", align: "right", getSortValue: row => Number(row.revenue), render: row => formatCurrency(row.revenue) },
+      {
+        label: "Share",
+        key: "share",
+        align: "right",
+        getSortValue: row => paymentTotal ? Number(row.revenue) / paymentTotal : null,
+        render: row => formatPercent(paymentTotal ? (Number(row.revenue) / paymentTotal) * 100 : null),
+      },
+    ],
+    report.by_payment_method,
+    "No payment data for this period",
+  );
+
+  const topProducts = report.top_products.slice(0, SNAPSHOT_LIMIT);
+  document.getElementById("top-products-note").textContent =
+    snapshotNote(report.top_products.length);
+
   renderTable(
     "top-products-table",
     [
@@ -590,12 +702,16 @@ async function loadReport() {
       { label: "Qty Sold", key: "quantity", align: "right", getSortValue: row => Number(row.quantity), render: row => Number(row.quantity).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
       { label: "Revenue", key: "revenue", align: "right", getSortValue: row => Number(row.revenue), render: row => formatCurrency(row.revenue) },
     ],
-    report.top_products,
+    topProducts,
     "No product sales for this period",
   );
 
-  document.getElementById("low-stock-note").textContent =
-    `≤ ${Number(report.low_stock_threshold).toLocaleString("en-US", { maximumFractionDigits: 2 })} units`;
+  const lowStock = report.low_stock.slice(0, SNAPSHOT_LIMIT);
+  const lowStockThreshold = Number(report.low_stock_threshold).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const lowStockCountLabel = snapshotNote(report.low_stock.length);
+  document.getElementById("low-stock-note").textContent = lowStockCountLabel
+    ? `${lowStockCountLabel} · ≤ ${lowStockThreshold} units`
+    : `≤ ${lowStockThreshold} units`;
 
   renderTable(
     "low-stock-table",
@@ -604,7 +720,7 @@ async function loadReport() {
       { label: "Category", key: "category", getSortValue: row => row.category || "", render: row => row.category },
       { label: "Remaining", key: "remaining_qty", align: "right", getSortValue: row => Number(row.remaining_qty), render: row => Number(row.remaining_qty).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
     ],
-    report.low_stock,
+    lowStock,
     "All products are above the low-stock threshold",
   );
 

@@ -1595,12 +1595,13 @@ class PosActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
             try {
+                // Products/categories/currencies must render even if customers fails.
+                // Customers are only needed for account payment / customer deposit.
                 val catalog = withContext(Dispatchers.IO) {
                     PosCatalog(
                         products = api.fetchProducts(),
                         categories = api.fetchCategories(),
                         currencies = api.fetchCurrencies(),
-                        customers = api.fetchCustomers(),
                     )
                 }
                 products = catalog.products
@@ -1608,7 +1609,6 @@ class PosActivity : KeepScreenOnActivity() {
                 currencies = catalog.currencies.filter {
                     it.is_active && (it.is_base || !it.current_rate.isNullOrBlank())
                 }
-                customers = catalog.customers
                 val visibleCategories = catalog.categories.filter { category ->
                     products.any { it.category == category.id }
                 }
@@ -1621,12 +1621,26 @@ class PosActivity : KeepScreenOnActivity() {
                 categoryAdapter.select(activeCategoryId)
                 setupCurrencyButtons()
                 renderProducts()
+                if (products.isEmpty()) {
+                    showError(getString(R.string.pos_no_products))
+                }
             } catch (err: ApiException) {
                 handleApiError(err)
             } catch (err: Exception) {
                 showError(getString(R.string.connection_failed, err.message ?: ""))
             } finally {
                 binding.refreshProgress.visibility = View.GONE
+            }
+            loadCustomersQuietly()
+        }
+    }
+
+    private fun loadCustomersQuietly() {
+        lifecycleScope.launch {
+            try {
+                customers = withContext(Dispatchers.IO) { api.fetchCustomers() }
+            } catch (_: Exception) {
+                // Non-fatal: products already shown; account payment can refresh later.
             }
         }
     }
@@ -2494,7 +2508,6 @@ class PosActivity : KeepScreenOnActivity() {
         val products: List<Product>,
         val categories: List<com.cafedeparis.kitchen.data.ProductCategory>,
         val currencies: List<Currency>,
-        val customers: List<Customer>,
     )
 
     companion object {

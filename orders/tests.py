@@ -1379,6 +1379,8 @@ class OrderCancelVoidTests(TestCase):
         return order
 
     def test_cancel_open_order(self):
+        from audit.models import AuditAction, AuditEvent
+
         order = self._open_order()
         response = self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
@@ -1386,6 +1388,14 @@ class OrderCancelVoidTests(TestCase):
         self.assertEqual(order.status, OrderStatus.CANCELLED)
         self.assertIsNotNone(order.cancelled_at)
         self.assertEqual(order.cancelled_by_id, self.user.id)
+        event = AuditEvent.objects.filter(
+            entity_type="order",
+            entity_id=str(order.id),
+            action=AuditAction.CANCEL,
+        ).first()
+        self.assertIsNotNone(event)
+        self.assertEqual(event.actor_id, self.user.id)
+        self.assertEqual(event.changes.get("status", {}).get("to"), OrderStatus.CANCELLED)
 
     def test_cannot_pay_cancelled_order(self):
         order = self._open_order()
@@ -1409,14 +1419,14 @@ class OrderCancelVoidTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.PAID)
 
-    def test_cancel_unpaid_rejected_for_cashier(self):
+    def test_cancel_unpaid_order_for_cashier(self):
         order = self._open_order()
         order.status = OrderStatus.UNPAID
         order.save(update_fields=["status"])
         response = self.client.post(f"/api/orders/{order.id}/cancel/", {}, format="json")
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200, response.data)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.UNPAID)
+        self.assertEqual(order.status, OrderStatus.CANCELLED)
 
     def test_hq_admin_can_cancel_unpaid_order(self):
         User = get_user_model()
@@ -1436,6 +1446,8 @@ class OrderCancelVoidTests(TestCase):
         self.assertEqual(order.status, OrderStatus.CANCELLED)
 
     def test_void_paid_order(self):
+        from audit.models import AuditAction, AuditEvent
+
         order = self._open_order()
         self.client.post(
             f"/api/orders/{order.id}/pay/",
@@ -1452,6 +1464,16 @@ class OrderCancelVoidTests(TestCase):
         self.assertEqual(order.status, OrderStatus.UNPAID)
         self.assertIsNone(order.receipt_number)
         self.assertIsNone(order.paid_at)
+        event = AuditEvent.objects.filter(
+            entity_type="order",
+            entity_id=str(order.id),
+            action=AuditAction.VOID,
+        ).first()
+        self.assertIsNotNone(event)
+        self.assertEqual(event.actor_id, self.user.id)
+        self.assertEqual(event.changes.get("status", {}).get("from"), OrderStatus.PAID)
+        self.assertEqual(event.changes.get("status", {}).get("to"), OrderStatus.UNPAID)
+        self.assertEqual(event.changes.get("receipt_number", {}).get("from"), original_receipt)
         self.assertIsNone(order.paid_by)
         self.assertIsNone(order.payment_currency)
         self.assertIsNone(order.exchange_rate)
@@ -1691,6 +1713,20 @@ class OrderItemRemoveTests(TestCase):
         self.assertEqual(order.items.count(), 2)
         self.assertEqual(Decimal(response.data["total_amount"]), Decimal("7.50"))
 
+    def test_hq_admin_remove_one_on_unpaid_order(self):
+        order, first, _second = self._open_order_with_items()
+        order.status = OrderStatus.UNPAID
+        order.save(update_fields=["status"])
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        first.refresh_from_db()
+        self.assertEqual(first.quantity, Decimal("1"))
+        self.assertEqual(order.status, OrderStatus.UNPAID)
+
     def test_hq_admin_remove_last_item_cancels_order(self):
         order, _first, second = self._open_order_with_items()
         order.items.filter(product=self.product).delete()
@@ -1786,6 +1822,28 @@ class OrderItemTransferTests(TestCase):
         self.assertEqual(destination.items.count(), 1)
         self.assertEqual(destination.items.get().pk, second.pk)
         self.assertEqual(destination.total_amount, Decimal("4.00"))
+
+    def test_transfer_partial_lines_from_unpaid_order(self):
+        order, items = self._open_dine_in(
+            "T1",
+            [
+                (self.product, Decimal("2"), Decimal("3.50")),
+                (self.latte, Decimal("1"), Decimal("4.00")),
+            ],
+        )
+        order.status = OrderStatus.UNPAID
+        order.save(update_fields=["status"])
+        first, second = items
+        response = self.client.post(
+            f"/api/orders/{order.id}/transfer-items/",
+            {"item_ids": [second.id], "table_number": "T2"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.UNPAID)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.items.get().pk, first.pk)
 
     def test_transfer_merges_into_existing_open_table_order(self):
         source, source_items = self._open_dine_in(

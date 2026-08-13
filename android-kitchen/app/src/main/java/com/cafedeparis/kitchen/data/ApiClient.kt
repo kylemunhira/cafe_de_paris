@@ -57,7 +57,11 @@ class ApiClient(
 
     fun fetchProducts(): List<Product> {
         val token = requireToken()
-        val url = "${config.serverUrl}/api/products/?pos_catalog=true&page_size=1000"
+        val branchId = session.branchId
+        val url = buildString {
+            append("${config.serverUrl}/api/products/?pos_catalog=true&page_size=1000")
+            if (branchId > 0) append("&branch=$branchId")
+        }
         val body = getJson(url, token)
         return JsonParsers.parseProducts(body)
     }
@@ -276,7 +280,11 @@ class ApiClient(
 
     fun fetchCategories(): List<ProductCategory> {
         val token = requireToken()
-        val url = "${config.serverUrl}/api/categories/?page_size=200"
+        val branchId = session.branchId
+        val url = buildString {
+            append("${config.serverUrl}/api/categories/?pos_catalog=true&page_size=200")
+            if (branchId > 0) append("&branch=$branchId")
+        }
         val body = getJson(url, token)
         return JsonParsers.parseCategories(body)
     }
@@ -704,8 +712,10 @@ class ApiClient(
     private fun openConnection(urlString: String, method: String, token: String?): HttpURLConnection {
         val connection = URL(urlString).openConnection() as HttpURLConnection
         connection.requestMethod = method
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 15_000
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 60_000
+        // Avoid keep-alive stalls with flaky Wi‑Fi / Django runserver.
+        connection.setRequestProperty("Connection", "close")
         connection.setRequestProperty("Accept", "application/json")
         if (!token.isNullOrBlank()) {
             connection.setRequestProperty("Authorization", "Token $token")

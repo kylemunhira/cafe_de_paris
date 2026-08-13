@@ -88,6 +88,15 @@ class Product(models.Model):
         default=False,
         help_text="Include this product in daily stock counts at branches that stock it.",
     )
+    available_at_branches = models.ManyToManyField(
+        "branches.Branch",
+        blank=True,
+        related_name="available_products",
+        help_text=(
+            "Branches where this product appears on POS. "
+            "Leave empty to make it available at all branches."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

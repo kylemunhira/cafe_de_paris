@@ -52,25 +52,49 @@
         <input type="number" id="product-qty" name="remaining_qty" min="0" step="0.01" value="0">
       </div>
     </div>
-    <div class="form-group">
-      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-        <input type="checkbox" id="product-active" name="is_active" checked>
-        Active product
-      </label>
-    </div>
-    <div class="form-group">
-      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-        <input type="checkbox" id="product-daily-stock" name="daily_stock_take">
-        Include in daily stock take
-      </label>
+    <div class="product-settings-panel">
+      <div class="product-settings-grid">
+        <section class="product-settings-section">
+          <span class="field-label">Stock &amp; status</span>
+          <div class="product-settings-toggles">
+            <label class="setting-toggle-card" for="product-active">
+              <input type="checkbox" id="product-active" name="is_active" checked>
+              <span class="setting-toggle-card__text">
+                <strong>Active product</strong>
+                <small>Available for sale when enabled</small>
+              </span>
+            </label>
+            <label class="setting-toggle-card" for="product-daily-stock">
+              <input type="checkbox" id="product-daily-stock" name="daily_stock_take">
+              <span class="setting-toggle-card__text">
+                <strong>Daily stock take</strong>
+                <small>Include in daily branch stock counts</small>
+              </span>
+            </label>
+          </div>
+        </section>
+        <section class="product-settings-section product-settings-section--branches" id="branch-availability-section">
+          <span class="field-label">Available at branches</span>
+          <p class="field-hint">
+            Choose where this product appears on POS. Use all branches to sell everywhere, including Central Stores.
+          </p>
+          <div class="branch-availability-panel">
+            <div class="branch-availability-mode" role="radiogroup" aria-label="Branch availability mode">
+              <button type="button" class="branch-mode-btn is-active" data-mode="all" aria-pressed="true">All branches</button>
+              <button type="button" class="branch-mode-btn" data-mode="selected" aria-pressed="false">Selected only</button>
+            </div>
+            <div id="branch-availability-options" class="branch-availability-grid" hidden></div>
+          </div>
+        </section>
+      </div>
     </div>
     <div id="addon-groups-section" class="form-group" style="display: none;">
-      <label>Menu add-ons for this product</label>
-      <p class="products-page-description" style="margin: 0 0 0.75rem;">
+      <span class="field-label">Menu add-ons for this product</span>
+      <p class="field-hint">
         Choose which add-on groups appear when this product is ordered on POS.
         <a href="{% url 'ui:menu-addons' %}">View all add-on options</a>
       </p>
-      <div id="addon-group-options" style="display: grid; gap: 0.5rem;"></div>
+      <div id="addon-group-options" class="addon-group-options"></div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
       <button type="button" class="btn btn-ghost" id="product-cancel" style="display: none;">Cancel</button>
@@ -129,7 +153,7 @@ const csvImportUrl = productListMode === "bakery"
 const BAKERY_CATEGORY_NAMES = new Set(
   JSON.parse(document.getElementById("bakery-category-names").textContent),
 );
-const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const canFilterAnyBranch = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
 
 function formatQty(value) {
@@ -167,7 +191,11 @@ const productViewToggle = document.getElementById("product-view-toggle");
 const csvUpload = document.getElementById("csv-upload");
 const branchSelect = document.getElementById("branch-select");
 const productsBranchHint = document.getElementById("products-branch-hint");
+const branchAvailabilityOptions = document.getElementById("branch-availability-options");
+const branchModeButtons = document.querySelectorAll(".branch-mode-btn");
 const sortState = createSortState("name", "asc");
+
+let branchAvailabilityMode = "all";
 
 const PRODUCT_SORT = {
   name: (p) => p.name || "",
@@ -214,13 +242,13 @@ async function loadBranchInventory() {
 }
 
 async function syncBranchStock(productId, newQty) {
-  if (!selectedBranchId) {
-    throw new Error("Select a branch before setting stock");
-  }
-
   const currentQty = branchInventory.get(productId) ?? 0;
   const delta = Number(newQty) - currentQty;
   if (delta === 0) return;
+
+  if (!selectedBranchId) {
+    throw new Error("Select a branch before setting stock");
+  }
 
   await apiPost("/inventory/adjust/", {
     branch: selectedBranchId,
@@ -250,13 +278,11 @@ function renderAddonGroupOptions() {
   }
 
   addonGroupOptions.innerHTML = addonGroups.map(group => `
-    <label style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;">
+    <label class="addon-group-option">
       <input type="checkbox" value="${group.id}" ${selectedAddonGroupIds.has(group.id) ? "checked" : ""}>
       <span>
         <strong>${group.name}</strong>
-        <span style="display:block; color: var(--color-muted); font-size: 0.82rem;">
-          ${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${group.addons?.length || 0} options
-        </span>
+        <span>${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${group.addons?.length || 0} options</span>
       </span>
     </label>
   `).join("");
@@ -273,6 +299,70 @@ function readSelectedAddonGroupIds() {
     .map(input => Number(input.value));
 }
 
+function posBranches() {
+  return branches.filter(b =>
+    b.branch_type === "branch"
+    || b.branch_type === "hq"
+    || b.branch_type === "stores",
+  );
+}
+
+function branchTypeLabel(branchType) {
+  if (branchType === "stores") return "Central Stores";
+  if (branchType === "hq") return "Headquarters";
+  if (branchType === "bakery") return "Bakery";
+  return "Branch";
+}
+
+function setBranchAvailabilityMode(mode) {
+  branchAvailabilityMode = mode === "selected" ? "selected" : "all";
+  branchModeButtons.forEach(btn => {
+    const active = btn.dataset.mode === branchAvailabilityMode;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  branchAvailabilityOptions.hidden = branchAvailabilityMode !== "selected";
+}
+
+function renderBranchAvailabilityOptions() {
+  const posBranchList = posBranches();
+  if (!posBranchList.length) {
+    branchAvailabilityOptions.innerHTML = `<p class="field-hint" style="margin:0;">No branches available.</p>`;
+    return;
+  }
+  branchAvailabilityOptions.innerHTML = posBranchList.map(branch => `
+    <label class="branch-availability-chip">
+      <input type="checkbox" value="${branch.id}" class="branch-availability-checkbox">
+      <span class="branch-availability-chip__text">
+        <strong>${branch.name}</strong>
+        <small>${branchTypeLabel(branch.branch_type)}</small>
+      </span>
+    </label>
+  `).join("");
+}
+
+function setBranchAvailabilityForProduct(product) {
+  const assigned = new Set((product?.branches || []).map(branch => branch.id));
+  const allBranches = !assigned.size;
+  setBranchAvailabilityMode(allBranches ? "all" : "selected");
+  branchAvailabilityOptions.querySelectorAll(".branch-availability-checkbox").forEach(input => {
+    input.checked = assigned.has(Number(input.value));
+  });
+}
+
+function readSelectedBranchIds() {
+  if (branchAvailabilityMode === "all") return [];
+  return [...branchAvailabilityOptions.querySelectorAll(".branch-availability-checkbox:checked")]
+    .map(input => Number(input.value));
+}
+
+function branchAvailabilityLabel(product) {
+  const assigned = product?.branches || [];
+  if (!assigned.length) return "All branches";
+  if (assigned.length <= 2) return assigned.map(branch => branch.name).join(", ");
+  return `${assigned.length} branches`;
+}
+
 function resetForm() {
   editingId = null;
   formTitle.textContent = `Add ${productLabel}`;
@@ -285,6 +375,10 @@ function resetForm() {
   document.getElementById("product-qty").value = "0";
   document.getElementById("product-active").checked = true;
   document.getElementById("product-daily-stock").checked = false;
+  setBranchAvailabilityMode("all");
+  branchAvailabilityOptions.querySelectorAll(".branch-availability-checkbox").forEach(input => {
+    input.checked = false;
+  });
   updateQtyLabel();
 }
 
@@ -301,6 +395,7 @@ function startEdit(product) {
   document.getElementById("product-active").checked = product.is_active;
   document.getElementById("product-daily-stock").checked = product.daily_stock_take;
   setAddonGroupsForProduct(product);
+  setBranchAvailabilityForProduct(product);
   updateQtyLabel();
   window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -353,6 +448,7 @@ function renderProductCard(p) {
   const addonLine = productListMode === "menu" && p.addon_groups?.length
     ? `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">Add-ons: ${p.addon_groups.map(group => group.name).join(", ")}</p>`
     : "";
+  const branchLine = `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">POS: ${branchAvailabilityLabel(p)}</p>`;
   const stockAdjust = selectedBranchId
     ? `<div class="product-mgmt-card__stock-adjust">${stockAdjustInlineHtml({ productId: p.id })}</div>`
     : "";
@@ -371,6 +467,7 @@ function renderProductCard(p) {
       </div>
       <p class="product-mgmt-card__category">${p.category_name}</p>
       ${addonLine}
+      ${branchLine}
       <div class="product-mgmt-card__footer">
         <p class="product-mgmt-card__price">${formatCurrency(p.selling_price)}</p>
         <div class="product-mgmt-card__meta">
@@ -410,6 +507,7 @@ function renderProductTable(filtered) {
               ${sortTh("Tax", "tax_rate", sortState, { align: "right" })}
               ${sortTh("Status", "is_active", sortState)}
               ${sortTh("Daily count", "daily_stock_take", sortState)}
+              <th>POS branches</th>
               ${addonHeader}
               ${actionTh()}
             </tr>
@@ -429,6 +527,7 @@ function renderProductTable(filtered) {
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
                 <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
                 <td>${dailyStockToggle(p)}</td>
+                <td style="font-size: 0.85rem; color: var(--color-muted);">${branchAvailabilityLabel(p)}</td>
                 ${addonCell(p)}
                 <td style="text-align: right;">
                   ${recipeLink(p)}
@@ -523,6 +622,8 @@ async function loadBranches() {
     emptyLabel: "No branches available",
   });
 
+  renderBranchAvailabilityOptions();
+
   selectedBranchId = branches.length === 1
     ? branches[0].id
     : (branchSelect.value ? Number(branchSelect.value) : null);
@@ -563,9 +664,16 @@ productForm.addEventListener("submit", async (e) => {
     selling_price: document.getElementById("product-price").value,
     is_active: document.getElementById("product-active").checked,
     daily_stock_take: document.getElementById("product-daily-stock").checked,
+    branch_ids: readSelectedBranchIds(),
   };
   if (taxRaw) payload.tax_rate = taxRaw;
   const targetQty = qtyRaw || "0";
+  const branchIds = readSelectedBranchIds();
+  if (branchAvailabilityMode === "selected" && !branchIds.length) {
+    showToast("Select at least one branch, or choose All branches", true);
+    productSubmit.disabled = false;
+    return;
+  }
 
   try {
     if (editingId) {
@@ -725,6 +833,13 @@ productViewToggle.addEventListener("click", (e) => {
   viewMode = btn.dataset.view;
   localStorage.setItem(VIEW_STORAGE_KEY, viewMode);
   render();
+});
+
+branchModeButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.mode === branchAvailabilityMode) return;
+    setBranchAvailabilityMode(btn.dataset.mode);
+  });
 });
 
 csvUpload.addEventListener("change", async (e) => {

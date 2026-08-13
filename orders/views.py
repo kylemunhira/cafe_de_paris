@@ -6,6 +6,8 @@ from accounts.branch_access import (
     user_can_manage_pos_orders,
 )
 from audit.mixins import AuditedModelMixin
+from audit.models import AuditAction
+from audit.services import diff_dicts, record_entity_change, snapshot_fields
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -80,6 +82,31 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     audit_entity_type = "order"
     audit_fields = ("customer",)
     audit_label_field = lambda order: f"Order #{order.pk}"  # noqa: E731
+
+    ORDER_ACTION_AUDIT_FIELDS = (
+        "status",
+        "total_amount",
+        "receipt_number",
+        "payment_method",
+        "cancelled_by",
+    )
+
+    def _record_order_action_audit(self, order, *, before, action):
+        after = snapshot_fields(order, self.ORDER_ACTION_AUDIT_FIELDS)
+        changes = diff_dicts(before, after)
+        if not changes:
+            changes = {
+                "status": {"from": before.get("status"), "to": after.get("status")},
+            }
+        record_entity_change(
+            action=action,
+            entity=order,
+            entity_type=self.audit_entity_type,
+            changes=changes,
+            actor=self.request.user,
+            request=self.request,
+            label_field=self.audit_label_field,
+        )
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -340,9 +367,16 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                     .get(pk=order.pk)
                 )
                 item = OrderItem.objects.select_for_update().get(pk=item_id)
+                before = snapshot_fields(order, self.ORDER_ACTION_AUDIT_FIELDS)
                 order = remove_one_order_item(
                     order, item, removed_by=request.user
                 )
+                if order.status == OrderStatus.CANCELLED:
+                    self._record_order_action_audit(
+                        order,
+                        before=before,
+                        action=AuditAction.CANCEL,
+                    )
         except OrderItem.DoesNotExist:
             return Response(
                 {"detail": "Order item not found."},
@@ -430,10 +464,15 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         try:
             with transaction.atomic():
                 order = Order.objects.select_for_update().get(pk=order.pk)
+                before = snapshot_fields(order, self.ORDER_ACTION_AUDIT_FIELDS)
                 order = cancel_order(
                     order,
                     cancelled_by=request.user,
-                    allow_unpaid=user_can_manage_pos_orders(request.user),
+                )
+                self._record_order_action_audit(
+                    order,
+                    before=before,
+                    action=AuditAction.CANCEL,
                 )
         except OrderCancelError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -463,7 +502,13 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                     .select_related("branch")
                     .get(pk=order.pk)
                 )
+                before = snapshot_fields(order, self.ORDER_ACTION_AUDIT_FIELDS)
                 order = void_order(order, voided_by=request.user)
+                self._record_order_action_audit(
+                    order,
+                    before=before,
+                    action=AuditAction.VOID,
+                )
         except OrderCancelError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         order = (

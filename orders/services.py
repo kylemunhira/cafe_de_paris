@@ -20,6 +20,8 @@ from .models import (
     TenderMethod,
 )
 
+POS_EDITABLE_ORDER_STATUSES = frozenset({OrderStatus.OPEN, OrderStatus.UNPAID})
+
 
 class ReceiptNumberError(Exception):
     pass
@@ -67,7 +69,7 @@ def find_open_table_order(*, branch, table_number):
             branch=branch,
             order_type=OrderType.DINE_IN,
             table_number=table_number,
-            status=OrderStatus.OPEN,
+            status__in=POS_EDITABLE_ORDER_STATUSES,
         )
         .order_by("-created_at")
         .first()
@@ -260,8 +262,10 @@ def remove_one_order_item(order, item, *, removed_by=None):
     """
     if item.order_id != order.pk:
         raise OrderItemRemoveError("Item does not belong to this order.")
-    if order.status != OrderStatus.OPEN:
-        raise OrderItemRemoveError("Only open orders can have items removed.")
+    if order.status not in POS_EDITABLE_ORDER_STATUSES:
+        raise OrderItemRemoveError(
+            "Only open or unpaid orders can have items removed."
+        )
 
     new_qty = (item.quantity - Decimal("1")).quantize(Decimal("0.01"))
     if new_qty <= 0:
@@ -348,8 +352,8 @@ def transfer_order_items(
     takeaway when omitted. Moving every dine-in line to a new takeaway
     converts the source order in place.
     """
-    if order.status != OrderStatus.OPEN:
-        raise OrderItemTransferError("Only open orders can transfer items.")
+    if order.status not in POS_EDITABLE_ORDER_STATUSES:
+        raise OrderItemTransferError("Only open or unpaid orders can transfer items.")
     if order.order_type not in (OrderType.DINE_IN, OrderType.TAKEAWAY):
         raise OrderItemTransferError("This order type cannot transfer items.")
 
@@ -426,9 +430,9 @@ def _transfer_to_dine_in(
         )
     else:
         destination = Order.objects.select_for_update().get(pk=destination.pk)
-        if destination.status != OrderStatus.OPEN:
+        if destination.status not in POS_EDITABLE_ORDER_STATUSES:
             raise OrderItemTransferError(
-                "Destination table order is no longer open."
+                "Destination table order is no longer available."
             )
 
     return _finalize_transfer(order, destination, unique_ids, created_by=created_by)
@@ -451,7 +455,7 @@ def _transfer_to_takeaway(
                 pk=destination_order_id,
                 branch=order.branch,
                 order_type=OrderType.TAKEAWAY,
-                status=OrderStatus.OPEN,
+                status__in=POS_EDITABLE_ORDER_STATUSES,
             )
             .first()
         )
@@ -486,13 +490,10 @@ def _transfer_to_takeaway(
     return _finalize_transfer(order, destination, unique_ids, created_by=created_by)
 
 
-def cancel_order(order, *, cancelled_by=None, allow_unpaid=False):
-    """Cancel an unpaid (open) order. No inventory changes."""
-    allowed = {OrderStatus.OPEN}
-    if allow_unpaid:
-        allowed.add(OrderStatus.UNPAID)
-    if order.status not in allowed:
-        raise OrderCancelError("Only open orders can be cancelled.")
+def cancel_order(order, *, cancelled_by=None):
+    """Cancel an open or unpaid order. No inventory changes."""
+    if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+        raise OrderCancelError("Only open or unpaid orders can be cancelled.")
     order.status = OrderStatus.CANCELLED
     order.cancelled_at = timezone.now()
     order.cancelled_by = cancelled_by

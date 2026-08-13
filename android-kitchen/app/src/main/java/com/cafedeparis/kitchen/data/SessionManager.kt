@@ -387,8 +387,12 @@ object JsonParsers {
     fun parseProducts(body: String): List<Product> {
         val json = org.json.JSONObject(body)
         val results = json.optJSONArray("results") ?: org.json.JSONArray()
-        return (0 until results.length()).map { index ->
-            parseProduct(results.getJSONObject(index))
+        return (0 until results.length()).mapNotNull { index ->
+            try {
+                parseProduct(results.getJSONObject(index))
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
@@ -593,31 +597,40 @@ object JsonParsers {
 
     private fun parseProduct(item: org.json.JSONObject): Product {
         val addonGroupsJson = item.optJSONArray("addon_groups") ?: org.json.JSONArray()
-        val addonGroups = (0 until addonGroupsJson.length()).map { groupIndex ->
-            val group = addonGroupsJson.getJSONObject(groupIndex)
-            val addonsJson = group.optJSONArray("addons") ?: org.json.JSONArray()
-            val addons = (0 until addonsJson.length()).map { addonIndex ->
-                val addon = addonsJson.getJSONObject(addonIndex)
-                MenuAddon(
-                    id = addon.getInt("id"),
-                    name = addon.getString("name"),
-                    selling_price = addon.optString("selling_price", "0"),
-                    is_active = addon.optBoolean("is_active", true),
+        val addonGroups = (0 until addonGroupsJson.length()).mapNotNull { groupIndex ->
+            try {
+                val group = addonGroupsJson.getJSONObject(groupIndex)
+                val addonsJson = group.optJSONArray("addons") ?: org.json.JSONArray()
+                val addons = (0 until addonsJson.length()).mapNotNull { addonIndex ->
+                    try {
+                        val addon = addonsJson.getJSONObject(addonIndex)
+                        MenuAddon(
+                            id = addon.getInt("id"),
+                            name = addon.getString("name"),
+                            selling_price = jsonNumberAsString(addon, "selling_price", "0"),
+                            is_active = addon.optBoolean("is_active", true),
+                        )
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                MenuAddonGroup(
+                    id = group.getInt("id"),
+                    name = group.getString("name"),
+                    selection_type = group.optString("selection_type", "multiple"),
+                    addons = addons,
                 )
+            } catch (_: Exception) {
+                null
             }
-            MenuAddonGroup(
-                id = group.getInt("id"),
-                name = group.getString("name"),
-                selection_type = group.optString("selection_type", "multiple"),
-                addons = addons,
-            )
         }
         return Product(
             id = item.getInt("id"),
             name = item.getString("name"),
             category = item.optInt("category").takeIf { item.has("category") && !item.isNull("category") },
-            category_name = item.optString("category_name", null),
-            selling_price = item.optString("selling_price", "0"),
+            category_name = item.optString("category_name", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            selling_price = jsonNumberAsString(item, "selling_price", "0"),
             addon_groups = addonGroups,
         )
     }
@@ -646,7 +659,12 @@ object JsonParsers {
                 symbol = item.optString("symbol", ""),
                 is_base = item.optBoolean("is_base", false),
                 is_active = item.optBoolean("is_active", true),
-                current_rate = item.optString("current_rate", null),
+                current_rate = if (item.isNull("current_rate")) {
+                    null
+                } else {
+                    jsonNumberAsString(item, "current_rate", "")
+                        .takeIf { it.isNotBlank() && it != "null" }
+                },
             )
         }
     }
