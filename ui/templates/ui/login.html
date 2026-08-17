@@ -1,42 +1,110 @@
-{% load static %}
+{% load static i18n %}
+{% get_current_language as CURRENT_LANGUAGE %}
+{% get_current_language_bidi as LANGUAGE_BIDI %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ CURRENT_LANGUAGE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in — Café de Paris</title>
+  <title>{% trans "Sign in" %} — Café de Paris</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'ui/css/app.css' %}">
 </head>
 <body class="login-page">
+  <div class="login-language">
+    {% include "ui/includes/language_selector.html" %}
+  </div>
   <div class="login-shell">
     <div class="login-card card">
       <div class="login-brand">
         <h1>Café de Paris</h1>
-        <p>Sign in to continue</p>
+        <p>{% trans "Sign in to continue" %}</p>
       </div>
 
       {% if form.errors %}
-        <div class="login-error">Invalid username or password.</div>
+        <div class="login-error">
+          {% for error in form.non_field_errors %}{{ error }}{% empty %}{% trans "Invalid username or password." %}{% endfor %}
+        </div>
       {% endif %}
 
       <form method="post" class="login-form">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next }}">
         <div class="form-group">
-          <label for="id_username">Username</label>
-          <input type="text" name="username" id="id_username" required autofocus autocomplete="username">
+          <label for="id_username">{% trans "Username" %}</label>
+          <input type="text" name="username" id="id_username" autofocus autocomplete="username" value="{{ form.username.value|default:'' }}">
         </div>
         <div class="form-group">
-          <label for="id_password">Password</label>
-          <input type="password" name="password" id="id_password" required autocomplete="current-password">
+          <label for="id_password">{% trans "Password" %}</label>
+          <input type="password" name="password" id="id_password" autocomplete="current-password">
         </div>
-        <button type="submit" class="btn btn-primary" style="width: 100%;">Sign in</button>
+        <div class="form-group">
+          <label for="id_access_code">{% trans "Or 4-digit access code" %}</label>
+          <input type="text" name="access_code" id="id_access_code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" placeholder="••••" value="{{ form.access_code.value|default:'' }}">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">{% trans "Sign in" %}</button>
       </form>
     </div>
-    <footer class="login-footer">Copyright © 2026 <a href="https://www.zimhope.co.zw/" target="_blank" rel="noopener noreferrer" class="page-footer-link">Zimhope</a>. All rights reserved.</footer>
+    <footer class="login-footer">Copyright © 2026 <a href="https://www.zimhope.co.zw/" target="_blank" rel="noopener noreferrer" class="page-footer-link">Zimhope</a>. {% trans "All rights reserved." %}</footer>
   </div>
+  <script>
+    (function () {
+      const form = document.querySelector(".login-form");
+      const accessCodeInput = document.getElementById("id_access_code");
+      if (form && accessCodeInput) {
+        accessCodeInput.addEventListener("input", function () {
+          this.value = this.value.replace(/\D/g, "").slice(0, 4);
+          if (this.value.length === 4 && !form.dataset.submitting) {
+            form.dataset.submitting = "1";
+            if (typeof form.requestSubmit === "function") {
+              form.requestSubmit();
+            } else {
+              form.submit();
+            }
+          }
+        });
+      }
+
+      document.querySelectorAll(".language-selector").forEach(function (selector) {
+        const button = selector.querySelector(".language-button");
+        const menu = selector.querySelector(".language-menu");
+        if (!button || !menu) return;
+
+        function closeMenu() {
+          menu.hidden = true;
+          button.setAttribute("aria-expanded", "false");
+        }
+
+        function openMenu() {
+          menu.hidden = false;
+          button.setAttribute("aria-expanded", "true");
+        }
+
+        button.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (menu.hidden) {
+            openMenu();
+          } else {
+            closeMenu();
+          }
+        });
+
+        document.addEventListener("click", function (e) {
+          if (!selector.contains(e.target)) {
+            closeMenu();
+          }
+        });
+
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") {
+            closeMenu();
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

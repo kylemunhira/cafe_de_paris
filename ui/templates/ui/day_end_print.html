@@ -1,15 +1,15 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Day end — {{ branch.name }} — Café de Paris</title>
+  <title>{% trans "Day end" %} — {{ branch.name }} — Café de Paris</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">Print report</button>
+    <button type="button" onclick="window.print()">{% trans "Print report" %}</button>
   </div>
 
   <div class="receipt">
@@ -19,9 +19,9 @@
     </div>
 
     <div class="center meta">
-      <p><strong>Day End Report</strong></p>
+      <p><strong>{% trans "Day End Report" %}</strong></p>
       <p>{{ report.report_date|date:"d M Y" }}</p>
-      <p>Printed {{ printed_at|date:"d M Y, H:i" }}</p>
+      <p>{% trans "Printed" %} {{ printed_at|date:"d M Y, H:i" }}</p>
       <p>{{ branch.name }}</p>
     </div>
 
@@ -30,7 +30,7 @@
     <div class="payment-box">
       <table class="summary">
         <tr>
-          <td class="col-label">Orders</td>
+          <td class="col-label">{% trans "Orders" %}</td>
           <td class="col-amt">{{ report.order_count }}</td>
         </tr>
         {% for row in report.order_types %}
@@ -44,30 +44,30 @@
 
     <hr class="divider">
 
-    <div class="center meta"><p><strong>Sales{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "Sales" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></p></div>
 
     {% if report.order_count %}
     <table class="summary">
       <tr>
-        <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-label">{% trans "Subtotal" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ report.tax_breakdown.subtotal|floatformat:2 }}</td>
       </tr>
       <tr>
-        <td class="col-label">Tax ({{ report.tax_breakdown.tax_rate|floatformat:1 }}%)</td>
+        <td class="col-label">{% trans "Tax" %} ({{ report.tax_breakdown.tax_rate|floatformat:1 }}%)</td>
         <td class="col-amt">{{ report.tax_breakdown.tax|floatformat:2 }}</td>
       </tr>
       <tr>
-        <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-label">{% trans "Total" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ report.tax_breakdown.total|floatformat:2 }}</td>
       </tr>
     </table>
     {% else %}
-    <p class="center meta">No sales recorded for this day.</p>
+    <p class="center meta">{% trans "No sales recorded for this day." %}</p>
     {% endif %}
 
     {% if report.payments %}
     <hr class="divider">
-    <div class="center meta"><p><strong>Payments collected</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "Payments collected" %}</strong></p></div>
     <table class="summary">
       {% for payment in report.payments %}
       <tr>
@@ -85,7 +85,7 @@
 
     {% if report.payments_by_method %}
     <hr class="divider">
-    <div class="center meta"><p><strong>By payment method</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "By payment method" %}</strong></p></div>
     <table class="summary">
       {% for payment in report.payments_by_method %}
       <tr>
@@ -103,7 +103,7 @@
 
     {% if report.expenses %}
     <hr class="divider">
-    <div class="center meta"><p><strong>Expenses</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "Expenses" %}</strong></p></div>
     <table class="summary">
       {% for row in report.expenses %}
       <tr>
@@ -120,13 +120,13 @@
 
     {% if report.account_transactions %}
     <hr class="divider">
-    <div class="center meta"><p><strong>Customer account transactions</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "Customer account transactions" %}</strong></p></div>
     <table class="summary">
       {% for row in report.account_transactions %}
       <tr>
         <td class="col-label">
           {{ row.customer_name }} — {{ row.statement_label }}
-          <div class="item-detail">{{ row.created_at|date:"H:i" }}{% if row.order_id %} · Order #{{ row.order_id }}{% endif %}{% if row.notes %} · {{ row.notes }}{% endif %}</div>
+          <div class="item-detail">{{ row.created_at|date:"H:i" }}{% if row.order_id %} · {% trans "Order" %} #{{ row.order_id }}{% endif %}{% if row.notes %} · {{ row.notes }}{% endif %}</div>
         </td>
         <td class="col-amt">
           {% if row.amount >= 0 %}+{% endif %}{{ row.amount|floatformat:2 }}
@@ -141,12 +141,12 @@
 
     {% if report.cashup_rows %}
     <hr class="divider">
-    <div class="center meta"><p><strong>Cash-up reconciliation</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "Cash-up reconciliation" %}</strong></p></div>
     <table class="summary">
       {% for row in report.cashup_rows %}
       <tr>
         <td class="col-label">
-          {{ row.payment_currency__name|default:row.payment_currency__code|default:"—" }} expected
+          {{ row.payment_currency__name|default:row.payment_currency__code|default:"—" }} {% trans "expected" %}
         </td>
         <td class="col-amt">
           {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.expected_total|floatformat:2 }}
@@ -154,20 +154,20 @@
       </tr>
       {% if row.expenses_total %}
       <tr>
-        <td class="col-label">Less expenses</td>
+        <td class="col-label">{% trans "Less expenses" %}</td>
         <td class="col-amt">
           {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.expenses_total|floatformat:2 }}
         </td>
       </tr>
       <tr>
-        <td class="col-label">Net expected in till</td>
+        <td class="col-label">{% trans "Net expected in till" %}</td>
         <td class="col-amt">
           {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.net_expected_total|floatformat:2 }}
         </td>
       </tr>
       {% endif %}
       <tr>
-        <td class="col-label">Counted</td>
+        <td class="col-label">{% trans "Counted" %}</td>
         <td class="col-amt">
           {% if row.counted_total is not None %}
             {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.counted_total|floatformat:2 }}
@@ -177,7 +177,7 @@
         </td>
       </tr>
       <tr>
-        <td class="col-label">Variance</td>
+        <td class="col-label">{% trans "Variance" %}</td>
         <td class="col-amt">
           {% if row.variance is not None %}
             {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.variance|floatformat:2 }}
@@ -189,7 +189,7 @@
       {% endfor %}
       {% if report.has_counted_entries %}
       <tr>
-        <td class="col-label"><strong>Total variance</strong></td>
+        <td class="col-label"><strong>{% trans "Total variance" %}</strong></td>
         <td class="col-amt"><strong>{{ report.variance_total|floatformat:2 }}</strong></td>
       </tr>
       {% endif %}
@@ -197,14 +197,14 @@
     {% endif %}
 
     <hr class="divider">
-    <div class="center meta"><p><strong>Items sold</strong></p></div>
+    <div class="center meta"><p><strong>{% trans "Items sold" %}</strong></p></div>
 
     <table class="items">
       <thead>
         <tr>
-          <th class="col-item">Item</th>
-          <th class="col-qty">Qty</th>
-          <th class="col-amt">Amt</th>
+          <th class="col-item">{% trans "Item" %}</th>
+          <th class="col-qty">{% trans "Qty" %}</th>
+          <th class="col-amt">{% trans "Amt" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -218,14 +218,14 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="3">No items sold</td>
+          <td colspan="3">{% trans "No items sold" %}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
 
     <div class="center footer">
-      <p>End of day summary</p>
+      <p>{% trans "End of day summary" %}</p>
     </div>
   </div>
 

@@ -22,6 +22,12 @@ class ApiClient(
         return JsonParsers.parseLoginResponse(body)
     }
 
+    fun loginWithAccessCode(accessCode: String): LoginResponse {
+        val payload = JSONObject().put("access_code", accessCode)
+        val body = postJson("${config.serverUrl}/api/auth/mobile-login/", payload, authToken = null)
+        return JsonParsers.parseLoginResponse(body)
+    }
+
     fun fetchOpenOrders(): List<KitchenOrder> {
         return fetchOrdersByStatus("open")
     }
@@ -396,6 +402,7 @@ class ApiClient(
             val line = JSONObject()
                 .put("id", update.id)
                 .put("notes", update.notes)
+                .put("wastage_quantity", update.wastageQuantity ?: "0")
             if (update.countedQuantity == null) {
                 line.put("counted_quantity", JSONObject.NULL)
             } else {
@@ -521,6 +528,7 @@ class ApiClient(
         tableNumber: String?,
         items: List<CartLine>,
         existingOrderId: Int? = null,
+        accessCode: String? = null,
     ): KitchenOrder {
         val token = requireToken()
         val itemsJson = JSONArray()
@@ -550,6 +558,9 @@ class ApiClient(
         if (existingOrderId != null) {
             payload.put("existing_order_id", existingOrderId)
         }
+        if (!accessCode.isNullOrBlank()) {
+            payload.put("access_code", accessCode.trim())
+        }
         val body = postJson("${config.serverUrl}/api/orders/", payload, token)
         return JsonParsers.parseOrder(body)
     }
@@ -559,6 +570,15 @@ class ApiClient(
         val payload = JSONObject().put("customer", customerId ?: JSONObject.NULL)
         val body = patchJson("${config.serverUrl}/api/orders/$orderId/", payload, token)
         return JsonParsers.parseOrder(body)
+    }
+
+    fun authorizeBillPrint(orderId: Int, accessCode: String? = null) {
+        val token = requireToken()
+        val payload = JSONObject()
+        if (!accessCode.isNullOrBlank()) {
+            payload.put("access_code", accessCode.trim())
+        }
+        postJson("${config.serverUrl}/api/orders/$orderId/print-bill/", payload, token)
     }
 
     fun removeOneOrderItem(orderId: Int, itemId: Int): KitchenOrder {

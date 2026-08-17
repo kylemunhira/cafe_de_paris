@@ -1,20 +1,20 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Customer Accounts — Café de Paris{% endblock %}
-{% block page_title %}Customer Accounts{% endblock %}
+{% block title %}{% trans "Customer Accounts" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Customer Accounts" %}{% endblock %}
 
 {% block content %}
 <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
   <div class="form-group">
-    <label for="customer-search">Customer</label>
-    <input type="search" id="customer-search" placeholder="Filter by name or phone…" autocomplete="off">
+    <label for="customer-search">{% trans "Customer" %}</label>
+    <input type="search" id="customer-search" placeholder="{% trans "Filter by name or phone…" %}" autocomplete="off">
   </div>
   <div class="category-tabs" id="account-type-filter" style="margin-top: 0.75rem;">
-    <button type="button" class="category-tab active" data-type="all">All</button>
-    <button type="button" class="category-tab" data-type="family">Family</button>
-    <button type="button" class="category-tab" data-type="staff">Staff</button>
-    <button type="button" class="category-tab" data-type="regular">Regular</button>
+    <button type="button" class="category-tab active" data-type="all">{% trans "All" %}</button>
+    <button type="button" class="category-tab" data-type="family">{% trans "Family" %}</button>
+    <button type="button" class="category-tab" data-type="staff">{% trans "Staff" %}</button>
+    <button type="button" class="category-tab" data-type="regular">{% trans "Regular" %}</button>
   </div>
   <div id="customer-picker" class="customer-picker-list" style="margin-top: 0.75rem;"></div>
 </div>
@@ -27,10 +27,10 @@
         <p id="selected-customer-meta" style="margin: 0.35rem 0 0; color: var(--color-muted); font-size: 0.85rem;"></p>
       </div>
       <div style="text-align: right;">
-        <div style="font-size: 0.8rem; color: var(--color-muted);">Account balance</div>
+        <div style="font-size: 0.8rem; color: var(--color-muted);">{% trans "Account balance" %}</div>
         <div id="account-balance" style="font-size: 1.5rem; font-weight: 700; color: var(--color-primary);">—</div>
-        <div id="credit-limit" style="font-size: 0.85rem; color: var(--color-muted); margin-top: 0.25rem;">Credit limit: —</div>
-        <button type="button" class="btn btn-ghost btn-sm" id="print-full-statement-btn" style="margin-top: 0.5rem;">Print statement</button>
+        <div id="credit-limit" style="font-size: 0.85rem; color: var(--color-muted); margin-top: 0.25rem;">{% trans "Credit limit: —" %}</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="print-full-statement-btn" style="margin-top: 0.5rem;">{% trans "Print statement" %}</button>
       </div>
     </div>
   </div>
@@ -38,79 +38,79 @@
   <div class="card report-filters" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
     <div class="report-filters-grid">
       <label>
-        <span>From</span>
+        <span>{% trans "From" %}</span>
         <input type="date" id="statement-from" class="report-input">
       </label>
       <label>
-        <span>To</span>
+        <span>{% trans "To" %}</span>
         <input type="date" id="statement-to" class="report-input">
       </label>
       <div class="report-filters-actions">
-        <button type="button" id="apply-statement-filters" class="btn btn-primary btn-sm">Apply</button>
+        <button type="button" id="apply-statement-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
       </div>
     </div>
   </div>
 
   <div class="stat-grid" id="statement-summary" style="margin-bottom: 1.25rem; display: none;">
     <div class="card stat-card">
-      <div class="stat-label">Opening balance</div>
+      <div class="stat-label">{% trans "Opening balance" %}</div>
       <div class="stat-value" id="summary-opening">—</div>
     </div>
     <div class="card stat-card">
-      <div class="stat-label">Payments received</div>
+      <div class="stat-label">{% trans "Payments received" %}</div>
       <div class="stat-value text-success" id="summary-credits">—</div>
     </div>
     <div class="card stat-card">
-      <div class="stat-label">Withdrawals</div>
+      <div class="stat-label">{% trans "Withdrawals" %}</div>
       <div class="stat-value text-danger" id="summary-debits">—</div>
     </div>
     <div class="card stat-card">
-      <div class="stat-label">Closing balance</div>
+      <div class="stat-label">{% trans "Closing balance" %}</div>
       <div class="stat-value" id="summary-closing">—</div>
     </div>
   </div>
 
   <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-    <h3 style="margin: 0 0 1rem; font-size: 1rem;">Record deposit</h3>
+    <h3 style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Record deposit" %}</h3>
     <form id="deposit-form">
       <div class="form-row">
         <div class="form-group">
-          <label for="deposit-currency">Payment currency</label>
-          <select id="deposit-currency"><option value="">Loading…</option></select>
+          <label for="deposit-currency">{% trans "Payment currency" %}</label>
+          <select id="deposit-currency"><option value="">{% trans "Loading…" %}</option></select>
         </div>
         <div class="form-group">
-          <label for="deposit-amount">Amount received</label>
+          <label for="deposit-amount">{% trans "Amount received" %}</label>
           <input type="number" id="deposit-amount" step="0.01" min="0.01" placeholder="0.00" required>
         </div>
       </div>
       <div class="form-group">
-        <label for="deposit-notes">Notes (optional)</label>
-        <input type="text" id="deposit-notes" maxlength="200" placeholder="e.g. Cash top-up">
+        <label for="deposit-notes">{% trans "Notes (optional)" %}</label>
+        <input type="text" id="deposit-notes" maxlength="200" placeholder="{% trans "e.g. Cash top-up" %}">
       </div>
       <div style="display: flex; justify-content: flex-end;">
-        <button type="submit" class="btn btn-primary" id="deposit-btn">Record deposit</button>
+        <button type="submit" class="btn btn-primary" id="deposit-btn">{% trans "Record deposit" %}</button>
       </div>
     </form>
   </div>
 
   {% if can_adjust_customer_balance %}
   <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; border: 1px solid #ffe082; background: #fffdf5;">
-    <h3 style="margin: 0 0 0.35rem; font-size: 1rem;">Adjust balance</h3>
-    <p class="settings-hint" style="margin: 0 0 1rem;">Enter a signed amount such as <strong>-12.00</strong> to debit, or a positive amount to credit. This posts a Balance adjustment on the customer statement.</p>
+    <h3 style="margin: 0 0 0.35rem; font-size: 1rem;">{% trans "Adjust balance" %}</h3>
+    <p class="settings-hint" style="margin: 0 0 1rem;">{% trans "Enter a signed amount such as -12.00 to debit, or a positive amount to credit. This posts a Balance adjustment on the customer statement." %}</p>
     <form id="adjust-form">
       <div class="form-row">
         <div class="form-group">
-          <label for="adjust-amount">Adjustment amount</label>
+          <label for="adjust-amount">{% trans "Adjustment amount" %}</label>
           <input type="number" id="adjust-amount" step="0.01" placeholder="-12.00" required>
         </div>
         <div class="form-group">
-          <label for="adjust-notes">Notes (optional)</label>
-          <input type="text" id="adjust-notes" maxlength="200" placeholder="e.g. Correction">
+          <label for="adjust-notes">{% trans "Notes (optional)" %}</label>
+          <input type="text" id="adjust-notes" maxlength="200" placeholder="{% trans "e.g. Correction" %}">
         </div>
       </div>
-      <p id="adjust-preview" class="settings-hint" style="margin: 0 0 0.75rem;">New balance: —</p>
+      <p id="adjust-preview" class="settings-hint" style="margin: 0 0 0.75rem;">{% trans "New balance: —" %}</p>
       <div style="display: flex; justify-content: flex-end;">
-        <button type="submit" class="btn btn-primary" id="adjust-btn">Apply adjustment</button>
+        <button type="submit" class="btn btn-primary" id="adjust-btn">{% trans "Apply adjustment" %}</button>
       </div>
     </form>
   </div>
@@ -118,7 +118,7 @@
 
   <div class="card" style="padding: 0;">
     <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-      <h3 style="margin: 0; font-size: 1rem;">Transaction history</h3>
+      <h3 style="margin: 0; font-size: 1rem;">{% trans "Transaction history" %}</h3>
     </div>
     <div class="table-wrap" id="transactions-table">
       <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -127,7 +127,7 @@
 </div>
 
 <div id="empty-state" class="empty-state" style="margin-top: 2rem;">
-  <p>Select a customer to view their account or record a deposit.</p>
+  <p>{% trans "Select a customer to view their account or record a deposit." %}</p>
 </div>
 {% endblock %}
 
@@ -135,6 +135,8 @@
 <script type="module">
 import { apiGet, apiPost, fetchAllPages, unwrapList, formatCurrency, formatDate, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 let customers = [];
 let currencies = [];
@@ -146,9 +148,9 @@ let cachedTransactions = [];
 const txnSortState = createSortState("created_at", "desc");
 
 const ACCOUNT_TYPE_LABELS = {
-  regular: "Regular",
-  family: "Family",
-  staff: "Staff",
+  regular: t("Regular"),
+  family: t("Family"),
+  staff: t("Staff"),
 };
 
 const TXN_SORT = {
@@ -228,7 +230,7 @@ function displayName(customer) {
 function accountTypeLabel(customer) {
   return customer.account_type_display
     || ACCOUNT_TYPE_LABELS[customer.account_type]
-    || "Regular";
+    || t("Regular");
 }
 
 function usesCostPrice(customer) {
@@ -285,7 +287,7 @@ async function selectCustomer(customer) {
   selectedCustomerMeta.textContent = `${typePart}${costPart} · ${contact}`;
   accountBalance.textContent = formatCurrency(customer.account_balance);
   if (creditLimitEl) {
-    creditLimitEl.textContent = `Credit limit: ${formatCurrency(customer.credit_limit || 0)}`;
+    creditLimitEl.textContent = `${t("Credit limit:")} ${formatCurrency(customer.credit_limit || 0)}`;
   }
   renderCustomerPicker();
   updateAdjustPreview();
@@ -327,12 +329,12 @@ function renderTransactions() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Date", "created_at", txnSortState)}
-          ${sortTh("Type", "type", txnSortState)}
-          ${sortTh("Amount", "amount", txnSortState)}
-          ${sortTh("Balance", "balance_after", txnSortState)}
-          ${sortTh("User", "user", txnSortState)}
-          ${sortTh("Details", "details", txnSortState)}
+          ${sortTh(t("Date"), "created_at", txnSortState)}
+          ${sortTh(t("Type"), "type", txnSortState)}
+          ${sortTh(t("Amount"), "amount", txnSortState)}
+          ${sortTh(t("Balance"), "balance_after", txnSortState)}
+          ${sortTh(t("User"), "user", txnSortState)}
+          ${sortTh(t("Details"), "details", txnSortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -414,7 +416,7 @@ const adjustPreview = document.getElementById("adjust-preview");
 function updateAdjustPreview() {
   if (!adjustPreview) return;
   if (!selectedCustomer) {
-    adjustPreview.textContent = "New balance: —";
+    adjustPreview.textContent = t("New balance: —");
     return;
   }
   const amount = Number(adjustAmount?.value);
@@ -430,16 +432,16 @@ depositForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!selectedCustomer) return;
   if (!depositBranchId) {
-    showToast("No branch assigned for recording deposits", true);
+    showToast(t("No branch assigned for recording deposits"), true);
     return;
   }
   const amount = Number(depositAmount.value);
   if (!Number.isFinite(amount) || amount <= 0) {
-    showToast("Enter a valid amount", true);
+    showToast(t("Enter a valid amount"), true);
     return;
   }
   if (!depositCurrency.value) {
-    showToast("Select a currency", true);
+    showToast(t("Select a currency"), true);
     return;
   }
 
@@ -457,7 +459,7 @@ depositForm.addEventListener("submit", async (e) => {
     if (index >= 0) customers[index].account_balance = result.account_balance;
     depositAmount.value = "";
     depositNotes.value = "";
-    showToast("Deposit recorded");
+    showToast(t("Deposit recorded"));
     if (result.transaction?.id) {
       openStatementPrint(result.transaction.id, { auto: true });
     }
@@ -476,7 +478,7 @@ adjustForm?.addEventListener("submit", async (e) => {
   if (!selectedCustomer) return;
   const amount = Number(adjustAmount.value);
   if (!Number.isFinite(amount) || amount === 0) {
-    showToast("Enter a non-zero adjustment amount (e.g. -12.00)", true);
+    showToast(t("Enter a non-zero adjustment amount (e.g. -12.00)"), true);
     return;
   }
 
@@ -492,7 +494,7 @@ adjustForm?.addEventListener("submit", async (e) => {
     if (index >= 0) customers[index].account_balance = result.account_balance;
     adjustAmount.value = "";
     adjustNotes.value = "";
-    showToast("Balance adjustment recorded");
+    showToast(t("Balance adjustment recorded"));
     if (result.transaction?.id) {
       openStatementPrint(result.transaction.id, { auto: true });
     }

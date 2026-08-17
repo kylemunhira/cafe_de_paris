@@ -1,64 +1,64 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Ingredient Usage — Café de Paris{% endblock %}
-{% block page_title %}Daily Ingredient Usage{% endblock %}
+{% block title %}{% trans "Ingredient Usage" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Daily Ingredient Usage" %}{% endblock %}
 
 {% block topbar_actions %}
-<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">{% trans "Print" %}</button>
 {% endblock %}
 
 {% block content %}
 <div class="card report-filters">
   <div class="report-filters-grid">
     <label>
-      <span>Date</span>
+      <span>{% trans "Date" %}</span>
       <input type="date" id="filter-date" class="report-input">
     </label>
     {% if can_filter_any_branch %}
     <label>
-      <span>Branch</span>
+      <span>{% trans "Branch" %}</span>
       <select id="filter-branch" class="report-input">
-        <option value="">All branches</option>
+        <option value="">{% trans "All branches" %}</option>
       </select>
     </label>
     {% endif %}
     <label style="grid-column: span 2;">
-      <span>Search ingredient</span>
-      <input type="search" id="filter-search" class="report-input" placeholder="Name…" autocomplete="off">
+      <span>{% trans "Search ingredient" %}</span>
+      <input type="search" id="filter-search" class="report-input" placeholder="{% trans "Name…" %}" autocomplete="off">
     </label>
     <label class="report-checkbox-label">
       <input type="checkbox" id="filter-active-only" checked>
-      <span>Active ingredients only</span>
+      <span>{% trans "Active ingredients only" %}</span>
     </label>
     <div class="report-filters-actions">
-      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
   </div>
 </div>
 
 <div class="stat-grid" id="report-summary">
   <div class="card stat-card">
-    <div class="stat-label">Ingredients used</div>
+    <div class="stat-label">{% trans "Ingredients used" %}</div>
     <div class="stat-value" id="summary-ingredients">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Branches</div>
+    <div class="stat-label">{% trans "Branches" %}</div>
     <div class="stat-value" id="summary-branches">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Total quantity used</div>
+    <div class="stat-label">{% trans "Total quantity used" %}</div>
     <div class="stat-value" id="summary-quantity">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Total usage cost</div>
+    <div class="stat-label">{% trans "Total usage cost" %}</div>
     <div class="stat-value" id="summary-cost">—</div>
   </div>
 </div>
 
 <div class="card report-panel" id="report-table-card" style="padding: 0;">
   <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Usage by branch</h3>
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Usage by branch" %}</h3>
     <p class="report-panel-note" id="report-generated-at" style="margin: 0.35rem 0 0;"></p>
   </div>
   <div class="table-wrap" id="report-table">
@@ -71,6 +71,8 @@
 <script type="module">
 import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 
@@ -131,11 +133,11 @@ function renderReport(data) {
   summaryCost.textContent = formatCurrency(summary.total_usage_cost ?? 0);
 
   const reportDate = data.date || filterDate.value;
-  reportGeneratedAt.textContent = `Usage for ${reportDate} — ${summary.row_count ?? 0} lines`;
+  reportGeneratedAt.textContent = `${t("Usage for")} ${reportDate} — ${summary.row_count ?? 0} ${t("lines")}`;
 
   const rows = data.rows || [];
   if (!rows.length) {
-    reportTable.innerHTML = `<div class="empty-state"><p>No ingredient usage recorded for this date</p></div>`;
+    reportTable.innerHTML = `<div class="empty-state"><p>${t("No ingredient usage recorded for this date")}</p></div>`;
     return;
   }
 
@@ -147,13 +149,13 @@ function renderReport(data) {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Ingredient", "ingredient_name", sortState)}
-          ${showBranchColumn ? sortTh("Branch", "branch_name", sortState) : ""}
-          ${sortTh("From sales", "from_sales", sortState, { align: "right" })}
-          ${sortTh("From production", "from_production", sortState, { align: "right" })}
-          ${sortTh("Total used", "quantity_used", sortState, { align: "right" })}
-          ${sortTh("Unit cost", "unit_cost", sortState, { align: "right" })}
-          ${sortTh("Usage cost", "usage_cost", sortState, { align: "right" })}
+          ${sortTh(t("Ingredient"), "ingredient_name", sortState)}
+          ${showBranchColumn ? sortTh(t("Branch"), "branch_name", sortState) : ""}
+          ${sortTh(t("From sales"), "from_sales", sortState, { align: "right" })}
+          ${sortTh(t("From production"), "from_production", sortState, { align: "right" })}
+          ${sortTh(t("Total used"), "quantity_used", sortState, { align: "right" })}
+          ${sortTh(t("Unit cost"), "unit_cost", sortState, { align: "right" })}
+          ${sortTh(t("Usage cost"), "usage_cost", sortState, { align: "right" })}
         </tr>
       </thead>
       <tbody>
@@ -171,7 +173,7 @@ function renderReport(data) {
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="${showBranchColumn ? 4 : 3}"><strong>Total</strong></td>
+          <td colspan="${showBranchColumn ? 4 : 3}"><strong>${t("Total")}</strong></td>
           <td style="text-align: right; font-weight: 700;">${formatQty(summary.total_quantity_used ?? 0)}</td>
           <td style="text-align: right; font-weight: 700;">${formatCurrency(totalUnitCost)}</td>
           <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_usage_cost ?? 0)}</td>
@@ -189,7 +191,7 @@ async function loadReport() {
     const data = await apiGet(`/reports/ingredient-usage/${query ? `?${query}` : ""}`);
     renderReport(data);
   } catch (err) {
-    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+    reportTable.innerHTML = `<div class="empty-state">${t("Failed to load report:")} ${err.message}</div>`;
     showToast(err.message, true);
   }
 }
@@ -198,7 +200,7 @@ async function loadBranches() {
   if (!canFilterAnyBranch || !filterBranch) return;
   const data = await apiGet("/branches/?page_size=500");
   const branches = unwrapList(data).filter(b => b.is_active);
-  filterBranch.innerHTML = `<option value="">All branches</option>` +
+  filterBranch.innerHTML = `<option value="">${t("All branches")}</option>` +
     branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
 }
 
@@ -220,7 +222,7 @@ bindTableSort(reportTable, sortState, () => {
 loadBranches()
   .then(loadReport)
   .catch(err => {
-    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+    reportTable.innerHTML = `<div class="empty-state">${t("Failed to load report:")} ${err.message}</div>`;
   });
 </script>
 {% endblock %}

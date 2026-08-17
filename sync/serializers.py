@@ -5,6 +5,9 @@ from rest_framework import serializers
 from catalog.models import Product
 from payments.models import Currency
 
+from accounts.access_codes import normalize_access_code, resolve_order_taker
+from accounts.branch_access import user_is_waiter
+
 
 class SyncOrderItemSerializer(serializers.Serializer):
     product_id = serializers.PrimaryKeyRelatedField(
@@ -71,5 +74,25 @@ class SyncOrderPushSerializer(serializers.Serializer):
     order_type = serializers.ChoiceField(choices=["dine_in", "takeaway"])
     table_number = serializers.CharField(required=False, allow_blank=True, default="")
     created_at = serializers.DateTimeField(required=False)
+    access_code = serializers.CharField(required=False, allow_blank=True, max_length=4)
     items = SyncOrderItemSerializer(many=True)
     payment = SyncOrderPaymentSerializer(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = request.user if request and request.user.is_authenticated else None
+        code = normalize_access_code(attrs.pop("access_code", None))
+
+        if user is not None and user_is_waiter(user):
+            try:
+                attrs["_created_by"] = resolve_order_taker(code)
+            except ValueError as exc:
+                raise serializers.ValidationError({"access_code": str(exc)}) from exc
+        elif code:
+            try:
+                attrs["_created_by"] = resolve_order_taker(code)
+            except ValueError as exc:
+                raise serializers.ValidationError({"access_code": str(exc)}) from exc
+        else:
+            attrs["_created_by"] = user
+        return attrs

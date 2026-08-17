@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +43,7 @@ class MainActivity : KeepScreenOnActivity() {
     private val adapter = OrderAdapter()
     private var pollJob: Job? = null
     private var errorHideJob: Job? = null
+    private var loginInProgress = false
     private var lastOpenOrderIds: Set<Int> = emptySet()
     private val printer = EscPosPrinter()
 
@@ -64,7 +67,20 @@ class MainActivity : KeepScreenOnActivity() {
         binding.ordersList.layoutManager = GridLayoutManager(this, 2)
         binding.ordersList.adapter = adapter
 
-        binding.loginButton.setOnClickListener { attemptLogin() }
+        binding.accessCodeInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                val code = s?.toString()?.trim().orEmpty()
+                if (code.matches(Regex("^\\d{4}$"))) {
+                    attemptLogin()
+                }
+            }
+        })
+        binding.accessCodeInput.setOnEditorActionListener { _, _, _ ->
+            attemptLogin()
+            true
+        }
         binding.logoutButton.setOnClickListener { logout() }
         binding.settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -101,35 +117,40 @@ class MainActivity : KeepScreenOnActivity() {
     }
 
     private fun attemptLogin() {
-        val username = binding.usernameInput.text?.toString()?.trim().orEmpty()
-        val password = binding.passwordInput.text?.toString().orEmpty()
-
-        if (username.isBlank() || password.isBlank()) {
-            Toast.makeText(this, R.string.login_fields_required, Toast.LENGTH_SHORT).show()
+        if (loginInProgress) return
+        val accessCode = binding.accessCodeInput.text?.toString()?.trim().orEmpty()
+        if (!accessCode.matches(Regex("^\\d{4}$"))) {
             return
         }
-        binding.loginButton.isEnabled = false
+        loginInProgress = true
+        binding.accessCodeInput.isEnabled = false
         binding.loginProgress.visibility = View.VISIBLE
         binding.loginError.visibility = View.GONE
 
         lifecycleScope.launch {
             try {
                 val response = withContext(Dispatchers.IO) {
-                    api.login(username, password)
+                    api.loginWithAccessCode(accessCode)
                 }
                 session.saveLogin(response)
-                binding.passwordInput.text?.clear()
+                binding.accessCodeInput.text?.clear()
                 routeAfterLogin()
                 requestBluetoothIfNeeded()
             } catch (err: ApiException) {
                 binding.loginError.text = err.message
                 binding.loginError.visibility = View.VISIBLE
+                binding.accessCodeInput.text?.clear()
             } catch (err: Exception) {
                 binding.loginError.text = getString(R.string.connection_failed, err.message ?: "")
                 binding.loginError.visibility = View.VISIBLE
+                binding.accessCodeInput.text?.clear()
             } finally {
-                binding.loginButton.isEnabled = true
+                loginInProgress = false
+                binding.accessCodeInput.isEnabled = true
                 binding.loginProgress.visibility = View.GONE
+                if (!session.isLoggedIn) {
+                    binding.accessCodeInput.requestFocus()
+                }
             }
         }
     }

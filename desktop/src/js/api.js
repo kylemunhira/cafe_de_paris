@@ -1,11 +1,25 @@
-export async function desktopLogin(serverUrl, username, password) {
+export async function desktopLogin(serverUrl, username, password, accessCode = "") {
   const base = serverUrl.replace(/\/$/, "");
+  const body = { server_url: base };
+  if (accessCode) {
+    body.access_code = accessCode;
+  } else {
+    body.username = username;
+    body.password = password;
+  }
   const res = await fetch(`${base}/api/auth/desktop-login/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ server_url: base, username, password }),
+    body: JSON.stringify(body),
   });
   return parseResponse(res);
+}
+
+export async function verifyAccessCode(session, accessCode, purpose = "override") {
+  return authedRequest(session, "/auth/verify-access-code/", {
+    method: "POST",
+    body: { access_code: accessCode, purpose },
+  });
 }
 
 export async function syncPull(serverUrl, token) {

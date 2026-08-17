@@ -1,9 +1,14 @@
+from accounts.access_codes import (
+    resolve_bill_reprint_authorizer,
+    resolve_pos_override_authorizer,
+)
 from accounts.branch_access import (
     filter_by_branch_field,
     user_can_access_pos,
     user_can_approve_fiscal_receipt,
     user_can_collect_payment,
     user_can_manage_pos_orders,
+    user_is_waiter,
 )
 from audit.mixins import AuditedModelMixin
 from audit.models import AuditAction
@@ -138,6 +143,8 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         if fiscal_only in ("1", "true", "yes"):
             qs = qs.filter(branch__fiscalization_enabled=True)
         qs = filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
+        if user_is_waiter(self.request.user):
+            qs = qs.filter(created_by=self.request.user)
         station = self._kitchen_station_for_request()
         return filter_orders_for_kitchen_station(qs, station)
 
@@ -354,9 +361,17 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         url_path=r"items/(?P<item_id>[^/.]+)/remove-one",
     )
     def remove_one_item(self, request, pk=None, item_id=None):
-        if not user_can_manage_pos_orders(request.user):
+        try:
+            authorizer = resolve_pos_override_authorizer(
+                request.data.get("access_code")
+            )
+        except ValueError as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        actor = authorizer or request.user
+        if not user_can_manage_pos_orders(actor):
             raise PermissionDenied(
-                "HQ admin access is required to remove items from orders."
+                "Manager access code is required to remove items from orders."
             )
         order = self.get_object()
         try:
@@ -369,7 +384,7 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 item = OrderItem.objects.select_for_update().get(pk=item_id)
                 before = snapshot_fields(order, self.ORDER_ACTION_AUDIT_FIELDS)
                 order = remove_one_order_item(
-                    order, item, removed_by=request.user
+                    order, item, removed_by=actor
                 )
                 if order.status == OrderStatus.CANCELLED:
                     self._record_order_action_audit(
@@ -456,6 +471,49 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["post"], url_path="print-bill")
+    def print_bill(self, request, pk=None):
+        """Authorize and record a guest-bill print before it reaches the printer."""
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required to print bills.")
+
+        order = self.get_object()
+        if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+            return Response(
+                {"detail": "Bills are only available for open or unpaid orders."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(pk=order.pk)
+                printed_by = request.user
+                if order.bill_print_count:
+                    printed_by = resolve_bill_reprint_authorizer(
+                        request.data.get("access_code")
+                    )
+                order.bill_print_count += 1
+                order.bill_last_printed_at = timezone.now()
+                order.bill_last_printed_by = printed_by
+                order.save(
+                    update_fields=[
+                        "bill_print_count",
+                        "bill_last_printed_at",
+                        "bill_last_printed_by",
+                    ]
+                )
+        except ValueError as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        return Response(
+            {
+                "bill_print_count": order.bill_print_count,
+                "printed_by_name": (
+                    printed_by.get_full_name() or printed_by.username
+                ),
+            }
+        )
+
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         if not user_can_access_pos(request.user):
@@ -494,6 +552,18 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     def void(self, request, pk=None):
         if not user_can_access_pos(request.user):
             raise PermissionDenied("POS access is required to void orders.")
+        try:
+            authorizer = resolve_pos_override_authorizer(
+                request.data.get("access_code")
+            )
+        except ValueError as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        actor = authorizer or request.user
+        if not user_can_manage_pos_orders(actor):
+            raise PermissionDenied(
+                "Manager access code is required to void orders."
+            )
         order = self.get_object()
         try:
             with transaction.atomic():
@@ -503,7 +573,7 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                     .get(pk=order.pk)
                 )
                 before = snapshot_fields(order, self.ORDER_ACTION_AUDIT_FIELDS)
-                order = void_order(order, voided_by=request.user)
+                order = void_order(order, voided_by=actor)
                 self._record_order_action_audit(
                     order,
                     before=before,

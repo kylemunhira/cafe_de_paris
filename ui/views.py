@@ -20,6 +20,7 @@ from accounts.branch_access import (
     user_is_grv_staff,
     user_is_waiter,
 )
+from accounts.forms import StaffAuthenticationForm
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.http import Http404, HttpResponseBadRequest
@@ -144,6 +145,7 @@ class BaseUIView(LoginRequiredMixin, CashierRestrictedAccessMixin, TemplateView)
 
 class StaffLoginView(auth_views.LoginView):
     template_name = "ui/login.html"
+    authentication_form = StaffAuthenticationForm
 
     def get_success_url(self):
         from accounts.branch_access import user_can_access_dashboard
@@ -241,6 +243,15 @@ class KitchenView(BaseUIView):
 class OrdersView(BaseUIView):
     template_name = "ui/orders.html"
     active_nav = "orders"
+
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import user_can_manage_pos_orders
+
+        context = super().get_context_data(**kwargs)
+        context["can_manage_pos_orders"] = user_can_manage_pos_orders(
+            self.request.user
+        )
+        return context
 
 
 class ProductsView(BaseUIView):

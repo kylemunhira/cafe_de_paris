@@ -173,6 +173,7 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
     )
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     lines = PurchaseOrderLineCreateSerializer(many=True)
+    as_draft = serializers.BooleanField(required=False, default=False)
 
     def validate_lines(self, value):
         if not value:
@@ -206,20 +207,29 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         lines_data = validated_data.pop("lines")
         notes = validated_data.pop("notes", "")
+        as_draft = validated_data.pop("as_draft", False)
         request = self.context.get("request")
         created_by = request.user if request and request.user.is_authenticated else None
 
         with transaction.atomic():
             now = timezone.now()
-            purchase_order = PurchaseOrder.objects.create(
-                notes=notes,
-                created_by=created_by,
-                status=PurchaseOrderStatus.RECEIVED,
-                submitted_at=now,
-                approved_at=now,
-                received_at=now,
-                **validated_data,
-            )
+            if as_draft:
+                purchase_order = PurchaseOrder.objects.create(
+                    notes=notes,
+                    created_by=created_by,
+                    status=PurchaseOrderStatus.DRAFT,
+                    **validated_data,
+                )
+            else:
+                purchase_order = PurchaseOrder.objects.create(
+                    notes=notes,
+                    created_by=created_by,
+                    status=PurchaseOrderStatus.RECEIVED,
+                    submitted_at=now,
+                    approved_at=now,
+                    received_at=now,
+                    **validated_data,
+                )
             PurchaseOrderLine.objects.bulk_create(
                 [
                     PurchaseOrderLine(
@@ -231,7 +241,8 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
                     for line in lines_data
                 ]
             )
-            apply_purchase_order_inventory(purchase_order)
+            if not as_draft:
+                apply_purchase_order_inventory(purchase_order)
         return purchase_order
 
 

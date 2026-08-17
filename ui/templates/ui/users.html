@@ -1,41 +1,53 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Users — Café de Paris{% endblock %}
-{% block page_title %}Users{% endblock %}
+{% block title %}{% trans "Users" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Users" %}{% endblock %}
 
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add staff user</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Add staff user" %}</h3>
   <form id="user-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="username">Username</label>
+        <label for="username">{% trans "Username" %}</label>
         <input type="text" id="username" name="username" required autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="email">Email</label>
+        <label for="email">{% trans "Email" %}</label>
         <input type="email" id="email" name="email" autocomplete="off">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="password">Password</label>
+        <label for="password">{% trans "Password" %}</label>
         <input type="password" id="password" name="password" required minlength="4" autocomplete="new-password">
         <p id="password-hint" style="display: none; margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--color-muted);">
-          Leave blank to keep the current password.
+          {% trans "Leave blank to keep the current password." %}
         </p>
       </div>
       <div class="form-group">
-        <label for="role">Role</label>
+        <label for="access_code">{% trans "Access code" %}</label>
+        <input type="text" id="access_code" name="access_code" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" minlength="4" autocomplete="off" placeholder="1234">
+        <p id="access-code-hint" style="display: none; margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--color-muted);">
+          {% trans "Leave blank to keep the current access code." %}
+        </p>
+        <p style="margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--color-muted);">
+          {% trans "Unique 4-digit code for login and manager overrides." %}
+        </p>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="role">{% trans "Role" %}</label>
         <select id="role" name="role" required>
-          <option value="">Loading roles…</option>
+          <option value="">{% trans "Loading roles…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="branch">Branch</label>
+        <label for="branch">{% trans "Branch" %}</label>
         <select id="branch" name="branch" required>
-          <option value="">Select branch…</option>
+          <option value="">{% trans "Select branch…" %}</option>
         </select>
       </div>
     </div>
@@ -43,37 +55,37 @@
       <div class="form-group">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
           <input type="checkbox" id="pos_access" name="pos_access">
-          POS access (web &amp; desktop)
+          {% trans "POS access (web & desktop)" %}
         </label>
       </div>
       <div class="form-group">
-        <label for="kitchen_station">Kitchen display station</label>
+        <label for="kitchen_station">{% trans "Kitchen display station" %}</label>
         <select id="kitchen_station" name="kitchen_station">
-          <option value="">All stations</option>
-          <option value="kitchen">Kitchen</option>
-          <option value="bar">Bar</option>
+          <option value="">{% trans "All stations" %}</option>
+          <option value="kitchen">{% trans "Kitchen" %}</option>
+          <option value="bar">{% trans "Bar" %}</option>
         </select>
         <p style="margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--color-muted);">
-          Kitchen app users only see and auto-print orders for categories on this station.
+          {% trans "Kitchen app users only see and auto-print orders for categories on this station." %}
         </p>
       </div>
       <div class="form-group" id="active-field" style="display: none;">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
           <input type="checkbox" id="is_active" name="is_active" checked>
-          Active user
+          {% trans "Active user" %}
         </label>
       </div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
-      <button type="submit" class="btn btn-primary" id="submit-btn">Add user</button>
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">{% trans "Add user" %}</button>
     </div>
   </form>
 </div>
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Staff members</h3>
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Staff members" %}</h3>
   </div>
   <div class="table-wrap" id="users-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -86,12 +98,16 @@
 import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
+const t = (msgid) => window.CDP.t(msgid);
+
 const userForm = document.getElementById("user-form");
 const formTitle = document.getElementById("form-title");
 const branchSelect = document.getElementById("branch");
 const roleSelect = document.getElementById("role");
 const passwordInput = document.getElementById("password");
 const passwordHint = document.getElementById("password-hint");
+const accessCodeInput = document.getElementById("access_code");
+const accessCodeHint = document.getElementById("access-code-hint");
 const activeField = document.getElementById("active-field");
 const isActiveInput = document.getElementById("is_active");
 const posAccessInput = document.getElementById("pos_access");
@@ -110,6 +126,7 @@ const USER_SORT = {
   email: (u) => u.email || "",
   branch_name: (u) => u.branch_name || "",
   role: (u) => u.role_display || "",
+  access_code: (u) => u.access_code || "",
   pos_access: (u) => u.pos_access ? 1 : 0,
   kitchen_station: (u) => u.kitchen_station_display || "",
   is_active: (u) => u.is_active ? 1 : 0,
@@ -130,12 +147,14 @@ function setFormMode(mode) {
   const isEdit = mode === "edit";
   editingUserId = isEdit ? editingUserId : null;
 
-  formTitle.textContent = isEdit ? "Edit staff user" : "Add staff user";
-  submitBtn.textContent = isEdit ? "Save changes" : "Add user";
+  formTitle.textContent = isEdit ? t("Edit staff user") : t("Add staff user");
+  submitBtn.textContent = isEdit ? t("Save changes") : t("Add user");
   cancelBtn.style.display = isEdit ? "" : "none";
   activeField.style.display = isEdit ? "" : "none";
   passwordHint.style.display = isEdit ? "" : "none";
   passwordInput.required = !isEdit;
+  accessCodeHint.style.display = isEdit ? "" : "none";
+  accessCodeInput.required = !isEdit;
 
   if (!isEdit) {
     userForm.reset();
@@ -156,6 +175,7 @@ function startEdit(user) {
   userForm.username.value = user.username;
   userForm.email.value = user.email || "";
   passwordInput.value = "";
+  accessCodeInput.value = user.access_code || "";
   roleSelect.value = user.role;
   branchSelect.value = String(user.branch);
   posAccessInput.checked = user.pos_access;
@@ -167,7 +187,7 @@ function startEdit(user) {
 
 function renderUsers() {
   if (!users.length) {
-    usersTable.innerHTML = `<div class="empty-state"><p>No staff users yet</p></div>`;
+    usersTable.innerHTML = `<div class="empty-state"><p>${t("No staff users yet")}</p></div>`;
     return;
   }
 
@@ -177,14 +197,15 @@ function renderUsers() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Username", "username", sortState)}
-          ${sortTh("Email", "email", sortState)}
-          ${sortTh("Branch", "branch_name", sortState)}
-          ${sortTh("Role", "role", sortState)}
-          ${sortTh("POS", "pos_access", sortState)}
-          ${sortTh("Kitchen station", "kitchen_station", sortState)}
-          ${sortTh("Status", "is_active", sortState)}
-          ${sortTh("Joined", "date_joined", sortState)}
+          ${sortTh(t("Username"), "username", sortState)}
+          ${sortTh(t("Email"), "email", sortState)}
+          ${sortTh(t("Branch"), "branch_name", sortState)}
+          ${sortTh(t("Role"), "role", sortState)}
+          ${sortTh(t("Access code"), "access_code", sortState)}
+          ${sortTh(t("POS"), "pos_access", sortState)}
+          ${sortTh(t("Kitchen station"), "kitchen_station", sortState)}
+          ${sortTh(t("Status"), "is_active", sortState)}
+          ${sortTh(t("Joined"), "date_joined", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -195,20 +216,21 @@ function renderUsers() {
             <td>${user.email || "—"}</td>
             <td>${user.branch_name}</td>
             <td><span class="branch-type">${user.role_display}</span></td>
+            <td><code>${user.access_code || "—"}</code></td>
             <td>
               <span class="badge ${user.pos_access ? "badge-active" : "badge-inactive"}">
-                ${user.pos_access ? "Yes" : "No"}
+                ${user.pos_access ? t("Yes") : t("No")}
               </span>
             </td>
-            <td>${user.kitchen_station_display || "All"}</td>
+            <td>${user.kitchen_station_display || t("All")}</td>
             <td>
               <span class="badge ${user.is_active ? "badge-active" : "badge-inactive"}">
-                ${user.is_active ? "Active" : "Inactive"}
+                ${user.is_active ? t("Active") : t("Inactive")}
               </span>
             </td>
             <td>${formatDate(user.date_joined)}</td>
             <td>
-              <button type="button" class="btn btn-ghost btn-sm edit-user-btn" data-id="${user.id}">Edit</button>
+              <button type="button" class="btn btn-ghost btn-sm edit-user-btn" data-id="${user.id}">${t("Edit")}</button>
             </td>
           </tr>
         `).join("")}
@@ -222,7 +244,7 @@ async function loadBranches() {
   branches = unwrapList(data).filter(b => b.is_active);
 
   branchSelect.innerHTML = `
-    <option value="">Select branch…</option>
+    <option value="">${t("Select branch…")}</option>
     ${branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("")}
   `;
   updatePosAccessDefault();
@@ -263,11 +285,11 @@ userForm.addEventListener("submit", async (e) => {
   const branchId = Number(branchSelect.value);
   const role = roleSelect.value;
   if (!branchId) {
-    showToast("Please select a branch", true);
+    showToast(t("Please select a branch"), true);
     return;
   }
   if (!role) {
-    showToast("Please select a role", true);
+    showToast(t("Please select a role"), true);
     return;
   }
 
@@ -280,10 +302,22 @@ userForm.addEventListener("submit", async (e) => {
     kitchen_station: kitchenStationSelect.value,
   };
 
+  const accessCode = accessCodeInput.value.trim();
+  if (accessCode) {
+    if (!/^\d{4}$/.test(accessCode)) {
+      showToast(t("Access code must be exactly 4 digits"), true);
+      return;
+    }
+    payload.access_code = accessCode;
+  } else if (!editingUserId) {
+    showToast(t("Access code is required"), true);
+    return;
+  }
+
   if (passwordInput.value) {
     payload.password = passwordInput.value;
   } else if (!editingUserId) {
-    showToast("Password is required", true);
+    showToast(t("Password is required"), true);
     return;
   }
 
@@ -297,11 +331,11 @@ userForm.addEventListener("submit", async (e) => {
   try {
     if (editingUserId) {
       await apiPatch(`/users/${editingUserId}/`, payload);
-      showToast(`User "${payload.username}" updated`);
+      showToast(`${t("User")} "${payload.username}" ${t("updated")}`);
       resetForm();
     } else {
       await apiPost("/users/", payload);
-      showToast(`User "${payload.username}" added`);
+      showToast(`${t("User")} "${payload.username}" ${t("added")}`);
       userForm.reset();
     }
     await loadUsers();
@@ -309,7 +343,7 @@ userForm.addEventListener("submit", async (e) => {
     showToast(parseApiError(err), true);
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = editingUserId ? "Save changes" : "Add user";
+    submitBtn.textContent = editingUserId ? t("Save changes") : t("Add user");
   }
 });
 
@@ -327,7 +361,7 @@ usersTable.addEventListener("click", (e) => {
 bindTableSort(usersTable, sortState, renderUsers);
 
 Promise.all([loadBranches(), loadRoles(), loadUsers()]).catch(err => {
-  usersTable.innerHTML = `<div class="empty-state">Failed to load users: ${err.message}</div>`;
+  usersTable.innerHTML = `<div class="empty-state">${t("Failed to load users:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

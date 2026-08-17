@@ -1,6 +1,8 @@
-{% load static %}
+{% load static i18n %}
+{% get_current_language as CURRENT_LANGUAGE %}
+{% get_current_language_bidi as LANGUAGE_BIDI %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ CURRENT_LANGUAGE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,150 +19,150 @@
     <aside class="sidebar">
       <div class="sidebar-brand">
         <h1>Café de Paris</h1>
-        <p>Management Console</p>
+        <p>{% trans "Management Console" %}</p>
       </div>
       <nav class="sidebar-nav">
         {% if show_dashboard_nav %}
         <a href="{% url 'ui:dashboard' %}" class="nav-link{% if active_nav == 'dashboard' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-          Dashboard
+          {% trans "Dashboard" %}
         </a>
         {% endif %}
         {% if show_pos_nav %}
         <a href="{% url 'ui:pos' %}" class="nav-link{% if active_nav == 'pos' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-          Point of Sale
+          {% trans "Point of Sale" %}
         </a>
         {% endif %}
         {% if show_stock_take_nav %}
         <a href="{% url 'ui:stock-take' %}" class="nav-link{% if active_nav == 'stock_take' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-          Stock Take
+          {% trans "Stock Take" %}
         </a>
         {% endif %}
         {% if show_branch_transfers_nav %}
         <a href="{% url 'ui:branch-transfers' %}" class="nav-link{% if active_nav == 'branch_transfers' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-          Branch Transfers
+          {% trans "Branch Transfers" %}
         </a>
         {% endif %}
         {% if show_bakery_transfers_nav %}
         <a href="{% url 'ui:bakery-production' %}" class="nav-link{% if active_nav == 'bakery_production' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
-          Bakery Production
+          {% trans "Bakery Production" %}
         </a>
         <a href="{% url 'ui:transfers' %}" class="nav-link{% if active_nav == 'transfers' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-          Bakery Transfers
+          {% trans "Bakery Transfers" %}
         </a>
         {% endif %}
         {% if show_management_nav %}
         <a href="{% url 'ui:stock-adjust' %}" class="nav-link{% if active_nav == 'stock_adjust' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          Stock adjustment
+          {% trans "Stock adjustment" %}
         </a>
         <a href="{% url 'ui:wastage' %}" class="nav-link{% if active_nav == 'wastage' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-          Wastage
+          {% trans "Wastage" %}
         </a>
         {% endif %}
         {% if show_customer_payment_nav %}
         <a href="{% url 'ui:customer-accounts' %}" class="nav-link{% if active_nav == 'customer_accounts' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-          Customer Payment
+          {% trans "Customer Payment" %}
         </a>
         {% endif %}
         {% if show_management_nav %}
         {% if show_kitchen_nav %}
         <a href="{% url 'ui:kitchen' %}" class="nav-link{% if active_nav == 'kitchen' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-          Kitchen
+          {% trans "Kitchen" %}
         </a>
         {% endif %}
         <a href="{% url 'ui:orders' %}" class="nav-link{% if active_nav == 'orders' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-          Orders
+          {% trans "Orders" %}
         </a>
         {% endif %}
         {% if show_invoices_nav %}
         <a href="{% url 'ui:invoices' %}" class="nav-link{% if active_nav == 'invoices' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Invoices
+          {% trans "Invoices" %}
         </a>
         {% endif %}
         {% if show_fiscal_receipts_nav %}
         <a href="{% url 'ui:receipts' %}" class="nav-link{% if active_nav == 'receipts' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-          Receipts
+          {% trans "Receipts" %}
         </a>
         {% endif %}
         {% if show_grv_nav %}
         <a href="{% url 'ui:grv' %}" class="nav-link{% if active_nav == 'grv' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          GRV
+          {% trans "GRV" %}
         </a>
         {% endif %}
         {% if show_management_nav %}
         <details class="nav-group"{% if active_nav == 'products' or active_nav == 'menu_addons' or active_nav == 'ingredients' or active_nav == 'product_categories' or active_nav == 'bakery_products' %} open{% endif %}>
           <summary class="nav-group-toggle">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-            Products
+            {% trans "Products" %}
             <svg class="nav-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
           </summary>
           <div class="nav-sub">
-            <a href="{% url 'ui:products' %}" class="nav-link nav-link-sub{% if active_nav == 'products' %} active{% endif %}">List Products</a>
-            <a href="{% url 'ui:menu-addons' %}" class="nav-link nav-link-sub{% if active_nav == 'menu_addons' %} active{% endif %}">Menu Add-ons</a>
-            <a href="{% url 'ui:ingredients' %}" class="nav-link nav-link-sub{% if active_nav == 'ingredients' %} active{% endif %}">List Ingredients</a>
-            <a href="{% url 'ui:product-categories' %}" class="nav-link nav-link-sub{% if active_nav == 'product_categories' %} active{% endif %}">List Product Categories</a>
-            <a href="{% url 'ui:bakery-products' %}" class="nav-link nav-link-sub{% if active_nav == 'bakery_products' %} active{% endif %}">Bakery Products</a>
+            <a href="{% url 'ui:products' %}" class="nav-link nav-link-sub{% if active_nav == 'products' %} active{% endif %}">{% trans "List Products" %}</a>
+            <a href="{% url 'ui:menu-addons' %}" class="nav-link nav-link-sub{% if active_nav == 'menu_addons' %} active{% endif %}">{% trans "Menu Add-ons" %}</a>
+            <a href="{% url 'ui:ingredients' %}" class="nav-link nav-link-sub{% if active_nav == 'ingredients' %} active{% endif %}">{% trans "List Ingredients" %}</a>
+            <a href="{% url 'ui:product-categories' %}" class="nav-link nav-link-sub{% if active_nav == 'product_categories' %} active{% endif %}">{% trans "List Product Categories" %}</a>
+            <a href="{% url 'ui:bakery-products' %}" class="nav-link nav-link-sub{% if active_nav == 'bakery_products' %} active{% endif %}">{% trans "Bakery Products" %}</a>
           </div>
         </details>
         <a href="{% url 'ui:branches' %}" class="nav-link{% if active_nav == 'branches' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-          Branches
+          {% trans "Branches" %}
         </a>
         {% if show_stores_transfers_nav %}
         <a href="{% url 'ui:stores-transfers' %}" class="nav-link{% if active_nav == 'stores_transfers' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-          Stores Transfers
+          {% trans "Stores Transfers" %}
         </a>
         {% endif %}
         {% if show_central_invoices_nav %}
         <a href="{% url 'ui:central-invoices' %}" class="nav-link{% if active_nav == 'central_invoices' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Central Invoice
+          {% trans "Central Invoice" %}
         </a>
         {% endif %}
         <a href="{% url 'ui:recipes' %}" class="nav-link{% if active_nav == 'recipes' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-          Recipes
+          {% trans "Recipes" %}
         </a>
         {% if show_pos_nav %}
         <a href="{% url 'ui:expenses' %}" class="nav-link{% if active_nav == 'expenses' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          Expenses
+          {% trans "Expenses" %}
         </a>
         {% endif %}
         {% if show_purchase_orders_nav %}
         <a href="{% url 'ui:purchase-orders' %}" class="nav-link{% if active_nav == 'purchase_orders' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-          Purchases
+          {% trans "Purchases" %}
         </a>
         {% endif %}
         {% if show_customers_suppliers_nav %}
         <details class="nav-group"{% if active_nav == 'customers' or active_nav == 'customer_accounts' or active_nav == 'suppliers' %} open{% endif %}>
           <summary class="nav-group-toggle">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-            Customers &amp; Suppliers
+            {% trans "Customers & Suppliers" %}
             <svg class="nav-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
           </summary>
           <div class="nav-sub">
             {% if show_customers_nav %}
-            <a href="{% url 'ui:customers' %}" class="nav-link nav-link-sub{% if active_nav == 'customers' %} active{% endif %}">List Customer</a>
-            <a href="{% url 'ui:customer-accounts' %}" class="nav-link nav-link-sub{% if active_nav == 'customer_accounts' %} active{% endif %}">Customer Accounts</a>
+            <a href="{% url 'ui:customers' %}" class="nav-link nav-link-sub{% if active_nav == 'customers' %} active{% endif %}">{% trans "List Customer" %}</a>
+            <a href="{% url 'ui:customer-accounts' %}" class="nav-link nav-link-sub{% if active_nav == 'customer_accounts' %} active{% endif %}">{% trans "Customer Accounts" %}</a>
             {% endif %}
             {% if show_suppliers_nav %}
-            <a href="{% url 'ui:suppliers' %}" class="nav-link nav-link-sub{% if active_nav == 'suppliers' %} active{% endif %}">List Suppliers</a>
+            <a href="{% url 'ui:suppliers' %}" class="nav-link nav-link-sub{% if active_nav == 'suppliers' %} active{% endif %}">{% trans "List Suppliers" %}</a>
             {% endif %}
           </div>
         </details>
@@ -168,53 +170,53 @@
         {% if show_users_nav %}
         <a href="{% url 'ui:users' %}" class="nav-link{% if active_nav == 'users' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-          Users
+          {% trans "Users" %}
         </a>
         {% endif %}
         {% if show_audit_log_nav %}
         <a href="{% url 'ui:audit-log' %}" class="nav-link{% if active_nav == 'audit_log' %} active{% endif %}">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-          Audit log
+          {% trans "Audit log" %}
         </a>
         {% endif %}
         <details class="nav-group"{% if active_nav == 'reports' or active_nav == 'vat_report' or active_nav == 'supplier_statement' or active_nav == 'ingredient_report' or active_nav == 'ingredient_usage_report' or active_nav == 'voided_items_report' or active_nav == 'day_end_report' %} open{% endif %}>
           <summary class="nav-group-toggle">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6a2 2 0 012-2h8m-6 8h6m-10 4h12a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-            Reports
+            {% trans "Reports" %}
             <svg class="nav-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
           </summary>
           <div class="nav-sub">
-            <a href="{% url 'ui:ingredient-report' %}" class="nav-link nav-link-sub{% if active_nav == 'ingredient_report' %} active{% endif %}">Ingredient Stock</a>
-            <a href="{% url 'ui:ingredient-usage-report' %}" class="nav-link nav-link-sub{% if active_nav == 'ingredient_usage_report' %} active{% endif %}">Ingredient Usage</a>
+            <a href="{% url 'ui:ingredient-report' %}" class="nav-link nav-link-sub{% if active_nav == 'ingredient_report' %} active{% endif %}">{% trans "Ingredient Stock" %}</a>
+            <a href="{% url 'ui:ingredient-usage-report' %}" class="nav-link nav-link-sub{% if active_nav == 'ingredient_usage_report' %} active{% endif %}">{% trans "Ingredient Usage" %}</a>
             {% if show_pos_nav %}
-            <a href="{% url 'ui:day-end-report' %}" class="nav-link nav-link-sub{% if active_nav == 'day_end_report' %} active{% endif %}">Day End</a>
-            <a href="{% url 'ui:voided-items-report' %}" class="nav-link nav-link-sub{% if active_nav == 'voided_items_report' %} active{% endif %}">Voided &amp; Cancelled</a>
-            <a href="{% url 'ui:reports' %}" class="nav-link nav-link-sub{% if active_nav == 'reports' %} active{% endif %}">Customer Balances</a>
+            <a href="{% url 'ui:day-end-report' %}" class="nav-link nav-link-sub{% if active_nav == 'day_end_report' %} active{% endif %}">{% trans "Day End" %}</a>
+            <a href="{% url 'ui:voided-items-report' %}" class="nav-link nav-link-sub{% if active_nav == 'voided_items_report' %} active{% endif %}">{% trans "Voided & Cancelled" %}</a>
+            <a href="{% url 'ui:reports' %}" class="nav-link nav-link-sub{% if active_nav == 'reports' %} active{% endif %}">{% trans "Customer Balances" %}</a>
             {% endif %}
             {% if show_fiscal_receipts_nav %}
-            <a href="{% url 'ui:vat-report' %}" class="nav-link nav-link-sub{% if active_nav == 'vat_report' %} active{% endif %}">VAT Report</a>
+            <a href="{% url 'ui:vat-report' %}" class="nav-link nav-link-sub{% if active_nav == 'vat_report' %} active{% endif %}">{% trans "VAT Report" %}</a>
             {% endif %}
             {% if show_supplier_statement_nav %}
-            <a href="{% url 'ui:supplier-statement' %}" class="nav-link nav-link-sub{% if active_nav == 'supplier_statement' %} active{% endif %}">Supplier Statements</a>
+            <a href="{% url 'ui:supplier-statement' %}" class="nav-link nav-link-sub{% if active_nav == 'supplier_statement' %} active{% endif %}">{% trans "Supplier Statements" %}</a>
             {% endif %}
           </div>
         </details>
         <details class="nav-group"{% if active_nav == 'payment_rates' or active_nav == 'payment_currency' %} open{% endif %}>
           <summary class="nav-group-toggle">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-            Payment &amp; Rates
+            {% trans "Payment & Rates" %}
             <svg class="nav-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
           </summary>
           <div class="nav-sub">
-            <a href="{% url 'ui:payment-rates' %}" class="nav-link nav-link-sub{% if active_nav == 'payment_rates' %} active{% endif %}">Rates</a>
-            <a href="{% url 'ui:payment-currency' %}" class="nav-link nav-link-sub{% if active_nav == 'payment_currency' %} active{% endif %}">Currency</a>
+            <a href="{% url 'ui:payment-rates' %}" class="nav-link nav-link-sub{% if active_nav == 'payment_rates' %} active{% endif %}">{% trans "Rates" %}</a>
+            <a href="{% url 'ui:payment-currency' %}" class="nav-link nav-link-sub{% if active_nav == 'payment_currency' %} active{% endif %}">{% trans "Currency" %}</a>
           </div>
         </details>
         {% endif %}
       </nav>
       <div class="sidebar-footer">
         {% if show_management_nav %}
-        <a href="/admin/" class="sidebar-footer-link">Admin panel →</a>
+        <a href="/admin/" class="sidebar-footer-link">{% trans "Admin panel" %} →</a>
         {% endif %}
       </div>
     </aside>
@@ -222,23 +224,24 @@
     <div class="main-content">
       <header class="topbar">
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <button type="button" class="menu-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true" title="Hide navigation">
+          <button type="button" class="menu-toggle" id="sidebar-toggle" aria-label="{% trans 'Toggle navigation' %}" aria-expanded="true" title="{% trans 'Hide navigation' %}">
             <svg class="menu-toggle-icon menu-toggle-icon-open" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
             <svg class="menu-toggle-icon menu-toggle-icon-close" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
           </button>
-          <h2>{% block page_title %}Dashboard{% endblock %}</h2>
+          <h2>{% block page_title %}{% trans "Dashboard" %}{% endblock %}</h2>
         </div>
         <div class="topbar-end">
           {% block topbar_actions %}{% endblock %}
+          {% include "ui/includes/language_selector.html" %}
           <div class="topbar-auth">
             {% if user.is_authenticated %}
               <span class="topbar-user">{{ user.username }}</span>
               <form method="post" action="{% url 'ui:logout' %}" class="topbar-logout-form">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
+                <button type="submit" class="btn btn-ghost btn-sm">{% trans "Log out" %}</button>
               </form>
             {% else %}
-              <a href="{% url 'ui:login' %}" class="btn btn-ghost btn-sm">Sign in</a>
+              <a href="{% url 'ui:login' %}" class="btn btn-ghost btn-sm">{% trans "Sign in" %}</a>
             {% endif %}
           </div>
         </div>
@@ -247,94 +250,145 @@
         {% block content %}{% endblock %}
       </main>
       <footer class="page-footer">
-        <p>Copyright © 2026 <a href="https://www.zimhope.co.zw/" target="_blank" rel="noopener noreferrer" class="page-footer-link">Zimhope</a>. All rights reserved.</p>
+        <p>Copyright © 2026 <a href="https://www.zimhope.co.zw/" target="_blank" rel="noopener noreferrer" class="page-footer-link">Zimhope</a>. {% trans "All rights reserved." %}</p>
       </footer>
     </div>
   </div>
 
+  {{ CDP_I18N|json_script:"cdp-i18n-catalog" }}
   <script>
     (function () {
+      window.CDP = window.CDP || {};
+      try {
+        window.CDP.I18N = JSON.parse(document.getElementById("cdp-i18n-catalog").textContent);
+      } catch (err) {
+        window.CDP.I18N = {};
+      }
+      window.CDP.t = function (msgid) {
+        if (msgid == null || msgid === "") return msgid;
+        const translated = window.CDP.I18N[msgid];
+        return translated == null || translated === "" ? msgid : translated;
+      };
+
       const SIDEBAR_STORAGE_KEY = "cdp-sidebar-hidden";
       const MOBILE_QUERY = window.matchMedia("(max-width: 768px)");
       const appShell = document.getElementById("app-shell");
       const toggle = document.getElementById("sidebar-toggle");
       const sidebar = document.querySelector(".sidebar");
 
-      if (!toggle || !sidebar || !appShell) return;
-
-      function isMobile() {
-        return MOBILE_QUERY.matches;
-      }
-
-      function isSidebarHidden() {
-        return appShell.classList.contains("sidebar-hidden");
-      }
-
-      function updateToggleUi() {
-        const hidden = isMobile()
-          ? !sidebar.classList.contains("open")
-          : isSidebarHidden();
-        toggle.setAttribute("aria-expanded", hidden ? "false" : "true");
-        toggle.title = hidden ? "Show navigation" : "Hide navigation";
-      }
-
-      function applyDesktopSidebarState() {
-        const hidden = localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
-        appShell.classList.toggle("sidebar-hidden", hidden);
-        updateToggleUi();
-      }
-
-      function applyMobileSidebarState() {
-        appShell.classList.remove("sidebar-hidden");
-        sidebar.classList.remove("open");
-        updateToggleUi();
-      }
-
-      function syncSidebarMode() {
-        if (isMobile()) {
-          applyMobileSidebarState();
-        } else {
-          sidebar.classList.remove("open");
-          applyDesktopSidebarState();
+      if (toggle && sidebar && appShell) {
+        function isMobile() {
+          return MOBILE_QUERY.matches;
         }
-      }
 
-      toggle.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (isMobile()) {
-          sidebar.classList.toggle("open");
-        } else {
-          const hidden = !isSidebarHidden();
+        function isSidebarHidden() {
+          return appShell.classList.contains("sidebar-hidden");
+        }
+
+        function updateToggleUi() {
+          const hidden = isMobile()
+            ? !sidebar.classList.contains("open")
+            : isSidebarHidden();
+          toggle.setAttribute("aria-expanded", hidden ? "false" : "true");
+          toggle.title = hidden ? "{% trans 'Show navigation' %}" : "{% trans 'Hide navigation' %}";
+        }
+
+        function applyDesktopSidebarState() {
+          const hidden = localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
           appShell.classList.toggle("sidebar-hidden", hidden);
-          try {
-            localStorage.setItem(SIDEBAR_STORAGE_KEY, hidden ? "true" : "false");
-          } catch (err) {
-            /* ignore private mode */
-          }
+          updateToggleUi();
         }
-        updateToggleUi();
-      });
 
-      document.addEventListener("click", function (e) {
-        if (
-          isMobile() &&
-          sidebar.classList.contains("open") &&
-          !sidebar.contains(e.target) &&
-          !toggle.contains(e.target)
-        ) {
+        function applyMobileSidebarState() {
+          appShell.classList.remove("sidebar-hidden");
           sidebar.classList.remove("open");
           updateToggleUi();
         }
-      });
 
-      if (typeof MOBILE_QUERY.addEventListener === "function") {
-        MOBILE_QUERY.addEventListener("change", syncSidebarMode);
-      } else if (typeof MOBILE_QUERY.addListener === "function") {
-        MOBILE_QUERY.addListener(syncSidebarMode);
+        function syncSidebarMode() {
+          if (isMobile()) {
+            applyMobileSidebarState();
+          } else {
+            sidebar.classList.remove("open");
+            applyDesktopSidebarState();
+          }
+        }
+
+        toggle.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (isMobile()) {
+            sidebar.classList.toggle("open");
+          } else {
+            const hidden = !isSidebarHidden();
+            appShell.classList.toggle("sidebar-hidden", hidden);
+            try {
+              localStorage.setItem(SIDEBAR_STORAGE_KEY, hidden ? "true" : "false");
+            } catch (err) {
+              /* ignore private mode */
+            }
+          }
+          updateToggleUi();
+        });
+
+        document.addEventListener("click", function (e) {
+          if (
+            isMobile() &&
+            sidebar.classList.contains("open") &&
+            !sidebar.contains(e.target) &&
+            !toggle.contains(e.target)
+          ) {
+            sidebar.classList.remove("open");
+            updateToggleUi();
+          }
+        });
+
+        if (typeof MOBILE_QUERY.addEventListener === "function") {
+          MOBILE_QUERY.addEventListener("change", syncSidebarMode);
+        } else if (typeof MOBILE_QUERY.addListener === "function") {
+          MOBILE_QUERY.addListener(syncSidebarMode);
+        }
+
+        syncSidebarMode();
       }
 
-      syncSidebarMode();
+      document.querySelectorAll(".language-selector").forEach(function (selector) {
+        const button = selector.querySelector(".language-button");
+        const menu = selector.querySelector(".language-menu");
+        if (!button || !menu) return;
+
+        function closeMenu() {
+          menu.hidden = true;
+          button.setAttribute("aria-expanded", "false");
+        }
+
+        function openMenu() {
+          menu.hidden = false;
+          button.setAttribute("aria-expanded", "true");
+        }
+
+        button.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (menu.hidden) {
+            openMenu();
+          } else {
+            closeMenu();
+          }
+        });
+
+        document.addEventListener("click", function (e) {
+          if (!selector.contains(e.target)) {
+            closeMenu();
+          }
+        });
+
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") {
+            closeMenu();
+          }
+        });
+      });
     })();
   </script>
   {% block extra_js %}{% endblock %}

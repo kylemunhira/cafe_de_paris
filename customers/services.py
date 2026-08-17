@@ -9,7 +9,12 @@ from orders.services import ReceiptNumberError, allocate_receipt_number
 
 from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 
-from .models import Customer, CustomerAccountTransaction, CustomerAccountTransactionType
+from .models import (
+    Customer,
+    CustomerAccountTransaction,
+    CustomerAccountTransactionType,
+    CustomerAccountType,
+)
 
 
 class CustomerAccountError(Exception):
@@ -87,14 +92,16 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
 
     customer = Customer.objects.select_for_update().get(pk=order.customer_id)
     # Charges increase balance (more positive = more owed).
-    max_allowed = _quantize(customer.credit_limit)
+    # Staff accounts may charge without a credit-limit check.
     new_balance = _quantize(customer.account_balance + charge_amount)
-    if new_balance > max_allowed:
-        available = _quantize(customer.credit_limit - customer.account_balance)
-        raise InsufficientAccountBalance(
-            f"Insufficient account credit. Available: {available}, "
-            f"required: {charge_amount}."
-        )
+    if customer.account_type != CustomerAccountType.STAFF:
+        max_allowed = _quantize(customer.credit_limit)
+        if new_balance > max_allowed:
+            available = _quantize(customer.credit_limit - customer.account_balance)
+            raise InsufficientAccountBalance(
+                f"Insufficient account credit. Available: {available}, "
+                f"required: {charge_amount}."
+            )
     customer.account_balance = new_balance
     customer.save(update_fields=["account_balance"])
 

@@ -1,63 +1,63 @@
 {% extends "ui/base.html" %}
-{% load static l10n %}
+{% load static l10n i18n %}
 
-{% block title %}Purchases — Café de Paris{% endblock %}
-{% block page_title %}Purchases{% endblock %}
+{% block title %}{% trans "Purchases" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Purchases" %}{% endblock %}
 
 {% block content %}
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record purchase</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "Record purchase" %}</h3>
   <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted);">
-    Record a supplier purchase for any branch. Stock is added immediately when you save.
+    {% trans "Save as draft to finish later, or record the purchase to add stock now." %}
   </p>
   <form id="po-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="po-branch">Branch</label>
+        <label for="po-branch">{% trans "Branch" %}</label>
         <select id="po-branch" required>
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="po-supplier">Supplier</label>
+        <label for="po-supplier">{% trans "Supplier" %}</label>
         <select id="po-supplier" class="searchable-select" required>
-          <option value="">Select supplier…</option>
+          <option value="">{% trans "Select supplier…" %}</option>
         </select>
       </div>
     </div>
     <div class="form-group">
-      <label for="po-notes">Invoice / reference</label>
-      <input type="text" id="po-notes" placeholder="Supplier invoice or delivery note number">
+      <label for="po-notes">{% trans "Invoice / reference" %}</label>
+      <input type="text" id="po-notes" placeholder="{% trans "Supplier invoice or delivery note number" %}">
     </div>
 
     <div class="form-group" id="po-type-wrap">
-      <label>Purchase for</label>
+      <label>{% trans "Purchase for" %}</label>
       <div class="category-tabs" id="po-type-tabs" style="margin-top: 0.35rem;">
-        <button type="button" class="category-tab" data-type="ingredients">Raw materials</button>
-        <button type="button" class="category-tab active" data-type="pos">POS products</button>
+        <button type="button" class="category-tab" data-type="ingredients">{% trans "Raw materials" %}</button>
+        <button type="button" class="category-tab active" data-type="pos">{% trans "POS products" %}</button>
       </div>
       <p class="form-hint" id="po-type-hint" style="margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
-        Menu items sold at the till — same products as on POS.
+        {% trans "Menu items sold at the till — same products as on POS." %}
       </p>
     </div>
 
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
-        <label for="po-product" id="po-product-label">Product</label>
+        <label for="po-product" id="po-product-label">{% trans "Product" %}</label>
         <select id="po-product" class="searchable-select">
-          <option value="">Select product…</option>
+          <option value="">{% trans "Select product…" %}</option>
         </select>
       </div>
       <div class="form-group" style="flex: 0 0 100px;">
-        <label for="po-qty">Qty</label>
+        <label for="po-qty">{% trans "Qty" %}</label>
         <input type="number" id="po-qty" min="0.0001" step="0.0001" placeholder="0">
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
-        <label for="po-line-total">Line total</label>
+        <label for="po-line-total">{% trans "Line total" %}</label>
         <input type="number" id="po-line-total" min="0" step="0.01" placeholder="0.00">
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
-        <button type="button" id="add-line-btn" class="btn btn-ghost">Add line</button>
+        <button type="button" id="add-line-btn" class="btn btn-ghost">{% trans "Add line" %}</button>
       </div>
     </div>
 
@@ -65,27 +65,27 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Product</th>
-            <th style="text-align: right;">Qty</th>
-            <th style="text-align: right;">Unit cost</th>
-            <th style="text-align: right;">Line total</th>
+            <th>{% trans "Product" %}</th>
+            <th style="text-align: right;">{% trans "Qty" %}</th>
+            <th style="text-align: right;">{% trans "Unit cost" %}</th>
+            <th style="text-align: right;">{% trans "Line total" %}</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="lines-body"></tbody>
         <tfoot>
           <tr>
-            <td colspan="3" style="text-align: right;">Subtotal</td>
+            <td colspan="3" style="text-align: right;">{% trans "Subtotal" %}</td>
             <td style="text-align: right;" id="lines-subtotal">$0.00</td>
             <td></td>
           </tr>
           <tr>
-            <td colspan="3" style="text-align: right;">VAT</td>
+            <td colspan="3" style="text-align: right;">{% trans "VAT" %}</td>
             <td style="text-align: right;" id="lines-vat">$0.00</td>
             <td></td>
           </tr>
           <tr>
-            <td colspan="3" style="text-align: right; font-weight: 600;">Total</td>
+            <td colspan="3" style="text-align: right; font-weight: 600;">{% trans "Total" %}</td>
             <td style="text-align: right; font-weight: 600;" id="lines-total">$0.00</td>
             <td></td>
           </tr>
@@ -93,19 +93,25 @@
       </table>
     </div>
 
-    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Record purchase</button>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Record purchase" %}</button>
+      <button type="button" class="btn btn-ghost" id="draft-btn" disabled>{% trans "Save as draft" %}</button>
+    </div>
   </form>
 </div>
 
-<div class="stat-grid" id="po-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(2, 1fr);">
+<div class="stat-grid" id="po-stats" style="margin-bottom: 1.25rem; grid-template-columns: repeat(3, 1fr);">
+  <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
 </div>
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="draft">{% trans "Draft" %}</button>
+    <button class="category-tab" data-filter="received">{% trans "Received" %}</button>
+    <button class="category-tab" data-filter="cancelled">{% trans "Cancelled" %}</button>
   </div>
   <div class="table-wrap" id="po-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -118,6 +124,8 @@
 import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 let allOrders = [];
 let branches = [];
@@ -167,6 +175,7 @@ const linesSubtotal = document.getElementById("lines-subtotal");
 const linesVat = document.getElementById("lines-vat");
 const linesTotal = document.getElementById("lines-total");
 const submitBtn = document.getElementById("submit-btn");
+const draftBtn = document.getElementById("draft-btn");
 const poTable = document.getElementById("po-table");
 const poStats = document.getElementById("po-stats");
 const addLineBtn = document.getElementById("add-line-btn");
@@ -374,10 +383,16 @@ function populateProductSelect() {
   syncSearchableSelect(productSelect);
 }
 
+function setFormButtonsDisabled(disabled) {
+  const canSubmit = !disabled && draftLines.length && branchSelect.value && supplierSelect.value;
+  submitBtn.disabled = !canSubmit;
+  draftBtn.disabled = !canSubmit;
+}
+
 function renderDraftLines() {
   if (!draftLines.length) {
     linesWrap.style.display = "none";
-    submitBtn.disabled = true;
+    setFormButtonsDisabled(true);
     linesSubtotal.textContent = formatCurrency(0);
     linesVat.textContent = formatCurrency(0);
     linesTotal.textContent = formatCurrency(0);
@@ -385,7 +400,7 @@ function renderDraftLines() {
   }
 
   linesWrap.style.display = "";
-  submitBtn.disabled = !branchSelect.value || !supplierSelect.value;
+  setFormButtonsDisabled(false);
 
   let totals = { subtotal_amount: 0, vat_amount: 0, total_amount: 0 };
   linesBody.innerHTML = draftLines.map((line, index) => {
@@ -408,19 +423,33 @@ function renderDraftLines() {
 
 function renderStats() {
   const received = allOrders.filter(o => o.status === "received");
+  const drafts = allOrders.filter(o => o.status === "draft");
   const totalValue = received.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
 
   poStats.innerHTML = `
     <div class="card stat-card">
-      <div class="label">Purchases</div>
+      <div class="label">${t("Purchases")}</div>
       <div class="value">${received.length}</div>
-      <div class="sub">Stock added to branches</div>
+      <div class="sub">${t("Stock added to branches")}</div>
     </div>
     <div class="card stat-card">
-      <div class="label">Total value</div>
-      <div class="value">${formatCurrency(totalValue)}</div>
-      <div class="sub">All recorded purchases</div>
+      <div class="label">${t("Drafts")}</div>
+      <div class="value">${drafts.length}</div>
+      <div class="sub">${t("Saved, stock not added yet")}</div>
     </div>
+    <div class="card stat-card">
+      <div class="label">${t("Total value")}</div>
+      <div class="value">${formatCurrency(totalValue)}</div>
+      <div class="sub">${t("All recorded purchases")}</div>
+    </div>
+  `;
+}
+
+function draftActions(order) {
+  if (order.status !== "draft") return "—";
+  return `
+    <button type="button" class="btn btn-primary btn-sm" data-action="receive" data-id="${order.id}">${t("Record purchase")}</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-action="cancel" data-id="${order.id}">${t("Cancel")}</button>
   `;
 }
 
@@ -432,12 +461,12 @@ function renderOrders() {
   );
 
   if (!filtered.length) {
-    poTable.innerHTML = `<div class="empty-state"><p>No purchases recorded yet</p></div>`;
+    poTable.innerHTML = `<div class="empty-state"><p>${t("No purchases recorded yet")}</p></div>`;
     return;
   }
 
   const branchColumn = canPurchaseForAnyBranch
-    ? sortTh("Branch", "branch_name", sortState)
+    ? sortTh(t("Branch"), "branch_name", sortState)
     : "";
   const branchCell = o => canPurchaseForAnyBranch
     ? `<td>${o.branch_name}</td>`
@@ -447,14 +476,15 @@ function renderOrders() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("PO #", "id", sortState)}
-          ${sortTh("Supplier", "supplier_name", sortState)}
+          ${sortTh(t("PO #"), "id", sortState)}
+          ${sortTh(t("Supplier"), "supplier_name", sortState)}
           ${branchColumn}
-          ${sortTh("Invoice / ref", "notes", sortState)}
-          ${sortTh("Products", "products", sortState)}
-          ${sortTh("Total", "total_amount", sortState)}
-          ${sortTh("Status", "status", sortState)}
-          ${sortTh("Date", "created_at", sortState)}
+          ${sortTh(t("Invoice / ref"), "notes", sortState)}
+          ${sortTh(t("Products"), "products", sortState)}
+          ${sortTh(t("Total"), "total_amount", sortState)}
+          ${sortTh(t("Status"), "status", sortState)}
+          ${sortTh(t("Date"), "created_at", sortState)}
+          <th>${t("Actions")}</th>
         </tr>
       </thead>
       <tbody>
@@ -468,6 +498,7 @@ function renderOrders() {
             <td>${formatCurrency(o.total_amount)}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${formatDate(o.created_at)}</td>
+            <td>${draftActions(o)}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -528,15 +559,15 @@ addLineBtn.addEventListener("click", () => {
     return;
   }
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    showToast("Enter a valid quantity", true);
+    showToast(t("Enter a valid quantity"), true);
     return;
   }
   if (!Number.isFinite(lineTotal) || lineTotal < 0) {
-    showToast("Enter a valid line total", true);
+    showToast(t("Enter a valid line total"), true);
     return;
   }
   if (draftLines.some(l => String(l.product) === productId)) {
-    showToast("Product already added", true);
+    showToast(t("Product already added"), true);
     return;
   }
 
@@ -585,19 +616,24 @@ poTypeTabs?.addEventListener("click", (e) => {
 });
 supplierSelect.addEventListener("change", renderDraftLines);
 
-poForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+async function submitPurchase(asDraft) {
   if (!draftLines.length) {
-    showToast("Add at least one product line", true);
+    showToast(t("Add at least one product line"), true);
+    return;
+  }
+  if (!branchSelect.value || !supplierSelect.value) {
+    showToast(t("Select branch and supplier"), true);
     return;
   }
 
   submitBtn.disabled = true;
+  draftBtn.disabled = true;
   try {
     const created = await apiPost("/purchase-orders/", {
       branch: Number(branchSelect.value),
       supplier: Number(supplierSelect.value),
       notes: notesInput.value.trim(),
+      as_draft: asDraft,
       lines: draftLines.map(l => ({
         product: l.product,
         quantity: roundDecimal(l.quantity),
@@ -610,11 +646,54 @@ poForm.addEventListener("submit", async (e) => {
     renderDraftLines();
     renderStats();
     renderOrders();
-    showToast(`PO-${String(created.id).padStart(5, "0")} recorded — stock updated`);
+    const poLabel = `PO-${String(created.id).padStart(5, "0")}`;
+    showToast(
+      asDraft
+        ? `${poLabel} ${t("saved as draft")}`
+        : `${poLabel} ${t("recorded — stock updated")}`,
+    );
   } catch (err) {
     showToast(err.message, true);
   } finally {
-    submitBtn.disabled = !draftLines.length;
+    setFormButtonsDisabled(false);
+  }
+}
+
+poForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await submitPurchase(false);
+});
+
+draftBtn.addEventListener("click", async () => {
+  await submitPurchase(true);
+});
+
+poTable.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  if (action === "receive" && !confirm(t("Record this purchase and add stock now?"))) {
+    return;
+  }
+  if (action === "cancel" && !confirm(t("Cancel this draft purchase?"))) {
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const updated = await apiPost(`/purchase-orders/${id}/${action}/`, {});
+    const index = allOrders.findIndex(o => String(o.id) === String(id));
+    if (index >= 0) allOrders[index] = updated;
+    renderStats();
+    renderOrders();
+    showToast(
+      action === "receive"
+        ? t("Purchase recorded — stock updated")
+        : t("Draft cancelled"),
+    );
+  } catch (err) {
+    showToast(err.message, true);
+    btn.disabled = false;
   }
 });
 

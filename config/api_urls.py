@@ -1,7 +1,12 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from accounts.auth_views import DesktopLoginView, KitchenLoginView, MobileAppLoginView
+from accounts.auth_views import (
+    DesktopLoginView,
+    KitchenLoginView,
+    MobileAppLoginView,
+    VerifyAccessCodeView,
+)
 from accounts.views import StaffUserViewSet
 from audit.views import AuditEventViewSet
 from branches.views import BranchViewSet, DiningTableViewSet
@@ -63,6 +68,7 @@ urlpatterns = [
     path("auth/desktop-login/", DesktopLoginView.as_view(), name="desktop-login"),
     path("auth/kitchen-login/", KitchenLoginView.as_view(), name="kitchen-login"),
     path("auth/mobile-login/", MobileAppLoginView.as_view(), name="mobile-login"),
+    path("auth/verify-access-code/", VerifyAccessCodeView.as_view(), name="verify-access-code"),
     path("sync/ping/", SyncPingView.as_view(), name="sync-ping"),
     path("sync/pull/", SyncPullView.as_view(), name="sync-pull"),
     path("sync/push/", SyncPushView.as_view(), name="sync-push"),

@@ -1,8 +1,8 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Kitchen — Café de Paris{% endblock %}
-{% block page_title %}Kitchen{% endblock %}
+{% block title %}{% trans "Kitchen" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Kitchen" %}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -89,15 +89,15 @@
 {% block content %}
 <div class="kitchen-toolbar card" style="padding: 1rem 1.25rem;">
   <div class="form-group" style="margin: 0; min-width: 220px;">
-    <label for="kitchen-branch">Branch</label>
+    <label for="kitchen-branch">{% trans "Branch" %}</label>
     <select id="kitchen-branch">
-      <option value="">Loading…</option>
+      <option value="">{% trans "Loading…" %}</option>
     </select>
   </div>
   <div style="font-size: 0.85rem; color: var(--color-muted); padding-bottom: 0.15rem;">
-    Open POS orders appear here for the kitchen to prepare.
+    {% trans "Open POS orders appear here for the kitchen to prepare." %}
     {% if kitchen_station_display %}
-    <strong>Showing {{ kitchen_station_display }} items only.</strong>
+    <strong>{% trans "Showing" %} {{ kitchen_station_display }} {% trans "items only." %}</strong>
     {% endif %}
   </div>
 </div>
@@ -105,21 +105,21 @@
 <div class="kitchen-board" id="kitchen-board">
   <div class="kitchen-column">
     <div class="kitchen-column-header">
-      <span>New orders</span>
+      <span>{% trans "New orders" %}</span>
       <span class="badge badge-open" id="count-pending">0</span>
     </div>
     <div class="kitchen-column-body" id="col-pending"></div>
   </div>
   <div class="kitchen-column">
     <div class="kitchen-column-header">
-      <span>Preparing</span>
+      <span>{% trans "Preparing" %}</span>
       <span class="badge badge-requested" id="count-preparing">0</span>
     </div>
     <div class="kitchen-column-body" id="col-preparing"></div>
   </div>
   <div class="kitchen-column">
     <div class="kitchen-column-header">
-      <span>Ready for pickup</span>
+      <span>{% trans "Ready for pickup" %}</span>
       <span class="badge badge-delivered" id="count-ready">0</span>
     </div>
     <div class="kitchen-column-body" id="col-ready"></div>
@@ -131,6 +131,8 @@
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, kitchenStatusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const preferredBranchId = "{{ staff_branch_id|default:'' }}";
@@ -151,7 +153,7 @@ function formatQty(value) {
 
 function orderMeta(order) {
   const typeLabel = order.order_type.replace("_", " ");
-  const tableLabel = order.table_number ? ` · Table ${order.table_number}` : "";
+  const tableLabel = order.table_number ? ` · ${t("Table")} ${order.table_number}` : "";
   return `${typeLabel}${tableLabel} · ${formatDate(order.created_at)}`;
 }
 
@@ -165,21 +167,21 @@ function renderOrderCard(order) {
 
   let actions = "";
   if (order.kitchen_status === "pending") {
-    actions = `<button type="button" class="btn btn-accent btn-sm kitchen-action-btn" data-action="start-preparing" data-id="${order.id}">Start preparing</button>`;
+    actions = `<button type="button" class="btn btn-accent btn-sm kitchen-action-btn" data-action="start-preparing" data-id="${order.id}">${t("Start preparing")}</button>`;
   } else if (order.kitchen_status === "preparing") {
-    actions = `<button type="button" class="btn btn-primary btn-sm kitchen-action-btn" data-action="mark-ready" data-id="${order.id}">Mark ready</button>`;
+    actions = `<button type="button" class="btn btn-primary btn-sm kitchen-action-btn" data-action="mark-ready" data-id="${order.id}">${t("Mark ready")}</button>`;
   } else {
-    actions = `<span class="badge badge-delivered">Ready for cashier</span>`;
+    actions = `<span class="badge badge-delivered">${t("Ready for cashier")}</span>`;
   }
 
   return `
     <div class="kitchen-order-card${order.kitchen_status === "ready" ? " ready-card" : ""}">
       <div class="kitchen-order-top">
-        <strong>Order #${order.id}</strong>
+        <strong>${t("Order")} #${order.id}</strong>
         ${kitchenStatusBadge(order.kitchen_status)}
       </div>
       <div class="kitchen-order-meta">${orderMeta(order)}</div>
-      <ul class="kitchen-items">${items || "<li>No items</li>"}</ul>
+      <ul class="kitchen-items">${items || `<li>${t("No items")}</li>`}</ul>
       <div class="kitchen-actions">${actions}</div>
     </div>
   `;
@@ -196,13 +198,13 @@ function renderBoard() {
 
   colPending.innerHTML = pending.length
     ? pending.map(renderOrderCard).join("")
-    : `<div class="kitchen-empty">No new orders</div>`;
+    : `<div class="kitchen-empty">${t("No new orders")}</div>`;
   colPreparing.innerHTML = preparing.length
     ? preparing.map(renderOrderCard).join("")
-    : `<div class="kitchen-empty">Nothing in progress</div>`;
+    : `<div class="kitchen-empty">${t("Nothing in progress")}</div>`;
   colReady.innerHTML = ready.length
     ? ready.map(renderOrderCard).join("")
-    : `<div class="kitchen-empty">No orders ready yet</div>`;
+    : `<div class="kitchen-empty">${t("No orders ready yet")}</div>`;
 }
 
 async function loadOrders() {
@@ -217,7 +219,7 @@ async function loadOrders() {
     orders = unwrapList(data).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     renderBoard();
   } catch (err) {
-    showToast(`Failed to load kitchen orders: ${err.message}`, true);
+    showToast(`${t("Failed to load kitchen orders:")} ${err.message}`, true);
   }
 }
 
@@ -233,7 +235,7 @@ async function loadBranches() {
 
   setupBranchSelect(branchSelect, branches, {
     canSelectAny: canFilterAnyBranch,
-    emptyLabel: "No branches available",
+    emptyLabel: t("No branches available"),
   });
 
   await loadOrders();
@@ -254,11 +256,11 @@ document.getElementById("kitchen-board").addEventListener("click", async (e) => 
     const index = orders.findIndex(o => String(o.id) === id);
     if (index >= 0) orders[index] = updated;
     renderBoard();
-    showToast(`Order #${id} ${action === "start-preparing" ? "is being prepared" : "is ready"}`);
+    showToast(`${t("Order")} #${id} ${action === "start-preparing" ? t("is being prepared") : t("is ready")}`);
   } catch (err) {
     showToast(err.message, true);
     btn.disabled = false;
-    btn.textContent = action === "start-preparing" ? "Start preparing" : "Mark ready";
+    btn.textContent = action === "start-preparing" ? t("Start preparing") : t("Mark ready");
   }
 });
 

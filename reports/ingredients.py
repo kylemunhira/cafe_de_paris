@@ -142,10 +142,27 @@ def _recipe_lines_by_product():
     from collections import defaultdict
 
     recipe_lines = defaultdict(list)
-    for recipe in Recipe.objects.select_related("ingredient", "ingredient__category"):
+    for recipe in Recipe.objects.filter(product__isnull=False).select_related(
+        "ingredient", "ingredient__category"
+    ):
         if recipe.ingredient.category.name != INGREDIENTS_CATEGORY:
             continue
         recipe_lines[recipe.product_id].append(
+            (recipe.ingredient_id, recipe.quantity_required)
+        )
+    return recipe_lines
+
+
+def _recipe_lines_by_menu_addon():
+    from collections import defaultdict
+
+    recipe_lines = defaultdict(list)
+    for recipe in Recipe.objects.filter(menu_addon__isnull=False).select_related(
+        "ingredient", "ingredient__category"
+    ):
+        if recipe.ingredient.category.name != INGREDIENTS_CATEGORY:
+            continue
+        recipe_lines[recipe.menu_addon_id].append(
             (recipe.ingredient_id, recipe.quantity_required)
         )
     return recipe_lines
@@ -159,6 +176,7 @@ def build_ingredient_usage_report(
 ):
     usage_date = parse_report_date(report_date)
     recipe_lines = _recipe_lines_by_product()
+    addon_recipe_lines = _recipe_lines_by_menu_addon()
 
     usage = {}
     branches_seen = set()
@@ -166,7 +184,7 @@ def build_ingredient_usage_report(
     sales_items = OrderItem.objects.filter(
         order__status=OrderStatus.PAID,
         order__created_at__date=usage_date,
-    ).select_related("order__branch", "product")
+    ).select_related("order__branch", "product").prefetch_related("addons")
     if branch_id is not None:
         sales_items = sales_items.filter(order__branch_id=branch_id)
 
@@ -180,6 +198,16 @@ def build_ingredient_usage_report(
                 {"from_sales": Decimal("0"), "from_production": Decimal("0")},
             )
             bucket["from_sales"] += item.quantity * quantity_required
+        for order_addon in item.addons.all():
+            for ingredient_id, quantity_required in addon_recipe_lines.get(
+                order_addon.menu_addon_id, []
+            ):
+                key = (branch_key, ingredient_id)
+                bucket = usage.setdefault(
+                    key,
+                    {"from_sales": Decimal("0"), "from_production": Decimal("0")},
+                )
+                bucket["from_sales"] += item.quantity * quantity_required
 
     productions = ProductionOrder.objects.filter(
         status=ProductionOrderStatus.COMPLETED,

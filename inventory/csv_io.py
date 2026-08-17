@@ -12,6 +12,7 @@ CSV_HEADERS = [
     "station",
     "product_name",
     "counted_quantity",
+    "wastage_quantity",
 ]
 
 REPORT_CSV_HEADERS = [
@@ -20,6 +21,7 @@ REPORT_CSV_HEADERS = [
     "product_name",
     "system_quantity",
     "counted_quantity",
+    "wastage_quantity",
     "variance",
 ]
 
@@ -38,6 +40,7 @@ def export_stock_take_csv(stock_take: StockTake) -> str:
                 "station": stock_take_station_display_for_product(line.product),
                 "product_name": line.product.name,
                 "counted_quantity": line.counted_quantity if line.counted_quantity is not None else "",
+                "wastage_quantity": line.wastage_quantity,
             }
         )
     return output.getvalue()
@@ -59,6 +62,7 @@ def export_stock_take_report_csv(stock_take: StockTake) -> str:
                 "product_name": line.product.name,
                 "system_quantity": line.system_quantity,
                 "counted_quantity": line.counted_quantity if line.counted_quantity is not None else "",
+                "wastage_quantity": line.wastage_quantity,
                 "variance": variance if variance is not None else "",
             }
         )
@@ -147,12 +151,22 @@ def import_stock_take_csv(stock_take: StockTake, file_obj):
                 "counted_quantity",
                 min_value=Decimal("0"),
             )
+            wastage_header = normalized_headers.get("wastage_quantity")
+            wastage_quantity = None
+            if wastage_header:
+                wastage_quantity = _parse_decimal(
+                    row.get(wastage_header),
+                    "wastage_quantity",
+                    min_value=Decimal("0"),
+                )
             notes_header = normalized_headers.get("notes")
             notes = str(row.get(notes_header, "")).strip() if notes_header else ""
 
             entry = {"id": line.id}
             if counted_quantity is not None:
                 entry["counted_quantity"] = counted_quantity
+            if wastage_quantity is not None:
+                entry["wastage_quantity"] = wastage_quantity
             if notes_header:
                 entry["notes"] = notes
             lines_data.append(entry)

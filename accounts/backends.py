@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 
+from accounts.access_codes import get_user_by_access_code, normalize_access_code
+
 
 class CaseInsensitiveModelBackend(ModelBackend):
     """Authenticate usernames without regard to letter case (Ngoni == ngoni)."""
@@ -29,5 +31,22 @@ class CaseInsensitiveModelBackend(ModelBackend):
                 return None
 
         if user.check_password(password) and self.user_can_authenticate(user):
+            return user
+        return None
+
+
+class AccessCodeBackend(ModelBackend):
+    """Authenticate staff with a unique 4-digit access code."""
+
+    def authenticate(self, request, username=None, password=None, access_code=None, **kwargs):
+        code = normalize_access_code(access_code)
+        if not code and username and password in (None, ""):
+            # Web login form can submit the code in the username field.
+            code = normalize_access_code(username)
+        if not code:
+            return None
+
+        user = get_user_by_access_code(code)
+        if user is not None and self.user_can_authenticate(user):
             return user
         return None

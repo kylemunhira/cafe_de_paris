@@ -1484,6 +1484,97 @@ class OrderRecipeConsumptionTests(TestCase):
         self.assertEqual(order.status, OrderStatus.PAID)
 
 
+class OrderAddonRecipeConsumptionTests(TestCase):
+    def setUp(self):
+        from catalog.models import MenuAddon, MenuAddonGroup, ProductMenuAddonGroup
+        from payments.models import Currency, CurrencyRate
+
+        self.client = APIClient()
+        self.branch = Branch.objects.create(
+            name="Addon Branch",
+            code="ADB",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        self.user = User.objects.create_user(username="addon-cashier", password="pass")
+        StaffProfile.objects.create(
+            user=self.user,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.menu_category = ProductCategory.objects.create(name="Coffee")
+        self.ingredient_category = ProductCategory.objects.create(name="Ingredients")
+        self.latte = Product.objects.create(
+            name="Latte",
+            category=self.menu_category,
+            selling_price=Decimal("4.00"),
+        )
+        self.oat_milk = Product.objects.create(
+            name="Oat Milk Stock",
+            category=self.ingredient_category,
+            selling_price=Decimal("2.00"),
+        )
+        self.group = MenuAddonGroup.objects.create(name="Addon Recipe Extras")
+        self.addon = MenuAddon.objects.create(
+            group=self.group,
+            name="Add Oat Milk Stock Test",
+            selling_price=Decimal("1.00"),
+        )
+        ProductMenuAddonGroup.objects.create(product=self.latte, group=self.group)
+        Recipe.objects.create(
+            menu_addon=self.addon,
+            ingredient=self.oat_milk,
+            quantity_required=Decimal("0.15"),
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=self.oat_milk,
+            quantity=Decimal("1.00"),
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=self.usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+
+    def test_pay_deducts_addon_recipe_ingredients(self):
+        from orders.models import OrderItemAddon
+
+        order = Order.objects.create(branch=self.branch)
+        item = order.items.create(
+            product=self.latte,
+            quantity=Decimal("2"),
+            price=self.latte.selling_price,
+        )
+        OrderItemAddon.objects.create(
+            order_item=item,
+            menu_addon=self.addon,
+            name=self.addon.name,
+            price=self.addon.selling_price,
+        )
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        milk = BranchInventory.objects.get(branch=self.branch, product=self.oat_milk)
+        # 2 drinks * 0.15 oat milk = 0.30 deducted from 1.00
+        self.assertEqual(milk.quantity, Decimal("0.70"))
+
+
 class WastageRecordingTests(TestCase):
     def setUp(self):
         self.client = APIClient()

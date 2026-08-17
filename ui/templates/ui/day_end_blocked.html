@@ -1,10 +1,10 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE|default:'en' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Day end blocked — Café de Paris</title>
+  <title>{% trans "Day end blocked" %} — Café de Paris</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
@@ -13,7 +13,7 @@
       <h1>Café de Paris</h1>
     </div>
     <div class="center meta">
-      <p><strong>Completed daily stock take required</strong></p>
+      <p><strong>{% trans "Completed daily stock take required" %}</strong></p>
       <p>{{ branch.name }}</p>
       <p>{{ count_date }}</p>
     </div>
@@ -22,7 +22,7 @@
       {{ message }}
     </p>
     <p style="text-align: center; margin-top: 1.5rem;">
-      <a href="{% url 'ui:stock-take' %}" style="font-weight: 600;">Go to stock take</a>
+      <a href="{% url 'ui:stock-take' %}" style="font-weight: 600;">{% trans "Go to stock take" %}</a>
     </p>
   </div>
 </body>

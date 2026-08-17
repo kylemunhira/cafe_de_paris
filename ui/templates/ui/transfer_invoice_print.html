@@ -1,10 +1,10 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Transfer Invoice {{ note.invoice_number }} — Café de Paris</title>
+  <title>{% trans "Transfer Invoice" %} {{ note.invoice_number }} — Café de Paris</title>
   <style>
     @page { size: A4; margin: 18mm; }
     * { box-sizing: border-box; }
@@ -151,31 +151,31 @@
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">Print transfer invoice</button>
+    <button type="button" onclick="window.print()">{% trans "Print transfer invoice" %}</button>
   </div>
 
   <div class="sheet">
     <div class="header">
       <div class="brand">
         <img class="brand-logo" src="{% static 'ui/img/cafe-de-paris-logo.png' %}" alt="Café de Paris">
-        <p>Central Stores — Inter-branch stock invoice</p>
+        <p>{% trans "Central Stores — Inter-branch stock invoice" %}</p>
       </div>
       <div class="doc-meta">
-        <h2>Tax Invoice</h2>
-        <p><strong>Invoice No.</strong> {{ note.invoice_number }}</p>
-        <p><strong>Delivery note</strong> DN-{{ note.id|stringformat:"05d" }}</p>
-        <p><strong>Date</strong> {{ note.created_at|date:"d M Y, H:i" }}</p>
+        <h2>{% trans "Tax Invoice" %}</h2>
+        <p><strong>{% trans "Invoice No." %}</strong> {{ note.invoice_number }}</p>
+        <p><strong>{% trans "Delivery note" %}</strong> DN-{{ note.id|stringformat:"05d" }}</p>
+        <p><strong>{% trans "Date" %}</strong> {{ note.created_at|date:"d M Y, H:i" }}</p>
       </div>
     </div>
 
     <div class="parties">
       <div class="party-box">
-        <h3>From (Supplier)</h3>
+        <h3>{% trans "From (Supplier)" %}</h3>
         <p><strong>{{ note.from_branch.name }}</strong></p>
         {% if note.from_branch.location %}<p>{{ note.from_branch.location }}</p>{% endif %}
       </div>
       <div class="party-box">
-        <h3>To (Customer branch)</h3>
+        <h3>{% trans "To (Customer branch)" %}</h3>
         <p><strong>{{ note.to_branch.name }}</strong></p>
         {% if note.to_branch.location %}<p>{{ note.to_branch.location }}</p>{% endif %}
       </div>
@@ -185,10 +185,10 @@
       <thead>
         <tr>
           <th style="width: 40px;">#</th>
-          <th>Product</th>
-          <th class="qty">Qty</th>
-          <th class="price">Unit cost{% if base_currency %} ({{ base_currency.code }}){% endif %}</th>
-          <th class="amt">Amount{% if base_currency %} ({{ base_currency.code }}){% endif %}</th>
+          <th>{% trans "Product" %}</th>
+          <th class="qty">{% trans "Qty" %}</th>
+          <th class="price">{% trans "Unit cost" %}{% if base_currency %} ({{ base_currency.code }}){% endif %}</th>
+          <th class="amt">{% trans "Amount" %}{% if base_currency %} ({{ base_currency.code }}){% endif %}</th>
         </tr>
       </thead>
       <tbody>
@@ -201,7 +201,7 @@
           <td class="amt">{{ line.line_total|floatformat:2 }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">No line items</td></tr>
+        <tr><td colspan="5">{% trans "No line items" %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -209,24 +209,24 @@
     <div class="summary">
       <div class="summary-box">
         <div class="summary-row">
-          <span>Line items</span>
+          <span>{% trans "Line items" %}</span>
           <strong>{{ note.lines.count }}</strong>
         </div>
         <div class="summary-row">
-          <span>Total quantity</span>
+          <span>{% trans "Total quantity" %}</span>
           <strong>{{ note.total_quantity|floatformat:2 }}</strong>
         </div>
         <div class="summary-row grand">
-          <span>Invoice total</span>
+          <span>{% trans "Invoice total" %}</span>
           <strong>{% if base_currency %}{{ base_currency.symbol }}{% endif %}{{ note.total_amount|floatformat:2 }}</strong>
         </div>
         <div class="summary-row" style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #d8cfc4;">
-          <span>Payment status</span>
-          <strong>{% if note.payment_status == "paid" %}Paid{% else %}Unpaid{% endif %}</strong>
+          <span>{% trans "Payment status" %}</span>
+          <strong>{% if note.payment_status == "paid" %}{% trans "Paid" %}{% else %}{% trans "Unpaid" %}{% endif %}</strong>
         </div>
         {% if note.paid_at %}
         <div class="summary-row">
-          <span>Paid on</span>
+          <span>{% trans "Paid on" %}</span>
           <strong>{{ note.paid_at|date:"d M Y, H:i" }}</strong>
         </div>
         {% endif %}
@@ -234,8 +234,8 @@
     </div>
 
     <div class="signatures">
-      <div><div class="signature-line">Issued by (Central Stores)</div></div>
-      <div><div class="signature-line">Received by (Branch)</div></div>
+      <div><div class="signature-line">{% trans "Issued by (Central Stores)" %}</div></div>
+      <div><div class="signature-line">{% trans "Received by (Branch)" %}</div></div>
     </div>
   </div>
 </body>

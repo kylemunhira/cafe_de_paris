@@ -92,7 +92,9 @@ class SyncPushView(DesktopSyncPermissionMixin, APIView):
 
         results = []
         for index, raw in enumerate(orders_payload):
-            serializer = SyncOrderPushSerializer(data=raw)
+            serializer = SyncOrderPushSerializer(
+                data=raw, context={"request": request}
+            )
             if not serializer.is_valid():
                 return Response(
                     {"detail": f"Order {index}: {serializer.errors}"},
@@ -107,9 +109,10 @@ class SyncPushView(DesktopSyncPermissionMixin, APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+            created_by = serializer.validated_data.pop("_created_by", request.user)
             try:
                 order, already_synced, fiscal_receipt = import_client_order(
-                    branch, serializer.validated_data, user=request.user
+                    branch, serializer.validated_data, user=created_by
                 )
             except (ZimraConfigurationError, ZimraSubmissionError) as exc:
                 return Response(

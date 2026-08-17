@@ -1,7 +1,8 @@
+{% load i18n %}
 {% if payment_options %}
 <hr class="divider">
 <div class="payment-options">
-  <p class="payment-options-title">Payment options</p>
+  <p class="payment-options-title">{% trans "Payment options" %}</p>
   <table class="summary">
     {% for opt in payment_options %}
     <tr>

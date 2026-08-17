@@ -1,0 +1,50 @@
+﻿existing=278 found=496 missing=426
+(optional)
+Account balance
+Action failed.
+Active count
+Active production
+Actual wastage/disposal
+Add amounts to current stock
+Add at least one product
+Add at least one product line
+Add expense
+Add ingredient
+Add line
+Add product
+Add qty
+Add table
+Add to cart
+Adjust balance
+Adjustment amount
+All purchases
+All reasons
+All statuses
+All transactions
+Amount must be a positive number
+Amount paid
+Amount received
+Amount tendered
+Amt
+Apply adjustment
+Apply all filled
+Approved
+Available
+Awaiting receipt
+Bakery
+Bakery destination
+Bakery transfers
+python : Traceback (most recent call last):
+At C:\Users\HP\AppData\Local\Temp\ps-script-bde62d5d-c82c-4920-93d6-d02427a80bd3.ps1:105 char:1
++ python scripts/_i18n_collect.py 2>&1 | Out-File -FilePath scripts/_i1 ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\HP\Documents\GitHub\cafe_de_paris\scripts\_i18n_collect.py", line 56, in <module>
+    print(m)
+    ~~~~~^^^
+  File "C:\Users\HP\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 7: character maps to <undefined>

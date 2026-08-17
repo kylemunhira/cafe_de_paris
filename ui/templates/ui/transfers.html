@@ -1,11 +1,11 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Stock Transfers — Café de Paris{% endblock %}
-{% block page_title %}Bakery → Stores & Branches{% endblock %}
+{% block title %}{% trans "Stock Transfers" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Bakery → Stores & Branches" %}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{% url 'ui:bakery-production' %}" class="btn btn-ghost btn-sm">Record production</a>
+<a href="{% url 'ui:bakery-production' %}" class="btn btn-ghost btn-sm">{% trans "Record production" %}</a>
 {% endblock %}
 
 {% block content %}
@@ -15,36 +15,36 @@
 </div>
 
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New delivery note</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New delivery note" %}</h3>
   <form id="transfer-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="from-branch">Central bakery</label>
+        <label for="from-branch">{% trans "Central bakery" %}</label>
         <select id="from-branch" required disabled>
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="to-branch">Destination (stores or branch)</label>
+        <label for="to-branch">{% trans "Destination (stores or branch)" %}</label>
         <select id="to-branch" required>
-          <option value="">Select destination…</option>
+          <option value="">{% trans "Select destination…" %}</option>
         </select>
       </div>
     </div>
 
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
-        <label for="product">Product</label>
+        <label for="product">{% trans "Product" %}</label>
         <select id="product" class="searchable-select">
-          <option value="">Select product…</option>
+          <option value="">{% trans "Select product…" %}</option>
         </select>
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
-        <label for="quantity">Qty</label>
+        <label for="quantity">{% trans "Qty" %}</label>
         <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0">
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
-        <button type="button" id="add-line-btn" class="btn btn-ghost">Add product</button>
+        <button type="button" id="add-line-btn" class="btn btn-ghost">{% trans "Add product" %}</button>
       </div>
     </div>
     <p id="stock-hint" style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-muted);"></p>
@@ -53,9 +53,9 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Product</th>
-            <th style="text-align: right;">Qty</th>
-            <th style="text-align: right;">Available</th>
+            <th>{% trans "Product" %}</th>
+            <th style="text-align: right;">{% trans "Qty" %}</th>
+            <th style="text-align: right;">{% trans "Available" %}</th>
             <th></th>
           </tr>
         </thead>
@@ -64,19 +64,19 @@
     </div>
 
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create delivery note</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Create delivery note" %}</button>
     </div>
   </form>
 </div>
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="requested">Requested</button>
-    <button class="category-tab" data-filter="approved">Approved</button>
-    <button class="category-tab" data-filter="dispatched">Dispatched</button>
-    <button class="category-tab" data-filter="delivered">Delivered</button>
-    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="requested">{% trans "Requested" %}</button>
+    <button class="category-tab" data-filter="approved">{% trans "Approved" %}</button>
+    <button class="category-tab" data-filter="dispatched">{% trans "Dispatched" %}</button>
+    <button class="category-tab" data-filter="delivered">{% trans "Delivered" %}</button>
+    <button class="category-tab" data-filter="cancelled">{% trans "Cancelled" %}</button>
   </div>
   <div class="table-wrap" id="transfers-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -89,6 +89,8 @@
 import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
@@ -254,13 +256,13 @@ function renderNotes() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Note", "id", sortState)}
-          ${sortTh("Products", "products", sortState)}
-          ${sortTh("Items", "line_count", sortState)}
-          ${sortTh("Total qty", "total_quantity", sortState)}
-          ${sortTh("To", "to_branch_name", sortState)}
-          ${sortTh("Status", "status", sortState)}
-          ${sortTh("Date", "created_at", sortState)}
+          ${sortTh(t("Note"), "id", sortState)}
+          ${sortTh(t("Products"), "products", sortState)}
+          ${sortTh(t("Items"), "line_count", sortState)}
+          ${sortTh(t("Total qty"), "total_quantity", sortState)}
+          ${sortTh(t("To"), "to_branch_name", sortState)}
+          ${sortTh(t("Status"), "status", sortState)}
+          ${sortTh(t("Date"), "created_at", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -346,20 +348,20 @@ addLineBtn.addEventListener("click", () => {
   const quantity = Number(quantityInput.value);
 
   if (!productId) {
-    showToast("Select a product first", true);
+    showToast(t("Select a product first"), true);
     return;
   }
   const product = products.find(p => String(p.id) === String(productId));
   if (product && product.is_active === false) {
-    showToast("Cannot transfer an inactive product.", true);
+    showToast(t("Cannot transfer an inactive product."), true);
     return;
   }
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    showToast("Enter a valid quantity", true);
+    showToast(t("Enter a valid quantity"), true);
     return;
   }
   if (draftLines.some(line => String(line.product) === String(productId))) {
-    showToast("Product already added — remove it first to change quantity", true);
+    showToast(t("Product already added — remove it first to change quantity"), true);
     return;
   }
   const available = getBakeryStock(productId);
@@ -398,11 +400,11 @@ transferForm.addEventListener("submit", async (e) => {
   }
 
   if (!toBranchSelect.value) {
-    showToast("Select central stores or a branch as the destination", true);
+    showToast(t("Select central stores or a branch as the destination"), true);
     return;
   }
   if (!draftLines.length) {
-    showToast("Add at least one product", true);
+    showToast(t("Add at least one product"), true);
     return;
   }
 
@@ -430,7 +432,7 @@ transferForm.addEventListener("submit", async (e) => {
   const submitLabel = submitBtn.textContent;
   submitFrozenUntil = Date.now() + 6000;
   submitBtn.disabled = true;
-  submitBtn.textContent = "Creating…";
+  submitBtn.textContent = t("Creating…");
 
   const unlockSubmit = () => {
     submitFrozenUntil = 0;

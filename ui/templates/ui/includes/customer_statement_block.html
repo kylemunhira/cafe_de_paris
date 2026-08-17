@@ -1,3 +1,4 @@
+{% load i18n %}
 <div class="receipt statement-receipt">
   <div class="center brand">
     <h1>Café de Paris</h1>
@@ -5,13 +6,13 @@
   </div>
 
   <div class="center meta">
-    <p><strong>Customer account statement</strong></p>
+    <p><strong>{% trans "Customer account statement" %}</strong></p>
     {% if single %}
-    <p>Transaction #{{ transaction.id }}</p>
+    <p>{% trans "Transaction" %} #{{ transaction.id }}</p>
     {% elif period_from and period_to %}
     <p>{{ period_from|date:"d M Y" }} — {{ period_to|date:"d M Y" }}</p>
     {% else %}
-    <p>All transactions</p>
+    <p>{% trans "All transactions" %}</p>
     {% endif %}
     <p>{{ printed_at|date:"d M Y, H:i" }}</p>
   </div>
@@ -20,17 +21,17 @@
 
   <table class="summary">
     <tr>
-      <td class="col-label">Customer</td>
+      <td class="col-label">{% trans "Customer" %}</td>
       <td class="col-amt" style="text-align: right;">{{ customer }}</td>
     </tr>
     {% if customer.phone %}
     <tr>
-      <td class="col-label">Phone</td>
+      <td class="col-label">{% trans "Phone" %}</td>
       <td class="col-amt" style="text-align: right;">{{ customer.phone }}</td>
     </tr>
     {% endif %}
     <tr>
-      <td class="col-label">Branch</td>
+      <td class="col-label">{% trans "Branch" %}</td>
       <td class="col-amt" style="text-align: right;">{{ branch.name }}</td>
     </tr>
   </table>
@@ -39,40 +40,40 @@
   <hr class="divider">
   <table class="summary">
     <tr>
-      <td class="col-label">Type</td>
+      <td class="col-label">{% trans "Type" %}</td>
       <td class="col-amt" style="text-align: right;"><strong>{{ transaction.statement_label }}</strong></td>
     </tr>
     <tr>
-      <td class="col-label">Date</td>
+      <td class="col-label">{% trans "Date" %}</td>
       <td class="col-amt" style="text-align: right;">{{ transaction.created_at|date:"d M Y, H:i" }}</td>
     </tr>
     {% if transaction.transaction_type == "deposit" and transaction.currency %}
     <tr>
-      <td class="col-label">Received in</td>
+      <td class="col-label">{% trans "Received in" %}</td>
       <td class="col-amt" style="text-align: right;">{{ transaction.currency.code|default:transaction.currency.name }}</td>
     </tr>
     {% if transaction.amount_received %}
     <tr>
-      <td class="col-label">Amount received</td>
+      <td class="col-label">{% trans "Amount received" %}</td>
       <td class="col-amt" style="text-align: right;">{% if transaction.currency.symbol %}{{ transaction.currency.symbol }}{% endif %}{{ transaction.amount_received|floatformat:2 }}</td>
     </tr>
     {% endif %}
     {% endif %}
     {% if transaction.order_id %}
     <tr>
-      <td class="col-label">Order</td>
+      <td class="col-label">{% trans "Order" %}</td>
       <td class="col-amt" style="text-align: right;">#{{ transaction.order_id }}</td>
     </tr>
     {% endif %}
     {% if transaction.notes %}
     <tr>
-      <td class="col-label">Notes</td>
+      <td class="col-label">{% trans "Notes" %}</td>
       <td class="col-amt" style="text-align: right;">{{ transaction.notes }}</td>
     </tr>
     {% endif %}
     {% if recorded_by_name %}
     <tr>
-      <td class="col-label">Recorded by</td>
+      <td class="col-label">{% trans "Recorded by" %}</td>
       <td class="col-amt" style="text-align: right;">{{ recorded_by_name }}</td>
     </tr>
     {% endif %}
@@ -82,15 +83,15 @@
 
   <table class="summary grand">
     <tr>
-      <td class="col-label">Previous balance{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+      <td class="col-label">{% trans "Previous balance" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
       <td class="col-amt">{{ transaction.balance_before|floatformat:2 }}</td>
     </tr>
     <tr>
-      <td class="col-label">{% if transaction.amount >= 0 %}Credited{% else %}Debited{% endif %}</td>
+      <td class="col-label">{% if transaction.amount >= 0 %}{% trans "Credited" %}{% else %}{% trans "Debited" %}{% endif %}</td>
       <td class="col-amt">{% if transaction.amount >= 0 %}+{% endif %}{{ transaction.amount|floatformat:2 }}</td>
     </tr>
     <tr>
-      <td class="col-label"><strong>New balance</strong></td>
+      <td class="col-label"><strong>{% trans "New balance" %}</strong></td>
       <td class="col-amt"><strong>{{ transaction.balance_after|floatformat:2 }}</strong></td>
     </tr>
   </table>
@@ -99,28 +100,28 @@
   <table class="summary grand">
     {% if opening_balance is not None %}
     <tr>
-      <td class="col-label">Opening balance{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+      <td class="col-label">{% trans "Opening balance" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
       <td class="col-amt">{{ opening_balance|floatformat:2 }}</td>
     </tr>
     {% if total_credits %}
     <tr>
-      <td class="col-label">Payments received</td>
+      <td class="col-label">{% trans "Payments received" %}</td>
       <td class="col-amt">+{{ total_credits|floatformat:2 }}</td>
     </tr>
     {% endif %}
     {% if total_debits %}
     <tr>
-      <td class="col-label">Withdrawals</td>
+      <td class="col-label">{% trans "Withdrawals" %}</td>
       <td class="col-amt">-{{ total_debits|floatformat:2 }}</td>
     </tr>
     {% endif %}
     <tr>
-      <td class="col-label"><strong>Closing balance</strong></td>
+      <td class="col-label"><strong>{% trans "Closing balance" %}</strong></td>
       <td class="col-amt"><strong>{{ closing_balance|floatformat:2 }}</strong></td>
     </tr>
     {% else %}
     <tr>
-      <td class="col-label"><strong>Current balance{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></td>
+      <td class="col-label"><strong>{% trans "Current balance" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></td>
       <td class="col-amt"><strong>{{ customer.account_balance|floatformat:2 }}</strong></td>
     </tr>
     {% endif %}
@@ -131,9 +132,9 @@
   <table class="items">
     <thead>
       <tr>
-        <th class="col-item">Date</th>
-        <th class="col-qty">Type</th>
-        <th class="col-amt">Amt</th>
+        <th class="col-item">{% trans "Date" %}</th>
+        <th class="col-qty">{% trans "Type" %}</th>
+        <th class="col-amt">{% trans "Amt" %}</th>
       </tr>
     </thead>
     <tbody>
@@ -149,18 +150,18 @@
       <tr>
         <td class="col-item" colspan="3">
           <div class="item-detail">
-            Balance {{ txn.balance_after|floatformat:2 }}{% if base_currency %} {{ base_currency.code }}{% endif %}
-            {% if txn.transaction_type == "deposit" and txn.currency %} · Received in {{ txn.currency.code|default:txn.currency.name }}{% if txn.amount_received %} {% if txn.currency.symbol %}{{ txn.currency.symbol }}{% endif %}{{ txn.amount_received|floatformat:2 }}{% endif %}{% endif %}
-            {% if txn.order_id %} · Order #{{ txn.order_id }}{% endif %}
+            {% trans "Balance" %} {{ txn.balance_after|floatformat:2 }}{% if base_currency %} {{ base_currency.code }}{% endif %}
+            {% if txn.transaction_type == "deposit" and txn.currency %} · {% trans "Received in" %} {{ txn.currency.code|default:txn.currency.name }}{% if txn.amount_received %} {% if txn.currency.symbol %}{{ txn.currency.symbol }}{% endif %}{{ txn.amount_received|floatformat:2 }}{% endif %}{% endif %}
+            {% if txn.order_id %} · {% trans "Order" %} #{{ txn.order_id }}{% endif %}
             {% if txn.notes %} · {{ txn.notes }}{% endif %}
-            {% if txn.recorded_by %} · By {{ txn.recorded_by.username }}{% endif %}
-            {% if txn.transaction_type == "adjustment" %} · ★ Balance adjustment{% endif %}
+            {% if txn.recorded_by %} · {% trans "By" %} {{ txn.recorded_by.username }}{% endif %}
+            {% if txn.transaction_type == "adjustment" %} · ★ {% trans "Balance adjustment" %}{% endif %}
           </div>
         </td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="3">No transactions</td>
+        <td colspan="3">{% trans "No transactions" %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -168,6 +169,6 @@
   {% endif %}
 
   <div class="center footer">
-    <p>Please retain for your records.</p>
+    <p>{% trans "Please retain for your records." %}</p>
   </div>
 </div>

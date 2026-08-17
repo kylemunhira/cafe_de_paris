@@ -1,0 +1,21 @@
+{% load i18n %}
+{% get_current_language as CURRENT_LANGUAGE %}
+{% get_available_languages as AVAILABLE_LANGUAGES %}
+{% get_language_info_list for AVAILABLE_LANGUAGES as languages %}
+<div class="language-selector{% if compact %} language-selector-compact{% endif %}">
+  <button type="button" class="language-button" aria-haspopup="true" aria-expanded="false" aria-controls="language-menu" title="{% trans 'Language' %}">
+    <span class="language-button-code">{{ CURRENT_LANGUAGE|slice:":2"|upper }}</span>
+    <svg class="language-button-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+  </button>
+  <div id="language-menu" class="language-menu" hidden>
+    <form action="{% url 'set_language' %}" method="post">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      {% for language in languages %}
+      <button type="submit" name="language" value="{{ language.code }}" class="language-option{% if language.code == CURRENT_LANGUAGE %} is-active{% endif %}">
+        {{ language.name_local }}
+      </button>
+      {% endfor %}
+    </form>
+  </div>
+</div>

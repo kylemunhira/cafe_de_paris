@@ -3,15 +3,28 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from django.db.models import Q
+
 from branches.models import Branch
 from catalog.models import Product
 
 
 class Recipe(models.Model):
+    """Bill of materials for a sellable product or menu add-on."""
+
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE,
         related_name="recipes_as_output",
+        null=True,
+        blank=True,
+    )
+    menu_addon = models.ForeignKey(
+        "catalog.MenuAddon",
+        on_delete=models.CASCADE,
+        related_name="recipes",
+        null=True,
+        blank=True,
     )
     ingredient = models.ForeignKey(
         Product,
@@ -21,12 +34,31 @@ class Recipe(models.Model):
     quantity_required = models.DecimalField(max_digits=12, decimal_places=4)
 
     class Meta:
-        unique_together = ("product", "ingredient")
         verbose_name_plural = "recipes"
-        ordering = ["product__name", "ingredient__name"]
+        ordering = ["product__name", "menu_addon__name", "ingredient__name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(product__isnull=False, menu_addon__isnull=True)
+                    | Q(product__isnull=True, menu_addon__isnull=False)
+                ),
+                name="bakery_recipe_product_xor_menu_addon",
+            ),
+            models.UniqueConstraint(
+                fields=["product", "ingredient"],
+                condition=Q(product__isnull=False),
+                name="bakery_recipe_unique_product_ingredient",
+            ),
+            models.UniqueConstraint(
+                fields=["menu_addon", "ingredient"],
+                condition=Q(menu_addon__isnull=False),
+                name="bakery_recipe_unique_menu_addon_ingredient",
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.product} needs {self.quantity_required} of {self.ingredient}"
+        output = self.product or self.menu_addon
+        return f"{output} needs {self.quantity_required} of {self.ingredient}"
 
 
 class ProductionOrderStatus(models.TextChoices):

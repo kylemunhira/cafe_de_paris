@@ -1,10 +1,10 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice {% if order.receipt_number %}{{ order.receipt_number }}{% else %}#{{ order.id }}{% endif %} — Café de Paris</title>
+  <title>{% trans "Invoice" %} {% if order.receipt_number %}{{ order.receipt_number }}{% else %}#{{ order.id }}{% endif %} — Café de Paris</title>
   <style>
     @page {
       size: A4;
@@ -255,7 +255,7 @@
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">Print invoice</button>
+    <button type="button" onclick="window.print()">{% trans "Print invoice" %}</button>
   </div>
 
   <div class="sheet">
@@ -266,39 +266,39 @@
       </div>
       <div class="doc-meta">
         {% if is_proforma %}
-        <h2>Proforma Invoice</h2>
-        <p style="color: #8b6914; font-size: 0.85rem; margin: 0.35rem 0 0;">Not a fiscal receipt — pending approval</p>
+        <h2>{% trans "Proforma Invoice" %}</h2>
+        <p style="color: #8b6914; font-size: 0.85rem; margin: 0.35rem 0 0;">{% trans "Not a fiscal receipt — pending approval" %}</p>
         {% elif fiscal %}
-        <h2>Tax Invoice</h2>
-        <p><strong>Fiscal receipt No.</strong> {{ fiscal.invoice_no }}</p>
+        <h2>{% trans "Tax Invoice" %}</h2>
+        <p><strong>{% trans "Fiscal receipt No." %}</strong> {{ fiscal.invoice_no }}</p>
         {% else %}
-        <h2>Tax Invoice</h2>
+        <h2>{% trans "Tax Invoice" %}</h2>
         {% endif %}
         {% if order.receipt_number %}
-        <p><strong>{% if is_proforma or fiscal %}Proforma No.{% else %}Invoice No.{% endif %}</strong> {{ order.receipt_number }}</p>
+        <p><strong>{% if is_proforma or fiscal %}{% trans "Proforma No." %}{% else %}{% trans "Invoice No." %}{% endif %}</strong> {{ order.receipt_number }}</p>
         {% endif %}
-        <p><strong>Order</strong> #{{ order.id }}</p>
-        <p><strong>Date</strong> {{ order.created_at|date:"d M Y, H:i" }}</p>
-        <p><span class="status-paid">Paid</span></p>
+        <p><strong>{% trans "Order" %}</strong> #{{ order.id }}</p>
+        <p><strong>{% trans "Date" %}</strong> {{ order.created_at|date:"d M Y, H:i" }}</p>
+        <p><span class="status-paid">{% trans "Paid" %}</span></p>
       </div>
     </div>
 
     <div class="parties">
       <div class="party-box">
-        <h3>Bill To</h3>
+        <h3>{% trans "Bill To" %}</h3>
         {% if order.customer %}
           <p><strong>{{ order.customer }}</strong></p>
           {% if order.customer.phone %}<p>{{ order.customer.phone }}</p>{% endif %}
           {% if order.customer.email %}<p>{{ order.customer.email }}</p>{% endif %}
         {% else %}
-          <p><strong>Walk-in customer</strong></p>
+          <p><strong>{% trans "Walk-in customer" %}</strong></p>
         {% endif %}
       </div>
       <div class="party-box">
-        <h3>Sale Details</h3>
+        <h3>{% trans "Sale Details" %}</h3>
         <p><strong>{{ order.get_order_type_display }}</strong></p>
-        {% if order.table_number %}<p>Table {{ order.table_number }}</p>{% endif %}
-        <p>Branch: {{ order.branch.name }}</p>
+        {% if order.table_number %}<p>{% trans "Table" %} {{ order.table_number }}</p>{% endif %}
+        <p>{% trans "Branch" %}: {{ order.branch.name }}</p>
       </div>
     </div>
 
@@ -306,10 +306,10 @@
       <thead>
         <tr>
           <th style="width: 40px;">#</th>
-          <th>Description</th>
-          <th class="qty">Qty</th>
-          <th class="price">Unit price</th>
-          <th class="amt">Amount</th>
+          <th>{% trans "Description" %}</th>
+          <th class="qty">{% trans "Qty" %}</th>
+          <th class="price">{% trans "Unit price" %}</th>
+          <th class="amt">{% trans "Amount" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -323,7 +323,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="5">No line items</td>
+          <td colspan="5">{% trans "No line items" %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -332,33 +332,33 @@
     <div class="summary">
       <div class="summary-box">
         <div class="summary-row">
-          <span>Subtotal{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
+          <span>{% trans "Subtotal" %}{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
           <span>{{ tax_breakdown.subtotal|floatformat:2 }}</span>
         </div>
         <div class="summary-row">
-          <span>Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</span>
+          <span>{% trans "Tax" %} ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</span>
           <span>{{ tax_breakdown.tax|floatformat:2 }}</span>
         </div>
         <div class="summary-row">
-          <span>Total{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
+          <span>{% trans "Total" %}{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
           <span>{{ tax_breakdown.total|floatformat:2 }}</span>
         </div>
         {% if order.payment_currency or order.payment_method %}
         {% if order.payment_method %}
         <div class="summary-row" style="margin-top: 0.75rem;">
-          <span>Payment</span>
+          <span>{% trans "Payment" %}</span>
           <strong>{{ order.get_payment_method_display }}</strong>
         </div>
         {% endif %}
         {% if order.payment_currency %}
         <div class="summary-row"{% if not order.payment_method %} style="margin-top: 0.75rem;"{% endif %}>
-          <span>Paid in</span>
+          <span>{% trans "Paid in" %}</span>
           <strong>{{ order.payment_currency.code|default:order.payment_currency.name }}</strong>
         </div>
         {% endif %}
         {% if order.exchange_rate and order.payment_currency and not order.payment_currency.is_base %}
         <div class="summary-row">
-          <span>Exchange rate</span>
+          <span>{% trans "Exchange rate" %}</span>
           <span>{{ order.exchange_rate }}</span>
         </div>
         {% endif %}
@@ -372,7 +372,7 @@
         {% endif %}
         {% if order.amount_paid != None and order.payment_currency %}
         <div class="summary-row grand">
-          <span>Amount paid</span>
+          <span>{% trans "Amount paid" %}</span>
           <span>{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }} {{ order.payment_currency.code }}</span>
         </div>
         {% endif %}
@@ -382,25 +382,25 @@
 
     {% if fiscal and not is_proforma %}
     <div class="fiscal-box">
-      <h3>Fiscal Information</h3>
+      <h3>{% trans "Fiscal Information" %}</h3>
       <div class="fiscal-grid">
         <div class="fiscal-meta">
-          {% if fiscal.device_branch_name %}<p><strong>Device branch:</strong> {{ fiscal.device_branch_name }}</p>{% endif %}
-          {% if fiscal.device_serial_no %}<p><strong>Device serial:</strong> {{ fiscal.device_serial_no }}</p>{% endif %}
-          {% if fiscal.fiscal_invoice_number %}<p><strong>Fiscal invoice:</strong> {{ fiscal.fiscal_invoice_number }}</p>{% endif %}
-          {% if fiscal.fiscal_day_number %}<p><strong>Fiscal day:</strong> {{ fiscal.fiscal_day_number }}</p>{% endif %}
-          {% if fiscal.receipt_counter %}<p><strong>Receipt:</strong> #{{ fiscal.receipt_counter }} / {{ fiscal.receipt_global_no }}</p>{% endif %}
-          {% if fiscal.verification_code %}<p><strong>Verification:</strong> {{ fiscal.verification_code }}</p>{% endif %}
+          {% if fiscal.device_branch_name %}<p><strong>{% trans "Device branch:" %}</strong> {{ fiscal.device_branch_name }}</p>{% endif %}
+          {% if fiscal.device_serial_no %}<p><strong>{% trans "Device serial:" %}</strong> {{ fiscal.device_serial_no }}</p>{% endif %}
+          {% if fiscal.fiscal_invoice_number %}<p><strong>{% trans "Fiscal invoice:" %}</strong> {{ fiscal.fiscal_invoice_number }}</p>{% endif %}
+          {% if fiscal.fiscal_day_number %}<p><strong>{% trans "Fiscal day:" %}</strong> {{ fiscal.fiscal_day_number }}</p>{% endif %}
+          {% if fiscal.receipt_counter %}<p><strong>{% trans "Receipt" %}:</strong> #{{ fiscal.receipt_counter }} / {{ fiscal.receipt_global_no }}</p>{% endif %}
+          {% if fiscal.verification_code %}<p><strong>{% trans "Verification:" %}</strong> {{ fiscal.verification_code }}</p>{% endif %}
         </div>
         {% if fiscal.qr_string %}
-        <div class="fiscal-qr" id="fiscal-qr" aria-label="Fiscal QR code"></div>
+        <div class="fiscal-qr" id="fiscal-qr" aria-label="{% trans "Fiscal QR code" %}"></div>
         {% endif %}
       </div>
     </div>
     {% endif %}
 
     <div class="footer">
-      <p>Thank you for your business.</p>
+      <p>{% trans "Thank you for your business." %}</p>
     </div>
   </div>
 

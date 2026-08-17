@@ -1,8 +1,14 @@
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.db import models
 
 from branches.models import Branch
 from catalog.models import PosStation
+
+access_code_validator = RegexValidator(
+    regex=r"^\d{4}$",
+    message="Access code must be exactly 4 digits.",
+)
 
 
 class StaffRole(models.TextChoices):
@@ -49,6 +55,14 @@ class StaffProfile(models.Model):
         blank=True,
         default="",
         help_text="Kitchen display filter — only orders for this prep station (bar or kitchen).",
+    )
+    access_code = models.CharField(
+        max_length=4,
+        unique=True,
+        null=True,
+        blank=True,
+        validators=[access_code_validator],
+        help_text="4-digit code for login and manager POS overrides.",
     )
 
     class Meta:

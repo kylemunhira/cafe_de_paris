@@ -1,8 +1,8 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Branch Transfers — Café de Paris{% endblock %}
-{% block page_title %}Branch → Branch{% endblock %}
+{% block title %}{% trans "Branch Transfers" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Branch → Branch" %}{% endblock %}
 
 {% block content %}
 <div class="stat-grid" id="branch-stats" style="margin-bottom: 1.25rem;">
@@ -11,36 +11,36 @@
 </div>
 
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New branch transfer</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New branch transfer" %}</h3>
   <form id="transfer-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="from-branch">From branch</label>
+        <label for="from-branch">{% trans "From branch" %}</label>
         <select id="from-branch" required{% if not can_filter_any_branch %} disabled{% endif %}>
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="to-branch">To branch</label>
+        <label for="to-branch">{% trans "To branch" %}</label>
         <select id="to-branch" required>
-          <option value="">Select destination…</option>
+          <option value="">{% trans "Select destination…" %}</option>
         </select>
       </div>
     </div>
 
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
-        <label for="product">Product</label>
+        <label for="product">{% trans "Product" %}</label>
         <select id="product" class="searchable-select">
-          <option value="">Select product…</option>
+          <option value="">{% trans "Select product…" %}</option>
         </select>
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
-        <label for="quantity">Qty</label>
+        <label for="quantity">{% trans "Qty" %}</label>
         <input type="number" id="quantity" min="0.001" step="0.001" placeholder="0">
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
-        <button type="button" id="add-line-btn" class="btn btn-ghost">Add product</button>
+        <button type="button" id="add-line-btn" class="btn btn-ghost">{% trans "Add product" %}</button>
       </div>
     </div>
     <p id="stock-hint" style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-muted);"></p>
@@ -49,9 +49,9 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Product</th>
-            <th style="text-align: right;">Qty</th>
-            <th style="text-align: right;">Available</th>
+            <th>{% trans "Product" %}</th>
+            <th style="text-align: right;">{% trans "Qty" %}</th>
+            <th style="text-align: right;">{% trans "Available" %}</th>
             <th></th>
           </tr>
         </thead>
@@ -60,19 +60,19 @@
     </div>
 
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create transfer</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Create transfer" %}</button>
     </div>
   </form>
 </div>
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="requested">Requested</button>
-    <button class="category-tab" data-filter="approved">Approved</button>
-    <button class="category-tab" data-filter="dispatched">Dispatched</button>
-    <button class="category-tab" data-filter="delivered">Delivered</button>
-    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="requested">{% trans "Requested" %}</button>
+    <button class="category-tab" data-filter="approved">{% trans "Approved" %}</button>
+    <button class="category-tab" data-filter="dispatched">{% trans "Dispatched" %}</button>
+    <button class="category-tab" data-filter="delivered">{% trans "Delivered" %}</button>
+    <button class="category-tab" data-filter="cancelled">{% trans "Cancelled" %}</button>
   </div>
   <div class="table-wrap" id="transfers-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -85,6 +85,8 @@
 import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const CAN_RECEIVE_BRANCH = "{{ can_receive_branch_transfers|yesno:'true,false' }}" === "true";
@@ -145,11 +147,11 @@ function getProductName(productId) {
 function updateStockHint() {
   const productId = productSelect.value;
   if (!productId) {
-    stockHint.textContent = "Stock leaves the sending branch when you dispatch.";
+    stockHint.textContent = t("Stock leaves the sending branch when you dispatch.");
     return;
   }
   const available = getSourceStock(productId);
-  stockHint.textContent = `${formatQty(available)} available at source · deducted on dispatch`;
+  stockHint.textContent = `${formatQty(available)} ${t("available at source · deducted on dispatch")}`;
 }
 
 function renderDraftLines() {
@@ -254,14 +256,14 @@ function renderNotes() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Note", "id", sortState)}
-          ${sortTh("Products", "products", sortState)}
-          ${sortTh("Items", "line_count", sortState)}
-          ${sortTh("Total qty", "total_quantity", sortState)}
-          ${sortTh("From", "from_branch_name", sortState)}
-          ${sortTh("To", "to_branch_name", sortState)}
-          ${sortTh("Status", "status", sortState)}
-          ${sortTh("Date", "created_at", sortState)}
+          ${sortTh(t("Note"), "id", sortState)}
+          ${sortTh(t("Products"), "products", sortState)}
+          ${sortTh(t("Items"), "line_count", sortState)}
+          ${sortTh(t("Total qty"), "total_quantity", sortState)}
+          ${sortTh(t("From"), "from_branch_name", sortState)}
+          ${sortTh(t("To"), "to_branch_name", sortState)}
+          ${sortTh(t("Status"), "status", sortState)}
+          ${sortTh(t("Date"), "created_at", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -384,15 +386,15 @@ addLineBtn.addEventListener("click", () => {
   const quantity = Number(quantityInput.value);
 
   if (!productId) {
-    showToast("Select a product first", true);
+    showToast(t("Select a product first"), true);
     return;
   }
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    showToast("Enter a valid quantity", true);
+    showToast(t("Enter a valid quantity"), true);
     return;
   }
   if (draftLines.some(line => String(line.product) === String(productId))) {
-    showToast("Product already added — remove it first to change quantity", true);
+    showToast(t("Product already added — remove it first to change quantity"), true);
     return;
   }
   const available = getSourceStock(productId);
@@ -431,11 +433,11 @@ transferForm.addEventListener("submit", async (e) => {
   }
 
   if (!toBranchSelect.value) {
-    showToast("Select a destination branch", true);
+    showToast(t("Select a destination branch"), true);
     return;
   }
   if (!draftLines.length) {
-    showToast("Add at least one product", true);
+    showToast(t("Add at least one product"), true);
     return;
   }
 
@@ -451,7 +453,7 @@ transferForm.addEventListener("submit", async (e) => {
   const submitLabel = submitBtn.textContent;
   submitFrozenUntil = Date.now() + 6000;
   submitBtn.disabled = true;
-  submitBtn.textContent = "Creating…";
+  submitBtn.textContent = t("Creating…");
 
   const unlockSubmit = () => {
     submitFrozenUntil = 0;

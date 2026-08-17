@@ -1,20 +1,20 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Recipes — Café de Paris{% endblock %}
-{% block page_title %}Recipes{% endblock %}
+{% block title %}{% trans "Recipes" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Recipes" %}{% endblock %}
 
 {% block content %}
 <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
   <div class="form-row" style="align-items: end;">
     <div class="form-group" style="flex: 1; min-width: 220px;">
-      <label for="product-search">Find product</label>
-      <input type="search" id="product-search" placeholder="Search by name or category…" autocomplete="off">
+      <label for="product-search">{% trans "Find product or add-on" %}</label>
+      <input type="search" id="product-search" placeholder="{% trans "Search by name or category…" %}" autocomplete="off">
     </div>
     <div class="form-group" style="flex: 1; min-width: 280px;">
-      <label for="product-select">Product to edit</label>
+      <label for="product-select">{% trans "Item to edit" %}</label>
       <select id="product-select" class="searchable-select">
-        <option value="">Select a product…</option>
+        <option value="">{% trans "Select a product or add-on…" %}</option>
       </select>
     </div>
   </div>
@@ -25,23 +25,23 @@
 <div id="recipe-editor" class="card" style="padding: 0; display: none;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
     <div>
-      <h3 id="editor-title" style="margin: 0; font-size: 1.05rem;">Recipe</h3>
+      <h3 id="editor-title" style="margin: 0; font-size: 1.05rem;">{% trans "Recipe" %}</h3>
       <p id="editor-meta" style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
       <div style="display: flex; align-items: flex-end; gap: 1.25rem; flex-wrap: wrap; margin-top: 0.65rem;">
         <div>
-          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Recipe cost</div>
+          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">{% trans "Recipe cost" %}</div>
           <div id="editor-cost" style="font-weight: 600; font-size: 1rem;">—</div>
         </div>
         <div class="form-group" style="margin: 0;">
-          <label for="selling-price-input" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;">Selling price</label>
+          <label for="selling-price-input" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;">{% trans "Selling price" %}</label>
           <input type="number" id="selling-price-input" class="report-input" min="0" step="0.01" style="width: 120px;" disabled>
         </div>
         <div>
-          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Cost of sales</div>
+          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">{% trans "Cost of sales" %}</div>
           <div id="editor-cos" style="font-weight: 600; font-size: 1rem;">—</div>
         </div>
         <div>
-          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Gross profit</div>
+          <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">{% trans "Gross profit" %}</div>
           <div id="editor-gp" style="font-weight: 600; font-size: 1rem;">—</div>
         </div>
       </div>
@@ -50,41 +50,41 @@
   </div>
   <div class="table-wrap" id="recipe-lines-table"></div>
   <div style="padding: 1rem 1.5rem; border-top: 1px solid rgba(44,24,16,0.06); background: rgba(44,24,16,0.02);">
-    <h4 style="margin: 0 0 0.75rem; font-size: 0.9rem; font-weight: 600;">Add ingredient</h4>
+    <h4 style="margin: 0 0 0.75rem; font-size: 0.9rem; font-weight: 600;">{% trans "Add ingredient" %}</h4>
     <form id="add-line-form" class="form-row" style="align-items: end; margin: 0;">
       <div class="form-group" style="flex: 1; min-width: 200px;">
-        <label for="add-ingredient">Ingredient</label>
+        <label for="add-ingredient">{% trans "Ingredient" %}</label>
         <select id="add-ingredient" class="searchable-select" required>
-          <option value="">Select ingredient…</option>
+          <option value="">{% trans "Select ingredient…" %}</option>
         </select>
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
-        <label for="add-quantity">Qty</label>
+        <label for="add-quantity">{% trans "Qty" %}</label>
         <input type="number" id="add-quantity" min="0" step="any" placeholder="0" required>
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
-        <button type="submit" class="btn btn-primary">Add</button>
+        <button type="submit" class="btn btn-primary">{% trans "Add" %}</button>
       </div>
     </form>
   </div>
 </div>
 
 <div id="recipe-empty" class="card" style="padding: 2.5rem; text-align: center; display: none;">
-  <p style="margin: 0; color: var(--color-muted);">Select a product above to view or edit its recipe.</p>
+  <p style="margin: 0; color: var(--color-muted);">{% trans "Select a product or add-on above to view or edit its recipe." %}</p>
 </div>
 
 <div id="recipe-browser" class="card" style="padding: 0; margin-bottom: 1.25rem; display: none;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 0.95rem;">Products with recipes</h3>
-    <p style="margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--color-muted);">Click a product to edit its ingredients.</p>
+    <h3 style="margin: 0; font-size: 0.95rem;" id="recipe-browser-title">{% trans "Items with recipes" %}</h3>
+    <p style="margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--color-muted);">{% trans "Click an item to edit its ingredients." %}</p>
   </div>
   <div id="recipe-browser-list"></div>
 </div>
 
 <div id="no-recipe-products" class="card" style="padding: 0; margin-top: 1.25rem; display: none;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 0.95rem;">Products without a recipe</h3>
-    <p style="margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--color-muted);">Click a product to start building its bill of materials.</p>
+    <h3 style="margin: 0; font-size: 0.95rem;" id="no-recipe-title">{% trans "Items without a recipe" %}</h3>
+    <p style="margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--color-muted);">{% trans "Click an item to start building its bill of materials." %}</p>
   </div>
   <div id="no-recipe-list" style="padding: 0.75rem 1rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
 </div>
@@ -96,6 +96,8 @@ import { apiPost, apiPatch, apiDelete, fetchAllPages, showToast } from "{% stati
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
+const t = (msgid) => window.CDP.t(msgid);
+
 const KITCHEN_CATEGORY_NAMES = new Set([
   "Breakfast", "Mains", "Sandwiches", "Burgers", "Salads", "Seafood",
 ]);
@@ -106,9 +108,11 @@ const RAW_INGREDIENT_CATEGORIES = new Set(["Ingredients", "Branch Ingredients"])
 const INGREDIENT_CATEGORIES = new Set([...RAW_INGREDIENT_CATEGORIES, "Components"]);
 
 let products = [];
+let addons = [];
 let recipes = [];
 let activeCategory = "all";
-let selectedProductId = null;
+/** @type {{ kind: "product"|"addon", id: number } | null} */
+let selectedTarget = null;
 const lineSortState = createSortState("ingredient_name", "asc");
 
 const RECIPE_LINE_SORT = {
@@ -192,12 +196,33 @@ function updateEditorMetrics(totalCost, sellingPrice) {
     `<span style="font-size: 0.85rem; color: var(--color-muted); font-weight: 500;">(${formatPercent(grossProfitPercent)})</span>`;
 }
 
+function optionValue(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function parseOptionValue(value) {
+  if (!value) return null;
+  const [kind, idRaw] = String(value).split(":");
+  const id = Number(idRaw);
+  if ((kind !== "product" && kind !== "addon") || !Number.isFinite(id)) return null;
+  return { kind, id };
+}
+
+function isAddonsTab() {
+  return activeCategory === "addons";
+}
+
 function outputProducts() {
   return products.filter(p => p.is_active && !RAW_INGREDIENT_CATEGORIES.has(p.category_name));
 }
 
+function outputAddons() {
+  return addons.filter(a => a.is_active !== false);
+}
+
 function matchesCategoryFilter(categoryName) {
   if (activeCategory === "all") return true;
+  if (activeCategory === "addons") return false;
   if (activeCategory === "kitchen") return KITCHEN_CATEGORY_NAMES.has(categoryName);
   if (activeCategory === "bakery") return BAKERY_CATEGORY_NAMES.has(categoryName);
   return categoryName === activeCategory;
@@ -217,81 +242,179 @@ function filteredOutputProducts() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function recipesForProduct(productId) {
-  return recipes.filter(r => Number(r.product) === Number(productId));
+function filteredOutputAddons() {
+  const query = productSearch.value.trim().toLowerCase();
+  return outputAddons()
+    .filter(a => {
+      if (!query) return true;
+      return (
+        a.name.toLowerCase().includes(query) ||
+        (a.group_name || "").toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function recipesForTarget(target) {
+  if (!target) return [];
+  if (target.kind === "addon") {
+    return recipes.filter(r => Number(r.menu_addon) === Number(target.id));
+  }
+  return recipes.filter(r => Number(r.product) === Number(target.id) && !r.menu_addon);
 }
 
 function productsWithRecipes() {
-  return new Set(recipes.map(r => Number(r.product)));
+  return new Set(
+    recipes.filter(r => r.product && !r.menu_addon).map(r => Number(r.product))
+  );
 }
 
-function recipesByProduct() {
+function addonsWithRecipes() {
+  return new Set(
+    recipes.filter(r => r.menu_addon).map(r => Number(r.menu_addon))
+  );
+}
+
+function recipesByTarget() {
   const grouped = new Map();
-  for (const line of recipes) {
-    const product = products.find(p => Number(p.id) === Number(line.product));
-    if (!product || !product.is_active || RAW_INGREDIENT_CATEGORIES.has(product.category_name)) continue;
-    if (!matchesCategoryFilter(product.category_name)) continue;
 
-    if (!grouped.has(line.product)) {
-      grouped.set(line.product, {
-        productId: line.product,
-        productName: line.product_name,
-        productCategory: line.product_category,
-        sellingPrice: product.selling_price ?? 0,
-        lines: [],
-        totalCost: 0,
-      });
+  if (isAddonsTab()) {
+    for (const line of recipes) {
+      if (!line.menu_addon) continue;
+      const addon = addons.find(a => Number(a.id) === Number(line.menu_addon));
+      if (!addon || addon.is_active === false) continue;
+      const key = optionValue("addon", line.menu_addon);
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          kind: "addon",
+          id: line.menu_addon,
+          name: line.menu_addon_name || addon.name,
+          category: addon.group_name || t("Add-ons"),
+          sellingPrice: addon.selling_price ?? 0,
+          lines: [],
+          totalCost: 0,
+        });
+      }
+      const group = grouped.get(key);
+      group.lines.push(line);
+      group.totalCost += Number(line.line_cost || 0);
     }
-    const group = grouped.get(line.product);
-    group.lines.push(line);
-    group.totalCost += Number(line.line_cost || 0);
+  } else {
+    for (const line of recipes) {
+      if (!line.product || line.menu_addon) continue;
+      const product = products.find(p => Number(p.id) === Number(line.product));
+      if (!product || !product.is_active || RAW_INGREDIENT_CATEGORIES.has(product.category_name)) continue;
+      if (!matchesCategoryFilter(product.category_name)) continue;
+
+      const key = optionValue("product", line.product);
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          kind: "product",
+          id: line.product,
+          name: line.product_name,
+          category: line.product_category,
+          sellingPrice: product.selling_price ?? 0,
+          lines: [],
+          totalCost: 0,
+        });
+      }
+      const group = grouped.get(key);
+      group.lines.push(line);
+      group.totalCost += Number(line.line_cost || 0);
+    }
   }
-  return [...grouped.values()].sort((a, b) => a.productName.localeCompare(b.productName));
+
+  return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function availableIngredients(productId) {
+function availableIngredients(excludeProductId) {
   const usedIds = new Set(
-    recipesForProduct(productId).map(r => Number(r.ingredient))
+    recipesForTarget(selectedTarget).map(r => Number(r.ingredient))
   );
   return products
     .filter(p =>
       p.is_active &&
-      Number(p.id) !== Number(productId) &&
+      Number(p.id) !== Number(excludeProductId) &&
       INGREDIENT_CATEGORIES.has(p.category_name) &&
       !usedIds.has(Number(p.id))
     )
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function selectedProduct() {
-  return products.find(p => Number(p.id) === Number(selectedProductId)) || null;
+function selectedItem() {
+  if (!selectedTarget) return null;
+  if (selectedTarget.kind === "addon") {
+    const addon = addons.find(a => Number(a.id) === Number(selectedTarget.id));
+    if (!addon || addon.is_active === false) return null;
+    return {
+      kind: "addon",
+      id: addon.id,
+      name: addon.name,
+      category_name: addon.group_name || t("Add-ons"),
+      selling_price: addon.selling_price,
+      is_active: addon.is_active !== false,
+    };
+  }
+  const product = products.find(p => Number(p.id) === Number(selectedTarget.id));
+  if (!product || !product.is_active) return null;
+  return {
+    kind: "product",
+    id: product.id,
+    name: product.name,
+    category_name: product.category_name,
+    selling_price: product.selling_price,
+    is_active: product.is_active,
+  };
 }
 
 function populateProductSelect() {
-  const options = filteredOutputProducts();
-  const current = selectedProductId;
-  const currentIsValid = current && options.some(p => Number(p.id) === Number(current));
+  const current = selectedTarget;
+  let optionsHtml = `<option value="">${t("Select a product or add-on…")}</option>`;
+  let currentIsValid = false;
 
-  if (current && !currentIsValid) {
-    selectedProductId = null;
+  if (isAddonsTab()) {
+    const options = filteredOutputAddons();
+    currentIsValid = !!(
+      current &&
+      current.kind === "addon" &&
+      options.some(a => Number(a.id) === Number(current.id))
+    );
+    optionsHtml += options
+      .map(a => `<option value="${optionValue("addon", a.id)}">${a.name} (${a.group_name || t("Add-ons")})</option>`)
+      .join("");
+  } else {
+    const options = filteredOutputProducts();
+    currentIsValid = !!(
+      current &&
+      current.kind === "product" &&
+      options.some(p => Number(p.id) === Number(current.id))
+    );
+    optionsHtml += options
+      .map(p => `<option value="${optionValue("product", p.id)}">${p.name} (${p.category_name})</option>`)
+      .join("");
   }
 
-  productSelect.innerHTML = `<option value="">Select a product…</option>` +
-    options.map(p => `<option value="${p.id}">${p.name} (${p.category_name})</option>`).join("");
+  if (current && !currentIsValid) {
+    selectedTarget = null;
+  }
 
-  if (currentIsValid) {
-    productSelect.value = String(current);
+  productSelect.innerHTML = optionsHtml;
+  if (currentIsValid && current) {
+    productSelect.value = optionValue(current.kind, current.id);
   }
   syncSearchableSelect(productSelect);
 }
 
 function populateAddIngredientSelect() {
-  if (!selectedProductId) {
-    addIngredientSelect.innerHTML = `<option value="">Select ingredient…</option>`;
+  const item = selectedItem();
+  if (!item) {
+    addIngredientSelect.innerHTML = `<option value="">${t("Select ingredient…")}</option>`;
+    syncSearchableSelect(addIngredientSelect);
     return;
   }
-  const options = availableIngredients(selectedProductId);
-  addIngredientSelect.innerHTML = `<option value="">Select ingredient…</option>` +
+  const excludeId = item.kind === "product" ? item.id : null;
+  const options = availableIngredients(excludeId);
+  addIngredientSelect.innerHTML = `<option value="">${t("Select ingredient…")}</option>` +
     options.map(p =>
       `<option value="${p.id}">${p.name} (${p.category_name})</option>`
     ).join("");
@@ -301,9 +424,10 @@ function populateAddIngredientSelect() {
 function renderCategoryTabs() {
   const categoryNames = [...new Set(outputProducts().map(p => p.category_name))].sort();
   const tabs = [
-    { id: "all", label: "All" },
-    { id: "kitchen", label: "Kitchen" },
-    { id: "bakery", label: "Bakery" },
+    { id: "all", label: t("All") },
+    { id: "kitchen", label: t("Kitchen") },
+    { id: "bakery", label: t("Bakery") },
+    { id: "addons", label: t("Add-ons") },
     ...categoryNames.map(name => ({ id: name, label: name })),
   ];
 
@@ -315,27 +439,40 @@ function renderCategoryTabs() {
 }
 
 function renderSummary() {
+  if (isAddonsTab()) {
+    const withRecipes = addonsWithRecipes();
+    const outputs = outputAddons();
+    const missing = outputs.filter(a => !withRecipes.has(Number(a.id)));
+    const withCount = outputs.filter(a => withRecipes.has(Number(a.id))).length;
+    const lineCount = recipes.filter(r => r.menu_addon).length;
+    recipeSummary.textContent = outputs.length
+      ? `${outputs.length} ${t("add-ons")} · ${withCount} ${t("with recipes")} · ${lineCount} ${t("ingredient lines")} · ${missing.length} ${t("without recipes")}`
+      : t("No add-ons found.");
+    return;
+  }
+
   const withRecipes = productsWithRecipes();
   const outputs = outputProducts().filter(p => matchesCategoryFilter(p.category_name));
   const missing = outputs.filter(p => !withRecipes.has(Number(p.id)));
   const withCount = outputs.filter(p => withRecipes.has(Number(p.id))).length;
   const lineCount = recipes.filter(r => {
+    if (!r.product || r.menu_addon) return false;
     const product = products.find(p => Number(p.id) === Number(r.product));
     return product && product.is_active && matchesCategoryFilter(product.category_name);
   }).length;
 
   recipeSummary.textContent = outputs.length
-    ? `${outputs.length} products · ${withCount} with recipes · ${lineCount} ingredient lines · ${missing.length} without recipes`
-    : "No finished products found.";
+    ? `${outputs.length} ${t("products")} · ${withCount} ${t("with recipes")} · ${lineCount} ${t("ingredient lines")} · ${missing.length} ${t("without recipes")}`
+    : t("No finished products found.");
 }
 
 function renderRecipeBrowser() {
-  const groups = recipesByProduct();
+  const groups = recipesByTarget();
   const query = productSearch.value.trim().toLowerCase();
   const filtered = query
     ? groups.filter(g =>
-        g.productName.toLowerCase().includes(query) ||
-        g.productCategory.toLowerCase().includes(query)
+        g.name.toLowerCase().includes(query) ||
+        (g.category || "").toLowerCase().includes(query)
       )
     : groups;
 
@@ -348,24 +485,34 @@ function renderRecipeBrowser() {
   recipeBrowserList.innerHTML = filtered.map(group => `
     <div class="recipe-browser-item" style="padding: 0.85rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
       <div>
-        <button type="button" class="btn btn-ghost btn-sm pick-product-btn" data-id="${group.productId}" style="font-weight: 600; padding-left: 0;">
-          ${group.productName}
+        <button type="button" class="btn btn-ghost btn-sm pick-item-btn" data-kind="${group.kind}" data-id="${group.id}" style="font-weight: 600; padding-left: 0;">
+          ${group.name}
         </button>
-        <span style="font-size: 0.85rem; color: var(--color-muted);">${group.productCategory}</span>
+        <span style="font-size: 0.85rem; color: var(--color-muted);">${group.category}</span>
       </div>
       <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem;">
-        <span style="color: var(--color-muted);">${group.lines.length} ingredient${group.lines.length === 1 ? "" : "s"}</span>
-        <span style="font-weight: 600;">Cost ${formatMoney(group.totalCost)}</span>
-        <span style="font-weight: 600;">Sell ${formatMoney(group.sellingPrice)}</span>
-        <button type="button" class="btn btn-ghost btn-sm pick-product-btn" data-id="${group.productId}">Edit</button>
+        <span style="color: var(--color-muted);">${group.lines.length} ${group.lines.length === 1 ? t("ingredient") : t("ingredients")}</span>
+        <span style="font-weight: 600;">${t("Cost")} ${formatMoney(group.totalCost)}</span>
+        <span style="font-weight: 600;">${t("Sell")} ${formatMoney(group.sellingPrice)}</span>
+        <button type="button" class="btn btn-ghost btn-sm pick-item-btn" data-kind="${group.kind}" data-id="${group.id}">${t("Edit")}</button>
       </div>
     </div>
   `).join("");
 }
 
 function renderNoRecipeProducts() {
-  const withRecipes = productsWithRecipes();
-  const missing = filteredOutputProducts().filter(p => !withRecipes.has(Number(p.id)));
+  let missing;
+  if (isAddonsTab()) {
+    const withRecipes = addonsWithRecipes();
+    missing = filteredOutputAddons()
+      .filter(a => !withRecipes.has(Number(a.id)))
+      .map(a => ({ kind: "addon", id: a.id, name: a.name }));
+  } else {
+    const withRecipes = productsWithRecipes();
+    missing = filteredOutputProducts()
+      .filter(p => !withRecipes.has(Number(p.id)))
+      .map(p => ({ kind: "product", id: p.id, name: p.name }));
+  }
 
   if (!missing.length) {
     noRecipeProducts.style.display = "none";
@@ -373,19 +520,19 @@ function renderNoRecipeProducts() {
   }
 
   noRecipeProducts.style.display = "";
-  noRecipeList.innerHTML = missing.slice(0, 40).map(p => `
-    <button type="button" class="btn btn-ghost btn-sm pick-product-btn" data-id="${p.id}">
-      ${p.name}
+  noRecipeList.innerHTML = missing.slice(0, 40).map(item => `
+    <button type="button" class="btn btn-ghost btn-sm pick-item-btn" data-kind="${item.kind}" data-id="${item.id}">
+      ${item.name}
     </button>
-  `).join("") + (missing.length > 40 ? `<span style="font-size:0.85rem;color:var(--color-muted);align-self:center;">+${missing.length - 40} more — use search</span>` : "");
+  `).join("") + (missing.length > 40 ? `<span style="font-size:0.85rem;color:var(--color-muted);align-self:center;">+${missing.length - 40} ${t("more — use search")}</span>` : "");
 }
 
 function renderEditor() {
-  const product = selectedProduct();
+  const item = selectedItem();
 
-  if (!product || !product.is_active) {
-    if (product && !product.is_active) {
-      selectedProductId = null;
+  if (!item) {
+    if (selectedTarget) {
+      selectedTarget = null;
       productSelect.value = "";
       syncSearchableSelect(productSelect);
     }
@@ -402,23 +549,25 @@ function renderEditor() {
   recipeEditor.style.display = "";
   recipeEmpty.style.display = "none";
 
-  const lines = recipesForProduct(product.id);
+  const lines = recipesForTarget(selectedTarget);
   const totalCost = lines.reduce((sum, line) => sum + Number(line.line_cost || 0), 0);
 
-  editorTitle.textContent = product.name;
-  editorMeta.textContent = product.category_name;
+  editorTitle.textContent = item.name;
+  editorMeta.textContent = item.kind === "addon"
+    ? `${t("Add-on")} · ${item.category_name}`
+    : item.category_name;
   editorCost.textContent = formatMoney(totalCost);
   sellingPriceInput.disabled = false;
-  sellingPriceInput.value = Number(product.selling_price).toFixed(2);
+  sellingPriceInput.value = Number(item.selling_price).toFixed(2);
   updateEditorMetrics(totalCost, sellingPriceInput.value);
-  editorBadge.textContent = `${lines.length} ingredient${lines.length === 1 ? "" : "s"}`;
+  editorBadge.textContent = `${lines.length} ${lines.length === 1 ? t("ingredient") : t("ingredients")}`;
 
   populateAddIngredientSelect();
 
   if (!lines.length) {
     recipeLinesTable.innerHTML = `
       <div class="empty-state" style="padding: 2rem;">
-        <p style="margin: 0; color: var(--color-muted);">No ingredients yet. Add the first line below.</p>
+        <p style="margin: 0; color: var(--color-muted);">${t("No ingredients yet. Add the first line below.")}</p>
       </div>`;
     return;
   }
@@ -427,11 +576,11 @@ function renderEditor() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Ingredient", "ingredient_name", lineSortState)}
-          ${sortTh("Category", "ingredient_category", lineSortState)}
-          ${sortTh("Qty required", "quantity_required", lineSortState, { align: "right" })}
-          ${sortTh("Unit cost", "ingredient_unit_cost", lineSortState, { align: "right" })}
-          ${sortTh("Line cost", "line_cost", lineSortState, { align: "right" })}
+          ${sortTh(t("Ingredient"), "ingredient_name", lineSortState)}
+          ${sortTh(t("Category"), "ingredient_category", lineSortState)}
+          ${sortTh(t("Qty required"), "quantity_required", lineSortState, { align: "right" })}
+          ${sortTh(t("Unit cost"), "ingredient_unit_cost", lineSortState, { align: "right" })}
+          ${sortTh(t("Line cost"), "line_cost", lineSortState, { align: "right" })}
           ${actionTh()}
         </tr>
       </thead>
@@ -454,7 +603,7 @@ function renderEditor() {
             <td style="text-align: right;">${formatMoney(line.ingredient_unit_cost)}</td>
             <td style="text-align: right; font-weight: 600;">${formatMoney(line.line_cost)}</td>
             <td style="text-align: right;">
-              <button type="button" class="btn btn-ghost btn-sm delete-btn" data-id="${line.id}">Remove</button>
+              <button type="button" class="btn btn-ghost btn-sm delete-btn" data-id="${line.id}">${t("Remove")}</button>
             </td>
           </tr>
         `).join("")}
@@ -472,28 +621,45 @@ function renderAll() {
   renderEditor();
 }
 
-function selectProduct(productId) {
-  const nextId = productId ? Number(productId) : null;
-  const product = nextId
-    ? products.find(p => Number(p.id) === nextId)
-    : null;
-  selectedProductId = product?.is_active ? nextId : null;
-  if (selectedProductId) {
-    productSelect.value = String(selectedProductId);
+function selectTarget(kind, id) {
+  const nextId = id ? Number(id) : null;
+  if (!kind || !nextId) {
+    selectedTarget = null;
+  } else if (kind === "addon") {
+    const addon = addons.find(a => Number(a.id) === nextId);
+    selectedTarget = addon && addon.is_active !== false ? { kind: "addon", id: nextId } : null;
+    if (selectedTarget) activeCategory = "addons";
+  } else {
+    const product = products.find(p => Number(p.id) === nextId);
+    selectedTarget = product?.is_active ? { kind: "product", id: nextId } : null;
+    if (selectedTarget && activeCategory === "addons") activeCategory = "all";
+  }
+
+  if (selectedTarget) {
+    productSelect.value = optionValue(selectedTarget.kind, selectedTarget.id);
   } else {
     productSelect.value = "";
   }
   renderAll();
-  if (selectedProductId) {
+  if (selectedTarget) {
     recipeEditor.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
 async function loadData() {
-  [products, recipes] = await Promise.all([
+  const [productRows, recipeRows, addonGroups] = await Promise.all([
     fetchAllPages("/products/"),
     fetchAllPages("/recipes/"),
+    fetchAllPages("/menu-addon-groups/"),
   ]);
+  products = productRows;
+  recipes = recipeRows;
+  addons = addonGroups.flatMap(group =>
+    (group.addons || []).map(addon => ({
+      ...addon,
+      group_name: group.name,
+    }))
+  );
   recipeEmpty.style.display = "";
   renderAll();
 }
@@ -505,51 +671,67 @@ productSearch.addEventListener("input", () => {
 });
 
 productSelect.addEventListener("change", () => {
-  selectProduct(productSelect.value || null);
+  const parsed = parseOptionValue(productSelect.value);
+  if (!parsed) {
+    selectTarget(null, null);
+    return;
+  }
+  selectTarget(parsed.kind, parsed.id);
 });
 
 categoryTabs.addEventListener("click", (e) => {
   const tab = e.target.closest(".category-tab");
   if (!tab) return;
   activeCategory = tab.dataset.category;
+  if (selectedTarget) {
+    if (isAddonsTab() && selectedTarget.kind !== "addon") selectedTarget = null;
+    if (!isAddonsTab() && selectedTarget.kind === "addon") selectedTarget = null;
+  }
   renderAll();
 });
 
 noRecipeList.addEventListener("click", (e) => {
-  const btn = e.target.closest(".pick-product-btn");
+  const btn = e.target.closest(".pick-item-btn");
   if (!btn) return;
   productSearch.value = "";
-  selectProduct(btn.dataset.id);
+  selectTarget(btn.dataset.kind, btn.dataset.id);
 });
 
 recipeBrowserList.addEventListener("click", (e) => {
-  const btn = e.target.closest(".pick-product-btn");
+  const btn = e.target.closest(".pick-item-btn");
   if (!btn) return;
-  selectProduct(btn.dataset.id);
+  selectTarget(btn.dataset.kind, btn.dataset.id);
 });
 
 addLineForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!selectedProductId) {
-    showToast("Select a product first.", true);
+  if (!selectedTarget) {
+    showToast(t("Select a product or add-on first."), true);
     return;
   }
   const quantity = parsePositiveQty(addQuantityInput.value);
   if (quantity === null) {
-    showToast("Quantity must be greater than zero.", true);
+    showToast(t("Quantity must be greater than zero."), true);
     return;
   }
+  const payload = {
+    ingredient: Number(addIngredientSelect.value),
+    quantity_required: String(quantity),
+  };
+  if (selectedTarget.kind === "addon") {
+    payload.menu_addon = selectedTarget.id;
+    payload.product = null;
+  } else {
+    payload.product = selectedTarget.id;
+    payload.menu_addon = null;
+  }
   try {
-    const created = await apiPost("/recipes/", {
-      product: selectedProductId,
-      ingredient: Number(addIngredientSelect.value),
-      quantity_required: String(quantity),
-    });
+    const created = await apiPost("/recipes/", payload);
     recipes.push(created);
     addIngredientSelect.value = "";
     addQuantityInput.value = "";
     renderAll();
-    showToast("Ingredient added.");
+    showToast(t("Ingredient added."));
   } catch (err) {
     showToast(err.message, true);
   }
@@ -559,12 +741,12 @@ recipeLinesTable.addEventListener("click", async (e) => {
   const deleteBtn = e.target.closest(".delete-btn");
   if (!deleteBtn) return;
   const id = deleteBtn.dataset.id;
-  if (!confirm("Remove this ingredient from the recipe?")) return;
+  if (!confirm(t("Remove this ingredient from the recipe?"))) return;
   try {
     await apiDelete(`/recipes/${id}/`);
     recipes = recipes.filter(r => String(r.id) !== String(id));
     renderAll();
-    showToast("Ingredient removed.");
+    showToast(t("Ingredient removed."));
   } catch (err) {
     showToast(err.message, true);
   }
@@ -579,7 +761,7 @@ recipeLinesTable.addEventListener("change", async (e) => {
   const quantity = parsePositiveQty(input.value);
   if (quantity === null) {
     if (previous !== undefined) input.value = formatQtyInput(previous);
-    showToast("Quantity must be greater than zero.", true);
+    showToast(t("Quantity must be greater than zero."), true);
     return;
   }
 
@@ -592,7 +774,7 @@ recipeLinesTable.addEventListener("change", async (e) => {
     renderEditor();
     renderRecipeBrowser();
     renderSummary();
-    showToast("Quantity updated.");
+    showToast(t("Quantity updated."));
   } catch (err) {
     if (previous !== undefined) input.value = formatQtyInput(previous);
     showToast(err.message, true);
@@ -600,37 +782,46 @@ recipeLinesTable.addEventListener("change", async (e) => {
 });
 
 sellingPriceInput.addEventListener("input", () => {
-  const product = selectedProduct();
-  if (!product) return;
-  const lines = recipesForProduct(product.id);
+  const item = selectedItem();
+  if (!item) return;
+  const lines = recipesForTarget(selectedTarget);
   const totalCost = lines.reduce((sum, line) => sum + Number(line.line_cost || 0), 0);
   updateEditorMetrics(totalCost, sellingPriceInput.value);
 });
 
 sellingPriceInput.addEventListener("change", async () => {
-  const product = selectedProduct();
-  if (!product) return;
+  const item = selectedItem();
+  if (!item) return;
 
-  const previous = product.selling_price;
+  const previous = item.selling_price;
   const value = Number(sellingPriceInput.value);
   if (!Number.isFinite(value) || value < 0) {
     sellingPriceInput.value = Number(previous).toFixed(2);
-    showToast("Enter a valid selling price.", true);
+    showToast(t("Enter a valid selling price."), true);
     return;
   }
 
   try {
-    const updated = await apiPatch(`/products/${product.id}/`, {
-      selling_price: value.toFixed(2),
-    });
-    const index = products.findIndex(p => Number(p.id) === Number(product.id));
-    if (index >= 0) products[index] = updated;
-    sellingPriceInput.value = Number(updated.selling_price).toFixed(2);
-    const lines = recipesForProduct(product.id);
+    if (item.kind === "addon") {
+      const updated = await apiPatch(`/menu-addons/${item.id}/`, {
+        selling_price: value.toFixed(2),
+      });
+      const index = addons.findIndex(a => Number(a.id) === Number(item.id));
+      if (index >= 0) addons[index] = { ...addons[index], ...updated };
+      sellingPriceInput.value = Number(updated.selling_price).toFixed(2);
+    } else {
+      const updated = await apiPatch(`/products/${item.id}/`, {
+        selling_price: value.toFixed(2),
+      });
+      const index = products.findIndex(p => Number(p.id) === Number(item.id));
+      if (index >= 0) products[index] = updated;
+      sellingPriceInput.value = Number(updated.selling_price).toFixed(2);
+    }
+    const lines = recipesForTarget(selectedTarget);
     const totalCost = lines.reduce((sum, line) => sum + Number(line.line_cost || 0), 0);
     updateEditorMetrics(totalCost, sellingPriceInput.value);
     renderRecipeBrowser();
-    showToast("Selling price updated.");
+    showToast(t("Selling price updated."));
   } catch (err) {
     sellingPriceInput.value = Number(previous).toFixed(2);
     showToast(err.message, true);
@@ -639,10 +830,13 @@ sellingPriceInput.addEventListener("change", async () => {
 
 bindTableSort(recipeLinesTable, lineSortState, renderEditor);
 
-const preselectedProduct = new URLSearchParams(window.location.search).get("product");
+const params = new URLSearchParams(window.location.search);
+const preselectedProduct = params.get("product");
+const preselectedAddon = params.get("addon");
 loadData()
   .then(() => {
-    if (preselectedProduct) selectProduct(preselectedProduct);
+    if (preselectedAddon) selectTarget("addon", preselectedAddon);
+    else if (preselectedProduct) selectTarget("product", preselectedProduct);
   })
   .catch(err => {
     recipeEmpty.innerHTML = `<p style="margin:0;color:var(--color-muted);">${err.message}</p>`;

@@ -1,10 +1,10 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Delivery Note #{{ note.id }} — Café de Paris</title>
+  <title>{% trans "Delivery Note" %} #{{ note.id }} — Café de Paris</title>
   <style>
     @page {
       size: {% if is_80mm %}80mm auto{% else %}A4{% endif %};
@@ -303,10 +303,10 @@
 <body class="{% if is_80mm %}paper-80mm{% endif %}">
   <div class="toolbar">
     {% if note.from_branch.branch_type == "bakery" %}
-    <button type="button" onclick="printPaper('a4')">Print A4</button>
-    <button type="button" onclick="printPaper('80mm')">Print 80mm</button>
+    <button type="button" onclick="printPaper('a4')">{% trans "Print A4" %}</button>
+    <button type="button" onclick="printPaper('80mm')">{% trans "Print 80mm" %}</button>
     {% else %}
-    <button type="button" onclick="window.print()">Print delivery note</button>
+    <button type="button" onclick="window.print()">{% trans "Print delivery note" %}</button>
     {% endif %}
   </div>
 
@@ -316,28 +316,28 @@
         <img class="brand-logo" src="{% static 'ui/img/cafe-de-paris-logo.png' %}" alt="Café de Paris">
         <p>
           {% if note.from_branch.branch_type == "stores" %}
-            Central Stores — Stock Distribution
+            {% trans "Central Stores — Stock Distribution" %}
           {% else %}
-            Central Bakery — Stock Distribution
+            {% trans "Central Bakery — Stock Distribution" %}
           {% endif %}
         </p>
       </div>
       <div class="doc-meta">
-        <h2>Delivery Note</h2>
+        <h2>{% trans "Delivery Note" %}</h2>
         <p><strong>DN-</strong>{{ note.id|stringformat:"05d" }}</p>
-        <p><strong>Date</strong> {{ note.created_at|date:"d M Y, H:i" }}</p>
-        <p><strong>Status</strong> {{ note.get_status_display }}</p>
+        <p><strong>{% trans "Date" %}</strong> {{ note.created_at|date:"d M Y, H:i" }}</p>
+        <p><strong>{% trans "Status" %}</strong> {{ note.get_status_display }}</p>
       </div>
     </div>
 
     <div class="parties">
       <div class="party-box">
-        <h3>From</h3>
+        <h3>{% trans "From" %}</h3>
         <p><strong>{{ note.from_branch.name }}</strong></p>
         {% if note.from_branch.location %}<p>{{ note.from_branch.location }}</p>{% endif %}
       </div>
       <div class="party-box">
-        <h3>To</h3>
+        <h3>{% trans "To" %}</h3>
         <p><strong>{{ note.to_branch.name }}</strong></p>
         {% if note.to_branch.location %}<p>{{ note.to_branch.location }}</p>{% endif %}
       </div>
@@ -347,10 +347,10 @@
       <thead>
         <tr>
           <th style="width: 40px;">#</th>
-          <th>Item</th>
-          <th class="qty">Sent</th>
-          <th class="qty">Received</th>
-          <th class="qty">Damaged</th>
+          <th>{% trans "Item" %}</th>
+          <th class="qty">{% trans "Sent" %}</th>
+          <th class="qty">{% trans "Received" %}</th>
+          <th class="qty">{% trans "Damaged" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -367,7 +367,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="5">No line items</td>
+          <td colspan="5">{% trans "No line items" %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -377,11 +377,11 @@
     <div class="summary" style="justify-content: flex-start; margin-bottom: 1.5rem;">
       <div class="summary-box" style="min-width: 100%;">
         {% if note.is_flagged %}
-        <div class="summary-row"><span>Status</span><strong>Flagged for follow-up</strong></div>
+        <div class="summary-row"><span>{% trans "Status" %}</span><strong>{% trans "Flagged for follow-up" %}</strong></div>
         {% endif %}
         {% if note.remarks %}
         <div class="summary-row" style="display:block;">
-          <span>Remarks</span>
+          <span>{% trans "Remarks" %}</span>
           <p style="margin: 0.35rem 0 0;">{{ note.remarks }}</p>
         </div>
         {% endif %}
@@ -392,19 +392,19 @@
     <div class="summary">
       <div class="summary-box">
         <div class="summary-row">
-          <span>Line items</span>
+          <span>{% trans "Line items" %}</span>
           <strong>{{ note.lines.count }}</strong>
         </div>
         <div class="summary-row">
-          <span>Total quantity</span>
+          <span>{% trans "Total quantity" %}</span>
           <strong>{{ note.total_quantity }}</strong>
         </div>
       </div>
     </div>
 
     <div class="signatures">
-      <div><div class="signature-line">Dispatched by</div></div>
-      <div><div class="signature-line">Received by</div></div>
+      <div><div class="signature-line">{% trans "Dispatched by" %}</div></div>
+      <div><div class="signature-line">{% trans "Received by" %}</div></div>
     </div>
   </div>
   {% if note.from_branch.branch_type == "bakery" %}

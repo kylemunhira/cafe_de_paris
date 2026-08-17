@@ -85,11 +85,15 @@ data class Customer(
     val full_name: String,
     val account_balance: String,
     val credit_limit: String = "0",
+    val account_type: String = "regular",
 ) {
     fun availableCredit(): Double {
+        // Staff accounts can charge regardless of credit limit / balance.
+        if (account_type == "staff") return Double.POSITIVE_INFINITY
         val balance = account_balance.toDoubleOrNull() ?: 0.0
         val limit = credit_limit.toDoubleOrNull() ?: 0.0
-        return balance + limit
+        // Available = credit_limit - balance (negative balance = prepaid credit).
+        return limit - balance
     }
 }
 
@@ -300,6 +304,7 @@ data class StockTakeLine(
     val stockTakeStationDisplay: String = "Shop",
     val systemQuantity: String? = null,
     val countedQuantity: String?,
+    val wastageQuantity: String? = "0",
     val variance: String? = null,
     val notes: String = "",
 )
@@ -307,6 +312,7 @@ data class StockTakeLine(
 data class StockTakeLineUpdate(
     val id: Int,
     val countedQuantity: String?,
+    val wastageQuantity: String? = "0",
     val notes: String = "",
 )
 

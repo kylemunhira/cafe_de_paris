@@ -1,33 +1,33 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Bakery Production — Café de Paris{% endblock %}
-{% block page_title %}Bakery Production{% endblock %}
+{% block title %}{% trans "Bakery Production" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Bakery Production" %}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{% url 'ui:transfers' %}" class="btn btn-ghost btn-sm">Bakery transfers</a>
+<a href="{% url 'ui:transfers' %}" class="btn btn-ghost btn-sm">{% trans "Bakery transfers" %}</a>
 {% endblock %}
 
 {% block content %}
 <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
   <div class="form-row" style="align-items: end;">
     <div class="form-group">
-      <label for="bakery-branch">Central bakery</label>
+      <label for="bakery-branch">{% trans "Central bakery" %}</label>
       <select id="bakery-branch" disabled>
-        <option value="">Loading…</option>
+        <option value="">{% trans "Loading…" %}</option>
       </select>
     </div>
     <div class="form-group">
-      <label for="production-date">Production date</label>
+      <label for="production-date">{% trans "Production date" %}</label>
       <input type="date" id="production-date">
     </div>
     <div class="form-group" style="flex: 0 0 auto;">
-      <button type="button" class="btn btn-primary" id="start-sheet-btn">New production sheet</button>
+      <button type="button" class="btn btn-primary" id="start-sheet-btn">{% trans "New production sheet" %}</button>
     </div>
   </div>
   <p style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
-    Enter quantities produced for each destination — Highlands, Churchill, and Central stores.
-    Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients).
+    {% trans "Enter quantities produced for each destination — Highlands, Churchill, and Central stores." %}
+    {% trans "Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients)." %}
   </p>
 </div>
 
@@ -40,14 +40,14 @@
 <div id="active-sheet-panel" class="card" style="padding: 0; margin-bottom: 1.25rem; display: none;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
     <div>
-      <h3 id="active-sheet-title" style="margin: 0; font-size: 1.05rem;">Active production</h3>
+      <h3 id="active-sheet-title" style="margin: 0; font-size: 1.05rem;">{% trans "Active production" %}</h3>
       <p id="active-sheet-meta" style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
     </div>
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-      <button type="button" class="btn btn-ghost btn-sm" id="close-sheet-btn" style="display: none;">Close</button>
-      <button type="button" class="btn btn-ghost btn-sm" id="save-lines-btn">Save progress</button>
-      <button type="button" class="btn btn-ghost btn-sm" id="cancel-sheet-btn">Cancel</button>
-      <button type="button" class="btn btn-primary btn-sm" id="complete-sheet-btn">Complete production</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="close-sheet-btn" style="display: none;">{% trans "Close" %}</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="save-lines-btn">{% trans "Save progress" %}</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="cancel-sheet-btn">{% trans "Cancel" %}</button>
+      <button type="button" class="btn btn-primary btn-sm" id="complete-sheet-btn">{% trans "Complete production" %}</button>
     </div>
   </div>
   <div id="sheet-line-filters" class="stock-take-line-filters" style="display: none;"></div>
@@ -56,9 +56,9 @@
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="draft">In progress</button>
-    <button class="category-tab" data-filter="completed">Completed</button>
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="draft">{% trans "In progress" %}</button>
+    <button class="category-tab" data-filter="completed">{% trans "Completed" %}</button>
   </div>
   <div class="table-wrap" id="sheets-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -70,6 +70,8 @@
 <script type="module">
 import { apiGet, apiPost, apiPatch, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 let bakeryBranches = [];
 let allSheets = [];
@@ -178,13 +180,13 @@ function renderSheets() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("ID", "id", sortState)}
-          ${sortTh("Date", "production_date", sortState)}
-          ${sortTh("Bakery", "branch_name", sortState)}
-          ${sortTh("Products", "line_count", sortState)}
-          ${sortTh("Produced", "produced_line_count", sortState)}
-          ${sortTh("Status", "status", sortState)}
-          ${sortTh("Created", "created_at", sortState)}
+          ${sortTh(t("ID"), "id", sortState)}
+          ${sortTh(t("Date"), "production_date", sortState)}
+          ${sortTh(t("Bakery"), "branch_name", sortState)}
+          ${sortTh(t("Products"), "line_count", sortState)}
+          ${sortTh(t("Produced"), "produced_line_count", sortState)}
+          ${sortTh(t("Status"), "status", sortState)}
+          ${sortTh(t("Created"), "created_at", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -450,11 +452,11 @@ function closeActiveSheet() {
 async function startSheet() {
   const branchId = bakeryId();
   if (!branchId) {
-    showToast("No bakery branch configured.", true);
+    showToast(t("No bakery branch configured."), true);
     return;
   }
   if (!productionDateInput.value) {
-    showToast("Select a production date.", true);
+    showToast(t("Select a production date."), true);
     return;
   }
 
@@ -463,7 +465,7 @@ async function startSheet() {
       branch: branchId,
       production_date: productionDateInput.value,
     });
-    showToast("Production sheet started.");
+    showToast(t("Production sheet started."));
     await loadSheets();
     await openSheet(created.id);
   } catch (err) {
@@ -476,7 +478,7 @@ async function saveLines() {
   const lines = collectLineUpdates();
   try {
     activeSheet = await apiPatch(`/production-sheets/${activeSheet.id}/lines/`, { lines });
-    showToast("Production saved.");
+    showToast(t("Production saved."));
     renderActiveSheet();
     await loadSheets();
     return true;
@@ -490,10 +492,10 @@ async function completeSheet() {
   if (!activeSheet) return;
   const saved = await saveLines();
   if (!saved) return;
-  if (!confirm("Complete this production sheet and add finished goods to bakery stock?")) return;
+  if (!confirm(t("Complete this production sheet and add finished goods to bakery stock?"))) return;
   try {
     activeSheet = await apiPost(`/production-sheets/${activeSheet.id}/complete/`, {});
-    showToast("Production completed.");
+    showToast(t("Production completed."));
     renderActiveSheet();
     await loadSheets();
   } catch (err) {
@@ -503,10 +505,10 @@ async function completeSheet() {
 
 async function cancelSheet() {
   if (!activeSheet) return;
-  if (!confirm("Cancel this production sheet? Entered quantities will be discarded.")) return;
+  if (!confirm(t("Cancel this production sheet? Entered quantities will be discarded."))) return;
   try {
     await apiPost(`/production-sheets/${activeSheet.id}/cancel/`, {});
-    showToast("Production sheet cancelled.");
+    showToast(t("Production sheet cancelled."));
     activeSheet = null;
     renderActiveSheet();
     await loadSheets();

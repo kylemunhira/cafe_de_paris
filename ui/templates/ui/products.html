@@ -1,5 +1,5 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
 {% block title %}{{ page_heading }} — Café de Paris{% endblock %}
 {% block page_title %}{{ page_heading }}{% endblock %}
@@ -7,12 +7,12 @@
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
   {% if product_list_mode == "bakery" %}
-  <a href="/api/products/export-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <a href="/api/products/export-csv/" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
   {% else %}
-  <a href="/api/products/export-menu-items-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <a href="/api/products/export-menu-items-csv/" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
   {% endif %}
   <label class="btn btn-primary btn-sm" style="cursor: pointer;">
-    Upload CSV
+    {% trans "Upload CSV" %}
     <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
   </label>
 </div>
@@ -24,64 +24,64 @@
 {% endif %}
 {{ bakery_category_names|json_script:"bakery-category-names" }}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% if product_list_mode == "bakery" %}Add bakery product{% else %}Add product{% endif %}</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% if product_list_mode == "bakery" %}{% trans "Add bakery product" %}{% else %}{% trans "Add product" %}{% endif %}</h3>
   <form id="product-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="product-name">Name</label>
+        <label for="product-name">{% trans "Name" %}</label>
         <input type="text" id="product-name" name="name" required autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="product-category">Category</label>
+        <label for="product-category">{% trans "Category" %}</label>
         <select id="product-category" name="category" required>
-          <option value="">Select category…</option>
+          <option value="">{% trans "Select category…" %}</option>
         </select>
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="product-price">Selling price</label>
+        <label for="product-price">{% trans "Selling price" %}</label>
         <input type="number" id="product-price" name="selling_price" required min="0" step="0.01" placeholder="0.00">
       </div>
       <div class="form-group">
-        <label for="product-tax">Tax rate (%)</label>
+        <label for="product-tax">{% trans "Tax rate (%)" %}</label>
         <input type="number" id="product-tax" name="tax_rate" min="0" max="100" step="0.01" placeholder="15.5">
       </div>
       <div class="form-group">
-        <label for="product-qty" id="product-qty-label">Initial qty</label>
+        <label for="product-qty" id="product-qty-label">{% trans "Initial qty" %}</label>
         <input type="number" id="product-qty" name="remaining_qty" min="0" step="0.01" value="0">
       </div>
     </div>
     <div class="product-settings-panel">
       <div class="product-settings-grid">
         <section class="product-settings-section">
-          <span class="field-label">Stock &amp; status</span>
+          <span class="field-label">{% trans "Stock & status" %}</span>
           <div class="product-settings-toggles">
             <label class="setting-toggle-card" for="product-active">
               <input type="checkbox" id="product-active" name="is_active" checked>
               <span class="setting-toggle-card__text">
-                <strong>Active product</strong>
-                <small>Available for sale when enabled</small>
+                <strong>{% trans "Active product" %}</strong>
+                <small>{% trans "Available for sale when enabled" %}</small>
               </span>
             </label>
             <label class="setting-toggle-card" for="product-daily-stock">
               <input type="checkbox" id="product-daily-stock" name="daily_stock_take">
               <span class="setting-toggle-card__text">
-                <strong>Daily stock take</strong>
-                <small>Include in daily branch stock counts</small>
+                <strong>{% trans "Daily stock take" %}</strong>
+                <small>{% trans "Include in daily branch stock counts" %}</small>
               </span>
             </label>
           </div>
         </section>
         <section class="product-settings-section product-settings-section--branches" id="branch-availability-section">
-          <span class="field-label">Available at branches</span>
+          <span class="field-label">{% trans "Available at branches" %}</span>
           <p class="field-hint">
-            Choose where this product appears on POS. Use all branches to sell everywhere, including Central Stores.
+            {% trans "Choose where this product appears on POS. Use all branches to sell everywhere, including Central Stores." %}
           </p>
           <div class="branch-availability-panel">
-            <div class="branch-availability-mode" role="radiogroup" aria-label="Branch availability mode">
-              <button type="button" class="branch-mode-btn is-active" data-mode="all" aria-pressed="true">All branches</button>
-              <button type="button" class="branch-mode-btn" data-mode="selected" aria-pressed="false">Selected only</button>
+            <div class="branch-availability-mode" role="radiogroup" aria-label="{% trans "Branch availability mode" %}">
+              <button type="button" class="branch-mode-btn is-active" data-mode="all" aria-pressed="true">{% trans "All branches" %}</button>
+              <button type="button" class="branch-mode-btn" data-mode="selected" aria-pressed="false">{% trans "Selected only" %}</button>
             </div>
             <div id="branch-availability-options" class="branch-availability-grid" hidden></div>
           </div>
@@ -89,42 +89,42 @@
       </div>
     </div>
     <div id="addon-groups-section" class="form-group" style="display: none;">
-      <span class="field-label">Menu add-ons for this product</span>
+      <span class="field-label">{% trans "Menu add-ons for this product" %}</span>
       <p class="field-hint">
-        Choose which add-on groups appear when this product is ordered on POS.
-        <a href="{% url 'ui:menu-addons' %}">View all add-on options</a>
+        {% trans "Choose which add-on groups appear when this product is ordered on POS." %}
+        <a href="{% url 'ui:menu-addons' %}">{% trans "View all add-on options" %}</a>
       </p>
       <div id="addon-group-options" class="addon-group-options"></div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-      <button type="button" class="btn btn-ghost" id="product-cancel" style="display: none;">Cancel</button>
-      <button type="submit" class="btn btn-primary" id="product-submit">Add product</button>
+      <button type="button" class="btn btn-ghost" id="product-cancel" style="display: none;">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" id="product-submit">{% trans "Add product" %}</button>
     </div>
   </form>
 </div>
 
 <div class="products-toolbar">
   <div class="form-group products-toolbar__branch">
-    <label for="branch-select">Branch</label>
+    <label for="branch-select">{% trans "Branch" %}</label>
     <select id="branch-select">
-      <option value="">Loading…</option>
+      <option value="">{% trans "Loading…" %}</option>
     </select>
   </div>
   <input
     type="search"
     id="product-search"
     class="report-input"
-    placeholder="Search products…"
+    placeholder="{% trans "Search products…" %}"
     autocomplete="off"
   >
-  <div class="pos-mode-toggle" id="product-view-toggle" role="radiogroup" aria-label="Product view">
-    <button type="button" class="pos-mode-btn active" data-view="grid" aria-pressed="true" title="Card view">
+  <div class="pos-mode-toggle" id="product-view-toggle" role="radiogroup" aria-label="{% trans "Product view" %}">
+    <button type="button" class="pos-mode-btn active" data-view="grid" aria-pressed="true" title="{% trans "Card view" %}">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-      Cards
+      {% trans "Cards" %}
     </button>
-    <button type="button" class="pos-mode-btn" data-view="list" aria-pressed="false" title="List view">
+    <button type="button" class="pos-mode-btn" data-view="list" aria-pressed="false" title="{% trans "List view" %}">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="2" width="14" height="2" rx="0.5"/><rect x="1" y="7" width="14" height="2" rx="0.5"/><rect x="1" y="12" width="14" height="2" rx="0.5"/></svg>
-      List
+      {% trans "List" %}
     </button>
   </div>
 </div>
@@ -144,9 +144,11 @@ import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% 
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { formatStockQty, stockAdjustInlineHtml, handleInlineStockApply, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
 
+const t = (msgid) => window.CDP.t(msgid);
+
 const VIEW_STORAGE_KEY = "products-view-mode-{{ product_list_mode|default:'menu' }}";
 const productListMode = "{{ product_list_mode|default:'menu' }}";
-const productLabel = productListMode === "bakery" ? "bakery product" : "product";
+const productLabelKey = productListMode === "bakery" ? "bakery product" : "product";
 const csvImportUrl = productListMode === "bakery"
   ? "/products/import-csv/"
   : "/products/import-menu-items-csv/?replace=true";
@@ -213,18 +215,18 @@ function selectedBranch() {
 
 function updateQtyLabel() {
   const branch = selectedBranch();
-  qtyLabel.textContent = branch ? `Stock at ${branch.name}` : "Branch stock";
+  qtyLabel.textContent = branch ? `${t("Stock at")} ${branch.name}` : t("Branch stock");
 }
 
 function updateBranchHint() {
   const branch = selectedBranch();
   if (!branch) {
     productsBranchHint.textContent = canFilterAnyBranch
-      ? "Select a branch to view stock quantities. Products are listed below."
-      : "No branch assigned — stock quantities unavailable.";
+      ? t("Select a branch to view stock quantities. Products are listed below.")
+      : t("No branch assigned — stock quantities unavailable.");
     return;
   }
-  productsBranchHint.textContent = `Showing stock at ${branch.name}.`;
+  productsBranchHint.textContent = `${t("Showing stock at")} ${branch.name}.`;
 }
 
 async function fetchAllInventory(params = {}) {
@@ -247,7 +249,7 @@ async function syncBranchStock(productId, newQty) {
   if (delta === 0) return;
 
   if (!selectedBranchId) {
-    throw new Error("Select a branch before setting stock");
+    throw new Error(t("Select a branch before setting stock"));
   }
 
   await apiPost("/inventory/adjust/", {
@@ -259,21 +261,20 @@ async function syncBranchStock(productId, newQty) {
 
 function stockColumnLabel() {
   const branch = selectedBranch();
-  return branch ? `Stock at ${branch.name}` : "Stock";
+  return branch ? `${t("Stock at")} ${branch.name}` : t("Stock");
 }
 
 function renderCategoryOptions() {
   const options = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
-  categorySelect.innerHTML = `<option value="">Select category…</option>${options}`;
+  categorySelect.innerHTML = `<option value="">${t("Select category…")}</option>${options}`;
   categorySelect.disabled = !categories.length;
   if (!categories.length) {
-    categorySelect.innerHTML = `<option value="">No categories — add one in admin first</option>`;
-  }
-}
+    categorySelect.innerHTML = `<option value="">${t("No categories — add one in admin first")}</option>`;
+  }}
 
 function renderAddonGroupOptions() {
   if (!addonGroups.length) {
-    addonGroupOptions.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">No add-on groups yet. Create them under <a href="{% url 'ui:menu-addons' %}">Menu Add-ons</a>.</p>`;
+    addonGroupOptions.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">${t("No add-on groups yet. Create them under")} <a href="{% url 'ui:menu-addons' %}">${t("Menu Add-ons")}</a>.</p>`;
     return;
   }
 
@@ -282,7 +283,7 @@ function renderAddonGroupOptions() {
       <input type="checkbox" value="${group.id}" ${selectedAddonGroupIds.has(group.id) ? "checked" : ""}>
       <span>
         <strong>${group.name}</strong>
-        <span>${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${group.addons?.length || 0} options</span>
+        <span>${group.selection_type === "single" ? t("Choose one") : t("Choose any")} · ${group.addons?.length || 0} ${t("options")}</span>
       </span>
     </label>
   `).join("");
@@ -308,10 +309,10 @@ function posBranches() {
 }
 
 function branchTypeLabel(branchType) {
-  if (branchType === "stores") return "Central Stores";
-  if (branchType === "hq") return "Headquarters";
-  if (branchType === "bakery") return "Bakery";
-  return "Branch";
+  if (branchType === "stores") return t("Central Stores");
+  if (branchType === "hq") return t("Headquarters");
+  if (branchType === "bakery") return t("Bakery");
+  return t("Branch");
 }
 
 function setBranchAvailabilityMode(mode) {
@@ -327,7 +328,7 @@ function setBranchAvailabilityMode(mode) {
 function renderBranchAvailabilityOptions() {
   const posBranchList = posBranches();
   if (!posBranchList.length) {
-    branchAvailabilityOptions.innerHTML = `<p class="field-hint" style="margin:0;">No branches available.</p>`;
+    branchAvailabilityOptions.innerHTML = `<p class="field-hint" style="margin:0;">${t("No branches available.")}</p>`;
     return;
   }
   branchAvailabilityOptions.innerHTML = posBranchList.map(branch => `
@@ -358,19 +359,19 @@ function readSelectedBranchIds() {
 
 function branchAvailabilityLabel(product) {
   const assigned = product?.branches || [];
-  if (!assigned.length) return "All branches";
+  if (!assigned.length) return t("All branches");
   if (assigned.length <= 2) return assigned.map(branch => branch.name).join(", ");
-  return `${assigned.length} branches`;
+  return `${assigned.length} ${t("branches")}`;
 }
 
 function resetForm() {
   editingId = null;
-  formTitle.textContent = `Add ${productLabel}`;
-  productSubmit.textContent = `Add ${productLabel}`;
+  formTitle.textContent = `${t("Add")} ${t(productLabelKey)}`;
+  productSubmit.textContent = `${t("Add")} ${t(productLabelKey)}`;
   productCancel.style.display = "none";
   addonGroupsSection.style.display = "none";
   selectedAddonGroupIds = new Set();
-  qtyLabel.textContent = "Initial qty";
+  qtyLabel.textContent = t("Initial qty");
   productForm.reset();
   document.getElementById("product-qty").value = "0";
   document.getElementById("product-active").checked = true;
@@ -384,8 +385,8 @@ function resetForm() {
 
 function startEdit(product) {
   editingId = product.id;
-  formTitle.textContent = `Edit ${productLabel}`;
-  productSubmit.textContent = "Save changes";
+  formTitle.textContent = `${t("Edit")} ${t(productLabelKey)}`;
+  productSubmit.textContent = t("Save changes");
   productCancel.style.display = "";
   document.getElementById("product-name").value = product.name;
   categorySelect.value = String(product.category);
@@ -420,35 +421,35 @@ function matchesSearch(product) {
 
 function recipeLink(product) {
   if (product.category_name === "Ingredients") return "";
-  return `<a href="/recipes/?product=${product.id}" class="btn btn-ghost btn-sm">Recipe</a>`;
+  return `<a href="/recipes/?product=${product.id}" class="btn btn-ghost btn-sm">${t("Recipe")}</a>`;
 }
 
 function dailyStockToggle(product) {
   return `
-    <div class="daily-count-toggle" role="group" aria-label="Daily count for ${product.name}">
+    <div class="daily-count-toggle" role="group" aria-label="${t("Daily count for")} ${product.name}">
       <button
         type="button"
         class="${product.daily_stock_take ? "is-active" : ""}"
         data-set-daily="${product.id}"
         data-daily-value="true"
         ${product.daily_stock_take ? "aria-pressed=\"true\"" : "aria-pressed=\"false\""}
-      >Yes</button>
+      >${t("Yes")}</button>
       <button
         type="button"
         class="${product.daily_stock_take ? "" : "is-active"}"
         data-set-daily="${product.id}"
         data-daily-value="false"
         ${product.daily_stock_take ? "aria-pressed=\"false\"" : "aria-pressed=\"true\""}
-      >No</button>
+      >${t("No")}</button>
     </div>
   `;
 }
 
 function renderProductCard(p) {
   const addonLine = productListMode === "menu" && p.addon_groups?.length
-    ? `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">Add-ons: ${p.addon_groups.map(group => group.name).join(", ")}</p>`
+    ? `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">${t("Add-ons:")} ${p.addon_groups.map(group => group.name).join(", ")}</p>`
     : "";
-  const branchLine = `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">POS: ${branchAvailabilityLabel(p)}</p>`;
+  const branchLine = `<p class="product-mgmt-card__category" style="font-size: 0.78rem;">${t("POS:")} ${branchAvailabilityLabel(p)}</p>`;
   const stockAdjust = selectedBranchId
     ? `<div class="product-mgmt-card__stock-adjust">${stockAdjustInlineHtml({ productId: p.id })}</div>`
     : "";
@@ -457,12 +458,12 @@ function renderProductCard(p) {
       <div class="product-mgmt-card__header">
         <h3 class="product-mgmt-card__name">${p.name}</h3>
         <div class="product-mgmt-card__actions">
-          <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span>
+          <span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? t("Active") : t("Inactive")}</span>
           ${dailyStockToggle(p)}
           ${recipeLink(p)}
-          ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">History</button>` : ""}
-          <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
+          ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">${t("History")}</button>` : ""}
+          <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">${t("Edit")}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">${t("Delete")}</button>
         </div>
       </div>
       <p class="product-mgmt-card__category">${p.category_name}</p>
@@ -472,7 +473,7 @@ function renderProductCard(p) {
         <p class="product-mgmt-card__price">${formatCurrency(p.selling_price)}</p>
         <div class="product-mgmt-card__meta">
           <div>${stockColumnLabel()}: <strong style="color: var(--color-espresso);" data-branch-qty="${p.id}">${formatQty(p.branch_qty)}</strong></div>
-          <div>Tax: <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
+          <div>${t("Tax:")} <strong style="color: var(--color-espresso);">${formatPercent(p.tax_rate)}</strong></div>
         </div>
       </div>
       ${stockAdjust}
@@ -488,7 +489,7 @@ function formatAddonGroupNames(product) {
 function renderProductTable(filtered) {
   const sorted = sortItems(filtered, sortState, PRODUCT_SORT);
   const addonHeader = productListMode === "menu"
-    ? `<th>Add-ons</th>`
+    ? `<th>${t("Add-ons")}</th>`
     : "";
   const addonCell = (p) => productListMode === "menu"
     ? `<td style="font-size: 0.85rem; color: var(--color-muted);">${formatAddonGroupNames(p)}</td>`
@@ -500,14 +501,14 @@ function renderProductTable(filtered) {
         <table class="data-table">
           <thead>
             <tr>
-              ${sortTh("Name", "name", sortState)}
-              ${sortTh("Category", "category_name", sortState)}
-              ${sortTh("Price", "selling_price", sortState, { align: "right" })}
+              ${sortTh(t("Name"), "name", sortState)}
+              ${sortTh(t("Category"), "category_name", sortState)}
+              ${sortTh(t("Price"), "selling_price", sortState, { align: "right" })}
               ${sortTh(stockColumnLabel(), "branch_qty", sortState, { align: "right" })}
-              ${sortTh("Tax", "tax_rate", sortState, { align: "right" })}
-              ${sortTh("Status", "is_active", sortState)}
-              ${sortTh("Daily count", "daily_stock_take", sortState)}
-              <th>POS branches</th>
+              ${sortTh(t("Tax"), "tax_rate", sortState, { align: "right" })}
+              ${sortTh(t("Status"), "is_active", sortState)}
+              ${sortTh(t("Daily count"), "daily_stock_take", sortState)}
+              <th>${t("POS branches")}</th>
               ${addonHeader}
               ${actionTh()}
             </tr>
@@ -525,15 +526,15 @@ function renderProductTable(filtered) {
                   </div>
                 </td>
                 <td style="text-align: right;">${formatPercent(p.tax_rate)}</td>
-                <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? "Active" : "Inactive"}</span></td>
+                <td><span class="badge ${p.is_active ? "badge-active" : "badge-inactive"}">${p.is_active ? t("Active") : t("Inactive")}</span></td>
                 <td>${dailyStockToggle(p)}</td>
                 <td style="font-size: 0.85rem; color: var(--color-muted);">${branchAvailabilityLabel(p)}</td>
                 ${addonCell(p)}
                 <td style="text-align: right;">
                   ${recipeLink(p)}
-                  ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">History</button>` : ""}
-                  <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button>
-                  <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">Delete</button>
+                  ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${p.id}">${t("History")}</button>` : ""}
+                  <button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">${t("Edit")}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-delete="${p.id}">${t("Delete")}</button>
                 </td>
               </tr>
             `).join("")}
@@ -560,7 +561,7 @@ function render() {
 
   categoryTabs.innerHTML = tabs.map(cat => `
     <button class="category-tab${activeCategory === cat ? " active" : ""}" data-cat="${cat}">
-      ${cat === "all" ? "All" : cat}
+      ${cat === "all" ? t("All") : cat}
     </button>
   `).join("");
 
@@ -574,8 +575,8 @@ function render() {
 
   if (!filtered.length) {
     const message = searchQuery
-      ? "No matching products"
-      : (products.length ? "No products in this category" : "No products found");
+      ? t("No matching products")
+      : (products.length ? t("No products in this category") : t("No products found"));
     if (viewMode === "list") {
       productList.innerHTML = `<div class="card" style="padding: 0;"><div class="empty-state"><p>${message}</p></div></div>`;
     } else {
@@ -619,7 +620,7 @@ async function loadBranches() {
 
   setupBranchSelect(branchSelect, branches, {
     canSelectAny: canFilterAnyBranch,
-    emptyLabel: "No branches available",
+    emptyLabel: t("No branches available"),
   });
 
   renderBranchAvailabilityOptions();
@@ -670,7 +671,7 @@ productForm.addEventListener("submit", async (e) => {
   const targetQty = qtyRaw || "0";
   const branchIds = readSelectedBranchIds();
   if (branchAvailabilityMode === "selected" && !branchIds.length) {
-    showToast("Select at least one branch, or choose All branches", true);
+    showToast(t("Select at least one branch, or choose All branches"), true);
     productSubmit.disabled = false;
     return;
   }
@@ -682,17 +683,17 @@ productForm.addEventListener("submit", async (e) => {
         addon_group_ids: readSelectedAddonGroupIds(),
       });
       await syncBranchStock(editingId, targetQty);
-      showToast("Product updated");
+      showToast(t("Product updated"));
     } else {
       if (Number(targetQty) > 0 && !selectedBranchId) {
-        throw new Error("Select a branch before setting opening stock");
+        throw new Error(t("Select a branch before setting opening stock"));
       }
       const created = await apiPost("/products/", {
         ...payload,
         remaining_qty: "0",
       });
       await syncBranchStock(created.id, targetQty);
-      showToast("Product added");
+      showToast(t("Product added"));
     }
     resetForm();
     await reload();
@@ -717,17 +718,17 @@ branchSelect.addEventListener("change", async () => {
 
 async function deleteProduct(product) {
   const confirmed = window.confirm(
-    `Delete "${product.name}"?\n\n`
-    + "If this product appears in orders, purchases, or stock records it will be deactivated instead of removed.",
+    `${t("Delete")} "${product.name}"?\n\n`
+    + t("If this product appears in orders, purchases, or stock records it will be deactivated instead of removed."),
   );
   if (!confirmed) return;
 
   try {
     const result = await apiDelete(`/products/${product.id}/`);
     if (result && result.is_active === false) {
-      showToast("Product deactivated (used in existing records)");
+      showToast(t("Product deactivated (used in existing records)"));
     } else {
-      showToast("Product deleted");
+      showToast(t("Product deleted"));
     }
     if (editingId === product.id) resetForm();
     await reload();
@@ -749,7 +750,7 @@ productList.addEventListener("click", async (e) => {
           productList.querySelectorAll(`[data-branch-qty="${productId}"]`).forEach(el => {
             el.textContent = formatQty(newQty);
           });
-          showToast("Stock updated");
+          showToast(t("Stock updated"));
         },
       });
     } catch (err) {
@@ -774,7 +775,7 @@ productList.addEventListener("click", async (e) => {
       if (editingId === product.id) {
         document.getElementById("product-daily-stock").checked = nextValue;
       }
-      showToast(nextValue ? "Daily count enabled" : "Daily count disabled");
+      showToast(nextValue ? t("Daily count enabled") : t("Daily count disabled"));
       render();
     } catch (err) {
       showToast(err.message, true);
@@ -793,8 +794,8 @@ productList.addEventListener("click", async (e) => {
         unwrapList,
         branchId: selectedBranchId,
         productId: Number(historyBtn.dataset.history),
-        productName: product?.name || "Product",
-        branchName: branch?.name || "Branch",
+        productName: product?.name || t("Product"),
+        branchName: branch?.name || t("Branch"),
       });
     } catch (err) {
       showToast(err.message, true);
@@ -849,9 +850,9 @@ csvUpload.addEventListener("change", async (e) => {
 
   if (productListMode !== "bakery") {
     const confirmed = window.confirm(
-      "Import POS menu items from this CSV?\n\n"
-      + "Products in the file will be created or updated. "
-      + "Any active POS products not in the file will be deactivated.",
+      t("Import POS menu items from this CSV?") + "\n\n"
+      + t("Products in the file will be created or updated. ") 
+      + t("Any active POS products not in the file will be deactivated."),
     );
     if (!confirmed) return;
   }
@@ -862,20 +863,20 @@ csvUpload.addEventListener("change", async (e) => {
   try {
     const result = await apiUpload(csvImportUrl, formData);
     const parts = [];
-    if (result.products_created) parts.push(`${result.products_created} created`);
-    if (result.products_updated) parts.push(`${result.products_updated} updated`);
-    if (result.deactivated) parts.push(`${result.deactivated} deactivated`);
-    if (result.created) parts.push(`${result.created} created`);
-    if (result.updated) parts.push(`${result.updated} updated`);
-    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    if (result.products_created) parts.push(`${result.products_created} ${t("created")}`);
+    if (result.products_updated) parts.push(`${result.products_updated} ${t("updated")}`);
+    if (result.deactivated) parts.push(`${result.deactivated} ${t("deactivated")}`);
+    if (result.created) parts.push(`${result.created} ${t("created")}`);
+    if (result.updated) parts.push(`${result.updated} ${t("updated")}`);
+    showToast(parts.length ? `${t("Import complete:")} ${parts.join(", ")}` : t("Import complete"));
     await reload();
   } catch (err) {
     let message = err.message;
     try {
       const data = JSON.parse(err.message);
       if (data?.errors?.length) {
-        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
-        message = `Import failed — ${preview}`;
+        const preview = data.errors.slice(0, 3).map(e => `${t("row")} ${e.row}: ${e.message}`).join("; ");
+        message = `${t("Import failed —")} ${preview}`;
       }
     } catch {
       // use raw message
@@ -885,7 +886,7 @@ csvUpload.addEventListener("change", async (e) => {
 });
 
 Promise.all([loadCategories(), loadAddonGroups(), loadBranches()]).catch(err => {
-  productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Failed to load products: ${err.message}</div>`;
+  productList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">${t("Failed to load products:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

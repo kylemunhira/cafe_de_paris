@@ -64,6 +64,9 @@ export function buildPushPayload(order) {
       return payload;
     }),
   };
+  if (order.access_code) {
+    payload.access_code = order.access_code;
+  }
   if (order.status === "paid" && order.payment_currency_id) {
     payload.payment = {
       currency_id: order.payment_currency_id,

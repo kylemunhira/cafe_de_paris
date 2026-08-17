@@ -1,15 +1,15 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Customer statement — {{ customer }}</title>
+  <title>{% trans "Customer statement" %} — {{ customer }}</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">Print statement</button>
+    <button type="button" onclick="window.print()">{% trans "Print statement" %}</button>
   </div>
 
   {% include "ui/includes/customer_statement_block.html" with single=single transaction=transaction transactions=transactions customer=customer branch=branch base_currency=base_currency printed_at=printed_at recorded_by_name=recorded_by_name %}

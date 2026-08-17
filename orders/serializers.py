@@ -6,8 +6,9 @@ from rest_framework import serializers
 from catalog.models import Product
 from payments.models import Currency
 
+from accounts.access_codes import normalize_access_code, resolve_order_taker
+from accounts.branch_access import user_is_waiter
 from customers.models import Customer
-
 from .kitchen_station import order_item_matches_kitchen_station
 from .models import (
     Expense,
@@ -367,6 +368,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         allow_null=True,
         write_only=True,
     )
+    access_code = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+        max_length=4,
+    )
 
     class Meta:
         model = Order
@@ -377,13 +384,27 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "table_number",
             "items",
             "existing_order_id",
+            "access_code",
         ]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = request.user if request and request.user.is_authenticated else None
+        code = normalize_access_code(attrs.pop("access_code", None))
+
+        if user is not None and user_is_waiter(user):
+            try:
+                attrs["_created_by"] = resolve_order_taker(code)
+            except ValueError as exc:
+                raise serializers.ValidationError({"access_code": str(exc)}) from exc
+        else:
+            attrs["_created_by"] = user
+        return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop("items")
         existing_order_id = validated_data.pop("existing_order_id", None)
-        request = self.context.get("request")
-        user = request.user if request and request.user.is_authenticated else None
+        created_by = validated_data.pop("_created_by", None)
 
         branch = validated_data["branch"]
         table_number = (validated_data.get("table_number") or "").strip()
@@ -413,7 +434,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 add_items_to_order(order, items_data)
             return order
 
-        order = Order.objects.create(created_by=user, **validated_data)
+        order = Order.objects.create(created_by=created_by, **validated_data)
         add_items_to_order(order, items_data)
         return order
 

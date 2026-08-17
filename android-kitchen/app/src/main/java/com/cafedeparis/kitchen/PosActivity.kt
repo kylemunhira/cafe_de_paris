@@ -160,10 +160,77 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun onReceiptOrderLongPress(order: KitchenOrder) {
         onReceiptOrderSelected(order)
-        Toast.makeText(this, R.string.printing_bill, Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
-            printOrderTicket(order, documentTitle = getString(R.string.bill_document_title))
+            try {
+                withContext(Dispatchers.IO) {
+                    api.authorizeBillPrint(order.id)
+                }
+                Toast.makeText(this@PosActivity, R.string.printing_bill, Toast.LENGTH_SHORT).show()
+                printOrderTicket(order, documentTitle = getString(R.string.bill_document_title))
+            } catch (err: ApiException) {
+                if (err.statusCode == 403) {
+                    promptBillReprintAccessCode(order)
+                } else {
+                    handleApiError(err)
+                }
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            }
         }
+    }
+
+    private fun promptBillReprintAccessCode(order: KitchenOrder) {
+        val input = TextInputEditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = getString(R.string.access_code_hint)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(4))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        fun submitCode(code: String) {
+            if (!code.matches(Regex("^\\d{4}$"))) {
+                Toast.makeText(this, R.string.access_code_invalid, Toast.LENGTH_SHORT).show()
+                return
+            }
+            lifecycleScope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        api.authorizeBillPrint(order.id, code)
+                    }
+                    Toast.makeText(this@PosActivity, R.string.printing_bill, Toast.LENGTH_SHORT).show()
+                    printOrderTicket(
+                        order,
+                        documentTitle = getString(R.string.bill_document_title),
+                    )
+                } catch (err: ApiException) {
+                    handleApiError(err)
+                } catch (err: Exception) {
+                    showError(getString(R.string.connection_failed, err.message ?: ""))
+                }
+            }
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.bill_reprint_title)
+            .setMessage(R.string.bill_reprint_message)
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                submitCode(input.text?.toString()?.trim().orEmpty())
+            }
+            .create()
+        input.doAfterTextChanged { editable ->
+            val code = editable?.toString()?.trim().orEmpty()
+            if (code.matches(Regex("^\\d{4}$")) && dialog.isShowing) {
+                dialog.dismiss()
+                submitCode(code)
+            }
+        }
+        dialog.show()
+        input.requestFocus()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -2186,6 +2253,63 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun placeOrder() {
         if (cart.isEmpty()) return
+        if (!session.canCollectPayment) {
+            promptWaiterAccessCode { accessCode ->
+                if (accessCode != null) {
+                    placeOrderWithAccessCode(accessCode)
+                }
+            }
+            return
+        }
+        placeOrderWithAccessCode(null)
+    }
+
+    private fun promptWaiterAccessCode(onResult: (String?) -> Unit) {
+        val input = TextInputEditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = getString(R.string.access_code_hint)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(4))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        var settled = false
+        fun finish(code: String?) {
+            if (settled) return
+            settled = true
+            onResult(code)
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.access_code_place_order_title)
+            .setMessage(R.string.access_code_place_order_message)
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> finish(null) }
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val code = input.text?.toString()?.trim().orEmpty()
+                if (!code.matches(Regex("^\\d{4}$"))) {
+                    Toast.makeText(this, R.string.access_code_invalid, Toast.LENGTH_SHORT).show()
+                    finish(null)
+                } else {
+                    finish(code)
+                }
+            }
+            .setOnCancelListener { finish(null) }
+            .create()
+        input.doAfterTextChanged { editable ->
+            val code = editable?.toString()?.trim().orEmpty()
+            if (code.matches(Regex("^\\d{4}$")) && dialog.isShowing) {
+                dialog.dismiss()
+                finish(code)
+            }
+        }
+        dialog.show()
+        input.requestFocus()
+    }
+
+    private fun placeOrderWithAccessCode(accessCode: String?) {
         binding.checkoutButton.isEnabled = false
         lifecycleScope.launch {
             try {
@@ -2211,6 +2335,7 @@ class PosActivity : KeepScreenOnActivity() {
                         tableNumber,
                         cart.values.toList(),
                         existingOrderId = existingOrderId,
+                        accessCode = accessCode,
                     )
                 }
                 cart.clear()

@@ -363,8 +363,8 @@ class StockTakeWorkflowTests(TestCase):
         self.assertIn(str(flour_line["id"]), csv_text)
 
         csv_content = (
-            "line_id,station,product_name,counted_quantity\n"
-            f"{flour_line['id']},Kitchen,Flour,48\n"
+            "line_id,station,product_name,counted_quantity,wastage_quantity\n"
+            f"{flour_line['id']},Kitchen,Flour,48,2\n"
         )
         import_response = self.client.post(
             f"/api/stock-takes/{stock_take_id}/import-csv/",
@@ -385,7 +385,47 @@ class StockTakeWorkflowTests(TestCase):
             for line in import_response.data["stock_take"]["lines"]
             if line["product"] == self.flour.id
         )
-        self.assertEqual(flour_imported["counted_quantity"], "48.00")
+        self.assertEqual(flour_imported["counted_quantity"], "48.000")
+        self.assertEqual(flour_imported["wastage_quantity"], "2.000")
+
+    def test_save_lines_persists_wastage_quantity(self):
+        create_response = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-11",
+            },
+            format="json",
+        )
+        stock_take_id = create_response.data["id"]
+        flour_line = next(
+            line
+            for line in create_response.data["lines"]
+            if line["product"] == self.flour.id
+        )
+
+        save_response = self.client.patch(
+            f"/api/stock-takes/{stock_take_id}/lines/",
+            {
+                "lines": [
+                    {
+                        "id": flour_line["id"],
+                        "counted_quantity": "47",
+                        "wastage_quantity": "3",
+                    },
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(save_response.status_code, 200)
+        flour_saved = next(
+            line
+            for line in save_response.data["lines"]
+            if line["product"] == self.flour.id
+        )
+        self.assertEqual(flour_saved["counted_quantity"], "47.000")
+        self.assertEqual(flour_saved["wastage_quantity"], "3.000")
 
     def test_export_completed_stock_take_report_csv(self):
         create_response = self.client.post(
@@ -408,7 +448,11 @@ class StockTakeWorkflowTests(TestCase):
             f"/api/stock-takes/{stock_take_id}/lines/",
             {
                 "lines": [
-                    {"id": flour_line["id"], "counted_quantity": "48"},
+                    {
+                        "id": flour_line["id"],
+                        "counted_quantity": "48",
+                        "wastage_quantity": "1.5",
+                    },
                 ]
             },
             format="json",
@@ -421,8 +465,10 @@ class StockTakeWorkflowTests(TestCase):
         self.assertEqual(export_response.status_code, 200)
         csv_text = export_response.content.decode("utf-8")
         self.assertIn("system_quantity", csv_text)
+        self.assertIn("wastage_quantity", csv_text)
         self.assertIn("variance", csv_text)
         self.assertIn("-2", csv_text)
+        self.assertIn("1.5", csv_text)
 
     def test_save_lines_accepts_null_counted_quantity(self):
         create_response = self.client.post(

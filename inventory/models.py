@@ -317,6 +317,12 @@ class StockTakeLine(models.Model):
         null=True,
         blank=True,
     )
+    wastage_quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=0,
+        help_text="Quantity recorded as wastage/disposal during this count.",
+    )
     notes = models.CharField(max_length=255, blank=True)
 
     class Meta:

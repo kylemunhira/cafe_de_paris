@@ -1,58 +1,58 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Day End — Café de Paris{% endblock %}
-{% block page_title %}Day End Report{% endblock %}
+{% block title %}{% trans "Day End" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Day End Report" %}{% endblock %}
 
 {% block topbar_actions %}
-<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">{% trans "Print" %}</button>
 {% endblock %}
 
 {% block content %}
 <div class="card report-filters">
   <div class="report-filters-grid">
     <label>
-      <span>From</span>
+      <span>{% trans "From" %}</span>
       <input type="date" id="filter-from" class="report-input">
     </label>
     <label>
-      <span>To</span>
+      <span>{% trans "To" %}</span>
       <input type="date" id="filter-to" class="report-input">
     </label>
     {% if can_filter_any_branch %}
     <label>
-      <span>Branch</span>
+      <span>{% trans "Branch" %}</span>
       <select id="filter-branch" class="report-input">
-        <option value="">All branches</option>
+        <option value="">{% trans "All branches" %}</option>
       </select>
     </label>
     {% endif %}
     <div class="report-filters-actions">
-      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
   </div>
 </div>
 
 <div class="stat-grid" id="report-summary">
   <div class="card stat-card">
-    <div class="stat-label">Closes listed</div>
+    <div class="stat-label">{% trans "Closes listed" %}</div>
     <div class="stat-value" id="summary-count">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">With cash count</div>
+    <div class="stat-label">{% trans "With cash count" %}</div>
     <div class="stat-value" id="summary-counted">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Total variance</div>
+    <div class="stat-label">{% trans "Total variance" %}</div>
     <div class="stat-value" id="summary-variance">—</div>
   </div>
 </div>
 
 <div class="card report-panel" id="report-table-card" style="padding: 0;">
   <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Saved day-end closes</h3>
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Saved day-end closes" %}</h3>
     <p class="report-panel-note" style="margin: 0.35rem 0 0;">
-      Variance and activity saved when day end is printed from POS.
+      {% trans "Variance and activity saved when day end is printed from POS." %}
     </p>
   </div>
   <div class="table-wrap" id="report-table">
@@ -63,10 +63,10 @@
 <div class="card report-panel" id="detail-panel" hidden style="margin-top: 1rem;">
   <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start;">
     <div>
-      <h3 style="margin: 0; font-size: 1rem;" id="detail-title">Day-end detail</h3>
+      <h3 style="margin: 0; font-size: 1rem;" id="detail-title">{% trans "Day-end detail" %}</h3>
       <p class="report-panel-note" id="detail-meta" style="margin: 0.35rem 0 0;"></p>
     </div>
-    <button type="button" class="btn btn-ghost btn-sm" id="detail-close-btn">Close</button>
+    <button type="button" class="btn btn-ghost btn-sm" id="detail-close-btn">{% trans "Close" %}</button>
   </div>
   <div style="padding: 1rem 1.25rem;" id="detail-body"></div>
 </div>
@@ -76,6 +76,8 @@
 <script type="module">
 import { apiGet, formatCurrency, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
 import { branchesForUser, effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = {{ staff_branch_id|default:"null" }};
@@ -136,7 +138,7 @@ function varianceClass(value) {
 
 function renderTable() {
   if (!closes.length) {
-    reportTable.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--muted, #6b5b4f);">No saved day-end closes for this period.</div>`;
+    reportTable.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--muted, #6b5b4f);">${t("No saved day-end closes for this period.")}</div>`;
     return;
   }
 
@@ -160,13 +162,13 @@ function renderTable() {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Branch</th>
-          <th>Closed by</th>
-          <th style="text-align:right">Orders</th>
-          <th style="text-align:right">Gross</th>
-          <th style="text-align:right">Expenses</th>
-          <th style="text-align:right">Variance</th>
+          <th>${t("Date")}</th>
+          <th>${t("Branch")}</th>
+          <th>${t("Closed by")}</th>
+          <th style="text-align:right">${t("Orders")}</th>
+          <th style="text-align:right">${t("Gross")}</th>
+          <th style="text-align:right">${t("Expenses")}</th>
+          <th style="text-align:right">${t("Variance")}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -190,7 +192,7 @@ function updateSummary() {
 
 function cashLinesHtml(lines) {
   if (!lines?.length) {
-    return `<p class="report-panel-note">No cash-up lines.</p>`;
+    return `<p class="report-panel-note">${t("No cash-up lines.")}</p>`;
   }
   const rows = lines.map((line) => {
     const label = line.currency?.name || line.currency?.code || "—";
@@ -211,13 +213,13 @@ function cashLinesHtml(lines) {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Currency</th>
-          <th style="text-align:right">Sales</th>
-          <th style="text-align:right">Deposits</th>
-          <th style="text-align:right">Expenses</th>
-          <th style="text-align:right">Net expected</th>
-          <th style="text-align:right">Counted</th>
-          <th style="text-align:right">Variance</th>
+          <th>${t("Currency")}</th>
+          <th style="text-align:right">${t("Sales")}</th>
+          <th style="text-align:right">${t("Deposits")}</th>
+          <th style="text-align:right">${t("Expenses")}</th>
+          <th style="text-align:right">${t("Net expected")}</th>
+          <th style="text-align:right">${t("Counted")}</th>
+          <th style="text-align:right">${t("Variance")}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -227,7 +229,7 @@ function cashLinesHtml(lines) {
 
 function activityHtml(snapshot) {
   if (!snapshot || typeof snapshot !== "object") {
-    return `<p class="report-panel-note">No activity snapshot.</p>`;
+    return `<p class="report-panel-note">${t("No activity snapshot.")}</p>`;
   }
   const methodsByName = new Map();
   for (const row of snapshot.payments_by_method || []) {
@@ -243,36 +245,36 @@ function activityHtml(snapshot) {
     .join("");
   const expenses = (snapshot.expenses || []).map((row) => {
     const code = row.currency__code || "";
-    return `<li>${row.description || "Expense"}: ${money(row.amount)}${code ? ` ${code}` : ""}</li>`;
+    return `<li>${row.description || t("Expense")}: ${money(row.amount)}${code ? ` ${code}` : ""}</li>`;
   }).join("");
   const accountTransactions = (snapshot.account_transactions || []).map((row) => {
     const sign = Number(row.amount) >= 0 ? "+" : "";
-    const detail = [row.statement_label || row.transaction_type || "Transaction"]
-      .concat(row.order_id ? [`Order #${row.order_id}`] : [])
+    const detail = [row.statement_label || row.transaction_type || t("Transaction")]
+      .concat(row.order_id ? [`${t("Order")} #${row.order_id}`] : [])
       .join(" · ");
-    return `<li>${row.customer_name || "Customer"} — ${detail}: ${sign}${money(row.amount)}</li>`;
+    return `<li>${row.customer_name || t("Customer")} — ${detail}: ${sign}${money(row.amount)}</li>`;
   }).join("");
   const products = (snapshot.products || []).slice(0, 15).map((row) => {
-    return `<li>${row.product__name || "Item"} × ${row.quantity} — ${money(row.revenue)}</li>`;
+    return `<li>${row.product__name || t("Item")} × ${row.quantity} — ${money(row.revenue)}</li>`;
   }).join("");
 
   return `
     <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 1rem;">
       <div>
-        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Payments by method</h4>
-        ${methods ? `<ul style="margin: 0; padding-left: 1.1rem;">${methods}</ul>` : `<p class="report-panel-note">None</p>`}
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Payments by method")}</h4>
+        ${methods ? `<ul style="margin: 0; padding-left: 1.1rem;">${methods}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
       </div>
       <div>
-        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Expenses</h4>
-        ${expenses ? `<ul style="margin: 0; padding-left: 1.1rem;">${expenses}</ul>` : `<p class="report-panel-note">None</p>`}
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Expenses")}</h4>
+        ${expenses ? `<ul style="margin: 0; padding-left: 1.1rem;">${expenses}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
       </div>
       <div>
-        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Customer accounts</h4>
-        ${accountTransactions ? `<ul style="margin: 0; padding-left: 1.1rem;">${accountTransactions}</ul>` : `<p class="report-panel-note">None</p>`}
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Customer accounts")}</h4>
+        ${accountTransactions ? `<ul style="margin: 0; padding-left: 1.1rem;">${accountTransactions}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
       </div>
       <div>
-        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Top products</h4>
-        ${products ? `<ul style="margin: 0; padding-left: 1.1rem;">${products}</ul>` : `<p class="report-panel-note">None</p>`}
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Top products")}</h4>
+        ${products ? `<ul style="margin: 0; padding-left: 1.1rem;">${products}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
       </div>
     </div>
   `;
@@ -281,19 +283,19 @@ function activityHtml(snapshot) {
 async function openDetail(id) {
   try {
     const data = await apiGet(`/reports/day-end-closes/${id}/`);
-    detailTitle.textContent = `Day end — ${data.report_date} — ${data.branch?.name || ""}`;
+    detailTitle.textContent = `${t("Day End")} — ${data.report_date} — ${data.branch?.name || ""}`;
     const closedAt = data.closed_at ? new Date(data.closed_at).toLocaleString() : "—";
-    detailMeta.textContent = `Closed ${closedAt}${data.closed_by_name ? ` by ${data.closed_by_name}` : ""}`;
+    detailMeta.textContent = `${t("Closed")} ${closedAt}${data.closed_by_name ? ` ${t("by")} ${data.closed_by_name}` : ""}`;
     detailBody.innerHTML = `
       <div class="stat-grid" style="margin-bottom: 1rem;">
-        <div class="card stat-card"><div class="stat-label">Orders</div><div class="stat-value">${data.order_count ?? 0}</div></div>
-        <div class="card stat-card"><div class="stat-label">Gross</div><div class="stat-value">${money(data.gross_total)}</div></div>
-        <div class="card stat-card"><div class="stat-label">Expenses</div><div class="stat-value">${money(data.expenses_total)}</div></div>
-        <div class="card stat-card"><div class="stat-label">Variance</div><div class="stat-value ${varianceClass(data.variance_total)}">${data.has_counted_entries ? money(data.variance_total) : "—"}</div></div>
+        <div class="card stat-card"><div class="stat-label">${t("Orders")}</div><div class="stat-value">${data.order_count ?? 0}</div></div>
+        <div class="card stat-card"><div class="stat-label">${t("Gross")}</div><div class="stat-value">${money(data.gross_total)}</div></div>
+        <div class="card stat-card"><div class="stat-label">${t("Expenses")}</div><div class="stat-value">${money(data.expenses_total)}</div></div>
+        <div class="card stat-card"><div class="stat-label">${t("Variance")}</div><div class="stat-value ${varianceClass(data.variance_total)}">${data.has_counted_entries ? money(data.variance_total) : "—"}</div></div>
       </div>
-      <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">Cash variance</h4>
+      <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Cash variance")}</h4>
       ${cashLinesHtml(data.cash_lines)}
-      <h4 style="margin: 1.25rem 0 0.5rem; font-size: 0.9rem;">Activity at close</h4>
+      <h4 style="margin: 1.25rem 0 0.5rem; font-size: 0.9rem;">${t("Activity at close")}</h4>
       ${activityHtml(data.activity_snapshot)}
     `;
     detailPanel.hidden = false;
@@ -324,7 +326,7 @@ async function loadBranches() {
   const branches = branchesForUser(unwrapList(data).filter((b) => b.is_active), staffBranchId, true);
   setupBranchFilter(filterBranch, branches, {
     canSelectAny: true,
-    allLabel: "All branches",
+    allLabel: t("All branches"),
   });
 }
 

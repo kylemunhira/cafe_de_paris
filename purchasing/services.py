@@ -79,15 +79,32 @@ def approve_purchase_order(purchase_order: PurchaseOrder) -> PurchaseOrder:
 
 
 def receive_purchase_order(purchase_order: PurchaseOrder) -> PurchaseOrder:
-    if purchase_order.status != PurchaseOrderStatus.APPROVED:
+    if purchase_order.status not in (
+        PurchaseOrderStatus.DRAFT,
+        PurchaseOrderStatus.APPROVED,
+    ):
         raise InvalidPurchaseOrderStateError(
-            purchase_order, PurchaseOrderStatus.APPROVED, "receive"
+            purchase_order,
+            f"{PurchaseOrderStatus.DRAFT} or {PurchaseOrderStatus.APPROVED}",
+            "receive",
+        )
+    if not purchase_order.lines.exists():
+        raise InvalidPurchaseOrderStateError(
+            purchase_order, "at least one line item", "receive"
         )
     with transaction.atomic():
         apply_purchase_order_inventory(purchase_order)
+        now = timezone.now()
         purchase_order.status = PurchaseOrderStatus.RECEIVED
-        purchase_order.received_at = timezone.now()
-        purchase_order.save(update_fields=["status", "received_at"])
+        purchase_order.received_at = now
+        update_fields = ["status", "received_at"]
+        if purchase_order.submitted_at is None:
+            purchase_order.submitted_at = now
+            update_fields.append("submitted_at")
+        if purchase_order.approved_at is None:
+            purchase_order.approved_at = now
+            update_fields.append("approved_at")
+        purchase_order.save(update_fields=update_fields)
     return purchase_order
 
 

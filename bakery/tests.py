@@ -173,3 +173,75 @@ class RecipeApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("product", response.data)
+
+
+class AddonRecipeApiTests(TestCase):
+    def setUp(self):
+        from catalog.models import MenuAddon, MenuAddonGroup
+
+        self.client = APIClient()
+        ingredients = ProductCategory.objects.create(name="Ingredients")
+        self.milk = Product.objects.create(
+            name="Oat Milk",
+            category=ingredients,
+            selling_price=Decimal("3.00"),
+        )
+        self.group = MenuAddonGroup.objects.create(name="Recipe Test Extras")
+        self.addon = MenuAddon.objects.create(
+            group=self.group,
+            name="Add Oat Milk Recipe Test",
+            selling_price=Decimal("1.50"),
+        )
+
+    def test_create_and_filter_addon_recipe_lines(self):
+        create_response = self.client.post(
+            "/api/recipes/",
+            {
+                "menu_addon": self.addon.id,
+                "ingredient": self.milk.id,
+                "quantity_required": "0.12",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.data["menu_addon"], self.addon.id)
+        self.assertIsNone(create_response.data["product"])
+        self.assertEqual(create_response.data["product_category"], "Recipe Test Extras")
+        self.assertEqual(create_response.data["line_cost"], Decimal("0.36"))
+        self.assertEqual(create_response.data["menu_addon_name"], "Add Oat Milk Recipe Test")
+
+        list_response = self.client.get(f"/api/recipes/?menu_addon={self.addon.id}")
+        self.assertEqual(list_response.status_code, 200)
+        results = list_response.data["results"] if "results" in list_response.data else list_response.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["menu_addon"], self.addon.id)
+
+    def test_rejects_recipe_without_product_or_addon(self):
+        response = self.client.post(
+            "/api/recipes/",
+            {
+                "ingredient": self.milk.id,
+                "quantity_required": "0.10",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_recipe_with_both_product_and_addon(self):
+        pastries = ProductCategory.objects.create(name="Pastries")
+        croissant = Product.objects.create(
+            name="Croissant",
+            category=pastries,
+            selling_price=Decimal("2.75"),
+        )
+        response = self.client.post(
+            "/api/recipes/",
+            {
+                "product": croissant.id,
+                "menu_addon": self.addon.id,
+                "ingredient": self.milk.id,
+                "quantity_required": "0.10",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)

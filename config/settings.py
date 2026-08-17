@@ -59,6 +59,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -76,10 +77,12 @@ TEMPLATES = [
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
+                "django.template.context_processors.i18n",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "accounts.context_processors.nav_access",
                 "ui.context_processors.asset_version",
+                "ui.context_processors.i18n_js_catalog",
             ],
         },
     },
@@ -122,7 +125,15 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "en"
+LANGUAGES = [
+    ("en", "English"),
+    ("fr", "Français"),
+    ("es", "Español"),
+    ("ar", "العربية"),
+    ("zh-hans", "中文"),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "Africa/Harare"
 USE_I18N = True
 USE_TZ = True
@@ -146,6 +157,7 @@ LOGOUT_REDIRECT_URL = "ui:login"
 
 AUTHENTICATION_BACKENDS = [
     "accounts.backends.CaseInsensitiveModelBackend",
+    "accounts.backends.AccessCodeBackend",
 ]
 
 REST_FRAMEWORK = {

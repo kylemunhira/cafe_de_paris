@@ -1,61 +1,61 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Audit log — Café de Paris{% endblock %}
-{% block page_title %}Audit log{% endblock %}
+{% block title %}{% trans "Audit log" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Audit log" %}{% endblock %}
 
 {% block content %}
 <div class="card report-filters" style="margin-bottom: 1.25rem;">
   <div class="report-filters-grid">
     <label>
-      <span>From</span>
+      <span>{% trans "From" %}</span>
       <input type="date" id="filter-from" class="report-input">
     </label>
     <label>
-      <span>To</span>
+      <span>{% trans "To" %}</span>
       <input type="date" id="filter-to" class="report-input">
     </label>
     {% if can_filter_any_branch %}
     <label>
-      <span>Branch</span>
+      <span>{% trans "Branch" %}</span>
       <select id="filter-branch" class="report-input">
-        <option value="">All branches</option>
+        <option value="">{% trans "All branches" %}</option>
       </select>
     </label>
     {% endif %}
     <label>
-      <span>Action</span>
+      <span>{% trans "Action" %}</span>
       <select id="filter-action" class="report-input">
-        <option value="">All actions</option>
-        <option value="update">Update</option>
-        <option value="delete">Delete</option>
-        <option value="deactivate">Deactivate</option>
-        <option value="cancel">Cancel</option>
-        <option value="void">Void</option>
+        <option value="">{% trans "All actions" %}</option>
+        <option value="update">{% trans "Update" %}</option>
+        <option value="delete">{% trans "Delete" %}</option>
+        <option value="deactivate">{% trans "Deactivate" %}</option>
+        <option value="cancel">{% trans "Cancel" %}</option>
+        <option value="void">{% trans "Void" %}</option>
       </select>
     </label>
     <label>
-      <span>Entity</span>
+      <span>{% trans "Entity" %}</span>
       <select id="filter-entity-type" class="report-input">
-        <option value="">All types</option>
-        <option value="product">Product</option>
-        <option value="product_category">Category</option>
-        <option value="menu_addon">Menu add-on</option>
-        <option value="menu_addon_group">Add-on group</option>
-        <option value="customer">Customer</option>
-        <option value="supplier">Supplier</option>
-        <option value="purchase_order">Purchase order</option>
-        <option value="user">User</option>
-        <option value="branch">Branch</option>
-        <option value="dining_table">Dining table</option>
-        <option value="recipe">Recipe</option>
-        <option value="currency">Currency</option>
-        <option value="currency_rate">Currency rate</option>
-        <option value="order">Order</option>
+        <option value="">{% trans "All types" %}</option>
+        <option value="product">{% trans "Product" %}</option>
+        <option value="product_category">{% trans "Category" %}</option>
+        <option value="menu_addon">{% trans "Menu add-on" %}</option>
+        <option value="menu_addon_group">{% trans "Add-on group" %}</option>
+        <option value="customer">{% trans "Customer" %}</option>
+        <option value="supplier">{% trans "Supplier" %}</option>
+        <option value="purchase_order">{% trans "Purchase order" %}</option>
+        <option value="user">{% trans "User" %}</option>
+        <option value="branch">{% trans "Branch" %}</option>
+        <option value="dining_table">{% trans "Dining table" %}</option>
+        <option value="recipe">{% trans "Recipe" %}</option>
+        <option value="currency">{% trans "Currency" %}</option>
+        <option value="currency_rate">{% trans "Currency rate" %}</option>
+        <option value="order">{% trans "Order" %}</option>
       </select>
     </label>
     <div class="report-filters-actions">
-      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
   </div>
 </div>
@@ -66,7 +66,7 @@
       type="search"
       id="audit-search"
       class="report-input"
-      placeholder="Search entity, type, actor…"
+      placeholder="{% trans "Search entity, type, actor…" %}"
       style="max-width: 360px;"
     >
   </div>
@@ -81,6 +81,8 @@
 import { apiGet, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
@@ -176,7 +178,7 @@ function renderEvents() {
   const filtered = sortItems(allEvents.filter(matchesSearch), sortState, AUDIT_SORT);
 
   if (!filtered.length) {
-    auditTable.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching audit events" : "No audit events in this period"}</p></div>`;
+    auditTable.innerHTML = `<div class="empty-state"><p>${searchQuery ? t("No matching audit events") : t("No audit events in this period")}</p></div>`;
     return;
   }
 
@@ -184,13 +186,13 @@ function renderEvents() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("When", "created_at", sortState)}
-          ${sortTh("Who", "actor_name", sortState)}
-          ${sortTh("Branch", "branch_name", sortState)}
-          ${sortTh("Action", "action", sortState)}
-          ${sortTh("Entity", "entity_type", sortState)}
-          ${sortTh("Label", "entity_label", sortState)}
-          <th>Summary</th>
+          ${sortTh(t("When"), "created_at", sortState)}
+          ${sortTh(t("Who"), "actor_name", sortState)}
+          ${sortTh(t("Branch"), "branch_name", sortState)}
+          ${sortTh(t("Action"), "action", sortState)}
+          ${sortTh(t("Entity"), "entity_type", sortState)}
+          ${sortTh(t("Label"), "entity_label", sortState)}
+          <th>${t("Summary")}</th>
         </tr>
       </thead>
       <tbody>
@@ -205,7 +207,7 @@ function renderEvents() {
             <td>
               <div>${escapeHtml(event.changes_summary || "—")}</div>
               <details style="margin-top: 0.35rem;">
-                <summary style="cursor: pointer; font-size: 0.85rem; color: var(--muted, #666);">Details</summary>
+                <summary style="cursor: pointer; font-size: 0.85rem; color: var(--muted, #666);">${t("Details")}</summary>
                 <div style="margin-top: 0.35rem; font-size: 0.85rem; line-height: 1.45;">
                   ${formatChangesDetail(event.changes) || "—"}
                 </div>
@@ -237,8 +239,8 @@ async function loadEvents() {
     renderEvents();
   } catch (err) {
     console.error(err);
-    auditTable.innerHTML = `<div class="empty-state"><p>Failed to load audit log</p></div>`;
-    showToast(err.message || "Failed to load audit log", true);
+    auditTable.innerHTML = `<div class="empty-state"><p>${t("Failed to load audit log")}</p></div>`;
+    showToast(err.message || t("Failed to load audit log"), true);
   }
 }
 

@@ -1,14 +1,14 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}List Customer — Café de Paris{% endblock %}
-{% block page_title %}List Customer{% endblock %}
+{% block title %}{% trans "List Customer" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "List Customer" %}{% endblock %}
 
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
-  <a href="/api/customers/export-csv/" class="btn btn-ghost btn-sm" download>Download CSV</a>
+  <a href="/api/customers/export-csv/" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
   <label class="btn btn-primary btn-sm" style="cursor: pointer;">
-    Import CSV
+    {% trans "Import CSV" %}
     <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
   </label>
 </div>
@@ -16,52 +16,64 @@
 
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add customer</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Add customer" %}</h3>
   <form id="customer-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="customer-first-name">First name</label>
+        <label for="customer-first-name">{% trans "First name" %}</label>
         <input type="text" id="customer-first-name" required autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="customer-last-name">Last name</label>
+        <label for="customer-last-name">{% trans "Last name" %}</label>
         <input type="text" id="customer-last-name" autocomplete="off">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="customer-phone">Phone</label>
+        <label for="customer-phone">{% trans "Phone" %}</label>
         <input type="text" id="customer-phone" autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="customer-email">Email</label>
+        <label for="customer-email">{% trans "Email" %}</label>
         <input type="email" id="customer-email" autocomplete="off">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="customer-account-type">Account type</label>
+        <label for="customer-account-type">{% trans "Account type" %}</label>
         <select id="customer-account-type">
-          <option value="regular">Regular</option>
-          <option value="family">Family (cost price)</option>
-          <option value="staff">Staff (cost price)</option>
+          <option value="regular">{% trans "Regular" %}</option>
+          <option value="family">{% trans "Family (cost price)" %}</option>
+          <option value="staff">{% trans "Staff (cost price)" %}</option>
         </select>
       </div>
       <div class="form-group" id="loyalty-field" style="display: none;">
-        <label for="customer-loyalty">Loyalty points</label>
+        <label for="customer-loyalty">{% trans "Loyalty points" %}</label>
         <input type="number" id="customer-loyalty" min="0" step="1" value="0">
       </div>
       <div class="form-group" id="credit-limit-field" style="display: none;">
-        <label for="customer-credit-limit">Credit limit</label>
+        <label for="customer-credit-limit">{% trans "Credit limit" %}</label>
         <input type="number" id="customer-credit-limit" min="0" step="0.01" value="0">
-        <p class="settings-hint" style="margin: 0.35rem 0 0; font-size: 0.8rem;">Max negative balance allowed on account (0 = prepaid only).</p>
+        <p class="settings-hint" style="margin: 0.35rem 0 0; font-size: 0.8rem;">{% trans "Max negative balance allowed on account (0 = prepaid only)." %}</p>
       </div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
-      <button type="submit" class="btn btn-primary" id="submit-btn">Add customer</button>
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">{% trans "Add customer" %}</button>
     </div>
   </form>
+</div>
+
+<div class="card" style="padding: 1rem 1.25rem; margin-bottom: 1rem;">
+  <div class="form-group" style="margin: 0;">
+    <label for="customer-search">{% trans "Search" %}</label>
+    <input
+      type="search"
+      id="customer-search"
+      placeholder="{% trans "Name, phone, or email…" %}"
+      autocomplete="off"
+    >
+  </div>
 </div>
 
 <div class="card" style="padding: 0;">
@@ -76,8 +88,11 @@
 import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
+const t = (msgid) => window.CDP.t(msgid);
+
 let customers = [];
 let editingId = null;
+let searchQuery = "";
 
 const customerForm = document.getElementById("customer-form");
 const formTitle = document.getElementById("form-title");
@@ -93,13 +108,14 @@ const creditLimitInput = document.getElementById("customer-credit-limit");
 const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const customersTable = document.getElementById("customers-table");
+const customerSearchInput = document.getElementById("customer-search");
 const csvUpload = document.getElementById("csv-upload");
 const sortState = createSortState("created_at", "desc");
 
 const ACCOUNT_TYPE_LABELS = {
-  regular: "Regular",
-  family: "Family",
-  staff: "Staff",
+  regular: t("Regular"),
+  family: t("Family"),
+  staff: t("Staff"),
 };
 
 const CUSTOMER_SORT = {
@@ -115,8 +131,8 @@ const CUSTOMER_SORT = {
 
 function resetForm() {
   editingId = null;
-  formTitle.textContent = "Add customer";
-  submitBtn.textContent = "Add customer";
+  formTitle.textContent = t("Add customer");
+  submitBtn.textContent = t("Add customer");
   cancelBtn.style.display = "none";
   loyaltyField.style.display = "none";
   creditLimitField.style.display = "none";
@@ -128,8 +144,8 @@ function resetForm() {
 
 function startEdit(customer) {
   editingId = customer.id;
-  formTitle.textContent = "Edit customer";
-  submitBtn.textContent = "Save changes";
+  formTitle.textContent = t("Edit customer");
+  submitBtn.textContent = t("Save changes");
   cancelBtn.style.display = "";
   loyaltyField.style.display = "";
   creditLimitField.style.display = "";
@@ -150,29 +166,49 @@ function displayName(customer) {
 function accountTypeLabel(customer) {
   return customer.account_type_display
     || ACCOUNT_TYPE_LABELS[customer.account_type]
-    || "Regular";
+    || t("Regular");
+}
+
+function filteredCustomers() {
+  if (!searchQuery) return customers;
+  const q = searchQuery.toLowerCase();
+  return customers.filter((c) => {
+    const haystack = [
+      displayName(c),
+      c.phone,
+      c.email,
+      accountTypeLabel(c),
+    ].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(q);
+  });
 }
 
 function render() {
   if (!customers.length) {
-    customersTable.innerHTML = `<div class="empty-state"><p>No customers yet — add your first customer above</p></div>`;
+    customersTable.innerHTML = `<div class="empty-state"><p>${t("No customers yet — add your first customer above")}</p></div>`;
     return;
   }
 
-  const sorted = sortItems(customers, sortState, CUSTOMER_SORT);
+  const filtered = filteredCustomers();
+  if (!filtered.length) {
+    customersTable.innerHTML = `<div class="empty-state"><p>${t("No customers match your filters")}</p></div>`;
+    return;
+  }
+
+  const sorted = sortItems(filtered, sortState, CUSTOMER_SORT);
 
   customersTable.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Name", "name", sortState)}
-          ${sortTh("Phone", "phone", sortState)}
-          ${sortTh("Email", "email", sortState)}
-          ${sortTh("Type", "account_type", sortState)}
-          ${sortTh("Account", "account_balance", sortState)}
-          ${sortTh("Credit limit", "credit_limit", sortState)}
-          ${sortTh("Loyalty", "loyalty_points", sortState)}
-          ${sortTh("Added", "created_at", sortState)}
+          ${sortTh(t("Name"), "name", sortState)}
+          ${sortTh(t("Phone"), "phone", sortState)}
+          ${sortTh(t("Email"), "email", sortState)}
+          ${sortTh(t("Type"), "account_type", sortState)}
+          ${sortTh(t("Account"), "account_balance", sortState)}
+          ${sortTh(t("Credit limit"), "credit_limit", sortState)}
+          ${sortTh(t("Loyalty"), "loyalty_points", sortState)}
+          ${sortTh(t("Added"), "created_at", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -187,7 +223,7 @@ function render() {
             <td>${formatCurrency(c.credit_limit || 0)}</td>
             <td>${c.loyalty_points}</td>
             <td>${formatDate(c.created_at)}</td>
-            <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${c.id}">Edit</button></td>
+            <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${c.id}">${t("Edit")}</button></td>
           </tr>
         `).join("")}
       </tbody>
@@ -220,12 +256,12 @@ customerForm.addEventListener("submit", async (e) => {
       const updated = await apiPatch(`/customers/${editingId}/`, payload);
       const index = customers.findIndex(c => c.id === editingId);
       if (index >= 0) customers[index] = updated;
-      showToast("Customer updated");
+      showToast(t("Customer updated"));
     } else {
       payload.loyalty_points = 0;
       const created = await apiPost("/customers/", payload);
       customers.unshift(created);
-      showToast("Customer added");
+      showToast(t("Customer added"));
     }
     resetForm();
     render();
@@ -245,17 +281,17 @@ async function handleCustomerImport(file) {
   try {
     const result = await apiUpload("/customers/import-csv/", formData);
     const parts = [];
-    if (result.created) parts.push(`${result.created} created`);
-    if (result.updated) parts.push(`${result.updated} updated`);
-    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    if (result.created) parts.push(`${result.created} ${t("created")}`);
+    if (result.updated) parts.push(`${result.updated} ${t("updated")}`);
+    showToast(parts.length ? `${t("Import complete:")} ${parts.join(", ")}` : t("Import complete"));
     await loadCustomers();
   } catch (err) {
     let message = err.message;
     try {
       const data = JSON.parse(err.message);
       if (data?.errors?.length) {
-        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
-        message = `Import failed — ${preview}`;
+        const preview = data.errors.slice(0, 3).map(e => `${t("row")} ${e.row}: ${e.message}`).join("; ");
+        message = `${t("Import failed —")} ${preview}`;
       }
     } catch {
       // use raw message
@@ -278,10 +314,15 @@ customersTable.addEventListener("click", (e) => {
   if (customer) startEdit(customer);
 });
 
+customerSearchInput.addEventListener("input", () => {
+  searchQuery = customerSearchInput.value.trim();
+  render();
+});
+
 bindTableSort(customersTable, sortState, render);
 
 loadCustomers().catch(err => {
-  customersTable.innerHTML = `<div class="empty-state">Failed to load customers: ${err.message}</div>`;
+  customersTable.innerHTML = `<div class="empty-state">${t("Failed to load customers:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

@@ -1,12 +1,12 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Central Invoice — Café de Paris{% endblock %}
-{% block page_title %}Central Invoice{% endblock %}
+{% block title %}{% trans "Central Invoice" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Central Invoice" %}{% endblock %}
 
 {% block content %}
 <p style="margin: 0 0 1.25rem; color: var(--color-muted); max-width: 52rem;">
-  Sell or transfer bakery products from central stores to external customers. Stock is deducted when the invoice is created.
+  {% trans "Sell or transfer bakery products from central stores to external customers. Stock is deducted when the invoice is created." %}
 </p>
 
 <div class="stat-grid" id="invoice-stats" style="margin-bottom: 1.25rem;">
@@ -15,36 +15,36 @@
 </div>
 
 <div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">New central invoice</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New central invoice" %}</h3>
   <form id="invoice-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="from-branch">Central stores</label>
+        <label for="from-branch">{% trans "Central stores" %}</label>
         <select id="from-branch" required disabled>
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="customer">External customer</label>
+        <label for="customer">{% trans "External customer" %}</label>
         <select id="customer" class="searchable-select" required>
-          <option value="">Select customer…</option>
+          <option value="">{% trans "Select customer…" %}</option>
         </select>
       </div>
     </div>
 
     <div class="form-row" style="align-items: end;">
       <div class="form-group" style="flex: 2;">
-        <label for="product">Product</label>
+        <label for="product">{% trans "Product" %}</label>
         <select id="product" class="searchable-select">
-          <option value="">Select product…</option>
+          <option value="">{% trans "Select product…" %}</option>
         </select>
       </div>
       <div class="form-group" style="flex: 0 0 120px;">
-        <label for="quantity">Qty</label>
+        <label for="quantity">{% trans "Qty" %}</label>
         <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0">
       </div>
       <div class="form-group" style="flex: 0 0 auto;">
-        <button type="button" id="add-line-btn" class="btn btn-ghost">Add product</button>
+        <button type="button" id="add-line-btn" class="btn btn-ghost">{% trans "Add product" %}</button>
       </div>
     </div>
     <p id="stock-hint" style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-muted);"></p>
@@ -53,11 +53,11 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Product</th>
-            <th style="text-align: right;">Qty</th>
-            <th style="text-align: right;">Unit price</th>
-            <th style="text-align: right;">Line total</th>
-            <th style="text-align: right;">Available</th>
+            <th>{% trans "Product" %}</th>
+            <th style="text-align: right;">{% trans "Qty" %}</th>
+            <th style="text-align: right;">{% trans "Unit price" %}</th>
+            <th style="text-align: right;">{% trans "Line total" %}</th>
+            <th style="text-align: right;">{% trans "Available" %}</th>
             <th></th>
           </tr>
         </thead>
@@ -66,23 +66,23 @@
     </div>
 
     <div class="form-group">
-      <label for="notes">Notes (optional)</label>
-      <input type="text" id="notes" maxlength="500" placeholder="Delivery instructions, PO reference, etc.">
+      <label for="notes">{% trans "Notes (optional)" %}</label>
+      <input type="text" id="notes" maxlength="500" placeholder="{% trans "Delivery instructions, PO reference, etc." %}">
     </div>
 
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create invoice</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Create invoice" %}</button>
     </div>
   </form>
 </div>
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="dispatched">Active</button>
-    <button class="category-tab" data-filter="unpaid">Unpaid</button>
-    <button class="category-tab" data-filter="paid">Paid</button>
-    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="dispatched">{% trans "Active" %}</button>
+    <button class="category-tab" data-filter="unpaid">{% trans "Unpaid" %}</button>
+    <button class="category-tab" data-filter="paid">{% trans "Paid" %}</button>
+    <button class="category-tab" data-filter="cancelled">{% trans "Cancelled" %}</button>
   </div>
   <div class="table-wrap" id="invoices-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -95,6 +95,8 @@
 import { apiGet, apiPost, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const CAN_MARK_PAID = "{{ can_mark_central_invoice_paid|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:central-invoice-print' 0 %}".replace("/0/", "/{id}/");
@@ -272,12 +274,12 @@ function renderInvoices() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Invoice", "invoice_number", sortState)}
-          ${sortTh("Customer", "customer_name", sortState)}
-          ${sortTh("Products", "products", sortState)}
-          ${sortTh("Total", "total_amount", sortState)}
-          ${sortTh("Payment", "payment_status", sortState)}
-          ${sortTh("Date", "created_at", sortState)}
+          ${sortTh(t("Invoice"), "invoice_number", sortState)}
+          ${sortTh(t("Customer"), "customer_name", sortState)}
+          ${sortTh(t("Products"), "products", sortState)}
+          ${sortTh(t("Total"), "total_amount", sortState)}
+          ${sortTh(t("Payment"), "payment_status", sortState)}
+          ${sortTh(t("Date"), "created_at", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -362,15 +364,15 @@ addLineBtn.addEventListener("click", () => {
   const quantity = Number(quantityInput.value);
 
   if (!productId) {
-    showToast("Select a product first", true);
+    showToast(t("Select a product first"), true);
     return;
   }
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    showToast("Enter a valid quantity", true);
+    showToast(t("Enter a valid quantity"), true);
     return;
   }
   if (draftLines.some(line => String(line.product) === String(productId))) {
-    showToast("Product already added — remove it first to change quantity", true);
+    showToast(t("Product already added — remove it first to change quantity"), true);
     return;
   }
 
@@ -398,11 +400,11 @@ invoiceForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   if (!customerSelect.value) {
-    showToast("Select a customer", true);
+    showToast(t("Select a customer"), true);
     return;
   }
   if (!draftLines.length) {
-    showToast("Add at least one product", true);
+    showToast(t("Add at least one product"), true);
     return;
   }
 
@@ -478,7 +480,7 @@ invoicesTable.addEventListener("click", async (e) => {
     showToast(action === "mark-paid" ? `Invoice ${updated.invoice_number} marked paid` : `Invoice ${updated.invoice_number} cancelled`);
   } catch (err) {
     showToast(err.message, true);
-    btn.textContent = action === "mark-paid" ? "Mark paid" : "Cancel";
+    btn.textContent = action === "mark-paid" ? t("Mark paid") : t("Cancel");
     btn.disabled = false;
   }
 });

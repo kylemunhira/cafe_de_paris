@@ -206,8 +206,10 @@ def user_can_collect_payment(user):
 
 
 def user_can_manage_pos_orders(user):
-    """Void paid orders and remove lines from open orders (HQ admin / global access)."""
-    return user_has_global_branch_access(user)
+    """Remove lines / elevate POS actions without a manager access code."""
+    if user_has_global_branch_access(user):
+        return True
+    return user_is_branch_manager(user)
 
 
 def user_can_use_desktop_pos(user):

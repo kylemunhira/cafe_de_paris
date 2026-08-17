@@ -92,6 +92,13 @@ class StockTakeLineInline(admin.TabularInline):
     model = StockTakeLine
     extra = 0
     readonly_fields = ("product", "system_quantity")
+    fields = (
+        "product",
+        "system_quantity",
+        "counted_quantity",
+        "wastage_quantity",
+        "notes",
+    )
 
 
 @admin.register(StockTake)

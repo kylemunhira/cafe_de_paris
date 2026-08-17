@@ -24,7 +24,13 @@ class VoidedCancelledReportTests(TestCase):
             location="Harare",
             branch_type=BranchType.BRANCH,
         )
-        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        StaffProfile.objects.create(
+            user=self.user,
+            branch=self.branch,
+            pos_access=True,
+            role=StaffRole.BRANCH_MANAGER,
+            access_code="5555",
+        )
         self.client.force_authenticate(user=self.user)
         self.today = timezone.localdate()
         category = ProductCategory.objects.create(name="Coffee")

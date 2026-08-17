@@ -1,67 +1,67 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Branches — Café de Paris{% endblock %}
-{% block page_title %}Branches{% endblock %}
+{% block title %}{% trans "Branches" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Branches" %}{% endblock %}
 
 {% block content %}
 {% if can_manage_branches %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add branch</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Add branch" %}</h3>
   <form id="branch-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="name">Name</label>
+        <label for="name">{% trans "Name" %}</label>
         <input type="text" id="name" name="name" required autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="code">Receipt code</label>
-        <input type="text" id="code" name="code" maxlength="3" autocomplete="off" placeholder="e.g. HIG, CHU" style="text-transform: uppercase;">
+        <label for="code">{% trans "Receipt code" %}</label>
+        <input type="text" id="code" name="code" maxlength="3" autocomplete="off" placeholder="{% trans "e.g. HIG, CHU" %}" style="text-transform: uppercase;">
       </div>
       <div class="form-group">
-        <label for="location">Location</label>
+        <label for="location">{% trans "Location" %}</label>
         <input type="text" id="location" name="location" autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="branch-type">Type</label>
+        <label for="branch-type">{% trans "Type" %}</label>
         <select id="branch-type" name="branch_type" required>
-          <option value="branch">Branch</option>
-          <option value="hq">Headquarters</option>
-          <option value="bakery">Bakery</option>
-          <option value="stores">Central Stores</option>
+          <option value="branch">{% trans "Branch" %}</option>
+          <option value="hq">{% trans "Headquarters" %}</option>
+          <option value="bakery">{% trans "Bakery" %}</option>
+          <option value="stores">{% trans "Central Stores" %}</option>
         </select>
       </div>
     </div>
     <div class="form-group" id="active-field" style="display: none;">
       <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
         <input type="checkbox" id="is-active" name="is_active" checked>
-        Active branch
+        {% trans "Active branch" %}
       </label>
     </div>
     <div id="fiscalization-fields" style="display: none;">
       <div class="form-group">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
           <input type="checkbox" id="allow-negative-stock" name="allow_negative_stock">
-          Allow negative stock on sales
+          {% trans "Allow negative stock on sales" %}
         </label>
         <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">
-          When enabled, POS sales can sync even if stock goes below zero. Transfers and production still require stock.
+          {% trans "When enabled, POS sales can sync even if stock goes below zero. Transfers and production still require stock." %}
         </p>
       </div>
       <div class="form-group">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
           <input type="checkbox" id="fiscalization-enabled" name="fiscalization_enabled">
-          Fiscalization enabled
+          {% trans "Fiscalization enabled" %}
         </label>
       </div>
       <div class="form-group">
-        <label for="zimra-device-id">ZIMRA device ID</label>
-        <input type="text" id="zimra-device-id" name="zimra_device_id" autocomplete="off" placeholder="e.g. 30541">
+        <label for="zimra-device-id">{% trans "ZIMRA device ID" %}</label>
+        <input type="text" id="zimra-device-id" name="zimra_device_id" autocomplete="off" placeholder="{% trans "e.g. 30541" %}">
       </div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
-      <button type="submit" class="btn btn-primary" id="submit-btn">Add branch</button>
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">{% trans "Add branch" %}</button>
     </div>
   </form>
 </div>
@@ -78,8 +78,10 @@
 <script type="module">
 import { apiGet, apiPost, apiPatch, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
 
+const t = (msgid) => window.CDP.t(msgid);
+
 const canManageBranches = {{ can_manage_branches|yesno:"true,false" }};
-const typeLabels = { hq: "Headquarters", branch: "Branch", bakery: "Bakery", stores: "Central Stores" };
+const typeLabels = { hq: t("Headquarters"), branch: t("Branch"), bakery: t("Bakery"), stores: t("Central Stores") };
 
 const branchForm = document.getElementById("branch-form");
 const formTitle = document.getElementById("form-title");
@@ -106,8 +108,8 @@ function setFormMode(mode) {
   const isEdit = mode === "edit";
   editingBranchId = isEdit ? editingBranchId : null;
 
-  formTitle.textContent = isEdit ? "Edit branch" : "Add branch";
-  submitBtn.textContent = isEdit ? "Save changes" : "Add branch";
+  formTitle.textContent = isEdit ? t("Edit branch") : t("Add branch");
+  submitBtn.textContent = isEdit ? t("Save changes") : t("Add branch");
   cancelBtn.style.display = isEdit ? "" : "none";
   activeField.style.display = isEdit ? "" : "none";
   fiscalizationFields.style.display = isEdit ? "" : "none";
@@ -139,7 +141,7 @@ function startEdit(branch) {
 
 function renderBranches() {
   if (!branches.length) {
-    branchList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>No branches configured</p></div>`;
+    branchList.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${t("No branches configured")}</p></div>`;
     return;
   }
 
@@ -148,15 +150,15 @@ function renderBranches() {
       <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
         <h3>${b.name}</h3>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span class="badge ${b.is_active ? "badge-active" : "badge-inactive"}">${b.is_active ? "Active" : "Inactive"}</span>
-          ${b.allow_negative_stock ? `<span class="badge badge-active">Negative stock allowed</span>` : ""}
-          ${b.fiscalization_enabled ? `<span class="badge badge-active">Fiscal${b.zimra_device_id ? ` · ${b.zimra_device_id}` : ""}</span>` : ""}
-          ${canManageBranches ? `<button type="button" class="btn btn-ghost btn-sm" data-edit="${b.id}">Edit</button>` : ""}
+          <span class="badge ${b.is_active ? "badge-active" : "badge-inactive"}">${b.is_active ? t("Active") : t("Inactive")}</span>
+          ${b.allow_negative_stock ? `<span class="badge badge-active">${t("Negative stock allowed")}</span>` : ""}
+          ${b.fiscalization_enabled ? `<span class="badge badge-active">${t("Fiscal")}${b.zimra_device_id ? ` · ${b.zimra_device_id}` : ""}</span>` : ""}
+          ${canManageBranches ? `<button type="button" class="btn btn-ghost btn-sm" data-edit="${b.id}">${t("Edit")}</button>` : ""}
         </div>
       </div>
-      <p class="location">${b.location || "No location set"}${b.code ? ` · Receipt code: ${b.code}` : ""}</p>
+      <p class="location">${b.location || t("No location set")}${b.code ? ` · ${t("Receipt code:")} ${b.code}` : ""}</p>
       <span class="branch-type">${typeLabels[b.branch_type] || b.branch_type}</span>
-      <p style="margin: 0.75rem 0 0; font-size: 0.75rem; color: var(--color-muted);">Since ${formatDate(b.created_at)}</p>
+      <p style="margin: 0.75rem 0 0; font-size: 0.75rem; color: var(--color-muted);">${t("Since")} ${formatDate(b.created_at)}</p>
     </div>
   `).join("");
 }
@@ -188,7 +190,7 @@ if (canManageBranches) {
     };
 
     if (!payload.name) {
-      showToast("Branch name is required", true);
+      showToast(t("Branch name is required"), true);
       return;
     }
 
@@ -199,10 +201,10 @@ if (canManageBranches) {
         payload.fiscalization_enabled = fiscalizationEnabledInput.checked;
         payload.zimra_device_id = zimraDeviceIdInput.value.trim();
         await apiPatch(`/branches/${editingBranchId}/`, payload);
-        showToast("Branch updated");
+        showToast(t("Branch updated"));
       } else {
         await apiPost("/branches/", payload);
-        showToast("Branch created");
+        showToast(t("Branch created"));
       }
       setFormMode("create");
       await loadBranches();
@@ -214,7 +216,7 @@ if (canManageBranches) {
 
 loadBranches().catch(err => {
   branchList.innerHTML =
-    `<div class="empty-state" style="grid-column: 1/-1;">Failed to load branches: ${err.message}</div>`;
+    `<div class="empty-state" style="grid-column: 1/-1;">${t("Failed to load branches:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

@@ -53,6 +53,7 @@ class StaffUserApiTests(APITestCase):
                 "username": "poscashier",
                 "email": "pos@example.com",
                 "password": "securepass1",
+                "access_code": "1001",
                 "branch": self.branch.id,
                 "role": StaffRole.CASHIER,
                 "pos_access": False,
@@ -73,6 +74,7 @@ class StaffUserApiTests(APITestCase):
                 "username": "waiter1",
                 "email": "waiter@example.com",
                 "password": "securepass1",
+                "access_code": "1002",
                 "branch": self.branch.id,
                 "role": StaffRole.WAITER,
                 "pos_access": False,
@@ -94,6 +96,7 @@ class StaffUserApiTests(APITestCase):
                 "username": "cashier1",
                 "email": "cashier1@example.com",
                 "password": "securepass1",
+                "access_code": "1003",
                 "branch": self.branch.id,
                 "role": StaffRole.BRANCH_MANAGER,
             },
@@ -208,6 +211,61 @@ class StaffUserApiTests(APITestCase):
         response = self.client.get(self.list_url)
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_requires_access_code(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "username": "nocode",
+                "password": "securepass1",
+                "branch": self.branch.id,
+                "role": StaffRole.CASHIER,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("access_code", response.data)
+
+    def test_create_rejects_duplicate_access_code(self):
+        StaffProfile.objects.filter(user=self.hq_admin).update(access_code="4242")
+        response = self.client.post(
+            self.list_url,
+            {
+                "username": "dupcode",
+                "password": "securepass1",
+                "access_code": "4242",
+                "branch": self.branch.id,
+                "role": StaffRole.CASHIER,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("access_code", response.data)
+
+    def test_create_and_update_access_code(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "username": "codecashier",
+                "password": "securepass1",
+                "access_code": "7777",
+                "branch": self.branch.id,
+                "role": StaffRole.CASHIER,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["access_code"], "7777")
+        user = User.objects.get(username="codecashier")
+        self.assertEqual(user.staff_profile.access_code, "7777")
+
+        patch = self.client.patch(
+            reverse("staffuser-detail", args=[user.pk]),
+            {"access_code": "8888"},
+            format="json",
+        )
+        self.assertEqual(patch.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch.data["access_code"], "8888")
 
 
 class BranchAccessTests(APITestCase):
@@ -881,12 +939,14 @@ class MobileAppLoginTests(APITestCase):
             branch=self.branch,
             role=StaffRole.CASHIER,
             pos_access=True,
+            access_code="4321",
         )
         self.kitchen_staff = User.objects.create_user(username="cook", password="secret")
         StaffProfile.objects.create(
             user=self.kitchen_staff,
             branch=self.branch,
             role=StaffRole.STAFF,
+            access_code="4322",
         )
         self.baker = User.objects.create_user(username="baker", password="secret")
         StaffProfile.objects.create(
@@ -928,6 +988,50 @@ class MobileAppLoginTests(APITestCase):
         self.assertFalse(response.data["can_access_pos"])
         self.assertFalse(response.data["can_access_kitchen"])
         self.assertEqual(response.data["branch"]["id"], self.bakery.id)
+
+    def test_login_with_access_code(self):
+        response = self.client.post(
+            self.login_url,
+            {"access_code": "4321"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["user"]["username"], "cashier")
+        self.assertTrue(response.data["can_access_pos"])
+
+    def test_verify_manager_access_code(self):
+        manager = User.objects.create_user(username="mgr", password="secret")
+        StaffProfile.objects.create(
+            user=manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+            pos_access=True,
+            access_code="6666",
+        )
+        self.client.force_authenticate(user=self.cashier)
+        response = self.client.post(
+            "/api/auth/verify-access-code/",
+            {"access_code": "6666"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["valid"])
+        self.assertEqual(response.data["user"]["username"], "mgr")
+
+        denied = self.client.post(
+            "/api/auth/verify-access-code/",
+            {"access_code": "4321"},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        order_ok = self.client.post(
+            "/api/auth/verify-access-code/",
+            {"access_code": "4321", "purpose": "order"},
+            format="json",
+        )
+        self.assertEqual(order_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(order_ok.data["user"]["username"], "cashier")
 
 
 class CaseInsensitiveLoginTests(APITestCase):

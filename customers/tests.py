@@ -7,7 +7,12 @@ from rest_framework.test import APIClient
 from accounts.models import StaffProfile, StaffRole
 from branches.models import Branch, BranchType
 from catalog.models import Product, ProductCategory
-from customers.models import Customer, CustomerAccountTransaction, CustomerAccountTransactionType
+from customers.models import (
+    Customer,
+    CustomerAccountTransaction,
+    CustomerAccountTransactionType,
+    CustomerAccountType,
+)
 from customers.reports import build_customer_balances_report
 from customers.services import deposit_to_account, pay_order_from_account
 from customers.statement import build_customer_statement_report
@@ -363,6 +368,32 @@ class CustomerAccountTests(TestCase):
         self.assertIn("Insufficient", response.data["detail"])
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.account_balance, Decimal("0.00"))
+
+    def test_pay_order_from_account_staff_bypasses_credit_limit(self):
+        self.customer.account_type = CustomerAccountType.STAFF
+        self.customer.account_balance = Decimal("0.00")
+        self.customer.credit_limit = Decimal("0.00")
+        self.customer.save(
+            update_fields=["account_type", "account_balance", "credit_limit"]
+        )
+        order = Order.objects.create(branch=self.branch, customer=self.customer)
+        order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+
+        response = self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"payment_method": "account"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.customer.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PAID)
+        self.assertEqual(self.customer.account_balance, Decimal("7.00"))
 
     def test_customer_accounts_page(self):
         response = self.ui_client.get("/customer-accounts/")

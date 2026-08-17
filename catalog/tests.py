@@ -174,20 +174,23 @@ class BakeryTransferProductFilterTests(TestCase):
         names = {item["name"] for item in response.data["results"]}
         self.assertEqual(names, {"Espresso"})
 
-    def test_bakery_manufactured_excludes_inactive_products(self):
+    def test_bakery_manufactured_includes_inactive_products(self):
         self.croissant.is_active = False
         self.croissant.save(update_fields=["is_active"])
         response = self.client.get("/api/products/?bakery_manufactured=true")
         self.assertEqual(response.status_code, 200)
         names = {item["name"] for item in response.data["results"]}
-        self.assertEqual(names, {"Pastry Cream"})
+        self.assertEqual(names, {"Croissant", "Pastry Cream"})
+        inactive = [item for item in response.data["results"] if item["name"] == "Croissant"]
+        self.assertFalse(inactive[0]["is_active"])
 
-    def test_exclude_bakery_excludes_inactive_products(self):
+    def test_exclude_bakery_includes_inactive_products(self):
         Product.objects.filter(name="Espresso").update(is_active=False)
         response = self.client.get("/api/products/?exclude_bakery=true")
         self.assertEqual(response.status_code, 200)
         names = {item["name"] for item in response.data["results"]}
-        self.assertEqual(names, set())
+        self.assertEqual(names, {"Espresso"})
+        self.assertFalse(response.data["results"][0]["is_active"])
 
     def test_pos_catalog_filters_by_branch_availability(self):
         from branches.models import Branch, BranchType

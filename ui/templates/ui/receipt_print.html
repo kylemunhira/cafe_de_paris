@@ -1,10 +1,10 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if is_proforma %}Proforma {{ order.receipt_number }}{% elif fiscal and not is_proforma %}Fiscal receipt {{ fiscal.invoice_no }}{% elif order.receipt_number %}Receipt #{{ order.receipt_number }}{% else %}Receipt #{{ order.id }}{% endif %}{% if order.branch.fiscalization_enabled %} — Café de Paris{% endif %}</title>
+  <title>{% if is_proforma %}{% trans "Proforma" %} {{ order.receipt_number }}{% elif fiscal and not is_proforma %}{% trans "Fiscal receipt" %} {{ fiscal.invoice_no }}{% elif order.receipt_number %}{% trans "Receipt" %} #{{ order.receipt_number }}{% else %}{% trans "Receipt" %} #{{ order.id }}{% endif %}{% if order.branch.fiscalization_enabled %} — Café de Paris{% endif %}</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body
@@ -13,7 +13,7 @@
   {% if fiscal and fiscal.qr_url %}data-fiscal-qr-url="{{ fiscal.qr_url|escapejs }}"{% endif %}
 >
   <div class="toolbar">
-    <button type="button" onclick="window.print()">{% if is_proforma %}Print proforma{% else %}Print receipt{% endif %}</button>
+    <button type="button" onclick="window.print()">{% if is_proforma %}{% trans "Print proforma" %}{% else %}{% trans "Print receipt" %}{% endif %}</button>
   </div>
 
   <div class="receipt">
@@ -26,22 +26,22 @@
 
     <div class="center meta">
       {% if is_proforma %}
-      <p class="badge">PROFORMA</p>
-      <p><strong>Proforma Receipt</strong></p>
-      <p class="proforma-note">Not a fiscal receipt — pending approval</p>
-      {% if order.receipt_number %}<p>Proforma #{{ order.receipt_number }}</p>{% endif %}
+      <p class="badge">{% trans "PROFORMA" %}</p>
+      <p><strong>{% trans "Proforma Receipt" %}</strong></p>
+      <p class="proforma-note">{% trans "Not a fiscal receipt — pending approval" %}</p>
+      {% if order.receipt_number %}<p>{% trans "Proforma" %} #{{ order.receipt_number }}</p>{% endif %}
       {% else %}
-      <p><strong>Sales Receipt</strong></p>
+      <p><strong>{% trans "Sales Receipt" %}</strong></p>
       {% if fiscal and not is_proforma %}
-      <p>Fiscal receipt #{{ fiscal.invoice_no }}</p>
+      <p>{% trans "Fiscal receipt" %} #{{ fiscal.invoice_no }}</p>
       {% elif order.receipt_number %}
-      <p>Receipt #{{ order.receipt_number }}</p>
+      <p>{% trans "Receipt" %} #{{ order.receipt_number }}</p>
       {% endif %}
       {% endif %}
-      <p><strong>#{{ order.id }} - {% if order.order_type == "takeaway" %}TAKEAWAY{% elif order.table_number %}{{ order.table_number }}{% else %}DINE IN{% endif %}</strong></p>
+      <p><strong>#{{ order.id }} - {% if order.order_type == "takeaway" %}{% trans "TAKEAWAY" %}{% elif order.table_number %}{{ order.table_number }}{% else %}{% trans "DINE IN" %}{% endif %}</strong></p>
       <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
-      {% if order.customer %}<p>Customer: {{ order.customer }}</p>{% endif %}
-      {% if salesperson_name %}<p>Served by {{ salesperson_name }}</p>{% endif %}
+      {% if order.customer %}<p>{% trans "Customer" %}: {{ order.customer }}</p>{% endif %}
+      {% if salesperson_name %}<p>{% trans "Served by" %} {{ salesperson_name }}</p>{% endif %}
     </div>
 
     <hr class="divider">
@@ -49,9 +49,9 @@
     <table class="items">
       <thead>
         <tr>
-          <th class="col-item">Item</th>
-          <th class="col-qty">Qty</th>
-          <th class="col-amt">Amt</th>
+          <th class="col-item">{% trans "Item" %}</th>
+          <th class="col-qty">{% trans "Qty" %}</th>
+          <th class="col-amt">{% trans "Amt" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -59,14 +59,14 @@
         <tr>
           <td class="col-item">
             <div class="item-name">{{ item.product.name }}</div>
-            <div class="item-detail">{{ item.price|floatformat:2 }} each</div>
+            <div class="item-detail">{{ item.price|floatformat:2 }} {% trans "each" %}</div>
           </td>
           <td class="col-qty">{{ item.quantity|floatformat:2 }}</td>
           <td class="col-amt">{{ item.line_total|floatformat:2 }}</td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="3">No items</td>
+          <td colspan="3">{% trans "No items" %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -77,16 +77,16 @@
     <table class="summary">
       {% if order.branch.fiscalization_enabled %}
       <tr>
-        <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-label">{% trans "Subtotal" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.subtotal|floatformat:2 }}</td>
       </tr>
       <tr>
-        <td class="col-label">Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
+        <td class="col-label">{% trans "Tax" %} ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
         <td class="col-amt">{{ tax_breakdown.tax|floatformat:2 }}</td>
       </tr>
       {% endif %}
       <tr>
-        <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-label">{% trans "Total" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.total|floatformat:2 }}</td>
       </tr>
     </table>
@@ -95,23 +95,23 @@
       <table class="summary">
         {% if order.payment_method %}
         <tr>
-          <td class="col-label">Payment</td>
+          <td class="col-label">{% trans "Payment" %}</td>
           <td class="col-amt"><strong>{{ order.get_payment_method_display }}</strong></td>
         </tr>
         {% endif %}
         {% if order.payment_currency %}
         <tr>
-          <td class="col-label">Paid in</td>
+          <td class="col-label">{% trans "Paid in" %}</td>
           <td class="col-amt"><strong>{{ order.payment_currency.code|default:order.payment_currency.name }}</strong></td>
         </tr>
         {% endif %}
         {% if change_given and order.payment_currency %}
         <tr>
-          <td class="col-label">Amount tendered</td>
+          <td class="col-label">{% trans "Amount tendered" %}</td>
           <td class="col-amt">{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }}</td>
         </tr>
         <tr>
-          <td class="col-label">Change</td>
+          <td class="col-label">{% trans "Change" %}</td>
           <td class="col-amt">{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ change_given|floatformat:2 }}</td>
         </tr>
         {% elif order.payments.all %}
@@ -127,7 +127,7 @@
     {% if not change_given and order.amount_paid != None and order.payment_currency %}
     <table class="summary grand">
       <tr>
-        <td class="col-label">Amount paid</td>
+        <td class="col-label">{% trans "Amount paid" %}</td>
         <td class="col-amt">{% if order.payment_currency.symbol %}{{ order.payment_currency.symbol }}{% endif %}{{ order.amount_paid|floatformat:2 }} {{ order.payment_currency.code }}</td>
       </tr>
     </table>
@@ -139,13 +139,13 @@
     {% if fiscal and not is_proforma %}
     <hr class="divider">
     <div class="center meta fiscal-meta">
-      <p><strong>Fiscal receipt</strong></p>
+      <p><strong>{% trans "Fiscal receipt" %}</strong></p>
       {% if fiscal.device_branch_name %}<p>{{ fiscal.device_branch_name }}</p>{% endif %}
-      {% if fiscal.device_serial_no %}<p>Device: {{ fiscal.device_serial_no }}</p>{% endif %}
-      {% if fiscal.fiscal_invoice_number %}<p>Invoice: {{ fiscal.fiscal_invoice_number }}</p>{% endif %}
-      {% if fiscal.fiscal_day_number %}<p>Fiscal day: {{ fiscal.fiscal_day_number }}</p>{% endif %}
-      {% if fiscal.receipt_counter %}<p>Receipt #{{ fiscal.receipt_counter }} / {{ fiscal.receipt_global_no }}</p>{% endif %}
-      {% if fiscal.verification_code %}<p>Verification: {{ fiscal.verification_code }}</p>{% endif %}
+      {% if fiscal.device_serial_no %}<p>{% trans "Device" %}: {{ fiscal.device_serial_no }}</p>{% endif %}
+      {% if fiscal.fiscal_invoice_number %}<p>{% trans "Invoice" %}: {{ fiscal.fiscal_invoice_number }}</p>{% endif %}
+      {% if fiscal.fiscal_day_number %}<p>{% trans "Fiscal day" %}: {{ fiscal.fiscal_day_number }}</p>{% endif %}
+      {% if fiscal.receipt_counter %}<p>{% trans "Receipt" %} #{{ fiscal.receipt_counter }} / {{ fiscal.receipt_global_no }}</p>{% endif %}
+      {% if fiscal.verification_code %}<p>{% trans "Verification" %}: {{ fiscal.verification_code }}</p>{% endif %}
       {% if fiscal.qr_string and not fiscal.qr_url %}
       <p style="margin-top: 0.5rem; font-size: 0.65rem; word-break: break-all;">{{ fiscal.qr_string }}</p>
       {% endif %}
@@ -153,17 +153,17 @@
     {% endif %}
 
     <div class="center footer">
-      <p>Thank you for your visit!</p>
+      <p>{% trans "Thank you for your visit!" %}</p>
       {% if is_proforma %}
-      <p class="badge">PROFORMA — NOT FISCAL</p>
-      <p>PAID</p>
+      <p class="badge">{% trans "PROFORMA — NOT FISCAL" %}</p>
+      <p>{% trans "PAID" %}</p>
       {% else %}
-      <p>PAID</p>
+      <p>{% trans "PAID" %}</p>
       {% endif %}
     </div>
 
     {% if fiscal and fiscal.qr_url %}
-    <div class="center fiscal-qr" id="fiscal-qr" aria-label="Fiscal QR code"></div>
+    <div class="center fiscal-qr" id="fiscal-qr" aria-label="{% trans "Fiscal QR code" %}"></div>
     {% endif %}
   </div>
 

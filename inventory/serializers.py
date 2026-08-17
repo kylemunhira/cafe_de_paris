@@ -556,6 +556,7 @@ class StockTakeLineSerializer(serializers.ModelSerializer):
             "stock_take_station_display",
             "system_quantity",
             "counted_quantity",
+            "wastage_quantity",
             "variance",
             "notes",
         ]
@@ -576,6 +577,9 @@ class StockTakeLineUpdateSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     counted_quantity = serializers.DecimalField(
         max_digits=12, decimal_places=3, required=False, allow_null=True
+    )
+    wastage_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=3, required=False, min_value=0
     )
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
 

@@ -1,0 +1,3236 @@
+# Café de Paris translations
+msgid ""
+msgstr ""
+"Project-Id-Version: cafe_de_paris\n"
+"Report-Msgid-Bugs-To: \n"
+"Language-Team: fr\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Language"
+msgstr "Langue"
+
+msgid "Management Console"
+msgstr "Console de gestion"
+
+msgid "Dashboard"
+msgstr "Tableau de bord"
+
+msgid "Point of Sale"
+msgstr "Point de vente"
+
+msgid "Stock Take"
+msgstr "Inventaire"
+
+msgid "Branch Transfers"
+msgstr "Transferts entre succursales"
+
+msgid "Bakery Production"
+msgstr "Production boulangerie"
+
+msgid "Bakery Transfers"
+msgstr "Transferts boulangerie"
+
+msgid "Stock adjustment"
+msgstr "Ajustement de stock"
+
+msgid "Wastage"
+msgstr "Pertes"
+
+msgid "Customer Payment"
+msgstr "Paiement client"
+
+msgid "Kitchen"
+msgstr "Cuisine"
+
+msgid "Orders"
+msgstr "Commandes"
+
+msgid "Invoices"
+msgstr "Factures"
+
+msgid "Receipts"
+msgstr "Reçus"
+
+msgid "GRV"
+msgstr "BR"
+
+msgid "Products"
+msgstr "Produits"
+
+msgid "List Products"
+msgstr "Liste des produits"
+
+msgid "Menu Add-ons"
+msgstr "Suppléments menu"
+
+msgid "List Ingredients"
+msgstr "Liste des ingrédients"
+
+msgid "List Product Categories"
+msgstr "Catégories de produits"
+
+msgid "Bakery Products"
+msgstr "Produits de boulangerie"
+
+msgid "Branches"
+msgstr "Succursales"
+
+msgid "Stores Transfers"
+msgstr "Transferts entre magasins"
+
+msgid "Central Invoice"
+msgstr "Facture centrale"
+
+msgid "Recipes"
+msgstr "Recettes"
+
+msgid "Expenses"
+msgstr "Dépenses"
+
+msgid "Purchases"
+msgstr "Achats"
+
+msgid "Customers & Suppliers"
+msgstr "Clients et fournisseurs"
+
+msgid "List Customer"
+msgstr "Liste des clients"
+
+msgid "Customer Accounts"
+msgstr "Comptes clients"
+
+msgid "List Suppliers"
+msgstr "Liste des fournisseurs"
+
+msgid "Users"
+msgstr "Utilisateurs"
+
+msgid "Audit log"
+msgstr "Journal d'audit"
+
+msgid "Reports"
+msgstr "Rapports"
+
+msgid "Ingredient Stock"
+msgstr "Stock des ingrédients"
+
+msgid "Ingredient Usage"
+msgstr "Utilisation des ingrédients"
+
+msgid "Day End"
+msgstr "Clôture de journée"
+
+msgid "Voided & Cancelled"
+msgstr "Annulés et voidés"
+
+msgid "Customer Balances"
+msgstr "Soldes clients"
+
+msgid "VAT Report"
+msgstr "Rapport TVA"
+
+msgid "Supplier Statements"
+msgstr "Relevés fournisseurs"
+
+msgid "Payment & Rates"
+msgstr "Paiement et taux"
+
+msgid "Rates"
+msgstr "Taux"
+
+msgid "Currency"
+msgstr "Devise"
+
+msgid "Admin panel"
+msgstr "Panneau admin"
+
+msgid "Toggle navigation"
+msgstr "Afficher/masquer la navigation"
+
+msgid "Hide navigation"
+msgstr "Masquer la navigation"
+
+msgid "Show navigation"
+msgstr "Afficher la navigation"
+
+msgid "Log out"
+msgstr "Déconnexion"
+
+msgid "Sign in"
+msgstr "Connexion"
+
+msgid "All rights reserved."
+msgstr "Tous droits réservés."
+
+msgid "Sign in to continue"
+msgstr "Connectez-vous pour continuer"
+
+msgid "Invalid username or password."
+msgstr "Nom d'utilisateur ou mot de passe invalide."
+
+msgid "Username"
+msgstr "Nom d'utilisateur"
+
+msgid "Password"
+msgstr "Mot de passe"
+
+msgid "From"
+msgstr "Du"
+
+msgid "To"
+msgstr "Au"
+
+msgid "Branch"
+msgstr "Succursale"
+
+msgid "All branches"
+msgstr "Toutes les succursales"
+
+msgid "Apply"
+msgstr "Appliquer"
+
+msgid "Print"
+msgstr "Imprimer"
+
+msgid "Search"
+msgstr "Rechercher"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Edit"
+msgstr "Modifier"
+
+msgid "Add"
+msgstr "Ajouter"
+
+msgid "Name"
+msgstr "Nom"
+
+msgid "Date"
+msgstr "Date"
+
+msgid "Status"
+msgstr "Statut"
+
+msgid "Active"
+msgstr "Actif"
+
+msgid "Inactive"
+msgstr "Inactif"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Notes"
+msgstr "Remarques"
+
+msgid "Notes (optional)"
+msgstr "Notes (facultatif)"
+
+msgid "Amount"
+msgstr "Montant"
+
+msgid "Total"
+msgstr "Total"
+
+msgid "Quantity"
+msgstr "Quantité"
+
+msgid "Qty"
+msgstr "Qté"
+
+msgid "Product"
+msgstr "Produit"
+
+msgid "Category"
+msgstr "Catégorie"
+
+msgid "Customer"
+msgstr "Client"
+
+msgid "Supplier"
+msgstr "Fournisseur"
+
+msgid "Phone"
+msgstr "Téléphone"
+
+msgid "Email"
+msgstr "E-mail"
+
+msgid "Type"
+msgstr "Taper"
+
+msgid "Description"
+msgstr "Description"
+
+msgid "All"
+msgstr "Tous"
+
+msgid "Yes"
+msgstr "Oui"
+
+msgid "No"
+msgstr "Non"
+
+msgid "None"
+msgstr "Aucun"
+
+msgid "Open"
+msgstr "Ouvert"
+
+msgid "Paid"
+msgstr "Payé"
+
+msgid "Unpaid"
+msgstr "Impayé"
+
+msgid "Cancelled"
+msgstr "Annulé"
+
+msgid "Download CSV"
+msgstr "Télécharger CSV"
+
+msgid "Upload CSV"
+msgstr "Importer CSV"
+
+msgid "Import CSV"
+msgstr "Importer CSV"
+
+msgid "Actions"
+msgstr "Actes"
+
+msgid "Details"
+msgstr "Détails"
+
+msgid "Revenue"
+msgstr "Chiffre d'affaires"
+
+msgid "Payments"
+msgstr "Paiements"
+
+msgid "Profit"
+msgstr "Bénéfice"
+
+msgid "Charts"
+msgstr "Graphiques"
+
+msgid "Export Sales CSV"
+msgstr "Exporter les ventes CSV"
+
+msgid "Paid collections by currency name for the selected period (amounts in base currency)."
+msgstr "Encaissements payés par devise pour la période sélectionnée (montants en devise de base)."
+
+msgid "By Currency"
+msgstr "Par devise"
+
+msgid "Visual breakdown of sales and profit for the selected period."
+msgstr "Répartition visuelle des ventes et du bénéfice pour la période sélectionnée."
+
+msgid "Sales by Branch"
+msgstr "Ventes par succursale"
+
+msgid "Revenue by Category"
+msgstr "Revenu par catégorie"
+
+msgid "Top Products"
+msgstr "Meilleurs produits"
+
+msgid "Profit Breakdown"
+msgstr "Répartition du bénéfice"
+
+msgid "Sales by Category"
+msgstr "Ventes par catégorie"
+
+msgid "Gross Profit by Product"
+msgstr "Marge brute par produit"
+
+msgid "Low Stock"
+msgstr "Stock bas"
+
+msgid "Products Without Recipe"
+msgstr "Produits sans recette"
+
+msgid "Total Revenue"
+msgstr "Revenu total"
+
+msgid "Paid Orders"
+msgstr "Commandes payées"
+
+msgid "In selected period"
+msgstr "Sur la période sélectionnée"
+
+msgid "Avg Order Value"
+msgstr "Panier moyen"
+
+msgid "Per paid order"
+msgstr "Par commande payée"
+
+msgid "Tax Collected"
+msgstr "Taxe collectée"
+
+msgid "Based on inclusive tax in paid sales"
+msgstr "Basé sur la taxe TTC des ventes payées"
+
+msgid "Cost of Sales"
+msgstr "Coût des ventes"
+
+msgid "From recipe ingredient costs"
+msgstr "D'après le coût des ingrédients de recette"
+
+msgid "Gross Profit"
+msgstr "Marge brute"
+
+msgid "margin"
+msgstr "de marge"
+
+msgid "Operating Expenses"
+msgstr "Charges d'exploitation"
+
+msgid "Recorded petty cash & expenses"
+msgstr "Petite caisse et dépenses enregistrées"
+
+msgid "Net Profit"
+msgstr "Bénéfice net"
+
+msgid "Gross profit less expenses"
+msgstr "Marge brute moins dépenses"
+
+msgid "Cost of sales is calculated from recipe ingredient costs."
+msgstr "Le coût des ventes est calculé à partir des coûts d'ingrédients de recette."
+
+msgid "Qty Sold"
+msgstr "Qté vendue"
+
+msgid "Share"
+msgstr "Part"
+
+msgid "COGS"
+msgstr "Coût"
+
+msgid "GP%"
+msgstr "MB%"
+
+msgid "Remaining"
+msgstr "Restant"
+
+msgid "Edit recipe"
+msgstr "Modifier la recette"
+
+msgid "No paid orders for this period"
+msgstr "Aucune commande payée pour cette période"
+
+msgid "No category sales for this period"
+msgstr "Aucune vente par catégorie pour cette période"
+
+msgid "No payment data for this period"
+msgstr "Aucune donnée de paiement pour cette période"
+
+msgid "No product sales for this period"
+msgstr "Aucune vente de produit pour cette période"
+
+msgid "No profit data for this period"
+msgstr "Aucune donnée de bénéfice pour cette période"
+
+msgid "No paid sales for this period"
+msgstr "Aucune vente payée pour cette période"
+
+msgid "All sold products have recipes"
+msgstr "Tous les produits vendus ont une recette"
+
+msgid "All sold products have recipes for this period"
+msgstr "Tous les produits vendus ont une recette pour cette période"
+
+msgid "All products are above the low-stock threshold"
+msgstr "Tous les produits sont au-dessus du seuil de stock bas"
+
+msgid "Failed to load dashboard:"
+msgstr "Échec du chargement du tableau de bord :"
+
+msgid "units"
+msgstr "unités"
+
+msgid "Customer Balances Report"
+msgstr "Rapport des soldes clients"
+
+msgid "Name, phone, or email…"
+msgstr "Nom, téléphone ou e-mail…"
+
+msgid "Only customers with balance"
+msgstr "Clients avec solde uniquement"
+
+msgid "Customers listed"
+msgstr "Clients listés"
+
+msgid "With account balance"
+msgstr "Avec solde de compte"
+
+msgid "Total prepaid balance"
+msgstr "Solde prépayé total"
+
+msgid "Customers"
+msgstr "Clients"
+
+msgid "Current balance"
+msgstr "Solde actuel"
+
+msgid "View account"
+msgstr "Voir le compte"
+
+msgid "No customers match your filters"
+msgstr "Aucun client ne correspond à vos filtres"
+
+msgid "Failed to load report:"
+msgstr "Échec du chargement du rapport :"
+
+msgid "As at"
+msgstr "Au"
+
+msgid "All physical branches"
+msgstr "Toutes les succursales physiques"
+
+msgid "Output TAX Amount"
+msgstr "Montant de taxe en sortie"
+
+msgid "Total Sales Including VAT"
+msgstr "Ventes totales TTC"
+
+msgid "Total Sales Excluding VAT"
+msgstr "Ventes totales HT"
+
+msgid "Total Taxable Sales (Excluding VAT)"
+msgstr "Ventes taxables totales (HT)"
+
+msgid "Total Non-taxable Sales"
+msgstr "Ventes non taxables totales"
+
+msgid "VAT on Taxables Sales"
+msgstr "TVA sur ventes taxables"
+
+msgid "Sales Returns"
+msgstr "Retours sur ventes"
+
+msgid "Discounts Given"
+msgstr "Remises accordées"
+
+msgid "Input TAX"
+msgstr "Taxe en entrée"
+
+msgid "Total Purchases Including VAT"
+msgstr "Achats totaux TTC"
+
+msgid "Total Purchases Excluding VAT"
+msgstr "Achats totaux HT"
+
+msgid "Total Raw Materials Purchases Including VAT"
+msgstr "Achats matières premières TTC"
+
+msgid "Total Raw Materials Purchases Excluding VAT"
+msgstr "Achats matières premières HT"
+
+msgid "Credit Notes Excluding VAT"
+msgstr "Avoirs HT"
+
+msgid "Credit Notes VAT"
+msgstr "TVA des avoirs"
+
+msgid "Credit Notes Including VAT"
+msgstr "Avoirs TTC"
+
+msgid "Total Taxable Purchases (Excluding VAT)"
+msgstr "Achats taxables totaux (HT)"
+
+msgid "Total Non-taxable Purchases"
+msgstr "Achats non taxables totaux"
+
+msgid "VAT on Taxable Purchases"
+msgstr "TVA sur achats taxables"
+
+msgid "Purchases Returns"
+msgstr "Retours sur achats"
+
+msgid "Discount Given"
+msgstr "Remise accordée"
+
+msgid "NET VAT"
+msgstr "TVA nette"
+
+msgid "All Branches"
+msgstr "Toutes les succursales"
+
+msgid "Select both from and to dates"
+msgstr "Sélectionnez les dates de début et de fin"
+
+msgid "Voided & Cancelled Items"
+msgstr "Articles annulés et voidés"
+
+msgid "Search product"
+msgstr "Rechercher un produit"
+
+msgid "Product name…"
+msgstr "Nom du produit…"
+
+msgid "Voided items"
+msgstr "Articles voidés"
+
+msgid "Cancelled items"
+msgstr "Articles annulés"
+
+msgid "Voided amount"
+msgstr "Montant voidé"
+
+msgid "Cancelled amount"
+msgstr "Montant annulé"
+
+msgid "Voided & cancelled lines"
+msgstr "Lignes annulées et voidées"
+
+msgid "Time"
+msgstr "Heure"
+
+msgid "Action"
+msgstr "Action"
+
+msgid "Order"
+msgstr "Commande"
+
+msgid "Table"
+msgstr "Tableau"
+
+msgid "Add-ons"
+msgstr "Suppléments"
+
+msgid "Unit price"
+msgstr "Prix unitaire"
+
+msgid "Line total"
+msgstr "Total ligne"
+
+msgid "By"
+msgstr "Par"
+
+msgid "Voided"
+msgstr "Voidé"
+
+msgid "No voided or cancelled items for this date"
+msgstr "Aucun article annulé ou voidé pour cette date"
+
+msgid "Ingredient Stock Report"
+msgstr "Rapport de stock des ingrédients"
+
+msgid "Search ingredient"
+msgstr "Rechercher un ingrédient"
+
+msgid "Name…"
+msgstr "Nom…"
+
+msgid "Active ingredients only"
+msgstr "Ingrédients actifs uniquement"
+
+msgid "Low stock only"
+msgstr "Stock bas uniquement"
+
+msgid "Ingredients"
+msgstr "Ingrédients"
+
+msgid "Lines with stock"
+msgstr "Lignes avec stock"
+
+msgid "Total stock value"
+msgstr "Valeur totale du stock"
+
+msgid "Stock by branch"
+msgstr "Stock par succursale"
+
+msgid "Ingredient"
+msgstr "Ingrédient"
+
+msgid "Unit cost"
+msgstr "Coût unitaire"
+
+msgid "Stock qty"
+msgstr "Qté en stock"
+
+msgid "Stock value"
+msgstr "Valeur du stock"
+
+msgid "No ingredients match your filters"
+msgstr "Aucun ingrédient ne correspond à vos filtres"
+
+msgid "Daily Ingredient Usage"
+msgstr "Utilisation quotidienne des ingrédients"
+
+msgid "Ingredients used"
+msgstr "Ingrédients utilisés"
+
+msgid "Total quantity used"
+msgstr "Quantité totale utilisée"
+
+msgid "Total usage cost"
+msgstr "Coût total d'utilisation"
+
+msgid "Usage by branch"
+msgstr "Utilisation par succursale"
+
+msgid "From sales"
+msgstr "Des ventes"
+
+msgid "From production"
+msgstr "De la production"
+
+msgid "Total used"
+msgstr "Total utilisé"
+
+msgid "Usage cost"
+msgstr "Coût d'utilisation"
+
+msgid "No ingredient usage recorded for this date"
+msgstr "Aucune utilisation d'ingrédient enregistrée pour cette date"
+
+msgid "Day End Report"
+msgstr "Rapport de clôture"
+
+msgid "Closes listed"
+msgstr "Clôtures listées"
+
+msgid "With cash count"
+msgstr "Avec comptage de caisse"
+
+msgid "Total variance"
+msgstr "Écart total"
+
+msgid "Saved day-end closes"
+msgstr "Clôtures enregistrées"
+
+msgid "Variance and activity saved when day end is printed from POS."
+msgstr "Écart et activité enregistrés lors de l'impression de la clôture depuis le PDV."
+
+msgid "Day-end detail"
+msgstr "Détail de clôture"
+
+msgid "Closed by"
+msgstr "Clôturé par"
+
+msgid "Gross"
+msgstr "Brut"
+
+msgid "Variance"
+msgstr "Écart"
+
+msgid "Sales"
+msgstr "Ventes"
+
+msgid "Deposits"
+msgstr "Dépôts"
+
+msgid "Net expected"
+msgstr "Net attendu"
+
+msgid "Counted"
+msgstr "Compté"
+
+msgid "Cash variance"
+msgstr "Écart de caisse"
+
+msgid "Activity at close"
+msgstr "Activité à la clôture"
+
+msgid "Payments by method"
+msgstr "Paiements par méthode"
+
+msgid "Top products"
+msgstr "Meilleurs produits"
+
+msgid "No cash-up lines."
+msgstr "Aucune ligne de caisse."
+
+msgid "No activity snapshot."
+msgstr "Aucun aperçu d'activité."
+
+msgid "No saved day-end closes for this period."
+msgstr "Aucune clôture enregistrée pour cette période."
+
+msgid "Search supplier"
+msgstr "Rechercher un fournisseur"
+
+msgid "Name, phone, VAT…"
+msgstr "Nom, téléphone, TVA…"
+
+msgid "Suppliers listed"
+msgstr "Fournisseurs listés"
+
+msgid "With purchases in period"
+msgstr "Avec achats sur la période"
+
+msgid "Total spend in period"
+msgstr "Dépenses totales sur la période"
+
+msgid "Spend by supplier"
+msgstr "Dépenses par fournisseur"
+
+msgid "Selected period"
+msgstr "Période sélectionnée"
+
+msgid "Spend in period"
+msgstr "Dépenses sur la période"
+
+msgid "View statement"
+msgstr "Voir le relevé"
+
+msgid "No suppliers match your filters"
+msgstr "Aucun fournisseur ne correspond à vos filtres"
+
+msgid "Failed to load branches:"
+msgstr "Échec du chargement des succursales :"
+
+msgid "VAT"
+msgstr "TVA"
+
+msgid "to"
+msgstr "au"
+
+msgid "fiscal invoices (proforma excluded)"
+msgstr "factures fiscales (proforma exclus)"
+
+msgid "purchases from VAT-registered suppliers"
+msgstr "achats auprès de fournisseurs assujettis à la TVA"
+
+msgid "voided order(s)"
+msgstr "commande(s) voidée(s)"
+
+msgid "cancelled order(s)"
+msgstr "commande(s) annulée(s)"
+
+msgid "line(s)"
+msgstr "ligne(s)"
+
+msgid "all branches"
+msgstr "toutes les succursales"
+
+msgid "lines"
+msgstr "lignes"
+
+msgid "Usage for"
+msgstr "Utilisation pour"
+
+msgid "Expense"
+msgstr "Dépense"
+
+msgid "Transaction"
+msgstr "Transaction"
+
+msgid "Item"
+msgstr "Article"
+
+msgid "Customer accounts"
+msgstr "Comptes clients"
+
+msgid "Closed"
+msgstr "Clôturé"
+
+msgid "by"
+msgstr "par"
+
+msgid "Branch availability mode"
+msgstr "Mode de disponibilité par succursale"
+
+msgid "Product view"
+msgstr "Vue produit"
+
+msgid "Card view"
+msgstr "Vue cartes"
+
+msgid "List view"
+msgstr "Vue liste"
+
+msgid "Daily count for"
+msgstr "Comptage quotidien pour"
+
+msgid "A4 Invoice"
+msgstr "Facture A4"
+
+msgid "A4 Proforma"
+msgstr "Proforma A4"
+
+msgid "Account"
+msgstr "Compte"
+
+msgid "Account type"
+msgstr "Type de compte"
+
+msgid "Active branch"
+msgstr "Succursale active"
+
+msgid "Active currency"
+msgstr "Devise active"
+
+msgid "Active ingredient"
+msgstr "Ingrédient actif"
+
+msgid "Active product"
+msgstr "Produit actif"
+
+msgid "Active supplier"
+msgstr "Fournisseur actif"
+
+msgid "Active user"
+msgstr "Utilisateur actif"
+
+msgid "Add bakery product"
+msgstr "Ajouter un produit de boulangerie"
+
+msgid "Add branch"
+msgstr "Ajouter une succursale"
+
+msgid "Add category"
+msgstr "Ajouter une catégorie"
+
+msgid "Add currency"
+msgstr "Ajouter une devise"
+
+msgid "Add customer"
+msgstr "Ajouter un client"
+
+msgid "Add ingredient"
+msgstr "Ajouter un ingrédient"
+
+msgid "Add option"
+msgstr "Ajouter une option"
+
+msgid "Add product"
+msgstr "Ajouter un produit"
+
+msgid "Add staff user"
+msgstr "Ajouter un utilisateur"
+
+msgid "Add supplier"
+msgstr "Ajouter un fournisseur"
+
+msgid "Add user"
+msgstr "Ajouter un utilisateur"
+
+msgid "Add-on activated"
+msgstr "Supplément activé"
+
+msgid "Add-on deactivated"
+msgstr "Supplément désactivé"
+
+msgid "Add-on group"
+msgstr "Groupe de suppléments"
+
+msgid "Add-on group created"
+msgstr "Groupe de suppléments créé"
+
+msgid "Add-on option created"
+msgstr "Option de supplément créée"
+
+msgid "Add-on updated"
+msgstr "Supplément mis à jour"
+
+msgid "Add-ons:"
+msgstr "Suppléments :"
+
+msgid "Added"
+msgstr "Ajouté"
+
+msgid "Address"
+msgstr "Adresse"
+
+msgid "All actions"
+msgstr "Toutes les actions"
+
+msgid "All dates"
+msgstr "Toutes les dates"
+
+msgid "All stations"
+msgstr "Toutes les stations"
+
+msgid "All types"
+msgstr "Tous les types"
+
+msgid "Allow negative stock on sales"
+msgstr "Autoriser le stock négatif à la vente"
+
+msgid "Amount must be a positive number"
+msgstr "Le montant doit être un nombre positif"
+
+msgid "Amount paid"
+msgstr "Montant payé"
+
+msgid "Any active POS products not in the file will be deactivated."
+msgstr "Tout produit PDV actif absent du fichier sera désactivé."
+
+msgid "Approve fiscal"
+msgstr "Approuver la fiscalisation"
+
+msgid "Asset"
+msgstr "Actif"
+
+msgid "Asset category (monthly stock take only)"
+msgstr "Catégorie d'actifs (inventaire mensuel uniquement)"
+
+msgid "Attach groups to products under"
+msgstr "Associez les groupes aux produits sous"
+
+msgid "Available at branches"
+msgstr "Disponible dans les succursales"
+
+msgid "Available for sale when enabled"
+msgstr "Disponible à la vente lorsqu'il est activé"
+
+msgid "Bakery"
+msgstr "Boulangerie"
+
+msgid "Bar"
+msgstr "Bar"
+
+msgid "Base"
+msgstr "Base"
+
+msgid "Branch created"
+msgstr "Succursale créée"
+
+msgid "Branch name is required"
+msgstr "Le nom de la succursale est obligatoire"
+
+msgid "Branch stock"
+msgstr "Stock de succursale"
+
+msgid "Branch updated"
+msgstr "Succursale mise à jour"
+
+msgid "Branch:"
+msgstr "Succursale :"
+
+msgid "By currency"
+msgstr "Par devise"
+
+msgid "Cancel unpaid order"
+msgstr "Annuler la commande impayée"
+
+msgid "Cards"
+msgstr "Cartes"
+
+msgid "Category added"
+msgstr "Catégorie ajoutée"
+
+msgid "Category deleted"
+msgstr "Catégorie supprimée"
+
+msgid "Category is for grouping only; stock type stays Ingredients / Branch Ingredients."
+msgstr "La catégorie sert uniquement au regroupement ; le type de stock reste Ingrédients / Ingrédients de succursale."
+
+msgid "Category updated"
+msgstr "Catégorie mise à jour"
+
+msgid "Central Stores"
+msgstr "Magasin central"
+
+msgid "Choose any"
+msgstr "Choisir plusieurs"
+
+msgid "Choose one"
+msgstr "Choisir un"
+
+msgid "Choose where this product appears on POS. Use all branches to sell everywhere, including Central Stores."
+msgstr "Choisissez où ce produit apparaît au PDV. Utilisez toutes les succursales pour vendre partout, y compris le magasin central."
+
+msgid "Choose which add-on groups appear when this product is ordered on POS."
+msgstr "Choisissez quels groupes de suppléments apparaissent lorsque ce produit est commandé au PDV."
+
+msgid "Click a product to edit its ingredients."
+msgstr "Cliquez sur un produit pour modifier ses ingrédients."
+
+msgid "Click a product to start building its bill of materials."
+msgstr "Cliquez sur un produit pour commencer sa nomenclature."
+
+msgid "Code"
+msgstr "Code"
+
+msgid "Completed daily stock take required"
+msgstr "Inventaire quotidien terminé requis"
+
+msgid "Contact"
+msgstr "Contact"
+
+msgid "Contact person"
+msgstr "Personne de contact"
+
+msgid "Cost"
+msgstr "Coût"
+
+msgid "Cost of sales"
+msgstr "Coût des ventes"
+
+msgid "Create add-on groups and options for POS. Deactivated options stay in order history but are hidden at the till."
+msgstr "Créez des groupes et options de suppléments pour le PDV. Les options désactivées restent dans l'historique mais sont masquées à la caisse."
+
+msgid "Create group"
+msgstr "Créer le groupe"
+
+msgid "Credit limit"
+msgstr "Limite de crédit"
+
+msgid "Currencies"
+msgstr "Devises"
+
+msgid "Currency name is required"
+msgstr "Le nom de la devise est obligatoire"
+
+msgid "Currency rate"
+msgstr "Taux de change"
+
+msgid "Currency updated"
+msgstr "Devise mise à jour"
+
+msgid "Current rate"
+msgstr "Taux actuel"
+
+msgid "Customer account"
+msgstr "Compte client"
+
+msgid "Customer added"
+msgstr "Client ajouté"
+
+msgid "Customer updated"
+msgstr "Client mis à jour"
+
+msgid "Daily count"
+msgstr "Comptage quotidien"
+
+msgid "Daily count disabled"
+msgstr "Comptage quotidien désactivé"
+
+msgid "Daily count enabled"
+msgstr "Comptage quotidien activé"
+
+msgid "Daily stock take"
+msgstr "Inventaire quotidien"
+
+msgid "Day end blocked"
+msgstr "Clôture de journée bloquée"
+
+msgid "Deactivate"
+msgstr "Désactiver"
+
+msgid "Deactivate all products in this category first"
+msgstr "Désactivez d'abord tous les produits de cette catégorie"
+
+msgid "Delete category"
+msgstr "Supprimer la catégorie"
+
+msgid "Delivery"
+msgstr "Livraison"
+
+msgid "Delivery note"
+msgstr "Bon de livraison"
+
+msgid "Dining table"
+msgstr "Table"
+
+msgid "Edit branch"
+msgstr "Modifier la succursale"
+
+msgid "Edit category"
+msgstr "Modifier la catégorie"
+
+msgid "Edit currency"
+msgstr "Modifier la devise"
+
+msgid "Edit customer"
+msgstr "Modifier le client"
+
+msgid "Edit ingredient"
+msgstr "Modifier l'ingrédient"
+
+msgid "Edit staff user"
+msgstr "Modifier l'utilisateur"
+
+msgid "Edit supplier"
+msgstr "Modifier le fournisseur"
+
+msgid "Enter a description"
+msgstr "Saisissez une description"
+
+msgid "Enter a valid selling price."
+msgstr "Saisissez un prix de vente valide."
+
+msgid "Entity"
+msgstr "Entité"
+
+msgid "Expense date"
+msgstr "Date de dépense"
+
+msgid "Expense date:"
+msgstr "Date de dépense :"
+
+msgid "Expense period"
+msgstr "Période de dépenses"
+
+msgid "Expense recorded"
+msgstr "Dépense enregistrée"
+
+msgid "Failed to load add-ons:"
+msgstr "Échec du chargement des suppléments :"
+
+msgid "Failed to load audit log"
+msgstr "Échec du chargement du journal d'audit"
+
+msgid "Failed to load customers:"
+msgstr "Échec du chargement des clients :"
+
+msgid "Failed to load expenses:"
+msgstr "Échec du chargement des dépenses :"
+
+msgid "Failed to load history:"
+msgstr "Échec du chargement de l'historique :"
+
+msgid "Failed to load ingredients:"
+msgstr "Échec du chargement des ingrédients :"
+
+msgid "Failed to load invoices:"
+msgstr "Échec du chargement des factures :"
+
+msgid "Failed to load kitchen orders:"
+msgstr "Échec du chargement des commandes cuisine :"
+
+msgid "Failed to load orders:"
+msgstr "Échec du chargement des commandes :"
+
+msgid "Failed to load page:"
+msgstr "Échec du chargement de la page :"
+
+msgid "Failed to load products:"
+msgstr "Échec du chargement des produits :"
+
+msgid "Failed to load suppliers:"
+msgstr "Échec du chargement des fournisseurs :"
+
+msgid "Failed to load users:"
+msgstr "Échec du chargement des utilisateurs :"
+
+msgid "Failed to load:"
+msgstr "Échec du chargement :"
+
+msgid "Family"
+msgstr "Famille"
+
+msgid "Family (cost price)"
+msgstr "Famille (prix de revient)"
+
+msgid "Find product"
+msgstr "Trouver un produit"
+
+msgid "First name"
+msgstr "Prénom"
+
+msgid "Fiscal"
+msgstr "Fiscal"
+
+msgid "Fiscal failed"
+msgstr "Fiscalisation échouée"
+
+msgid "Fiscalization enabled"
+msgstr "Fiscalisation activée"
+
+msgid "Go to stock take"
+msgstr "Aller à l'inventaire"
+
+msgid "Gross profit"
+msgstr "Marge brute"
+
+msgid "Group name"
+msgstr "Nom du groupe"
+
+msgid "Headquarters"
+msgstr "Siège"
+
+msgid "History"
+msgstr "Historique"
+
+msgid "If this product appears in orders, purchases, or stock records it will be deactivated instead of removed."
+msgstr "S'il apparaît dans des commandes, achats ou stocks, le produit sera désactivé plutôt que supprimé."
+
+msgid "Import POS menu items from this CSV?"
+msgstr "Importer les articles du menu PDV depuis ce CSV ?"
+
+msgid "Import complete"
+msgstr "Importation terminée"
+
+msgid "Import complete:"
+msgstr "Importation terminée :"
+
+msgid "Import failed —"
+msgstr "Échec de l'importation —"
+
+msgid "Include in daily branch stock counts"
+msgstr "Inclure dans les comptages quotidiens de succursale"
+
+msgid "Include in daily stock take"
+msgstr "Inclure dans l'inventaire quotidien"
+
+msgid "Ingredient added"
+msgstr "Ingrédient ajouté"
+
+msgid "Ingredient added."
+msgstr "Ingrédient ajouté."
+
+msgid "Ingredient removed."
+msgstr "Ingrédient retiré."
+
+msgid "Ingredient updated"
+msgstr "Ingrédient mis à jour"
+
+msgid "Initial qty"
+msgstr "Qté initiale"
+
+msgid "Invoice #"
+msgstr "Facture n°"
+
+msgid "Invoice / ref"
+msgstr "Facture / réf."
+
+msgid "Items"
+msgstr "Articles"
+
+msgid "Joined"
+msgstr "Inscrit le"
+
+msgid "Kitchen app users only see and auto-print orders for categories on this station."
+msgstr "Les utilisateurs de l'app cuisine ne voient et n'impriment automatiquement que les commandes des catégories de cette station."
+
+msgid "Kitchen display station"
+msgstr "Station d'affichage cuisine"
+
+msgid "Kitchen station"
+msgstr "Station cuisine"
+
+msgid "Label"
+msgstr "Libellé"
+
+msgid "Last name"
+msgstr "Nom"
+
+msgid "Leave blank for non-VAT suppliers"
+msgstr "Laisser vide pour les fournisseurs hors TVA"
+
+msgid "Leave blank to keep the current password."
+msgstr "Laissez vide pour conserver le mot de passe actuel."
+
+msgid "Line cost"
+msgstr "Coût de ligne"
+
+msgid "List"
+msgstr "Liste"
+
+msgid "Loading roles…"
+msgstr "Chargement des rôles…"
+
+msgid "Location"
+msgstr "Emplacement"
+
+msgid "Logged"
+msgstr "Enregistré"
+
+msgid "Loyalty"
+msgstr "Fidélité"
+
+msgid "Loyalty points"
+msgstr "Points de fidélité"
+
+msgid "Mark paid"
+msgstr "Marquer payé"
+
+msgid "Mark ready"
+msgstr "Marquer prêt"
+
+msgid "Max negative balance allowed on account (0 = prepaid only)."
+msgstr "Solde négatif maximum autorisé sur le compte (0 = prépayé uniquement)."
+
+msgid "Menu add-on"
+msgstr "Supplément menu"
+
+msgid "Menu add-ons for this product"
+msgstr "Suppléments menu pour ce produit"
+
+msgid "Negative stock allowed"
+msgstr "Stock négatif autorisé"
+
+msgid "New Sale"
+msgstr "Nouvelle vente"
+
+msgid "New add-on group"
+msgstr "Nouveau groupe de suppléments"
+
+msgid "New option"
+msgstr "Nouvelle option"
+
+msgid "New orders"
+msgstr "Nouvelles commandes"
+
+msgid "No add-on groups yet — create one above."
+msgstr "Aucun groupe de suppléments — créez-en un ci-dessus."
+
+msgid "No add-on groups yet. Create them under"
+msgstr "Aucun groupe de suppléments. Créez-les sous"
+
+msgid "No audit events in this period"
+msgstr "Aucun événement d'audit sur cette période"
+
+msgid "No branch assigned — stock quantities unavailable."
+msgstr "Aucune succursale assignée — quantités de stock indisponibles."
+
+msgid "No branches available"
+msgstr "Aucune succursale disponible"
+
+msgid "No branches available."
+msgstr "Aucune succursale disponible."
+
+msgid "No branches configured"
+msgstr "Aucune succursale configurée"
+
+msgid "No categories yet"
+msgstr "Aucune catégorie pour le moment"
+
+msgid "No categories — add one in admin first"
+msgstr "Aucune catégorie — ajoutez-en une d'abord dans l'admin"
+
+msgid "No category"
+msgstr "Aucune catégorie"
+
+msgid "No contact details"
+msgstr "Aucun détail de contact"
+
+msgid "No currencies configured"
+msgstr "Aucune devise configurée"
+
+msgid "No currencies yet"
+msgstr "Aucune devise pour le moment"
+
+msgid "No customers yet — add your first customer above"
+msgstr "Aucun client — ajoutez votre premier client ci-dessus"
+
+msgid "No expenses in this period"
+msgstr "Aucune dépense sur cette période"
+
+msgid "No finished products found."
+msgstr "Aucun produit fini trouvé."
+
+msgid "No ingredients yet — add one above or import from CSV"
+msgstr "Aucun ingrédient — ajoutez-en un ci-dessus ou importez un CSV"
+
+msgid "No ingredients yet. Add the first line below."
+msgstr "Aucun ingrédient. Ajoutez la première ligne ci-dessous."
+
+msgid "No items"
+msgstr "Aucun article"
+
+msgid "No location set"
+msgstr "Aucun emplacement défini"
+
+msgid "No matching POS invoices"
+msgstr "Aucune facture PDV correspondante"
+
+msgid "No matching audit events"
+msgstr "Aucun événement d'audit correspondant"
+
+msgid "No matching categories"
+msgstr "Aucune catégorie correspondante"
+
+msgid "No matching expenses"
+msgstr "Aucune dépense correspondante"
+
+msgid "No matching ingredients"
+msgstr "Aucun ingrédient correspondant"
+
+msgid "No matching orders"
+msgstr "Aucune commande correspondante"
+
+msgid "No matching products"
+msgstr "Aucun produit correspondant"
+
+msgid "No matching transfer invoices"
+msgstr "Aucune facture de transfert correspondante"
+
+msgid "No new orders"
+msgstr "Aucune nouvelle commande"
+
+msgid "No options yet"
+msgstr "Aucune option pour le moment"
+
+msgid "No orders found"
+msgstr "Aucune commande trouvée"
+
+msgid "No orders ready yet"
+msgstr "Aucune commande prête"
+
+msgid "No paid receipts yet"
+msgstr "Aucun reçu payé pour le moment"
+
+msgid "No products found"
+msgstr "Aucun produit trouvé"
+
+msgid "No products in this category"
+msgstr "Aucun produit dans cette catégorie"
+
+msgid "No purchases recorded for this supplier yet"
+msgstr "Aucun achat enregistré pour ce fournisseur"
+
+msgid "No staff users yet"
+msgstr "Aucun utilisateur du personnel"
+
+msgid "No suppliers yet — add your first supplier above"
+msgstr "Aucun fournisseur — ajoutez votre premier fournisseur ci-dessus"
+
+msgid "No transfer invoices yet"
+msgstr "Aucune facture de transfert pour le moment"
+
+msgid "Non-VAT"
+msgstr "Hors TVA"
+
+msgid "None (optional)"
+msgstr "Aucun (facultatif)"
+
+msgid "Not set"
+msgstr "Non défini"
+
+msgid "Nothing in progress"
+msgstr "Rien en cours"
+
+msgid "Off"
+msgstr "Désactivé"
+
+msgid "On"
+msgstr "Activé"
+
+msgid "Open POS orders appear here for the kitchen to prepare."
+msgstr "Les commandes PDV ouvertes apparaissent ici pour la préparation en cuisine."
+
+msgid "Option"
+msgstr "Option"
+
+msgid "Option name is required"
+msgstr "Le nom de l'option est obligatoire"
+
+msgid "POS"
+msgstr "PDV"
+
+msgid "POS access (web & desktop)"
+msgstr "Accès PDV (web et bureau)"
+
+msgid "POS branches"
+msgstr "Succursales PDV"
+
+msgid "POS receipts"
+msgstr "Reçus PDV"
+
+msgid "POS station"
+msgstr "Station PDV"
+
+msgid "POS:"
+msgstr "PDV :"
+
+msgid "Password is required"
+msgstr "Le mot de passe est obligatoire"
+
+msgid "Pay"
+msgstr "Payer"
+
+msgid "Payment"
+msgstr "Paiement"
+
+msgid "Payment cancelled"
+msgstr "Paiement annulé"
+
+msgid "Payment reversed for order"
+msgstr "Paiement annulé pour la commande"
+
+msgid "Please select a branch"
+msgstr "Veuillez sélectionner une succursale"
+
+msgid "Please select a role"
+msgstr "Veuillez sélectionner un rôle"
+
+msgid "Prepared at (POS)"
+msgstr "Préparé à (PDV)"
+
+msgid "Preparing"
+msgstr "En préparation"
+
+msgid "Price"
+msgstr "Prix"
+
+msgid "Printed:"
+msgstr "Imprimé :"
+
+msgid "Product added"
+msgstr "Produit ajouté"
+
+msgid "Product deactivated (used in existing records)"
+msgstr "Produit désactivé (utilisé dans des enregistrements existants)"
+
+msgid "Product deleted"
+msgstr "Produit supprimé"
+
+msgid "Product to edit"
+msgstr "Produit à modifier"
+
+msgid "Product updated"
+msgstr "Produit mis à jour"
+
+msgid "Products in the file will be created or updated. "
+msgstr "Les produits du fichier seront créés ou mis à jour. "
+
+msgid "Products with recipes"
+msgstr "Produits avec recettes"
+
+msgid "Products without a recipe"
+msgstr "Produits sans recette"
+
+msgid "Proforma"
+msgstr "Proforma"
+
+msgid "Proforma #"
+msgstr "Proforma n°"
+
+msgid "Purchase #"
+msgstr "Achat n°"
+
+msgid "Purchase history"
+msgstr "Historique des achats"
+
+msgid "Purchase order"
+msgstr "Bon de commande"
+
+msgid "Qty required"
+msgstr "Qté requise"
+
+msgid "Quantity must be greater than zero."
+msgstr "La quantité doit être supérieure à zéro."
+
+msgid "Quantity updated."
+msgstr "Quantité mise à jour."
+
+msgid "Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets."
+msgstr "Matières premières par succursale — ingrédients boulangerie au four/magasin central ; ingrédients de succursale aux magasins et points de vente."
+
+msgid "Ready for cashier"
+msgstr "Prêt pour la caisse"
+
+msgid "Ready for pickup"
+msgstr "Prêt à récupérer"
+
+msgid "Receipt"
+msgstr "Reçu"
+
+msgid "Receipt code"
+msgstr "Code de reçu"
+
+msgid "Receipt code:"
+msgstr "Code de reçu :"
+
+msgid "Recipe"
+msgstr "Recette"
+
+msgid "Recipe cost"
+msgstr "Coût de la recette"
+
+msgid "Record expense"
+msgstr "Enregistrer une dépense"
+
+msgid "Recorded by"
+msgstr "Enregistré par"
+
+msgid "Regular"
+msgstr "Standard"
+
+msgid "Remove"
+msgstr "Retirer"
+
+msgid "Remove this ingredient from the recipe?"
+msgstr "Retirer cet ingrédient de la recette ?"
+
+msgid "Reverse payment for order"
+msgstr "Annuler le paiement de la commande"
+
+msgid "Role"
+msgstr "Rôle"
+
+msgid "Save changes"
+msgstr "Enregistrer les modifications"
+
+msgid "Save expense"
+msgstr "Enregistrer la dépense"
+
+msgid "Search by name or category…"
+msgstr "Rechercher par nom ou catégorie…"
+
+msgid "Search categories…"
+msgstr "Rechercher des catégories…"
+
+msgid "Search description, supplier, branch, recorded by…"
+msgstr "Rechercher description, fournisseur, succursale, auteur…"
+
+msgid "Search entity, type, actor…"
+msgstr "Rechercher entité, type, acteur…"
+
+msgid "Search ingredients…"
+msgstr "Rechercher des ingrédients…"
+
+msgid "Search invoice #, branch…"
+msgstr "Rechercher n° de facture, succursale…"
+
+msgid "Search order #, branch, receipt #, staff…"
+msgstr "Rechercher n° commande, succursale, n° reçu, personnel…"
+
+msgid "Search products…"
+msgstr "Rechercher des produits…"
+
+msgid "Search receipt #, order #, branch…"
+msgstr "Rechercher n° reçu, n° commande, succursale…"
+
+msgid "Search transfer invoice #, branch…"
+msgstr "Rechercher n° facture de transfert, succursale…"
+
+msgid "Select a branch"
+msgstr "Sélectionnez une succursale"
+
+msgid "Select a branch before downloading CSV"
+msgstr "Sélectionnez une succursale avant de télécharger le CSV"
+
+msgid "Select a branch before setting opening stock"
+msgstr "Sélectionnez une succursale avant de définir le stock d'ouverture"
+
+msgid "Select a branch before setting stock"
+msgstr "Sélectionnez une succursale avant de définir le stock"
+
+msgid "Select a branch before uploading CSV — remaining_qty is applied as stock at that branch"
+msgstr "Sélectionnez une succursale avant d'importer le CSV — remaining_qty est appliqué comme stock de cette succursale"
+
+msgid "Select a branch to view ingredient stock"
+msgstr "Sélectionnez une succursale pour voir le stock d'ingrédients"
+
+msgid "Select a branch to view stock quantities. Products are listed below."
+msgstr "Sélectionnez une succursale pour voir les quantités. Les produits sont listés ci-dessous."
+
+msgid "Select a product above to view or edit its recipe."
+msgstr "Sélectionnez un produit ci-dessus pour voir ou modifier sa recette."
+
+msgid "Select a product first."
+msgstr "Sélectionnez d'abord un produit."
+
+msgid "Select a product…"
+msgstr "Sélectionnez un produit…"
+
+msgid "Select at least one branch, or choose All branches"
+msgstr "Sélectionnez au moins une succursale, ou choisissez Toutes les succursales"
+
+msgid "Select branch…"
+msgstr "Sélectionner une succursale…"
+
+msgid "Select category…"
+msgstr "Sélectionner une catégorie…"
+
+msgid "Select ingredient…"
+msgstr "Sélectionner un ingrédient…"
+
+msgid "Select payment currency (enter number):"
+msgstr "Sélectionnez la devise de paiement (entrez un numéro) :"
+
+msgid "Selected only"
+msgstr "Sélection uniquement"
+
+msgid "Selection"
+msgstr "Sélection"
+
+msgid "Sell"
+msgstr "Vente"
+
+msgid "Selling price"
+msgstr "Prix de vente"
+
+msgid "Selling price updated."
+msgstr "Prix de vente mis à jour."
+
+msgid "Set as base currency (order prices are in this currency)"
+msgstr "Définir comme devise de base (les prix des commandes sont dans cette devise)"
+
+msgid "Set exchange rates for each currency under Payment & Rates → Rates."
+msgstr "Définissez les taux de change pour chaque devise sous Paiement et taux → Taux."
+
+msgid "Show on POS"
+msgstr "Afficher au PDV"
+
+msgid "Showing"
+msgstr "Affichage"
+
+msgid "Showing stock at"
+msgstr "Stock affiché à"
+
+msgid "Since"
+msgstr "Depuis"
+
+msgid "Split"
+msgstr "Fractionné"
+
+msgid "Staff"
+msgstr "Personnel"
+
+msgid "Staff (cost price)"
+msgstr "Personnel (prix de revient)"
+
+msgid "Staff members"
+msgstr "Membres du personnel"
+
+msgid "Start preparing"
+msgstr "Commencer la préparation"
+
+msgid "Stock"
+msgstr "Action"
+
+msgid "Stock & status"
+msgstr "Stock et statut"
+
+msgid "Stock at"
+msgstr "Stock à"
+
+msgid "Stock updated"
+msgstr "Stock mis à jour"
+
+msgid "Summary"
+msgstr "Résumé"
+
+msgid "Supplier added"
+msgstr "Fournisseur ajouté"
+
+msgid "Supplier updated"
+msgstr "Fournisseur mis à jour"
+
+msgid "Symbol"
+msgstr "Symbole"
+
+msgid "Tax"
+msgstr "Taxe"
+
+msgid "Tax rate (%)"
+msgstr "Taux de taxe (%)"
+
+msgid "Tax:"
+msgstr "Taxe :"
+
+msgid "The order will be marked unpaid so it can be paid again."
+msgstr "La commande sera marquée impayée afin de pouvoir la payer à nouveau."
+
+msgid "Total purchases"
+msgstr "Total des achats"
+
+msgid "Total spend"
+msgstr "Dépense totale"
+
+msgid "Total spent"
+msgstr "Total dépensé"
+
+msgid "Transfer invoice marked as paid"
+msgstr "Facture de transfert marquée comme payée"
+
+msgid "Transfer invoices"
+msgstr "Factures de transfert"
+
+msgid "US Dollar"
+msgstr "Dollar américain"
+
+msgid "Until"
+msgstr "Jusqu'au"
+
+msgid "Update"
+msgstr "Mettre à jour"
+
+msgid "Upload Excel"
+msgstr "Importer Excel"
+
+msgid "User"
+msgstr "Utilisateur"
+
+msgid "VAT number"
+msgstr "Numéro de TVA"
+
+msgid "View all add-on options"
+msgstr "Voir toutes les options de suppléments"
+
+msgid "Void"
+msgstr "Voider"
+
+msgid "When"
+msgstr "Quand"
+
+msgid "When enabled, POS sales can sync even if stock goes below zero. Transfers and production still require stock."
+msgstr "Lorsqu'il est activé, les ventes PDV peuvent se synchroniser même si le stock devient négatif. Les transferts et la production exigent toujours du stock."
+
+msgid "Who"
+msgstr "Qui"
+
+msgid "ZIMRA device ID"
+msgstr "ID appareil ZIMRA"
+
+msgid "active"
+msgstr "actifs"
+
+msgid "added"
+msgstr "ajouté"
+
+msgid "bakery product"
+msgstr "produit de boulangerie"
+
+msgid "base"
+msgstr "base"
+
+msgid "branches"
+msgstr "succursales"
+
+msgid "cancelled"
+msgstr "annulée"
+
+msgid "created"
+msgstr "créés"
+
+msgid "deactivated"
+msgstr "désactivés"
+
+msgid "e.g. 30541"
+msgstr "ex. 30541"
+
+msgid "e.g. Add Extra Shot"
+msgstr "ex. Extra shot"
+
+msgid "e.g. Coffee Extras"
+msgstr "ex. Extras café"
+
+msgid "e.g. HIG, CHU"
+msgstr "ex. HIG, CHU"
+
+msgid "e.g. Milk delivery, petty cash"
+msgstr "ex. Livraison de lait, petite caisse"
+
+msgid "fiscalized — fiscal receipt ready to print"
+msgstr "fiscalisée — reçu fiscal prêt à imprimer"
+
+msgid "ingredient"
+msgstr "ingrédient"
+
+msgid "ingredient lines"
+msgstr "lignes d'ingrédients"
+
+msgid "ingredients"
+msgstr "ingrédients"
+
+msgid "is being prepared"
+msgstr "est en préparation"
+
+msgid "is ready"
+msgstr "est prêt"
+
+msgid "it is now unpaid"
+msgstr "elle est maintenant impayée"
+
+msgid "items only."
+msgstr "articles uniquement."
+
+msgid "more — use search"
+msgstr "de plus — utilisez la recherche"
+
+msgid "no rate"
+msgstr "aucun taux"
+
+msgid "not found — run ingredient import or seed first"
+msgstr "introuvable — lancez d'abord l'import d'ingrédients ou le seed"
+
+msgid "optional"
+msgstr "facultatif"
+
+msgid "options"
+msgstr "choix"
+
+msgid "paid in"
+msgstr "payé en"
+
+msgid "product"
+msgstr "produit"
+
+msgid "products"
+msgstr "produits"
+
+msgid "row"
+msgstr "ligne"
+
+msgid "updated"
+msgstr "mis à jour"
+
+msgid "with recipes"
+msgstr "avec recettes"
+
+msgid "without recipes"
+msgstr "sans recettes"
+
+msgid "(optional)"
+msgstr "(facultatif)"
+
+msgid "Account balance"
+msgstr "Solde du compte"
+
+msgid "Action failed."
+msgstr "Échec de l'action."
+
+msgid "Active count"
+msgstr "Comptage actif"
+
+msgid "Active production"
+msgstr "Production active"
+
+msgid "Actual wastage/disposal"
+msgstr "Pertes / mise au rebut"
+
+msgid "Add amounts to current stock"
+msgstr "Ajouter au stock actuel"
+
+msgid "Add at least one product"
+msgstr "Ajoutez au moins un produit"
+
+msgid "Add at least one product line"
+msgstr "Ajoutez au moins une ligne"
+
+msgid "Add expense"
+msgstr "Ajouter une dépense"
+
+msgid "Add line"
+msgstr "Ajouter une ligne"
+
+msgid "Add qty"
+msgstr "Qté à ajouter"
+
+msgid "Add table"
+msgstr "Ajouter une table"
+
+msgid "Add to cart"
+msgstr "Ajouter au panier"
+
+msgid "Adjust balance"
+msgstr "Ajuster le solde"
+
+msgid "Adjustment amount"
+msgstr "Montant de l'ajustement"
+
+msgid "All purchases"
+msgstr "Tous les achats"
+
+msgid "All reasons"
+msgstr "Toutes les raisons"
+
+msgid "All statuses"
+msgstr "Tous les statuts"
+
+msgid "All transactions"
+msgstr "Toutes les transactions"
+
+msgid "Amount received"
+msgstr "Montant reçu"
+
+msgid "Amount tendered"
+msgstr "Montant remis"
+
+msgid "Amt"
+msgstr "Mnt"
+
+msgid "Apply adjustment"
+msgstr "Appliquer l'ajustement"
+
+msgid "Apply all filled"
+msgstr "Appliquer les lignes remplies"
+
+msgid "Approved"
+msgstr "Approuvé"
+
+msgid "Available"
+msgstr "Disponible"
+
+msgid "Awaiting receipt"
+msgstr "En attente de réception"
+
+msgid "Bakery destination"
+msgstr "Destination boulangerie"
+
+msgid "Bakery transfers"
+msgstr "Transferts boulangerie"
+
+msgid "Bakery → Stores & Branches"
+msgstr "Boulangerie → Magasins et succursales"
+
+msgid "Balance"
+msgstr "Solde"
+
+msgid "Balance adjustment"
+msgstr "Ajustement de solde"
+
+msgid "Balance adjustment recorded"
+msgstr "Ajustement de solde enregistré"
+
+msgid "Bill To"
+msgstr "Facturer à"
+
+msgid "Branch filter"
+msgstr "Filtre de succursale"
+
+msgid "Branch → Branch"
+msgstr "Succursale → Succursale"
+
+msgid "By payment method"
+msgstr "Par mode de paiement"
+
+msgid "Cancel entire order"
+msgstr "Annuler toute la commande"
+
+msgid "Cancel this draft wastage entry?"
+msgstr "Annuler ce brouillon de pertes ?"
+
+msgid "Cancel this production sheet? Entered quantities will be discarded."
+msgstr "Annuler cette feuille de production ? Les quantités saisies seront perdues."
+
+msgid "Cancel this stock take? Counted quantities will be discarded."
+msgstr "Annuler cet inventaire ? Les quantités comptées seront perdues."
+
+msgid "Cannot transfer an inactive product."
+msgstr "Impossible de transférer un produit inactif."
+
+msgid "Cash"
+msgstr "Espèces"
+
+msgid "Cash-up reconciliation"
+msgstr "Réconciliation de caisse"
+
+msgid "Central Bakery — Stock Distribution"
+msgstr "Boulangerie centrale — Distribution de stock"
+
+msgid "Central Stores — Inter-branch stock invoice"
+msgstr "Magasin central — Facture de stock inter-succursales"
+
+msgid "Central Stores — Stock Distribution"
+msgstr "Magasin central — Distribution de stock"
+
+msgid "Central Stores → Branches & Bakery"
+msgstr "Magasin central → Succursales et boulangerie"
+
+msgid "Central bakery"
+msgstr "Boulangerie centrale"
+
+msgid "Central stores"
+msgstr "Magasin central"
+
+msgid "Change"
+msgstr "Monnaie"
+
+msgid "Choose an open takeaway order, or start a new one."
+msgstr "Choisissez une commande à emporter ouverte, ou créez-en une nouvelle."
+
+msgid "Choose table…"
+msgstr "Choisir une table…"
+
+msgid "Choose the count type and start a count."
+msgstr "Choisissez le type de comptage et démarrez."
+
+msgid "Clear Cart"
+msgstr "Vider le panier"
+
+msgid "Close day"
+msgstr "Clôturer le jour"
+
+msgid "Closing balance"
+msgstr "Solde de clôture"
+
+msgid "Collect Payment"
+msgstr "Encaisser"
+
+msgid "Complete & post variances"
+msgstr "Terminer et comptabiliser les écarts"
+
+msgid "Complete production"
+msgstr "Terminer la production"
+
+msgid "Complete this production sheet and add finished goods to bakery stock?"
+msgstr "Terminer cette feuille et ajouter les produits finis au stock boulangerie ?"
+
+msgid "Complete this stock take and post inventory variances?"
+msgstr "Terminer cet inventaire et comptabiliser les écarts ?"
+
+msgid "Completed"
+msgstr "Terminé"
+
+msgid "Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients)."
+msgstr "Terminer une feuille ajoute les produits finis au stock boulangerie (et déduit les ingrédients de recette)."
+
+msgid "Confirm receive"
+msgstr "Confirmer la réception"
+
+msgid "Count date"
+msgstr "Date du comptage"
+
+msgid "Count saved."
+msgstr "Comptage enregistré."
+
+msgid "Count type"
+msgstr "Type de comptage"
+
+msgid "Counted qty"
+msgstr "Qté comptée"
+
+msgid "Create delivery note"
+msgstr "Créer un bon de livraison"
+
+msgid "Create invoice"
+msgstr "Créer une facture"
+
+msgid "Create transfer"
+msgstr "Créer un transfert"
+
+msgid "Created"
+msgstr "Créé"
+
+msgid "Credit limit:"
+msgstr "Limite de crédit :"
+
+msgid "Credited"
+msgstr "Crédité"
+
+msgid "Cumulative spend"
+msgstr "Dépenses cumulées"
+
+msgid "Currency code"
+msgstr "Code devise"
+
+msgid "Current Order"
+msgstr "Commande en cours"
+
+msgid "Current stock: 0"
+msgstr "Stock actuel : 0"
+
+msgid "Customer (optional)"
+msgstr "Client (facultatif)"
+
+msgid "Customer account statement"
+msgstr "Relevé de compte client"
+
+msgid "Customer account transactions"
+msgstr "Transactions du compte client"
+
+msgid "Customer payment"
+msgstr "Paiement client"
+
+msgid "Customer statement"
+msgstr "Relevé client"
+
+msgid "DINE IN"
+msgstr "SUR PLACE"
+
+msgid "Daily"
+msgstr "Quotidien"
+
+msgid "Damaged"
+msgstr "Endommagé"
+
+msgid "Damaged (return)"
+msgstr "Endommagé (retour)"
+
+msgid "Damaged or short quantities are credited back to the sender. Variance auto-flags the note."
+msgstr "Les quantités endommagées ou manquantes sont créditées à l'expéditeur. L'écart signale automatiquement le bon."
+
+msgid "Day end"
+msgstr "Clôture de journée"
+
+msgid "Day-end cash-up"
+msgstr "Caisse de clôture"
+
+msgid "Debited"
+msgstr "Débité"
+
+msgid "Delivered"
+msgstr "Livré"
+
+msgid "Delivery Note"
+msgstr "Bon de livraison"
+
+msgid "Delivery instructions, PO reference, etc."
+msgstr "Instructions de livraison, réf. BC, etc."
+
+msgid "Deposit recorded"
+msgstr "Dépôt enregistré"
+
+msgid "Destination"
+msgstr "Destination"
+
+msgid "Destination (branch, HQ, or bakery)"
+msgstr "Destination (succursale, siège ou boulangerie)"
+
+msgid "Destination (stores or branch)"
+msgstr "Destination (magasin ou succursale)"
+
+msgid "Device"
+msgstr "Appareil"
+
+msgid "Device branch:"
+msgstr "Succursale appareil :"
+
+msgid "Device serial:"
+msgstr "N° série appareil :"
+
+msgid "Dine In"
+msgstr "Sur place"
+
+msgid "Dispatched"
+msgstr "Expédié"
+
+msgid "Dispatched by"
+msgstr "Expédié par"
+
+msgid "Dispatched by (Central Stores)"
+msgstr "Expédié par (magasin central)"
+
+msgid "Draft"
+msgstr "Brouillon"
+
+msgid "Draft cancelled."
+msgstr "Brouillon annulé."
+
+msgid "End of day summary"
+msgstr "Résumé de fin de journée"
+
+msgid "Enter a non-zero adjustment amount (e.g. -12.00)"
+msgstr "Saisissez un montant d'ajustement non nul (ex. -12.00)"
+
+msgid "Enter a signed amount such as -12.00 to debit, or a positive amount to credit. This posts a Balance adjustment on the customer statement."
+msgstr "Saisissez un montant signé comme -12.00 pour débiter, ou un montant positif pour créditer. Cela crée un ajustement de solde sur le relevé client."
+
+msgid "Enter a table name"
+msgstr "Saisissez un nom de table"
+
+msgid "Enter a valid amount"
+msgstr "Saisissez un montant valide"
+
+msgid "Enter a valid line total"
+msgstr "Saisissez un total de ligne valide"
+
+msgid "Enter a valid quantity"
+msgstr "Saisissez une quantité valide"
+
+msgid "Enter an amount"
+msgstr "Saisissez un montant"
+
+msgid "Enter at least one currency amount, or turn off split payment"
+msgstr "Saisissez au moins un montant de devise, ou désactivez le paiement fractionné"
+
+msgid "Enter counted amounts per currency. Leave blank for currencies you have not counted."
+msgstr "Saisissez les montants comptés par devise. Laissez vide les devises non comptées."
+
+msgid "Enter quantities produced for each destination — Highlands, Churchill, and Central stores."
+msgstr "Saisissez les quantités produites pour chaque destination — Highlands, Churchill et magasin central."
+
+msgid "Enter the physical quantity for every item. System quantities remain hidden while counting."
+msgstr "Saisissez la quantité physique pour chaque article. Les quantités système restent masquées pendant le comptage."
+
+msgid "Exchange rate"
+msgstr "Taux de change"
+
+msgid "External customer"
+msgstr "Client externe"
+
+msgid "Failed to initialize wastage page."
+msgstr "Échec de l'initialisation de la page des pertes."
+
+msgid "Failed to record wastage."
+msgstr "Échec de l'enregistrement des pertes."
+
+msgid "Fill in branch, product, quantity, and reason."
+msgstr "Renseignez la succursale, le produit, la quantité et la raison."
+
+msgid "Filter by name or phone…"
+msgstr "Filtrer par nom ou téléphone…"
+
+msgid "Fiscal Information"
+msgstr "Informations fiscales"
+
+msgid "Fiscal QR code"
+msgstr "QR fiscal"
+
+msgid "Fiscal day"
+msgstr "Journée fiscale"
+
+msgid "Fiscal day #"
+msgstr "Journée fiscale n°"
+
+msgid "Fiscal day opened"
+msgstr "Journée fiscale ouverte"
+
+msgid "Fiscal day:"
+msgstr "Journée fiscale :"
+
+msgid "Fiscal invoice:"
+msgstr "Facture fiscale :"
+
+msgid "Fiscal receipt"
+msgstr "Reçu fiscal"
+
+msgid "Fiscal receipt No."
+msgstr "N° de reçu fiscal"
+
+msgid "Flag this dnote for follow-up"
+msgstr "Signaler ce bon pour suivi"
+
+msgid "Flagged"
+msgstr "Signalé"
+
+msgid "Flagged for follow-up"
+msgstr "Signalé pour suivi"
+
+msgid "From (Supplier)"
+msgstr "De (fournisseur)"
+
+msgid "From branch"
+msgstr "Depuis la succursale"
+
+msgid "Goods Received Voucher"
+msgstr "Bon de réception"
+
+msgid "ID"
+msgstr "IDENTIFIANT"
+
+msgid "In progress"
+msgstr "En cours"
+
+msgid "Incoming"
+msgstr "Entrants"
+
+msgid "Ingredient already added — remove it first to change quantity"
+msgstr "Ingrédient déjà ajouté — retirez-le d'abord pour changer la quantité"
+
+msgid "Ingredient type"
+msgstr "Type d'ingrédient"
+
+msgid "Inv:"
+msgstr "Fact. :"
+
+msgid "Invoice"
+msgstr "Facture"
+
+msgid "Invoice / reference"
+msgstr "Facture / référence"
+
+msgid "Invoice No."
+msgstr "N° de facture"
+
+msgid "Invoice total"
+msgstr "Total facture"
+
+msgid "Issued by (Central Stores)"
+msgstr "Émis par (magasin central)"
+
+msgid "Item removed"
+msgstr "Article retiré"
+
+msgid "Item type"
+msgstr "Type d'article"
+
+msgid "Items sold"
+msgstr "Articles vendus"
+
+msgid "Last receipt global #"
+msgstr "Dernier n° global de reçu"
+
+msgid "Less expenses"
+msgstr "Moins les dépenses"
+
+msgid "Line items"
+msgstr "Lignes"
+
+msgid "Line notes"
+msgstr "Notes de ligne"
+
+msgid "Lines"
+msgstr "Lignes"
+
+msgid "Manage tables"
+msgstr "Gérer les tables"
+
+msgid "Menu items sold at the till — same products as on POS."
+msgstr "Articles du menu vendus en caisse — mêmes produits que le PDV."
+
+msgid "Mode"
+msgstr "Mode"
+
+msgid "Monthly"
+msgstr "Mensuel"
+
+msgid "Net expected in till"
+msgstr "Net attendu en caisse"
+
+msgid "New balance"
+msgstr "Nouveau solde"
+
+msgid "New branch transfer"
+msgstr "Nouveau transfert entre succursales"
+
+msgid "New central invoice"
+msgstr "Nouvelle facture centrale"
+
+msgid "New delivery note"
+msgstr "Nouveau bon de livraison"
+
+msgid "New delivery note & invoice"
+msgstr "Nouveau bon de livraison et facture"
+
+msgid "New production sheet"
+msgstr "Nouvelle feuille de production"
+
+msgid "New table name (e.g. T12)"
+msgstr "Nom de table (ex. T12)"
+
+msgid "No bakery branch configured."
+msgstr "Aucune succursale boulangerie configurée."
+
+msgid "No branch assigned for recording deposits"
+msgstr "Aucune succursale assignée pour enregistrer les dépôts"
+
+msgid "No branch assigned — stock adjustments unavailable."
+msgstr "Aucune succursale assignée — ajustements de stock indisponibles."
+
+msgid "No items for this type"
+msgstr "Aucun article pour ce type"
+
+msgid "No items sold"
+msgstr "Aucun article vendu"
+
+msgid "No line items"
+msgstr "Aucune ligne"
+
+msgid "No matching items"
+msgstr "Aucun article correspondant"
+
+msgid "No matching wastage entries"
+msgstr "Aucune perte correspondante"
+
+msgid "No open orders"
+msgstr "Aucune commande ouverte"
+
+msgid "No purchases"
+msgstr "Aucun achat"
+
+msgid "No sales recorded for this day."
+msgstr "Aucune vente enregistrée pour ce jour."
+
+msgid "No transactions"
+msgstr "Aucune transaction"
+
+msgid "No wastage entries in this period"
+msgstr "Aucune perte sur cette période"
+
+msgid "Not a fiscal receipt — pending approval"
+msgstr "Pas un reçu fiscal — en attente d'approbation"
+
+msgid "Not approved"
+msgstr "Non approuvé"
+
+msgid "Note"
+msgstr "Note"
+
+msgid "Note:"
+msgstr "Note :"
+
+msgid "Notes:"
+msgstr "Notes :"
+
+msgid "On fiscal branches, count only one currency code (USD or ZWG) — do not mix them."
+msgstr "Sur les succursales fiscales, ne comptez qu'un code devise (USD ou ZWG) — ne les mélangez pas."
+
+msgid "Open and unpaid · select to collect payment or cancel"
+msgstr "Ouvertes et impayées · sélectionnez pour encaisser ou annuler"
+
+msgid "Open day"
+msgstr "Ouvrir le jour"
+
+msgid "Open orders"
+msgstr "Commandes ouvertes"
+
+msgid "Open the fiscal day before approving receipts. Close it at end of trading."
+msgstr "Ouvrez la journée fiscale avant d'approuver les reçus. Clôturez-la en fin de service."
+
+msgid "Opening balance"
+msgstr "Solde d'ouverture"
+
+msgid "Optional notes for bakery / stores"
+msgstr "Notes facultatives pour boulangerie / magasin"
+
+msgid "Order Type"
+msgstr "Type de commande"
+
+msgid "Order actions"
+msgstr "Actions de commande"
+
+msgid "Order notes"
+msgstr "Notes de commande"
+
+msgid "Order ticket"
+msgstr "Ticket de commande"
+
+msgid "PAID"
+msgstr "PAYÉ"
+
+msgid "PO #"
+msgstr "BC n°"
+
+msgid "POS mode"
+msgstr "Mode PDV"
+
+msgid "POS products"
+msgstr "Produits PDV"
+
+msgid "PROFORMA"
+msgstr "PROFORME"
+
+msgid "PROFORMA — NOT FISCAL"
+msgstr "PROFORMA — NON FISCAL"
+
+msgid "Paid in"
+msgstr "Payé en"
+
+msgid "Paid on"
+msgstr "Payé le"
+
+msgid "Payment currency"
+msgstr "Devise de paiement"
+
+msgid "Payment method"
+msgstr "Mode de paiement"
+
+msgid "Payment options"
+msgstr "Options de paiement"
+
+msgid "Payment status"
+msgstr "Statut du paiement"
+
+msgid "Payments collected"
+msgstr "Paiements encaissés"
+
+msgid "Payments received"
+msgstr "Paiements reçus"
+
+msgid "Place Order"
+msgstr "Passer la commande"
+
+msgid "Please retain for your records."
+msgstr "Veuillez conserver pour vos dossiers."
+
+msgid "Please select a payment currency"
+msgstr "Veuillez sélectionner une devise de paiement"
+
+msgid "Present this ticket when paying."
+msgstr "Présentez ce ticket lors du paiement."
+
+msgid "Previous balance"
+msgstr "Solde précédent"
+
+msgid "Priced at cost"
+msgstr "Tarifé au coût"
+
+msgid "Print 80mm"
+msgstr "Imprimer 80 mm"
+
+msgid "Print A4"
+msgstr "Imprimer A4"
+
+msgid "Print cash-up"
+msgstr "Imprimer le cash-up"
+
+msgid "Print central invoice"
+msgstr "Imprimer la facture centrale"
+
+msgid "Print delivery note"
+msgstr "Imprimer le bon de livraison"
+
+msgid "Print invoice"
+msgstr "Imprimer la facture"
+
+msgid "Print order ticket"
+msgstr "Imprimer le ticket de commande"
+
+msgid "Print proforma"
+msgstr "Imprimer le proforma"
+
+msgid "Print receipt"
+msgstr "Imprimer le reçu"
+
+msgid "Print report"
+msgstr "Imprimer le rapport"
+
+msgid "Print statement"
+msgstr "Imprimer le relevé"
+
+msgid "Print transfer invoice"
+msgstr "Imprimer la facture de transfert"
+
+msgid "Printed"
+msgstr "Imprimé"
+
+msgid "Process this wastage entry and subtract from stock?"
+msgstr "Traiter cette perte et soustraire du stock ?"
+
+msgid "Processed"
+msgstr "Traité"
+
+msgid "Processing subtracts quantity from the source branch and, for bakery reuse, credits the bakery."
+msgstr "Le traitement soustrait la quantité de la succursale source et, pour la réutilisation boulangerie, crédite la boulangerie."
+
+msgid "Produced"
+msgstr "Produit"
+
+msgid "Product already added"
+msgstr "Produit déjà ajouté"
+
+msgid "Product already added — remove it first to change quantity"
+msgstr "Produit déjà ajouté — retirez-le d'abord pour changer la quantité"
+
+msgid "Production completed."
+msgstr "Production terminée."
+
+msgid "Production date"
+msgstr "Date de production"
+
+msgid "Production saved."
+msgstr "Production enregistrée."
+
+msgid "Production sheet cancelled."
+msgstr "Feuille de production annulée."
+
+msgid "Production sheet started."
+msgstr "Feuille de production démarrée."
+
+msgid "Proforma Invoice"
+msgstr "Facture proforma"
+
+msgid "Proforma No."
+msgstr "N° proforma"
+
+msgid "Proforma Receipt"
+msgstr "Reçu proforma"
+
+msgid "Purchase for"
+msgstr "Achat pour"
+
+msgid "Put rest on base"
+msgstr "Mettre le reste sur la devise de base"
+
+msgid "Quantity for"
+msgstr "Quantité pour"
+
+msgid "Quickly add or set stock for bakery goods, shop items, or ingredients at a branch."
+msgstr "Ajoutez ou définissez rapidement le stock pour les produits de boulangerie, d'épicerie ou les ingrédients d'une succursale."
+
+msgid "Raw materials"
+msgstr "Matières premières"
+
+msgid "Reason"
+msgstr "Raison"
+
+msgid "Receive GRV"
+msgstr "Réceptionner le BR"
+
+msgid "Received"
+msgstr "Reçu"
+
+msgid "Received (good)"
+msgstr "Reçu (bon état)"
+
+msgid "Received by"
+msgstr "Reçu par"
+
+msgid "Received by (Branch)"
+msgstr "Reçu par (succursale)"
+
+msgid "Received by (Customer)"
+msgstr "Reçu par (client)"
+
+msgid "Received in"
+msgstr "Reçu en"
+
+msgid "Record & process"
+msgstr "Enregistrer et traiter"
+
+msgid "Record a supplier purchase for any branch. Stock is added immediately when you save."
+msgstr "Enregistrez un achat fournisseur pour toute succursale. Le stock est ajouté immédiatement à l'enregistrement."
+
+msgid "Record customer payment"
+msgstr "Enregistrer un paiement client"
+
+msgid "Record deposit"
+msgstr "Enregistrer un dépôt"
+
+msgid "Record items leaving sellable stock for bakery reuse, kitchen use, or disposal."
+msgstr "Enregistrez les articles sortant du stock vendable pour réutilisation boulangerie, cuisine ou mise au rebut."
+
+msgid "Record payment"
+msgstr "Enregistrer le paiement"
+
+msgid "Record production"
+msgstr "Enregistrer la production"
+
+msgid "Record purchase"
+msgstr "Enregistrer l'achat"
+
+msgid "Record wastage"
+msgstr "Enregistrer les pertes"
+
+msgid "Refresh"
+msgstr "Actualiser"
+
+msgid "Remarks"
+msgstr "Remarques"
+
+msgid "Remove one unit from this line?"
+msgstr "Retirer une unité de cette ligne ?"
+
+msgid "Rename or remove tables. Changes apply to this branch only."
+msgstr "Renommez ou supprimez des tables. Les changements s'appliquent uniquement à cette succursale."
+
+msgid "Report date"
+msgstr "Date du rapport"
+
+msgid "Requested"
+msgstr "Demandé"
+
+msgid "Sale Details"
+msgstr "Détails de la vente"
+
+msgid "Sales Receipt"
+msgstr "Reçu de vente"
+
+msgid "Save progress"
+msgstr "Enregistrer la progression"
+
+msgid "Search items…"
+msgstr "Rechercher des articles…"
+
+msgid "Search product, branch, reason, notes…"
+msgstr "Rechercher produit, succursale, raison, notes…"
+
+msgid "Select a branch first"
+msgstr "Sélectionnez d'abord une succursale"
+
+msgid "Select a branch first."
+msgstr "Sélectionnez d'abord une succursale."
+
+msgid "Select a branch to adjust stock."
+msgstr "Sélectionnez une succursale pour ajuster le stock."
+
+msgid "Select a branch to view items"
+msgstr "Sélectionnez une succursale pour voir les articles"
+
+msgid "Select a count date."
+msgstr "Sélectionnez une date de comptage."
+
+msgid "Select a currency"
+msgstr "Sélectionnez une devise"
+
+msgid "Select a customer"
+msgstr "Sélectionnez un client"
+
+msgid "Select a customer to pay from account"
+msgstr "Sélectionnez un client pour payer depuis le compte"
+
+msgid "Select a customer to view their account or record a deposit."
+msgstr "Sélectionnez un client pour voir son compte ou enregistrer un dépôt."
+
+msgid "Select a destination branch"
+msgstr "Sélectionnez une succursale de destination"
+
+msgid "Select a fiscal branch first"
+msgstr "Sélectionnez d'abord une succursale fiscale"
+
+msgid "Select a product first"
+msgstr "Sélectionnez d'abord un produit"
+
+msgid "Select a production date."
+msgstr "Sélectionnez une date de production."
+
+msgid "Select an ingredient first"
+msgstr "Sélectionnez d'abord un ingrédient"
+
+msgid "Select at least one item to transfer"
+msgstr "Sélectionnez au moins un article à transférer"
+
+msgid "Select bakery…"
+msgstr "Sélectionner une boulangerie…"
+
+msgid "Select central stores or a branch as the destination"
+msgstr "Sélectionnez le magasin central ou une succursale comme destination"
+
+msgid "Select customer…"
+msgstr "Sélectionner un client…"
+
+msgid "Select destination…"
+msgstr "Sélectionner la destination…"
+
+msgid "Select product…"
+msgstr "Sélectionner un produit…"
+
+msgid "Select supplier…"
+msgstr "Sélectionner un fournisseur…"
+
+msgid "Select table"
+msgstr "Sélectionner une table"
+
+msgid "Select the bakery destination for reuse transfers."
+msgstr "Sélectionnez la boulangerie de destination pour les transferts de réutilisation."
+
+msgid "Sell or transfer bakery products from central stores to external customers. Stock is deducted when the invoice is created."
+msgstr "Vendez ou transférez des produits de boulangerie du magasin central vers des clients externes. Le stock est déduit à la création de la facture."
+
+msgid "Sent"
+msgstr "Envoyé"
+
+msgid "Served by"
+msgstr "Servi par"
+
+msgid "Set"
+msgstr "Définir"
+
+msgid "Set qty"
+msgstr "Qté cible"
+
+msgid "Set stock to an absolute quantity"
+msgstr "Définir le stock à une quantité absolue"
+
+msgid "Shop"
+msgstr "Boutique"
+
+msgid "Special instructions for kitchen…"
+msgstr "Instructions spéciales pour la cuisine…"
+
+msgid "Spend before period"
+msgstr "Dépenses avant la période"
+
+msgid "Split across payment currencies"
+msgstr "Répartir sur plusieurs devises de paiement"
+
+msgid "Start count"
+msgstr "Démarrer le comptage"
+
+msgid "Start daily count"
+msgstr "Démarrer le comptage quotidien"
+
+msgid "Start monthly count"
+msgstr "Démarrer le comptage mensuel"
+
+msgid "Start stock take"
+msgstr "Démarrer l'inventaire"
+
+msgid "Stock Transfers"
+msgstr "Transferts de stock"
+
+msgid "Stock added"
+msgstr "Stock ajouté"
+
+msgid "Stock mode"
+msgstr "Mode de stock"
+
+msgid "Stock set"
+msgstr "Stock défini"
+
+msgid "Stock take"
+msgstr "Inventaire"
+
+msgid "Stock take cancelled."
+msgstr "Inventaire annulé."
+
+msgid "Stock take completed."
+msgstr "Inventaire terminé."
+
+msgid "Subtotal"
+msgstr "Sous-total"
+
+msgid "Supplier invoice or delivery note number"
+msgstr "N° de facture fournisseur ou bon de livraison"
+
+msgid "Supplier purchase statement"
+msgstr "Relevé d'achats fournisseur"
+
+msgid "Supplier statement"
+msgstr "Relevé fournisseur"
+
+msgid "TAKEAWAY"
+msgstr "À EMPORTER"
+
+msgid "Table added"
+msgstr "Table ajoutée"
+
+msgid "Table name is required"
+msgstr "Le nom de table est requis"
+
+msgid "Table removed"
+msgstr "Table supprimée"
+
+msgid "Table updated"
+msgstr "Table mise à jour"
+
+msgid "Takeaway"
+msgstr "À emporter"
+
+msgid "Tap a table to select it. Highlighted tables have open dine-in orders."
+msgstr "Touchez une table pour la sélectionner. Les tables surlignées ont des commandes sur place ouvertes."
+
+msgid "Tap products to add items"
+msgstr "Touchez les produits pour ajouter des articles"
+
+msgid "Tax Invoice"
+msgstr "Facture fiscale"
+
+msgid "Thank you for your business."
+msgstr "Merci pour votre confiance."
+
+msgid "Thank you for your visit!"
+msgstr "Merci de votre visite !"
+
+msgid "This ingredient has no unit cost configured"
+msgstr "Cet ingrédient n'a pas de coût unitaire configuré"
+
+msgid "This order cannot be cancelled"
+msgstr "Cette commande ne peut pas être annulée"
+
+msgid "This order type cannot transfer items"
+msgstr "Ce type de commande ne peut pas transférer d'articles"
+
+msgid "To (Customer branch)"
+msgstr "À (succursale client)"
+
+msgid "To (Customer)"
+msgstr "À (client)"
+
+msgid "To branch"
+msgstr "Vers la succursale"
+
+msgid "Total qty"
+msgstr "Qté totale"
+
+msgid "Total quantity"
+msgstr "Quantité totale"
+
+msgid "Transaction history"
+msgstr "Historique des transactions"
+
+msgid "Transfer Invoice"
+msgstr "Facture de transfert"
+
+msgid "Transfer to order"
+msgstr "Transférer vers une commande"
+
+msgid "Transfer to table"
+msgstr "Transférer vers une table"
+
+msgid "Transfer to table…"
+msgstr "Transférer vers une table…"
+
+msgid "Transferred for bakery reuse"
+msgstr "Transféré pour réutilisation boulangerie"
+
+msgid "Transferred to the kitchen"
+msgstr "Transféré à la cuisine"
+
+msgid "UNPAID"
+msgstr "IMPAYÉ"
+
+msgid "Updated"
+msgstr "Mis à jour"
+
+msgid "Variances"
+msgstr "Écarts"
+
+msgid "Verification"
+msgstr "Vérification"
+
+msgid "Verification:"
+msgstr "Vérification :"
+
+msgid "Walk-in"
+msgstr "Passage"
+
+msgid "Walk-in (no account)"
+msgstr "Passage (sans compte)"
+
+msgid "Walk-in customer"
+msgstr "Client de passage"
+
+msgid "Wastage processed; stock updated."
+msgstr "Pertes traitées ; stock mis à jour."
+
+msgid "Wastage recorded and stock updated."
+msgstr "Pertes enregistrées et stock mis à jour."
+
+msgid "Wastage saved as draft."
+msgstr "Pertes enregistrées comme brouillon."
+
+msgid "Withdrawals"
+msgstr "Retraits"
+
+msgid "at"
+msgstr "à"
+
+msgid "bakery goods"
+msgstr "produits de boulangerie"
+
+msgid "e.g. Cash top-up"
+msgstr "ex. Recharge en espèces"
+
+msgid "e.g. Correction"
+msgstr "ex. Correction"
+
+msgid "e.g. end-of-day leftovers, damaged packaging"
+msgstr "ex. restes de fin de journée, emballage endommagé"
+
+msgid "each"
+msgstr "chacun"
+
+msgid "expected"
+msgstr "attendu"
+
+msgid "failed"
+msgstr "échoué"
+
+msgid "for"
+msgstr "pour"
+
+msgid "ingredients plus fixed assets."
+msgstr "ingrédients et actifs immobilisés."
+
+msgid "item"
+msgstr "article"
+
+msgid "items"
+msgstr "articles"
+
+msgid "products marked for daily count (shop stock and branch ingredients)."
+msgstr "produits marqués pour le comptage quotidien (stock boutique et ingrédients de succursale)."
+
+msgid "qty"
+msgstr "qté"
+
+msgid "shop items"
+msgstr "articles de boutique"
+
+msgid "updates failed"
+msgstr "mises à jour ont échoué"
+
+msgid "Fiscal receipts issued after proforma approval"
+msgstr "Reçus fiscaux émis après approbation du proforma"
+
+msgid "Search fiscal receipt #, proforma #, order…"
+msgstr "Rechercher n° reçu fiscal, n° proforma, commande…"
+
+msgid "Fiscal receipt #"
+msgstr "N° reçu fiscal"
+
+msgid "Fiscalized"
+msgstr "Fiscalisé"
+
+msgid "No matching fiscal receipts"
+msgstr "Aucun reçu fiscal correspondant"
+
+msgid "No fiscal receipts yet"
+msgstr "Aucun reçu fiscal pour le moment"
+
+msgid "Failed to load receipts:"
+msgstr "Échec du chargement des reçus :"
+
+msgid "Currency Rates"
+msgstr "Taux de change"
+
+msgid "Add exchange rate"
+msgstr "Ajouter un taux de change"
+
+msgid "Select currency…"
+msgstr "Sélectionner une devise…"
+
+msgid "Rate (per 1 base unit)"
+msgstr "Taux (pour 1 unité de base)"
+
+msgid "Effective from"
+msgstr "Effectif à partir du"
+
+msgid "How many units of the selected currency equal 1 unit of the base currency."
+msgstr "Combien d'unités de la devise sélectionnée équivalent à 1 unité de la devise de base."
+
+msgid "Add rate"
+msgstr "Ajouter le taux"
+
+msgid "Exchange rates"
+msgstr "Taux de change"
+
+msgid "Rates used when customers pay in each currency at the receipt."
+msgstr "Taux utilisés lorsque les clients paient dans chaque devise au reçu."
+
+msgid "No exchange rates yet"
+msgstr "Aucun taux de change pour le moment"
+
+msgid "Rate"
+msgstr "Taux"
+
+msgid "Please select a currency"
+msgstr "Veuillez sélectionner une devise"
+
+msgid "Exchange rate added"
+msgstr "Taux de change ajouté"
+
+msgid "Failed to load rates:"
+msgstr "Échec du chargement des taux :"
+
+msgid "Remaining: —"
+msgstr "Restant : —"
+
+msgid "Choose any table, including ones already in use. The current table is disabled."
+msgstr "Choisissez n'importe quelle table, y compris celles déjà utilisées. La table actuelle est désactivée."
+
+msgid "Select for transfer"
+msgstr "Sélectionner pour transfert"
+
+msgid "Remove one unit"
+msgstr "Retirer une unité"
+
+msgid "Remove 1"
+msgstr "Retirer 1"
+
+msgid "Leave blank to skip"
+msgstr "Laisser vide pour ignorer"
+
+msgid "Stock leaves the sending branch when you dispatch."
+msgstr "Le stock quitte la succursale expéditrice lors de l'expédition."
+
+msgid "Creating…"
+msgstr "Création…"
+
+msgid "Optional"
+msgstr "Facultatif"
+
+msgid "Credit limit: —"
+msgstr "Limite de crédit : —"
+
+msgid "New balance: —"
+msgstr "Nouveau solde : —"
+
+msgid "available at source · deducted on dispatch"
+msgstr "disponible à la source · déduit à l'expédition"

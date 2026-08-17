@@ -1,47 +1,47 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Stock adjustment — Café de Paris{% endblock %}
-{% block page_title %}Stock adjustment{% endblock %}
+{% block title %}{% trans "Stock adjustment" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Stock adjustment" %}{% endblock %}
 
 {% block topbar_actions %}
-<button type="button" class="btn btn-primary btn-sm" id="apply-all-btn" disabled>Apply all filled</button>
+<button type="button" class="btn btn-primary btn-sm" id="apply-all-btn" disabled>{% trans "Apply all filled" %}</button>
 {% endblock %}
 
 {% block content %}
 {{ bakery_sellable_categories|json_script:"bakery-sellable-categories" }}
 <p class="products-page-description">
-  Quickly add or set stock for bakery goods, shop items, or ingredients at a branch.
+  {% trans "Quickly add or set stock for bakery goods, shop items, or ingredients at a branch." %}
 </p>
 
 <div class="card" style="padding: 0;">
   <div class="stock-adjust-toolbar">
     <div class="form-group" style="margin: 0; min-width: 200px;">
-      <label for="branch-select">Branch</label>
+      <label for="branch-select">{% trans "Branch" %}</label>
       <select id="branch-select">
-        <option value="">Loading…</option>
+        <option value="">{% trans "Loading…" %}</option>
       </select>
     </div>
     <div class="form-group" style="margin: 0;">
-      <label>Item type</label>
-      <div class="pos-mode-toggle" id="item-type-toggle" role="radiogroup" aria-label="Item type">
-        <button type="button" class="pos-mode-btn active" data-type="bakery" aria-pressed="true">Bakery</button>
-        <button type="button" class="pos-mode-btn" data-type="shop" aria-pressed="false">Shop</button>
-        <button type="button" class="pos-mode-btn" data-type="ingredients" aria-pressed="false">Ingredients</button>
+      <label>{% trans "Item type" %}</label>
+      <div class="pos-mode-toggle" id="item-type-toggle" role="radiogroup" aria-label="{% trans "Item type" %}">
+        <button type="button" class="pos-mode-btn active" data-type="bakery" aria-pressed="true">{% trans "Bakery" %}</button>
+        <button type="button" class="pos-mode-btn" data-type="shop" aria-pressed="false">{% trans "Shop" %}</button>
+        <button type="button" class="pos-mode-btn" data-type="ingredients" aria-pressed="false">{% trans "Ingredients" %}</button>
       </div>
     </div>
     <div class="form-group" style="margin: 0;">
-      <label>Mode</label>
-      <div class="pos-mode-toggle" id="mode-toggle" role="radiogroup" aria-label="Stock mode">
-        <button type="button" class="pos-mode-btn active" data-mode="add" aria-pressed="true">Add</button>
-        <button type="button" class="pos-mode-btn" data-mode="set" aria-pressed="false">Set</button>
+      <label>{% trans "Mode" %}</label>
+      <div class="pos-mode-toggle" id="mode-toggle" role="radiogroup" aria-label="{% trans "Stock mode" %}">
+        <button type="button" class="pos-mode-btn active" data-mode="add" aria-pressed="true">{% trans "Add" %}</button>
+        <button type="button" class="pos-mode-btn" data-mode="set" aria-pressed="false">{% trans "Set" %}</button>
       </div>
     </div>
     <input
       type="search"
       id="item-search"
       class="report-input"
-      placeholder="Search items…"
+      placeholder="{% trans "Search items…" %}"
       style="max-width: 260px; align-self: end;"
       autocomplete="off"
     >
@@ -60,6 +60,7 @@ import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% 
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { applyStockChange, formatStockQty, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
 
+const t = (msgid) => window.CDP.t(msgid);
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
 const BAKERY_SELLABLE = new Set(
@@ -116,15 +117,15 @@ function updateHint() {
   const branch = selectedBranch();
   if (!branch) {
     hintEl.textContent = canFilterAnyBranch
-      ? "Select a branch to adjust stock."
-      : "No branch assigned — stock adjustments unavailable.";
+      ? t("Select a branch to adjust stock.")
+      : t("No branch assigned — stock adjustments unavailable.");
     return;
   }
-  const typeLabel = itemType === "bakery" ? "bakery goods"
-    : itemType === "shop" ? "shop items"
-    : "ingredients";
-  const modeLabel = mode === "add" ? "Add amounts to current stock" : "Set stock to an absolute quantity";
-  hintEl.textContent = `${modeLabel} for ${typeLabel} at ${branch.name}.`;
+  const typeLabel = itemType === "bakery" ? t("bakery goods")
+    : itemType === "shop" ? t("shop items")
+    : t("ingredients");
+  const modeLabel = mode === "add" ? t("Add amounts to current stock") : t("Set stock to an absolute quantity");
+  hintEl.textContent = `${modeLabel} ${t("for")} ${typeLabel} ${t("at")} ${branch.name}.`;
 }
 
 function matchesSearch(item) {
@@ -134,7 +135,7 @@ function matchesSearch(item) {
 }
 
 function qtyPlaceholder() {
-  return mode === "add" ? "Add qty" : "Set qty";
+  return mode === "add" ? t("Add qty") : t("Set qty");
 }
 
 function capturePendingFromDom() {
@@ -157,7 +158,7 @@ function render() {
   updateApplyAllState();
 
   if (!selectedBranchId) {
-    tableEl.innerHTML = `<div class="empty-state"><p>Select a branch to view items</p></div>`;
+    tableEl.innerHTML = `<div class="empty-state"><p>${t("Select a branch to view items")}</p></div>`;
     return;
   }
 
@@ -168,7 +169,7 @@ function render() {
 
   const filtered = items.filter(matchesSearch);
   if (!filtered.length) {
-    tableEl.innerHTML = `<div class="empty-state"><p>${items.length ? "No matching items" : "No items for this type"}</p></div>`;
+    tableEl.innerHTML = `<div class="empty-state"><p>${items.length ? t("No matching items") : t("No items for this type")}</p></div>`;
     return;
   }
 
@@ -179,10 +180,10 @@ function render() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Name", "name", sortState)}
-          ${sortTh("Category", "category_name", sortState)}
-          ${sortTh(`Stock at ${branch.name}`, "branch_qty", sortState, { align: "right" })}
-          <th style="text-align: right;">${mode === "add" ? "Add" : "Set"} qty</th>
+          ${sortTh(t("Name"), "name", sortState)}
+          ${sortTh(t("Category"), "category_name", sortState)}
+          ${sortTh(`${t("Stock at")} ${branch.name}`, "branch_qty", sortState, { align: "right" })}
+          <th style="text-align: right;">${mode === "add" ? t("Add") : t("Set")} ${t("qty")}</th>
           ${actionTh()}
         </tr>
       </thead>
@@ -192,7 +193,7 @@ function render() {
             <td>
               <strong>${item.name}</strong>
               <div>
-                <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}" style="margin-top:0.25rem; padding-left:0;">History</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}" style="margin-top:0.25rem; padding-left:0;">${t("History")}</button>
               </div>
             </td>
             <td>${item.category_name || "—"}</td>
@@ -206,11 +207,11 @@ function render() {
                 step="0.001"
                 placeholder="${qtyPlaceholder()}"
                 value="${pendingQty.has(item.id) ? pendingQty.get(item.id) : ""}"
-                aria-label="Quantity for ${item.name}"
+                aria-label="${t("Quantity for")} ${item.name}"
               >
             </td>
             <td style="text-align: right;">
-              <button type="button" class="btn btn-primary btn-sm" data-apply-row>Apply</button>
+              <button type="button" class="btn btn-primary btn-sm" data-apply-row>${t("Apply")}</button>
             </td>
           </tr>
         `).join("")}
@@ -297,7 +298,7 @@ async function loadBranches() {
 
   setupBranchSelect(branchSelect, branches, {
     canSelectAny: canFilterAnyBranch,
-    emptyLabel: "No branches available",
+    emptyLabel: t("No branches available"),
   });
 
   selectedBranchId = branches.length === 1
@@ -377,8 +378,8 @@ tableEl.addEventListener("click", async (e) => {
         unwrapList,
         branchId: selectedBranchId,
         productId,
-        productName: item?.name || "Product",
-        branchName: branch?.name || "Branch",
+        productName: item?.name || t("Product"),
+        branchName: branch?.name || t("Branch"),
       });
     } catch (err) {
       showToast(err.message, true);
@@ -396,7 +397,7 @@ tableEl.addEventListener("click", async (e) => {
   btn.disabled = true;
   try {
     await applyOne(productId, amount);
-    showToast(mode === "add" ? "Stock added" : "Stock set");
+    showToast(mode === "add" ? t("Stock added") : t("Stock set"));
     if (input) input.value = "";
     const qtyCell = row.querySelector("[data-current-qty]");
     const item = items.find(i => i.id === productId);
@@ -426,9 +427,9 @@ applyAllBtn.addEventListener("click", async () => {
     }
   }
   render();
-  if (failed && ok) showToast(`Updated ${ok}, ${failed} failed`, true);
-  else if (failed) showToast(`All ${failed} updates failed`, true);
-  else showToast(`Updated ${ok} item${ok === 1 ? "" : "s"}`);
+  if (failed && ok) showToast(`${t("Updated")} ${ok}, ${failed} ${t("failed")}`, true);
+  else if (failed) showToast(`${t("All")} ${failed} ${t("updates failed")}`, true);
+  else showToast(`${t("Updated")} ${ok} ${ok === 1 ? t("item") : t("items")}`);
   updateApplyAllState();
 });
 

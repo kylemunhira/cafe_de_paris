@@ -1,14 +1,14 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}List Ingredients — Café de Paris{% endblock %}
-{% block page_title %}List Ingredients{% endblock %}
+{% block title %}{% trans "List Ingredients" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "List Ingredients" %}{% endblock %}
 
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
-  <button type="button" class="btn btn-ghost btn-sm" id="csv-download">Download CSV</button>
+  <button type="button" class="btn btn-ghost btn-sm" id="csv-download">{% trans "Download CSV" %}</button>
   <label class="btn btn-primary btn-sm" style="cursor: pointer;">
-    Upload CSV
+    {% trans "Upload CSV" %}
     <input type="file" id="csv-upload" accept=".csv,text/csv" hidden>
   </label>
 </div>
@@ -16,43 +16,43 @@
 
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add ingredient</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Add ingredient" %}</h3>
   <form id="ingredient-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="ingredient-name">Name</label>
+        <label for="ingredient-name">{% trans "Name" %}</label>
         <input type="text" id="ingredient-name" required autocomplete="off">
       </div>
       <div class="form-group">
-        <label for="ingredient-category">Category</label>
+        <label for="ingredient-category">{% trans "Category" %}</label>
         <select id="ingredient-category">
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="ingredient-cost">Unit cost</label>
+        <label for="ingredient-cost">{% trans "Unit cost" %}</label>
         <input type="number" id="ingredient-cost" required min="0" step="0.01" placeholder="0.00">
       </div>
       <div class="form-group">
-        <label for="ingredient-qty" id="ingredient-qty-label">Branch stock</label>
+        <label for="ingredient-qty" id="ingredient-qty-label">{% trans "Branch stock" %}</label>
         <input type="number" id="ingredient-qty" min="0" step="0.001" value="0">
       </div>
     </div>
     <div class="form-group" id="active-field" style="display: none;">
       <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
         <input type="checkbox" id="ingredient-active" checked>
-        Active ingredient
+        {% trans "Active ingredient" %}
       </label>
     </div>
     <div class="form-group" id="daily-stock-field" style="display: none;">
       <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
         <input type="checkbox" id="ingredient-daily-stock">
-        Include in daily stock take
+        {% trans "Include in daily stock take" %}
       </label>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
-      <button type="submit" class="btn btn-primary" id="submit-btn">Add ingredient</button>
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">{% trans "Add ingredient" %}</button>
     </div>
   </form>
 </div>
@@ -60,22 +60,22 @@
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; align-items: end; gap: 1rem; flex-wrap: wrap;">
     <div class="form-group" style="margin: 0; min-width: 220px;">
-      <label for="branch-select">Branch</label>
+      <label for="branch-select">{% trans "Branch" %}</label>
       <select id="branch-select">
-        <option value="">Loading…</option>
+        <option value="">{% trans "Loading…" %}</option>
       </select>
     </div>
     <input
       type="search"
       id="ingredient-search"
       class="report-input"
-      placeholder="Search ingredients…"
+      placeholder="{% trans "Search ingredients…" %}"
       style="max-width: 280px;"
       autocomplete="off"
     >
     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
-      Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets.
-      Category is for grouping only; stock type stays Ingredients / Branch Ingredients.
+      {% trans "Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets." %}
+      {% trans "Category is for grouping only; stock type stays Ingredients / Branch Ingredients." %}
     </p>
   </div>
   <div class="table-wrap" id="ingredients-table">
@@ -90,6 +90,8 @@ import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showT
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { formatStockQty, stockAdjustInlineHtml, handleInlineStockApply, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
@@ -157,14 +159,14 @@ function selectedBranch() {
 
 function updateQtyLabel() {
   const branch = selectedBranch();
-  qtyLabel.textContent = branch ? `Stock at ${branch.name}` : "Branch stock";
+  qtyLabel.textContent = branch ? `${t("Stock at")} ${branch.name}` : t("Branch stock");
 }
 
 function populateCategorySelect(selectedId = "") {
   const options = categories
     .map(c => `<option value="${c.id}">${c.name}</option>`)
     .join("");
-  categorySelect.innerHTML = `<option value="">No category</option>${options}`;
+  categorySelect.innerHTML = `<option value="">${t("No category")}</option>${options}`;
   categorySelect.value = selectedId ? String(selectedId) : "";
   if (selectedId && categorySelect.value !== String(selectedId)) {
     categorySelect.value = "";
@@ -187,8 +189,8 @@ async function fetchAllInventory(params = {}) {
 
 function resetForm() {
   editingId = null;
-  formTitle.textContent = "Add ingredient";
-  submitBtn.textContent = "Add ingredient";
+  formTitle.textContent = t("Add ingredient");
+  submitBtn.textContent = t("Add ingredient");
   cancelBtn.style.display = "none";
   activeField.style.display = "none";
   dailyStockField.style.display = "none";
@@ -201,8 +203,8 @@ function resetForm() {
 
 function startEdit(ingredient) {
   editingId = ingredient.id;
-  formTitle.textContent = "Edit ingredient";
-  submitBtn.textContent = "Save changes";
+  formTitle.textContent = t("Edit ingredient");
+  submitBtn.textContent = t("Save changes");
   cancelBtn.style.display = "";
   activeField.style.display = "";
   dailyStockField.style.display = "";
@@ -233,18 +235,18 @@ function render() {
   const branch = selectedBranch();
 
   if (!selectedBranchId) {
-    ingredientsTable.innerHTML = `<div class="empty-state"><p>Select a branch to view ingredient stock</p></div>`;
+    ingredientsTable.innerHTML = `<div class="empty-state"><p>${t("Select a branch to view ingredient stock")}</p></div>`;
     return;
   }
 
   if (!ingredients.length) {
-    ingredientsTable.innerHTML = `<div class="empty-state"><p>No ingredients yet — add one above or import from CSV</p></div>`;
+    ingredientsTable.innerHTML = `<div class="empty-state"><p>${t("No ingredients yet — add one above or import from CSV")}</p></div>`;
     return;
   }
 
   const filtered = ingredients.filter(matchesSearch);
   if (!filtered.length) {
-    ingredientsTable.innerHTML = `<div class="empty-state"><p>No matching ingredients</p></div>`;
+    ingredientsTable.innerHTML = `<div class="empty-state"><p>${t("No matching ingredients")}</p></div>`;
     return;
   }
 
@@ -254,12 +256,12 @@ function render() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Name", "name", sortState)}
-          ${sortTh("Category", "group_category_name", sortState)}
-          ${sortTh("Unit cost", "selling_price", sortState)}
-          ${sortTh(`Stock at ${branch.name}`, "branch_qty", sortState)}
-          ${sortTh("Status", "is_active", sortState)}
-          ${sortTh("Daily count", "daily_stock_take", sortState)}
+          ${sortTh(t("Name"), "name", sortState)}
+          ${sortTh(t("Category"), "group_category_name", sortState)}
+          ${sortTh(t("Unit cost"), "selling_price", sortState)}
+          ${sortTh(`${t("Stock at")} ${branch.name}`, "branch_qty", sortState)}
+          ${sortTh(t("Status"), "is_active", sortState)}
+          ${sortTh(t("Daily count"), "daily_stock_take", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -275,28 +277,28 @@ function render() {
                 ${stockAdjustInlineHtml({ productId: item.id })}
               </div>
             </td>
-            <td><span class="badge ${item.is_active ? "badge-active" : "badge-inactive"}">${item.is_active ? "Active" : "Inactive"}</span></td>
+            <td><span class="badge ${item.is_active ? "badge-active" : "badge-inactive"}">${item.is_active ? t("Active") : t("Inactive")}</span></td>
             <td>
-              <div class="daily-count-toggle" role="group" aria-label="Daily count for ${item.name}">
+              <div class="daily-count-toggle" role="group" aria-label="${t("Daily count for")} ${item.name}">
                 <button
                   type="button"
                   class="${item.daily_stock_take ? "is-active" : ""}"
                   data-set-daily="${item.id}"
                   data-daily-value="true"
                   ${item.daily_stock_take ? "aria-pressed=\"true\"" : "aria-pressed=\"false\""}
-                >Yes</button>
+                >${t("Yes")}</button>
                 <button
                   type="button"
                   class="${item.daily_stock_take ? "" : "is-active"}"
                   data-set-daily="${item.id}"
                   data-daily-value="false"
                   ${item.daily_stock_take ? "aria-pressed=\"false\"" : "aria-pressed=\"true\""}
-                >No</button>
+                >${t("No")}</button>
               </div>
             </td>
             <td style="text-align: right;">
-              <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}">History</button>
-              <button type="button" class="btn btn-ghost btn-sm" data-edit="${item.id}">Edit</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}">${t("History")}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-edit="${item.id}">${t("Edit")}</button>
             </td>
           </tr>
         `).join("")}
@@ -357,7 +359,7 @@ async function loadBranches() {
 
   setupBranchSelect(branchSelect, branches, {
     canSelectAny: canFilterAnyBranch,
-    emptyLabel: "No branches available",
+    emptyLabel: t("No branches available"),
   });
 
   selectedBranchId = branches.length === 1 ? branches[0].id : (branchSelect.value ? Number(branchSelect.value) : null);
@@ -367,7 +369,7 @@ async function loadBranches() {
 
 async function syncBranchStock(productId, newQty) {
   if (!selectedBranchId) {
-    throw new Error("Select a branch before setting stock");
+    throw new Error(t("Select a branch before setting stock"));
   }
 
   const currentQty = branchInventory.get(productId) ?? 0;
@@ -399,17 +401,17 @@ ingredientForm.addEventListener("submit", async (e) => {
     if (editingId) {
       await apiPatch(`/products/${editingId}/`, payload);
       await syncBranchStock(editingId, targetQty);
-      showToast("Ingredient updated");
+      showToast(t("Ingredient updated"));
     } else {
       if (Number(targetQty) > 0 && !selectedBranchId) {
-        throw new Error("Select a branch before setting opening stock");
+        throw new Error(t("Select a branch before setting opening stock"));
       }
 
       const allCategories = unwrapList(await apiGet("/categories/?page_size=500"));
       const categoryName = ingredientCategoryForBranch(selectedBranch());
       const category = allCategories.find(c => c.name === categoryName);
       if (!category) {
-        throw new Error(`Category "${categoryName}" not found — run ingredient import or seed first`);
+        throw new Error(`${t("Category")} "${categoryName}" ${t("not found — run ingredient import or seed first")}`);
       }
 
       const created = await apiPost("/products/", {
@@ -419,7 +421,7 @@ ingredientForm.addEventListener("submit", async (e) => {
         remaining_qty: "0",
       });
       await syncBranchStock(created.id, targetQty);
-      showToast("Ingredient added");
+      showToast(t("Ingredient added"));
     }
     resetForm();
     await reload();
@@ -458,7 +460,7 @@ ingredientsTable.addEventListener("click", async (e) => {
           if (editingId === productId) {
             qtyInput.value = String(newQty);
           }
-          showToast("Stock updated");
+          showToast(t("Stock updated"));
         },
       });
     } catch (err) {
@@ -483,7 +485,7 @@ ingredientsTable.addEventListener("click", async (e) => {
       if (editingId === item.id) {
         dailyStockInput.checked = nextValue;
       }
-      showToast(nextValue ? "Daily count enabled" : "Daily count disabled");
+      showToast(nextValue ? t("Daily count enabled") : t("Daily count disabled"));
       render();
     } catch (err) {
       showToast(err.message, true);
@@ -502,8 +504,8 @@ ingredientsTable.addEventListener("click", async (e) => {
         unwrapList,
         branchId: selectedBranchId,
         productId: Number(historyBtn.dataset.history),
-        productName: item?.name || "Ingredient",
-        branchName: branch?.name || "Branch",
+        productName: item?.name || t("Ingredient"),
+        branchName: branch?.name || t("Branch"),
       });
     } catch (err) {
       showToast(err.message, true);
@@ -526,7 +528,7 @@ searchInput.addEventListener("input", () => {
 
 csvDownload.addEventListener("click", () => {
   if (!selectedBranchId) {
-    showToast("Select a branch before downloading CSV", true);
+    showToast(t("Select a branch before downloading CSV"), true);
     return;
   }
   window.location.href = `/api/products/export-ingredients-csv/?branch=${selectedBranchId}`;
@@ -538,7 +540,7 @@ csvUpload.addEventListener("change", async (e) => {
   if (!file) return;
 
   if (!selectedBranchId) {
-    showToast("Select a branch before uploading CSV — remaining_qty is applied as stock at that branch", true);
+    showToast(t("Select a branch before uploading CSV — remaining_qty is applied as stock at that branch"), true);
     return;
   }
 
@@ -549,17 +551,17 @@ csvUpload.addEventListener("change", async (e) => {
   try {
     const result = await apiUpload("/products/import-ingredients-csv/", formData);
     const parts = [];
-    if (result.created) parts.push(`${result.created} created`);
-    if (result.updated) parts.push(`${result.updated} updated`);
-    showToast(parts.length ? `Import complete: ${parts.join(", ")}` : "Import complete");
+    if (result.created) parts.push(`${result.created} ${t("created")}`);
+    if (result.updated) parts.push(`${result.updated} ${t("updated")}`);
+    showToast(parts.length ? `${t("Import complete:")} ${parts.join(", ")}` : t("Import complete"));
     await Promise.all([loadCategories(), reload()]);
   } catch (err) {
     let message = err.message;
     try {
       const data = JSON.parse(err.message);
       if (data?.errors?.length) {
-        const preview = data.errors.slice(0, 3).map(e => `row ${e.row}: ${e.message}`).join("; ");
-        message = `Import failed — ${preview}`;
+        const preview = data.errors.slice(0, 3).map(e => `${t("row")} ${e.row}: ${e.message}`).join("; ");
+        message = `${t("Import failed —")} ${preview}`;
       }
     } catch {
       // use raw message
@@ -569,7 +571,7 @@ csvUpload.addEventListener("change", async (e) => {
 });
 
 Promise.all([loadCategories(), loadBranches()]).catch(err => {
-  ingredientsTable.innerHTML = `<div class="empty-state">Failed to load ingredients: ${err.message}</div>`;
+  ingredientsTable.innerHTML = `<div class="empty-state">${t("Failed to load ingredients:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

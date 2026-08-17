@@ -84,6 +84,7 @@ function initDb() {
   ensureOrderColumn("kitchen_started_at", "TEXT");
   ensureOrderColumn("kitchen_ready_at", "TEXT");
   ensureOrderColumn("created_by_name", "TEXT NOT NULL DEFAULT ''");
+  ensureOrderColumn("access_code", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("paid_by_name", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("payment_method", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("payments_json", "TEXT NOT NULL DEFAULT '[]'");
@@ -278,7 +279,7 @@ function newClientId() {
   return crypto.randomUUID();
 }
 
-function createOrder({ orderType, tableNumber, items, createdByName = "", existingClientId = null }) {
+function createOrder({ orderType, tableNumber, items, createdByName = "", accessCode = "", existingClientId = null }) {
   if (existingClientId) {
     return addItemsToOrder(existingClientId, items);
   }
@@ -309,9 +310,17 @@ function createOrder({ orderType, tableNumber, items, createdByName = "", existi
     db.prepare(
       `INSERT INTO orders (
         client_id, order_type, table_number, status, total_amount,
-        sync_status, created_at, created_by_name
-      ) VALUES (?, ?, ?, 'open', ?, 'pending', ?, ?)`
-    ).run(clientId, orderType, tableNumber || "", total, createdAt, createdByName || "");
+        sync_status, created_at, created_by_name, access_code
+      ) VALUES (?, ?, ?, 'open', ?, 'pending', ?, ?, ?)`
+    ).run(
+      clientId,
+      orderType,
+      tableNumber || "",
+      total,
+      createdAt,
+      createdByName || "",
+      accessCode || ""
+    );
 
     const insertItem = db.prepare(
       "INSERT INTO order_items (order_client_id, product_id, product_name, quantity, price, notes, addons_json) VALUES (?, ?, ?, ?, ?, ?, ?)"

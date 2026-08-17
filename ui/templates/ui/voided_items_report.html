@@ -1,60 +1,60 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Voided &amp; Cancelled — Café de Paris{% endblock %}
-{% block page_title %}Voided &amp; Cancelled Items{% endblock %}
+{% block title %}{% trans "Voided & Cancelled" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Voided & Cancelled Items" %}{% endblock %}
 
 {% block topbar_actions %}
-<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">Print</button>
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">{% trans "Print" %}</button>
 {% endblock %}
 
 {% block content %}
 <div class="card report-filters">
   <div class="report-filters-grid">
     <label>
-      <span>Date</span>
+      <span>{% trans "Date" %}</span>
       <input type="date" id="filter-date" class="report-input">
     </label>
     {% if can_filter_any_branch %}
     <label>
-      <span>Branch</span>
+      <span>{% trans "Branch" %}</span>
       <select id="filter-branch" class="report-input">
-        <option value="">All branches</option>
+        <option value="">{% trans "All branches" %}</option>
       </select>
     </label>
     {% endif %}
     <label style="grid-column: span 2;">
-      <span>Search product</span>
-      <input type="search" id="filter-search" class="report-input" placeholder="Product name…" autocomplete="off">
+      <span>{% trans "Search product" %}</span>
+      <input type="search" id="filter-search" class="report-input" placeholder="{% trans "Product name…" %}" autocomplete="off">
     </label>
     <div class="report-filters-actions">
-      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
   </div>
 </div>
 
 <div class="stat-grid" id="report-summary">
   <div class="card stat-card">
-    <div class="stat-label">Voided items</div>
+    <div class="stat-label">{% trans "Voided items" %}</div>
     <div class="stat-value" id="summary-voided-items">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Cancelled items</div>
+    <div class="stat-label">{% trans "Cancelled items" %}</div>
     <div class="stat-value" id="summary-cancelled-items">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Voided amount</div>
+    <div class="stat-label">{% trans "Voided amount" %}</div>
     <div class="stat-value" id="summary-voided-amount">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">Cancelled amount</div>
+    <div class="stat-label">{% trans "Cancelled amount" %}</div>
     <div class="stat-value" id="summary-cancelled-amount">—</div>
   </div>
 </div>
 
 <div class="card report-panel" id="report-table-card" style="padding: 0;">
   <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Voided &amp; cancelled lines</h3>
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Voided & cancelled lines" %}</h3>
     <p class="report-panel-note" id="report-generated-at" style="margin: 0.35rem 0 0;"></p>
   </div>
   <div class="table-wrap" id="report-table">
@@ -67,6 +67,8 @@
 <script type="module">
 import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 
@@ -111,9 +113,9 @@ function formatTime(iso) {
 
 function actionBadge(actionType) {
   if (actionType === "voided") {
-    return `<span class="badge badge-cancelled">Voided</span>`;
+    return `<span class="badge badge-cancelled">${t("Voided")}</span>`;
   }
-  return `<span class="badge" style="background:#f1f5f9;color:#475569;">Cancelled</span>`;
+  return `<span class="badge" style="background:#f1f5f9;color:#475569;">${t("Cancelled")}</span>`;
 }
 
 function defaultDate() {
@@ -144,11 +146,11 @@ function renderReport(data) {
   const voidedOrders = summary.voided_order_count ?? 0;
   const cancelledOrders = summary.cancelled_order_count ?? 0;
   reportGeneratedAt.textContent =
-    `${reportDate} — ${voidedOrders} voided order(s), ${cancelledOrders} cancelled order(s), ${summary.row_count ?? 0} line(s)`;
+    `${reportDate} — ${voidedOrders} ${t("voided order(s)")}, ${cancelledOrders} ${t("cancelled order(s)")}, ${summary.row_count ?? 0} ${t("line(s)")}`;
 
   const rows = data.rows || [];
   if (!rows.length) {
-    reportTable.innerHTML = `<div class="empty-state"><p>No voided or cancelled items for this date</p></div>`;
+    reportTable.innerHTML = `<div class="empty-state"><p>${t("No voided or cancelled items for this date")}</p></div>`;
     return;
   }
 
@@ -161,17 +163,17 @@ function renderReport(data) {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Time", "cancelled_at", sortState)}
-          ${sortTh("Action", "action_label", sortState)}
-          ${sortTh("Order", "order_id", sortState)}
-          ${showBranchColumn ? sortTh("Branch", "branch_name", sortState) : ""}
-          ${sortTh("Table", "table_number", sortState)}
-          ${sortTh("Product", "product_name", sortState)}
-          <th>Add-ons</th>
-          ${sortTh("Qty", "quantity", sortState, { align: "right" })}
-          ${sortTh("Unit price", "unit_price", sortState, { align: "right" })}
-          ${sortTh("Line total", "line_total", sortState, { align: "right" })}
-          ${sortTh("By", "cancelled_by_name", sortState)}
+          ${sortTh(t("Time"), "cancelled_at", sortState)}
+          ${sortTh(t("Action"), "action_label", sortState)}
+          ${sortTh(t("Order"), "order_id", sortState)}
+          ${showBranchColumn ? sortTh(t("Branch"), "branch_name", sortState) : ""}
+          ${sortTh(t("Table"), "table_number", sortState)}
+          ${sortTh(t("Product"), "product_name", sortState)}
+          <th>${t("Add-ons")}</th>
+          ${sortTh(t("Qty"), "quantity", sortState, { align: "right" })}
+          ${sortTh(t("Unit price"), "unit_price", sortState, { align: "right" })}
+          ${sortTh(t("Line total"), "line_total", sortState, { align: "right" })}
+          ${sortTh(t("By"), "cancelled_by_name", sortState)}
         </tr>
       </thead>
       <tbody>
@@ -193,7 +195,7 @@ function renderReport(data) {
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="${showBranchColumn ? 8 : 7}"><strong>Total</strong></td>
+          <td colspan="${showBranchColumn ? 8 : 7}"><strong>${t("Total")}</strong></td>
           <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_amount ?? 0)}</td>
           <td></td>
         </tr>
@@ -210,7 +212,7 @@ async function loadReport() {
     const data = await apiGet(`/reports/voided-cancelled/${query ? `?${query}` : ""}`);
     renderReport(data);
   } catch (err) {
-    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+    reportTable.innerHTML = `<div class="empty-state">${t("Failed to load report:")} ${err.message}</div>`;
     showToast(err.message, true);
   }
 }
@@ -219,7 +221,7 @@ async function loadBranches() {
   if (!canFilterAnyBranch || !filterBranch) return;
   const data = await apiGet("/branches/?page_size=500");
   const branches = unwrapList(data).filter(b => b.is_active);
-  filterBranch.innerHTML = `<option value="">All branches</option>` +
+  filterBranch.innerHTML = `<option value="">${t("All branches")}</option>` +
     branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
 }
 
@@ -240,7 +242,7 @@ bindTableSort(reportTable, sortState, () => {
 loadBranches()
   .then(loadReport)
   .catch(err => {
-    reportTable.innerHTML = `<div class="empty-state">Failed to load report: ${err.message}</div>`;
+    reportTable.innerHTML = `<div class="empty-state">${t("Failed to load report:")} ${err.message}</div>`;
   });
 </script>
 {% endblock %}

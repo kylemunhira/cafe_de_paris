@@ -1,11 +1,11 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Orders — Café de Paris{% endblock %}
-{% block page_title %}Orders{% endblock %}
+{% block title %}{% trans "Orders" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Orders" %}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{% url 'ui:pos' %}" class="btn btn-accent btn-sm">New Sale</a>
+<a href="{% url 'ui:pos' %}" class="btn btn-accent btn-sm">{% trans "New Sale" %}</a>
 {% endblock %}
 
 {% block content %}
@@ -15,15 +15,15 @@
       type="search"
       id="order-search"
       class="report-input"
-      placeholder="Search order #, branch, receipt #, staff…"
+      placeholder="{% trans "Search order #, branch, receipt #, staff…" %}"
       style="max-width: 320px;"
       autocomplete="off"
     >
-    <button class="category-tab active" data-filter="all">All</button>
-    <button class="category-tab" data-filter="open">Open</button>
-    <button class="category-tab" data-filter="unpaid">Unpaid</button>
-    <button class="category-tab" data-filter="paid">Paid</button>
-    <button class="category-tab" data-filter="cancelled">Cancelled</button>
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="open">{% trans "Open" %}</button>
+    <button class="category-tab" data-filter="unpaid">{% trans "Unpaid" %}</button>
+    <button class="category-tab" data-filter="paid">{% trans "Paid" %}</button>
+    <button class="category-tab" data-filter="cancelled">{% trans "Cancelled" %}</button>
   </div>
   <div class="table-wrap" id="orders-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -35,6 +35,22 @@
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
+const canManagePosOrders = "{{ can_manage_pos_orders|yesno:'true,false' }}" === "true";
+
+function promptManagerAccessCode(actionLabel) {
+  const code = window.prompt(
+    t("Enter manager 4-digit access code") + (actionLabel ? ` (${actionLabel})` : "")
+  );
+  if (code == null) return null;
+  const trimmed = code.trim();
+  if (!/^\d{4}$/.test(trimmed)) {
+    showToast(t("Access code must be exactly 4 digits"), true);
+    return null;
+  }
+  return trimmed;
+}
 
 let allOrders = [];
 let activeFilter = "all";
@@ -53,6 +69,7 @@ const ORDER_SORT = {
   total_amount: (o) => Number(o.total_amount),
   payment_currency_name: (o) => paymentCurrencyLabel(o),
   status: (o) => o.status || "",
+  created_by_name: (o) => o.created_by_name || "",
   created_at: (o) => o.created_at || "",
 };
 
@@ -60,10 +77,10 @@ function paymentCurrencyLabel(order) {
   if (order.status !== "paid") return "";
   const parts = [];
   if (order.payment_method === "account") {
-    parts.push(order.payment_method_display || "Customer account");
+    parts.push(order.payment_method_display || t("Customer account"));
   } else if (order.payment_method === "multi" && order.payments?.length) {
     const codes = [...new Set(order.payments.map((p) => p.currency_code || p.currency_name).filter(Boolean))];
-    parts.push(codes.length ? codes.join(" + ") : (order.payment_method_display || "Split"));
+    parts.push(codes.length ? codes.join(" + ") : (order.payment_method_display || t("Split")));
     return parts.join(" · ");
   } else if (order.payment_method_display && order.payment_method !== "cash") {
     parts.push(order.payment_method_display);
@@ -109,8 +126,8 @@ function renderOrders() {
 
   if (!filtered.length) {
     const message = searchQuery || activeFilter !== "all"
-      ? "No matching orders"
-      : "No orders found";
+      ? t("No matching orders")
+      : t("No orders found");
     container.innerHTML = `<div class="empty-state"><p>${message}</p></div>`;
     return;
   }
@@ -119,14 +136,15 @@ function renderOrders() {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Order", "id", sortState)}
-          ${sortTh("Branch", "branch_name", sortState)}
-          ${sortTh("Type", "order_type", sortState)}
-          ${sortTh("Items", "items", sortState)}
-          ${sortTh("Total", "total_amount", sortState)}
-          ${sortTh("Currency", "payment_currency_name", sortState)}
-          ${sortTh("Status", "status", sortState)}
-          ${sortTh("Date", "created_at", sortState)}
+          ${sortTh(t("Order"), "id", sortState)}
+          ${sortTh(t("Branch"), "branch_name", sortState)}
+          ${sortTh(t("Type"), "order_type", sortState)}
+          ${sortTh(t("Items"), "items", sortState)}
+          ${sortTh(t("Total"), "total_amount", sortState)}
+          ${sortTh(t("Currency"), "payment_currency_name", sortState)}
+          ${sortTh(t("Status"), "status", sortState)}
+          ${sortTh(t("Added by"), "created_by_name", sortState)}
+          ${sortTh(t("Date"), "created_at", sortState)}
           ${actionTh()}
         </tr>
       </thead>
@@ -140,16 +158,17 @@ function renderOrders() {
             <td>${formatCurrency(o.total_amount, baseCurrency)}</td>
             <td>${o.status === "paid" ? (paymentCurrencyLabel(o) || "—") : "—"}</td>
             <td>${statusBadge(o.status)}</td>
+            <td>${o.created_by_name || "—"}</td>
             <td>${formatDate(o.created_at)}</td>
             <td>
               ${o.status === "open" || o.status === "unpaid" ? `
-                <button class="btn btn-accent btn-sm pay-btn" data-id="${o.id}">Pay</button>
+                <button class="btn btn-accent btn-sm pay-btn" data-id="${o.id}">${t("Pay")}</button>
               ` : ""}
               ${o.status === "open" || o.status === "unpaid" ? `
-                <button class="btn btn-ghost btn-sm cancel-btn" data-id="${o.id}">Cancel</button>
+                <button class="btn btn-ghost btn-sm cancel-btn" data-id="${o.id}">${t("Cancel")}</button>
               ` : ""}
               ${o.status === "paid" && o.fiscal_approval_status !== "approved" ? `
-                <button class="btn btn-ghost btn-sm void-btn" data-id="${o.id}">Void</button>
+                <button class="btn btn-ghost btn-sm void-btn" data-id="${o.id}">${t("Void")}</button>
               ` : ""}
             </td>
           </tr>
@@ -165,7 +184,7 @@ container.addEventListener("click", async (e) => {
   const cancelBtn = e.target.closest(".cancel-btn");
   if (cancelBtn) {
     const id = cancelBtn.dataset.id;
-    if (!window.confirm(`Cancel unpaid order #${id}?`)) return;
+    if (!window.confirm(`${t("Cancel unpaid order")} #${id}?`)) return;
     cancelBtn.disabled = true;
     try {
       const updated = await apiPost(`/orders/${id}/cancel/`, {});
@@ -176,7 +195,7 @@ container.addEventListener("click", async (e) => {
         order.cancelled_by_name = updated.cancelled_by_name;
       }
       renderOrders();
-      showToast(`Order #${id} cancelled`);
+      showToast(`${t("Order")} #${id} ${t("cancelled")}`);
     } catch (err) {
       showToast(err.message, true);
       cancelBtn.disabled = false;
@@ -187,10 +206,16 @@ container.addEventListener("click", async (e) => {
   const voidBtn = e.target.closest(".void-btn");
   if (voidBtn) {
     const id = voidBtn.dataset.id;
-    if (!window.confirm(`Reverse payment for order #${id}? The order will be marked unpaid so it can be paid again.`)) return;
+    if (!window.confirm(`${t("Reverse payment for order")} #${id}? ${t("The order will be marked unpaid so it can be paid again.")}`)) return;
+    let accessCode = null;
+    if (!canManagePosOrders) {
+      accessCode = promptManagerAccessCode(t("void order"));
+      if (!accessCode) return;
+    }
     voidBtn.disabled = true;
     try {
-      const updated = await apiPost(`/orders/${id}/void/`, {});
+      const payload = accessCode ? { access_code: accessCode } : {};
+      const updated = await apiPost(`/orders/${id}/void/`, payload);
       const order = allOrders.find(o => String(o.id) === id);
       if (order) {
         order.status = updated.status;
@@ -198,7 +223,7 @@ container.addEventListener("click", async (e) => {
         order.cancelled_by_name = updated.cancelled_by_name;
       }
       renderOrders();
-      showToast(`Payment reversed for order #${id}; it is now unpaid`);
+      showToast(`${t("Payment reversed for order")} #${id}; ${t("it is now unpaid")}`);
     } catch (err) {
       showToast(err.message, true);
       voidBtn.disabled = false;
@@ -212,20 +237,20 @@ container.addEventListener("click", async (e) => {
   const id = btn.dataset.id;
   const options = currencies.filter(c => c.is_active);
   if (!options.length) {
-    showToast("No currencies configured", true);
+    showToast(t("No currencies configured"), true);
     return;
   }
 
   let currencyId = options[0].id;
   if (options.length > 1) {
     const labels = options.map((c, i) => {
-      const rate = c.is_base ? "base" : (c.current_rate || "no rate");
+      const rate = c.is_base ? t("base") : (c.current_rate || t("no rate"));
       return `${i + 1}. ${c.name} (${rate})`;
     }).join("\n");
-    const choice = window.prompt(`Select payment currency (enter number):\n${labels}`, "1");
+    const choice = window.prompt(`${t("Select payment currency (enter number):")}\n${labels}`, "1");
     const index = Number(choice) - 1;
     if (!Number.isInteger(index) || index < 0 || index >= options.length) {
-      showToast("Payment cancelled", true);
+      showToast(t("Payment cancelled"), true);
       return;
     }
     currencyId = options[index].id;
@@ -244,10 +269,10 @@ container.addEventListener("click", async (e) => {
       order.fiscal_approval_status = paid.fiscal_approval_status || "";
     }
     renderOrders();
-    showToast(`Order #${id} paid in ${paid.payment_currency_name}`);
+    showToast(`${t("Order")} #${id} ${t("paid in")} ${paid.payment_currency_name}`);
   } catch (err) {
     showToast(err.message, true);
-    btn.textContent = "Pay";
+    btn.textContent = t("Pay");
     btn.disabled = false;
   }
 });
@@ -259,7 +284,7 @@ searchInput.addEventListener("input", () => {
 
 document.querySelectorAll("[data-filter]").forEach(tab => {
   tab.addEventListener("click", () => {
-    document.querySelectorAll("[data-filter]").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll("[data-filter]").forEach(el => el.classList.remove("active"));
     tab.classList.add("active");
     activeFilter = tab.dataset.filter;
     renderOrders();
@@ -276,7 +301,7 @@ Promise.all([
   setBaseCurrency(baseCurrency);
   renderOrders();
 }).catch(err => {
-  container.innerHTML = `<div class="empty-state">Failed to load orders: ${err.message}</div>`;
+  container.innerHTML = `<div class="empty-state">${t("Failed to load orders:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

@@ -320,6 +320,143 @@ h1, h2, h3, .font-display {
   margin: 0;
 }
 
+/* Language selector */
+.language-selector {
+  position: relative;
+  display: inline-block;
+}
+
+.language-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(44, 24, 16, 0.12);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  gap: 0.35rem;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.65rem;
+}
+
+.language-button:hover {
+  background: rgba(44, 24, 16, 0.04);
+  color: var(--color-espresso);
+}
+
+.language-button-chevron {
+  opacity: 0.7;
+}
+
+.language-menu {
+  background: var(--color-surface);
+  border: 1px solid rgba(44, 24, 16, 0.08);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  min-width: 180px;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 50;
+}
+
+.language-menu form {
+  display: flex;
+  flex-direction: column;
+}
+
+.language-option {
+  background: transparent;
+  border: none;
+  color: var(--color-espresso);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+.language-option:hover {
+  background: rgba(44, 24, 16, 0.04);
+}
+
+.language-option.is-active {
+  background: rgba(212, 160, 84, 0.12);
+  font-weight: 600;
+}
+
+.login-language {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 5;
+}
+
+html[dir="rtl"] .sidebar {
+  left: auto;
+  right: 0;
+}
+
+html[dir="rtl"] .main-content {
+  margin-left: 0;
+  margin-right: 260px;
+}
+
+html[dir="rtl"] .app-shell.sidebar-hidden .sidebar {
+  transform: translateX(100%);
+}
+
+html[dir="rtl"] .app-shell.sidebar-hidden .main-content {
+  margin-right: 0;
+}
+
+html[dir="rtl"] .page-footer {
+  left: 0;
+  right: 260px;
+  transition: right 0.25s ease;
+}
+
+html[dir="rtl"] .app-shell.sidebar-hidden .page-footer {
+  right: 0;
+}
+
+html[dir="rtl"] .language-menu {
+  left: 0;
+  right: auto;
+}
+
+html[dir="rtl"] .language-option {
+  text-align: right;
+}
+
+html[dir="rtl"] .topbar-auth {
+  border-left: none;
+  border-right: 1px solid rgba(44, 24, 16, 0.08);
+  margin-left: 0;
+  margin-right: 0.25rem;
+  padding-left: 0;
+  padding-right: 0.75rem;
+}
+
+html[dir="rtl"] .login-language {
+  left: 1rem;
+  right: auto;
+}
+
+@media (max-width: 768px) {
+  html[dir="rtl"] .main-content {
+    margin-right: 0;
+  }
+
+  html[dir="rtl"] .page-footer {
+    right: 0;
+  }
+}
+
 .page-body {
   flex: 1;
   padding: 1.5rem 2rem 3.5rem;

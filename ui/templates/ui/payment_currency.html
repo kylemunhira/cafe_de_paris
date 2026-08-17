@@ -1,41 +1,41 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Currency — Café de Paris{% endblock %}
-{% block page_title %}Currency{% endblock %}
+{% block title %}{% trans "Currency" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Currency" %}{% endblock %}
 
 {% block content %}
 {% if can_manage_currencies %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; max-width: 640px;">
-  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">Add currency</h3>
+  <h3 id="form-title" style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Add currency" %}</h3>
   <form id="currency-form">
     <div class="form-group">
-      <label for="currency-name">Name</label>
-      <input type="text" id="currency-name" name="name" required placeholder="US Dollar">
+      <label for="currency-name">{% trans "Name" %}</label>
+      <input type="text" id="currency-name" name="name" required placeholder="{% trans "US Dollar" %}">
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="currency-code">Code <span style="font-weight: 400; color: var(--color-muted);">(optional)</span></label>
+        <label for="currency-code">{% trans "Code" %} <span style="font-weight: 400; color: var(--color-muted);">({% trans "optional" %})</span></label>
         <input type="text" id="currency-code" name="code" maxlength="10" placeholder="USD" style="text-transform: uppercase;">
       </div>
       <div class="form-group">
-        <label for="currency-symbol">Symbol</label>
+        <label for="currency-symbol">{% trans "Symbol" %}</label>
         <input type="text" id="currency-symbol" name="symbol" maxlength="10" placeholder="$">
       </div>
     </div>
     <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
       <input type="checkbox" id="currency-base" name="is_base">
-      <label for="currency-base" style="margin: 0;">Set as base currency (order prices are in this currency)</label>
+      <label for="currency-base" style="margin: 0;">{% trans "Set as base currency (order prices are in this currency)" %}</label>
     </div>
     <div class="form-group" id="active-field" style="display: none;">
       <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
         <input type="checkbox" id="currency-active" name="is_active" checked>
-        Active currency
+        {% trans "Active currency" %}
       </label>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">Cancel</button>
-      <button type="submit" class="btn btn-primary" id="currency-submit">Add currency</button>
+      <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary" id="currency-submit">{% trans "Add currency" %}</button>
     </div>
   </form>
 </div>
@@ -43,9 +43,9 @@
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Currencies</h3>
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Currencies" %}</h3>
     <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">
-      Set exchange rates for each currency under Payment &amp; Rates → Rates.
+      {% trans "Set exchange rates for each currency under Payment & Rates → Rates." %}
     </p>
   </div>
   <div class="table-wrap" id="currencies-table">
@@ -58,6 +58,8 @@
 <script type="module">
 import { apiGet, apiPost, apiPatch, unwrapList, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canManageCurrencies = {{ can_manage_currencies|yesno:"true,false" }};
 const currencyForm = document.getElementById("currency-form");
@@ -93,8 +95,8 @@ function setFormMode(mode) {
   const isEdit = mode === "edit";
   editingCurrencyId = isEdit ? editingCurrencyId : null;
 
-  formTitle.textContent = isEdit ? "Edit currency" : "Add currency";
-  currencySubmit.textContent = isEdit ? "Save changes" : "Add currency";
+  formTitle.textContent = isEdit ? t("Edit currency") : t("Add currency");
+  currencySubmit.textContent = isEdit ? t("Save changes") : t("Add currency");
   cancelBtn.style.display = isEdit ? "" : "none";
   activeField.style.display = isEdit ? "" : "none";
 
@@ -120,7 +122,7 @@ function startEdit(currency) {
 function renderCurrencies(currencies) {
   allCurrencies = currencies;
   if (!allCurrencies.length) {
-    currenciesTable.innerHTML = `<div class="empty-state"><p>No currencies yet</p></div>`;
+    currenciesTable.innerHTML = `<div class="empty-state"><p>${t("No currencies yet")}</p></div>`;
     return;
   }
 
@@ -130,12 +132,12 @@ function renderCurrencies(currencies) {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Name", "name", sortState)}
-          ${sortTh("Code", "code", sortState)}
-          ${sortTh("Symbol", "symbol", sortState)}
-          ${sortTh("Base", "is_base", sortState)}
-          ${sortTh("Current rate", "current_rate", sortState)}
-          ${sortTh("Status", "is_active", sortState)}
+          ${sortTh(t("Name"), "name", sortState)}
+          ${sortTh(t("Code"), "code", sortState)}
+          ${sortTh(t("Symbol"), "symbol", sortState)}
+          ${sortTh(t("Base"), "is_base", sortState)}
+          ${sortTh(t("Current rate"), "current_rate", sortState)}
+          ${sortTh(t("Status"), "is_active", sortState)}
           ${canManageCurrencies ? "<th></th>" : ""}
         </tr>
       </thead>
@@ -145,14 +147,14 @@ function renderCurrencies(currencies) {
             <td><strong>${c.name}</strong></td>
             <td>${c.code || "—"}</td>
             <td>${c.symbol || "—"}</td>
-            <td>${c.is_base ? '<span class="badge badge-active">Base</span>' : "—"}</td>
+            <td>${c.is_base ? `<span class="badge badge-active">${t("Base")}</span>` : "—"}</td>
             <td>${formatRate(c.current_rate)}</td>
             <td>
               <span class="badge ${c.is_active ? "badge-active" : "badge-inactive"}">
-                ${c.is_active ? "Active" : "Inactive"}
+                ${c.is_active ? t("Active") : t("Inactive")}
               </span>
             </td>
-            ${canManageCurrencies ? `<td><button type="button" class="btn btn-ghost btn-sm" data-edit="${c.id}">Edit</button></td>` : ""}
+            ${canManageCurrencies ? `<td><button type="button" class="btn btn-ghost btn-sm" data-edit="${c.id}">${t("Edit")}</button></td>` : ""}
           </tr>
         `).join("")}
       </tbody>
@@ -186,7 +188,7 @@ if (canManageCurrencies) {
     };
 
     if (!payload.name) {
-      showToast("Currency name is required", true);
+      showToast(t("Currency name is required"), true);
       return;
     }
 
@@ -197,12 +199,12 @@ if (canManageCurrencies) {
       if (editingCurrencyId) {
         payload.is_active = currencyActiveInput.checked;
         await apiPatch(`/currencies/${editingCurrencyId}/`, payload);
-        showToast("Currency updated");
+        showToast(t("Currency updated"));
         setFormMode("create");
         await loadCurrencies();
       } else {
         const created = await apiPost("/currencies/", payload);
-        showToast(`Currency "${created.name}" added`);
+        showToast(`${t("Currency")} "${created.name}" ${t("added")}`);
         setFormMode("create");
         await loadCurrencies();
         if (created.is_base) {
@@ -225,7 +227,7 @@ if (canManageCurrencies) {
       showToast(message, true);
     } finally {
       currencySubmit.disabled = false;
-      currencySubmit.textContent = editingCurrencyId ? "Save changes" : "Add currency";
+      currencySubmit.textContent = editingCurrencyId ? t("Save changes") : t("Add currency");
     }
   });
 }
@@ -233,7 +235,7 @@ if (canManageCurrencies) {
 bindTableSort(currenciesTable, sortState, () => renderCurrencies(allCurrencies));
 
 loadCurrencies().catch(err => {
-  currenciesTable.innerHTML = `<div class="empty-state">Failed to load: ${err.message}</div>`;
+  currenciesTable.innerHTML = `<div class="empty-state">${t("Failed to load:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

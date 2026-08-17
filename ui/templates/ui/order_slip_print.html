@@ -1,15 +1,15 @@
-{% load static %}
+{% load static i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if order.branch.fiscalization_enabled %}Order #{{ order.id }} — Café de Paris{% else %}Order #{{ order.id }}{% endif %}</title>
+  <title>{% if order.branch.fiscalization_enabled %}{% trans "Order" %} #{{ order.id }} — Café de Paris{% else %}{% trans "Order" %} #{{ order.id }}{% endif %}</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">Print order ticket</button>
+    <button type="button" onclick="window.print()">{% trans "Print order ticket" %}</button>
   </div>
 
   <div class="receipt">
@@ -21,12 +21,12 @@
     {% endif %}
 
     <div class="center meta">
-      <p><strong>Order ticket</strong></p>
-      <p>Order #{{ order.id }}</p>
+      <p><strong>{% trans "Order ticket" %}</strong></p>
+      <p>{% trans "Order" %} #{{ order.id }}</p>
       <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
-      <p>{{ order.get_order_type_display }}{% if order.table_number %} · Table {{ order.table_number }}{% endif %}</p>
-      {% if order.customer %}<p>Customer: {{ order.customer }}</p>{% endif %}
-      {% if salesperson_name %}<p>Served by {{ salesperson_name }}</p>{% endif %}
+      <p>{{ order.get_order_type_display }}{% if order.table_number %} · {% trans "Table" %} {{ order.table_number }}{% endif %}</p>
+      {% if order.customer %}<p>{% trans "Customer" %}: {{ order.customer }}</p>{% endif %}
+      {% if salesperson_name %}<p>{% trans "Served by" %} {{ salesperson_name }}</p>{% endif %}
     </div>
 
     <hr class="divider">
@@ -34,9 +34,9 @@
     <table class="items">
       <thead>
         <tr>
-          <th class="col-item">Item</th>
-          <th class="col-qty">Qty</th>
-          <th class="col-amt">Amt</th>
+          <th class="col-item">{% trans "Item" %}</th>
+          <th class="col-qty">{% trans "Qty" %}</th>
+          <th class="col-amt">{% trans "Amt" %}</th>
         </tr>
       </thead>
       <tbody>
@@ -47,15 +47,15 @@
             {% for addon in item.addons.all %}
             <div class="item-detail">+ {{ addon.name }}{% if addon.price %} ({{ addon.price|floatformat:2 }}){% endif %}</div>
             {% endfor %}
-            {% if item.notes %}<div class="item-detail">Note: {{ item.notes }}</div>{% endif %}
-            <div class="item-detail">{{ item.price|floatformat:2 }} each</div>
+            {% if item.notes %}<div class="item-detail">{% trans "Note:" %} {{ item.notes }}</div>{% endif %}
+            <div class="item-detail">{{ item.price|floatformat:2 }} {% trans "each" %}</div>
           </td>
           <td class="col-qty">{{ item.quantity|floatformat:2 }}</td>
           <td class="col-amt">{{ item.line_total|floatformat:2 }}</td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="3">No items</td>
+          <td colspan="3">{% trans "No items" %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -66,16 +66,16 @@
     <table class="summary">
       {% if order.branch.fiscalization_enabled %}
       <tr>
-        <td class="col-label">Subtotal{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-label">{% trans "Subtotal" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.subtotal|floatformat:2 }}</td>
       </tr>
       <tr>
-        <td class="col-label">Tax ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
+        <td class="col-label">{% trans "Tax" %} ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
         <td class="col-amt">{{ tax_breakdown.tax|floatformat:2 }}</td>
       </tr>
       {% endif %}
       <tr>
-        <td class="col-label">Total{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
+        <td class="col-label">{% trans "Total" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.total|floatformat:2 }}</td>
       </tr>
     </table>
@@ -83,8 +83,8 @@
     {% include "ui/includes/payment_options_block.html" %}
 
     <div class="center footer">
-      <p>Present this ticket when paying.</p>
-      <p>UNPAID</p>
+      <p>{% trans "Present this ticket when paying." %}</p>
+      <p>{% trans "UNPAID" %}</p>
     </div>
   </div>
 

@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Café de Paris</string>
-    <string name="login_subtitle">Sign in with your staff credentials</string>
+    <string name="login_subtitle">Enter your 4-digit access code</string>
+    <string name="login_fields_required">Enter your 4-digit access code</string>
+    <string name="access_code_hint">4-digit access code</string>
+    <string name="access_code_place_order_title">Who is placing this order?</string>
+    <string name="access_code_place_order_message">Enter your 4-digit access code so this order is attributed to you.</string>
+    <string name="access_code_invalid">Access code must be exactly 4 digits</string>
+    <string name="bill_reprint_title">Admin approval required</string>
+    <string name="bill_reprint_message">This bill has already been printed. Enter an admin or superuser 4-digit access code to print it again.</string>
     <string name="config_server_label">Server: %1$s</string>
     <string name="config_path_label">Edit config.json on device:\n%1$s</string>
     <string name="username">Username</string>
@@ -15,7 +22,6 @@
     <string name="status_waiting">Waiting for orders…</string>
     <string name="status_live">%1$d open order(s) · auto-refreshing</string>
     <string name="no_open_orders">No open orders right now</string>
-    <string name="login_fields_required">Enter username and password</string>
     <string name="login_not_allowed">This account cannot use the mobile app</string>
     <string name="connection_failed">Cannot reach server: %1$s</string>
     <string name="load_failed">Failed to load orders</string>
@@ -147,6 +153,7 @@
     <string name="stock_take_start_monthly">Start monthly count</string>
     <string name="stock_take_hint">Daily — products marked for daily count (shop stock and branch ingredients). Monthly — ingredients plus fixed assets.</string>
     <string name="stock_take_counted">Counted qty</string>
+    <string name="stock_take_wastage">Wastage</string>
     <string name="stock_take_notes">Notes</string>
     <string name="stock_take_notes_hint">Optional</string>
     <string name="stock_take_ingredient">Ingredient</string>

@@ -1,0 +1,3236 @@
+# Café de Paris translations
+msgid ""
+msgstr ""
+"Project-Id-Version: cafe_de_paris\n"
+"Report-Msgid-Bugs-To: \n"
+"Language-Team: zh_Hans\n"
+"Language: zh-hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Language"
+msgstr "语言"
+
+msgid "Management Console"
+msgstr "管理控制台"
+
+msgid "Dashboard"
+msgstr "仪表盘"
+
+msgid "Point of Sale"
+msgstr "收银点"
+
+msgid "Stock Take"
+msgstr "库存盘点"
+
+msgid "Branch Transfers"
+msgstr "分店调拨"
+
+msgid "Bakery Production"
+msgstr "烘焙生产"
+
+msgid "Bakery Transfers"
+msgstr "烘焙调拨"
+
+msgid "Stock adjustment"
+msgstr "库存调整"
+
+msgid "Wastage"
+msgstr "损耗"
+
+msgid "Customer Payment"
+msgstr "客户付款"
+
+msgid "Kitchen"
+msgstr "厨房"
+
+msgid "Orders"
+msgstr "订单"
+
+msgid "Invoices"
+msgstr "发票"
+
+msgid "Receipts"
+msgstr "收据"
+
+msgid "GRV"
+msgstr "收货单"
+
+msgid "Products"
+msgstr "产品"
+
+msgid "List Products"
+msgstr "产品列表"
+
+msgid "Menu Add-ons"
+msgstr "菜单加项"
+
+msgid "List Ingredients"
+msgstr "原料列表"
+
+msgid "List Product Categories"
+msgstr "产品分类"
+
+msgid "Bakery Products"
+msgstr "烘焙产品"
+
+msgid "Branches"
+msgstr "分店"
+
+msgid "Stores Transfers"
+msgstr "仓库调拨"
+
+msgid "Central Invoice"
+msgstr "中央发票"
+
+msgid "Recipes"
+msgstr "配方"
+
+msgid "Expenses"
+msgstr "费用"
+
+msgid "Purchases"
+msgstr "采购"
+
+msgid "Customers & Suppliers"
+msgstr "客户与供应商"
+
+msgid "List Customer"
+msgstr "客户列表"
+
+msgid "Customer Accounts"
+msgstr "客户账户"
+
+msgid "List Suppliers"
+msgstr "供应商列表"
+
+msgid "Users"
+msgstr "用户"
+
+msgid "Audit log"
+msgstr "审计日志"
+
+msgid "Reports"
+msgstr "报表"
+
+msgid "Ingredient Stock"
+msgstr "原料库存"
+
+msgid "Ingredient Usage"
+msgstr "原料用量"
+
+msgid "Day End"
+msgstr "日结"
+
+msgid "Voided & Cancelled"
+msgstr "作废与取消"
+
+msgid "Customer Balances"
+msgstr "客户余额"
+
+msgid "VAT Report"
+msgstr "增值税报表"
+
+msgid "Supplier Statements"
+msgstr "供应商对账单"
+
+msgid "Payment & Rates"
+msgstr "支付与汇率"
+
+msgid "Rates"
+msgstr "汇率"
+
+msgid "Currency"
+msgstr "货币"
+
+msgid "Admin panel"
+msgstr "管理后台"
+
+msgid "Toggle navigation"
+msgstr "切换导航"
+
+msgid "Hide navigation"
+msgstr "隐藏导航"
+
+msgid "Show navigation"
+msgstr "显示导航"
+
+msgid "Log out"
+msgstr "退出登录"
+
+msgid "Sign in"
+msgstr "登录"
+
+msgid "All rights reserved."
+msgstr "保留所有权利。"
+
+msgid "Sign in to continue"
+msgstr "登录以继续"
+
+msgid "Invalid username or password."
+msgstr "用户名或密码无效。"
+
+msgid "Username"
+msgstr "用户名"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "From"
+msgstr "从"
+
+msgid "To"
+msgstr "到"
+
+msgid "Branch"
+msgstr "分店"
+
+msgid "All branches"
+msgstr "全部分店"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Print"
+msgstr "打印"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Add"
+msgstr "添加"
+
+msgid "Name"
+msgstr "名称"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Active"
+msgstr "启用"
+
+msgid "Inactive"
+msgstr "停用"
+
+msgid "Loading…"
+msgstr "加载中…"
+
+msgid "Notes"
+msgstr "笔记"
+
+msgid "Notes (optional)"
+msgstr "备注（可选）"
+
+msgid "Amount"
+msgstr "金额"
+
+msgid "Total"
+msgstr "全部的"
+
+msgid "Quantity"
+msgstr "数量"
+
+msgid "Qty"
+msgstr "数量"
+
+msgid "Product"
+msgstr "产品"
+
+msgid "Category"
+msgstr "分类"
+
+msgid "Customer"
+msgstr "客户"
+
+msgid "Supplier"
+msgstr "供应商"
+
+msgid "Phone"
+msgstr "电话"
+
+msgid "Email"
+msgstr "邮箱"
+
+msgid "Type"
+msgstr "类型"
+
+msgid "Description"
+msgstr "描述"
+
+msgid "All"
+msgstr "全部"
+
+msgid "Yes"
+msgstr "是"
+
+msgid "No"
+msgstr "否"
+
+msgid "None"
+msgstr "无"
+
+msgid "Open"
+msgstr "未结"
+
+msgid "Paid"
+msgstr "已付"
+
+msgid "Unpaid"
+msgstr "未付"
+
+msgid "Cancelled"
+msgstr "已取消"
+
+msgid "Download CSV"
+msgstr "下载 CSV"
+
+msgid "Upload CSV"
+msgstr "上传 CSV"
+
+msgid "Import CSV"
+msgstr "导入 CSV"
+
+msgid "Actions"
+msgstr "行动"
+
+msgid "Details"
+msgstr "明细"
+
+msgid "Revenue"
+msgstr "收入"
+
+msgid "Payments"
+msgstr "付款"
+
+msgid "Profit"
+msgstr "利润"
+
+msgid "Charts"
+msgstr "图表"
+
+msgid "Export Sales CSV"
+msgstr "导出销售 CSV"
+
+msgid "Paid collections by currency name for the selected period (amounts in base currency)."
+msgstr "所选期间按货币名称的已收款项（金额为基础货币）。"
+
+msgid "By Currency"
+msgstr "按货币"
+
+msgid "Visual breakdown of sales and profit for the selected period."
+msgstr "所选期间销售额与利润的可视化分解。"
+
+msgid "Sales by Branch"
+msgstr "按分店销售"
+
+msgid "Revenue by Category"
+msgstr "按分类收入"
+
+msgid "Top Products"
+msgstr "热销产品"
+
+msgid "Profit Breakdown"
+msgstr "利润分解"
+
+msgid "Sales by Category"
+msgstr "按分类销售"
+
+msgid "Gross Profit by Product"
+msgstr "按产品毛利"
+
+msgid "Low Stock"
+msgstr "低库存"
+
+msgid "Products Without Recipe"
+msgstr "无配方产品"
+
+msgid "Total Revenue"
+msgstr "总收入"
+
+msgid "Paid Orders"
+msgstr "已付订单"
+
+msgid "In selected period"
+msgstr "在所选期间"
+
+msgid "Avg Order Value"
+msgstr "平均订单金额"
+
+msgid "Per paid order"
+msgstr "每笔已付订单"
+
+msgid "Tax Collected"
+msgstr "已收税款"
+
+msgid "Based on inclusive tax in paid sales"
+msgstr "基于已付销售的含税金额"
+
+msgid "Cost of Sales"
+msgstr "销售成本"
+
+msgid "From recipe ingredient costs"
+msgstr "来自配方原料成本"
+
+msgid "Gross Profit"
+msgstr "毛利"
+
+msgid "margin"
+msgstr "毛利率"
+
+msgid "Operating Expenses"
+msgstr "营业费用"
+
+msgid "Recorded petty cash & expenses"
+msgstr "已记录的备用金与费用"
+
+msgid "Net Profit"
+msgstr "净利润"
+
+msgid "Gross profit less expenses"
+msgstr "毛利减费用"
+
+msgid "Cost of sales is calculated from recipe ingredient costs."
+msgstr "销售成本根据配方原料成本计算。"
+
+msgid "Qty Sold"
+msgstr "销量"
+
+msgid "Share"
+msgstr "占比"
+
+msgid "COGS"
+msgstr "销售成本"
+
+msgid "GP%"
+msgstr "毛利率%"
+
+msgid "Remaining"
+msgstr "剩余"
+
+msgid "Edit recipe"
+msgstr "编辑配方"
+
+msgid "No paid orders for this period"
+msgstr "此期间无已付订单"
+
+msgid "No category sales for this period"
+msgstr "此期间无分类销售"
+
+msgid "No payment data for this period"
+msgstr "此期间无付款数据"
+
+msgid "No product sales for this period"
+msgstr "此期间无产品销售"
+
+msgid "No profit data for this period"
+msgstr "此期间无利润数据"
+
+msgid "No paid sales for this period"
+msgstr "此期间无已付销售"
+
+msgid "All sold products have recipes"
+msgstr "所有已售产品均有配方"
+
+msgid "All sold products have recipes for this period"
+msgstr "此期间所有已售产品均有配方"
+
+msgid "All products are above the low-stock threshold"
+msgstr "所有产品均高于低库存阈值"
+
+msgid "Failed to load dashboard:"
+msgstr "仪表盘加载失败："
+
+msgid "units"
+msgstr "单位"
+
+msgid "Customer Balances Report"
+msgstr "客户余额报表"
+
+msgid "Name, phone, or email…"
+msgstr "姓名、电话或邮箱…"
+
+msgid "Only customers with balance"
+msgstr "仅有余额的客户"
+
+msgid "Customers listed"
+msgstr "列出的客户"
+
+msgid "With account balance"
+msgstr "有账户余额"
+
+msgid "Total prepaid balance"
+msgstr "预付余额合计"
+
+msgid "Customers"
+msgstr "客户"
+
+msgid "Current balance"
+msgstr "当前余额"
+
+msgid "View account"
+msgstr "查看账户"
+
+msgid "No customers match your filters"
+msgstr "没有符合筛选的客户"
+
+msgid "Failed to load report:"
+msgstr "报表加载失败："
+
+msgid "As at"
+msgstr "截至"
+
+msgid "All physical branches"
+msgstr "全部分店"
+
+msgid "Output TAX Amount"
+msgstr "销项税额"
+
+msgid "Total Sales Including VAT"
+msgstr "含税销售总额"
+
+msgid "Total Sales Excluding VAT"
+msgstr "不含税销售总额"
+
+msgid "Total Taxable Sales (Excluding VAT)"
+msgstr "应税销售额（不含税）"
+
+msgid "Total Non-taxable Sales"
+msgstr "非应税销售额"
+
+msgid "VAT on Taxables Sales"
+msgstr "应税销售增值税"
+
+msgid "Sales Returns"
+msgstr "销售退货"
+
+msgid "Discounts Given"
+msgstr "已给折扣"
+
+msgid "Input TAX"
+msgstr "进项税"
+
+msgid "Total Purchases Including VAT"
+msgstr "含税采购总额"
+
+msgid "Total Purchases Excluding VAT"
+msgstr "不含税采购总额"
+
+msgid "Total Raw Materials Purchases Including VAT"
+msgstr "含税原材料采购总额"
+
+msgid "Total Raw Materials Purchases Excluding VAT"
+msgstr "不含税原材料采购总额"
+
+msgid "Credit Notes Excluding VAT"
+msgstr "不含税贷项单"
+
+msgid "Credit Notes VAT"
+msgstr "贷项单增值税"
+
+msgid "Credit Notes Including VAT"
+msgstr "含税贷项单"
+
+msgid "Total Taxable Purchases (Excluding VAT)"
+msgstr "应税采购额（不含税）"
+
+msgid "Total Non-taxable Purchases"
+msgstr "非应税采购额"
+
+msgid "VAT on Taxable Purchases"
+msgstr "应税采购增值税"
+
+msgid "Purchases Returns"
+msgstr "采购退货"
+
+msgid "Discount Given"
+msgstr "已给折扣"
+
+msgid "NET VAT"
+msgstr "净增值税"
+
+msgid "All Branches"
+msgstr "全部分店"
+
+msgid "Select both from and to dates"
+msgstr "请选择起止日期"
+
+msgid "Voided & Cancelled Items"
+msgstr "作废与取消明细"
+
+msgid "Search product"
+msgstr "搜索产品"
+
+msgid "Product name…"
+msgstr "产品名称…"
+
+msgid "Voided items"
+msgstr "作废项"
+
+msgid "Cancelled items"
+msgstr "取消项"
+
+msgid "Voided amount"
+msgstr "作废金额"
+
+msgid "Cancelled amount"
+msgstr "取消金额"
+
+msgid "Voided & cancelled lines"
+msgstr "作废与取消行"
+
+msgid "Time"
+msgstr "时间"
+
+msgid "Action"
+msgstr "行动"
+
+msgid "Order"
+msgstr "订单"
+
+msgid "Table"
+msgstr "桌子"
+
+msgid "Add-ons"
+msgstr "加项"
+
+msgid "Unit price"
+msgstr "单价"
+
+msgid "Line total"
+msgstr "行合计"
+
+msgid "By"
+msgstr "由"
+
+msgid "Voided"
+msgstr "作废"
+
+msgid "No voided or cancelled items for this date"
+msgstr "此日期无作废或取消项"
+
+msgid "Ingredient Stock Report"
+msgstr "原料库存报表"
+
+msgid "Search ingredient"
+msgstr "搜索原料"
+
+msgid "Name…"
+msgstr "名称…"
+
+msgid "Active ingredients only"
+msgstr "仅启用原料"
+
+msgid "Low stock only"
+msgstr "仅低库存"
+
+msgid "Ingredients"
+msgstr "原料"
+
+msgid "Lines with stock"
+msgstr "有库存的行"
+
+msgid "Total stock value"
+msgstr "库存总价值"
+
+msgid "Stock by branch"
+msgstr "按分店库存"
+
+msgid "Ingredient"
+msgstr "原料"
+
+msgid "Unit cost"
+msgstr "单位成本"
+
+msgid "Stock qty"
+msgstr "库存数量"
+
+msgid "Stock value"
+msgstr "库存价值"
+
+msgid "No ingredients match your filters"
+msgstr "没有符合筛选的原料"
+
+msgid "Daily Ingredient Usage"
+msgstr "每日原料用量"
+
+msgid "Ingredients used"
+msgstr "已用原料"
+
+msgid "Total quantity used"
+msgstr "总用量"
+
+msgid "Total usage cost"
+msgstr "总使用成本"
+
+msgid "Usage by branch"
+msgstr "按分店用量"
+
+msgid "From sales"
+msgstr "来自销售"
+
+msgid "From production"
+msgstr "来自生产"
+
+msgid "Total used"
+msgstr "总用量"
+
+msgid "Usage cost"
+msgstr "使用成本"
+
+msgid "No ingredient usage recorded for this date"
+msgstr "此日期无原料用量记录"
+
+msgid "Day End Report"
+msgstr "日结报表"
+
+msgid "Closes listed"
+msgstr "列出的日结"
+
+msgid "With cash count"
+msgstr "含现金盘点"
+
+msgid "Total variance"
+msgstr "总差异"
+
+msgid "Saved day-end closes"
+msgstr "已保存的日结"
+
+msgid "Variance and activity saved when day end is printed from POS."
+msgstr "从收银打印日结时保存的差异与活动。"
+
+msgid "Day-end detail"
+msgstr "日结明细"
+
+msgid "Closed by"
+msgstr "日结人"
+
+msgid "Gross"
+msgstr "毛额"
+
+msgid "Variance"
+msgstr "差异"
+
+msgid "Sales"
+msgstr "销售"
+
+msgid "Deposits"
+msgstr "存款"
+
+msgid "Net expected"
+msgstr "预期净额"
+
+msgid "Counted"
+msgstr "盘点额"
+
+msgid "Cash variance"
+msgstr "现金差异"
+
+msgid "Activity at close"
+msgstr "日结时活动"
+
+msgid "Payments by method"
+msgstr "按方式付款"
+
+msgid "Top products"
+msgstr "热销产品"
+
+msgid "No cash-up lines."
+msgstr "无现金核对行。"
+
+msgid "No activity snapshot."
+msgstr "无活动快照。"
+
+msgid "No saved day-end closes for this period."
+msgstr "此期间无已保存的日结。"
+
+msgid "Search supplier"
+msgstr "搜索供应商"
+
+msgid "Name, phone, VAT…"
+msgstr "名称、电话、税号…"
+
+msgid "Suppliers listed"
+msgstr "列出的供应商"
+
+msgid "With purchases in period"
+msgstr "期间内有采购"
+
+msgid "Total spend in period"
+msgstr "期间总支出"
+
+msgid "Spend by supplier"
+msgstr "按供应商支出"
+
+msgid "Selected period"
+msgstr "所选期间"
+
+msgid "Spend in period"
+msgstr "期间支出"
+
+msgid "View statement"
+msgstr "查看对账单"
+
+msgid "No suppliers match your filters"
+msgstr "没有符合筛选的供应商"
+
+msgid "Failed to load branches:"
+msgstr "分店加载失败："
+
+msgid "VAT"
+msgstr "增值税"
+
+msgid "to"
+msgstr "至"
+
+msgid "fiscal invoices (proforma excluded)"
+msgstr "财政发票（不含形式发票）"
+
+msgid "purchases from VAT-registered suppliers"
+msgstr "来自增值税登记供应商的采购"
+
+msgid "voided order(s)"
+msgstr "作废订单"
+
+msgid "cancelled order(s)"
+msgstr "取消订单"
+
+msgid "line(s)"
+msgstr "行"
+
+msgid "all branches"
+msgstr "全部分店"
+
+msgid "lines"
+msgstr "行"
+
+msgid "Usage for"
+msgstr "用量日期"
+
+msgid "Expense"
+msgstr "费用"
+
+msgid "Transaction"
+msgstr "交易"
+
+msgid "Item"
+msgstr "项目"
+
+msgid "Customer accounts"
+msgstr "客户账户"
+
+msgid "Closed"
+msgstr "已日结"
+
+msgid "by"
+msgstr "由"
+
+msgid "Branch availability mode"
+msgstr "分店可用模式"
+
+msgid "Product view"
+msgstr "产品视图"
+
+msgid "Card view"
+msgstr "卡片视图"
+
+msgid "List view"
+msgstr "列表视图"
+
+msgid "Daily count for"
+msgstr "每日盘点："
+
+msgid "A4 Invoice"
+msgstr "A4 发票"
+
+msgid "A4 Proforma"
+msgstr "A4 形式发票"
+
+msgid "Account"
+msgstr "账户"
+
+msgid "Account type"
+msgstr "账户类型"
+
+msgid "Active branch"
+msgstr "启用分店"
+
+msgid "Active currency"
+msgstr "启用货币"
+
+msgid "Active ingredient"
+msgstr "启用原料"
+
+msgid "Active product"
+msgstr "启用产品"
+
+msgid "Active supplier"
+msgstr "启用供应商"
+
+msgid "Active user"
+msgstr "启用用户"
+
+msgid "Add bakery product"
+msgstr "添加烘焙产品"
+
+msgid "Add branch"
+msgstr "添加分店"
+
+msgid "Add category"
+msgstr "添加分类"
+
+msgid "Add currency"
+msgstr "添加货币"
+
+msgid "Add customer"
+msgstr "添加客户"
+
+msgid "Add ingredient"
+msgstr "添加原料"
+
+msgid "Add option"
+msgstr "添加选项"
+
+msgid "Add product"
+msgstr "添加产品"
+
+msgid "Add staff user"
+msgstr "添加员工用户"
+
+msgid "Add supplier"
+msgstr "添加供应商"
+
+msgid "Add user"
+msgstr "添加用户"
+
+msgid "Add-on activated"
+msgstr "加项已启用"
+
+msgid "Add-on deactivated"
+msgstr "加项已停用"
+
+msgid "Add-on group"
+msgstr "加项组"
+
+msgid "Add-on group created"
+msgstr "已创建加项组"
+
+msgid "Add-on option created"
+msgstr "已创建加项选项"
+
+msgid "Add-on updated"
+msgstr "加项已更新"
+
+msgid "Add-ons:"
+msgstr "加项："
+
+msgid "Added"
+msgstr "已添加"
+
+msgid "Address"
+msgstr "地址"
+
+msgid "All actions"
+msgstr "全部操作"
+
+msgid "All dates"
+msgstr "全部日期"
+
+msgid "All stations"
+msgstr "全部工位"
+
+msgid "All types"
+msgstr "全部类型"
+
+msgid "Allow negative stock on sales"
+msgstr "允许销售时负库存"
+
+msgid "Amount must be a positive number"
+msgstr "金额必须为正数"
+
+msgid "Amount paid"
+msgstr "已付金额"
+
+msgid "Any active POS products not in the file will be deactivated."
+msgstr "文件中未列出的启用收银产品将被停用。"
+
+msgid "Approve fiscal"
+msgstr "批准财税开票"
+
+msgid "Asset"
+msgstr "资产"
+
+msgid "Asset category (monthly stock take only)"
+msgstr "资产分类（仅月度盘点）"
+
+msgid "Attach groups to products under"
+msgstr "在以下位置将组附加到产品"
+
+msgid "Available at branches"
+msgstr "分店可用"
+
+msgid "Available for sale when enabled"
+msgstr "启用后可销售"
+
+msgid "Bakery"
+msgstr "烘焙"
+
+msgid "Bar"
+msgstr "酒吧"
+
+msgid "Base"
+msgstr "根据"
+
+msgid "Branch created"
+msgstr "分店已创建"
+
+msgid "Branch name is required"
+msgstr "分店名称必填"
+
+msgid "Branch stock"
+msgstr "分店库存"
+
+msgid "Branch updated"
+msgstr "分店已更新"
+
+msgid "Branch:"
+msgstr "分店："
+
+msgid "By currency"
+msgstr "按货币"
+
+msgid "Cancel unpaid order"
+msgstr "取消未付订单"
+
+msgid "Cards"
+msgstr "卡片"
+
+msgid "Category added"
+msgstr "分类已添加"
+
+msgid "Category deleted"
+msgstr "分类已删除"
+
+msgid "Category is for grouping only; stock type stays Ingredients / Branch Ingredients."
+msgstr "分类仅用于分组；库存类型仍为原料 / 分店原料。"
+
+msgid "Category updated"
+msgstr "分类已更新"
+
+msgid "Central Stores"
+msgstr "中央仓库"
+
+msgid "Choose any"
+msgstr "任选"
+
+msgid "Choose one"
+msgstr "单选"
+
+msgid "Choose where this product appears on POS. Use all branches to sell everywhere, including Central Stores."
+msgstr "选择此产品在收银端的显示分店。选择全部分店可在各处销售，包括中央仓库。"
+
+msgid "Choose which add-on groups appear when this product is ordered on POS."
+msgstr "选择在收银点单此产品时显示的加项组。"
+
+msgid "Click a product to edit its ingredients."
+msgstr "点击产品以编辑其原料。"
+
+msgid "Click a product to start building its bill of materials."
+msgstr "点击产品开始编制物料清单。"
+
+msgid "Code"
+msgstr "代码"
+
+msgid "Completed daily stock take required"
+msgstr "需完成每日盘点"
+
+msgid "Contact"
+msgstr "接触"
+
+msgid "Contact person"
+msgstr "联系人"
+
+msgid "Cost"
+msgstr "成本"
+
+msgid "Cost of sales"
+msgstr "销售成本"
+
+msgid "Create add-on groups and options for POS. Deactivated options stay in order history but are hidden at the till."
+msgstr "为收银创建加项组与选项。已停用的选项保留在订单历史中，但在收银台隐藏。"
+
+msgid "Create group"
+msgstr "创建组"
+
+msgid "Credit limit"
+msgstr "信用额度"
+
+msgid "Currencies"
+msgstr "货币"
+
+msgid "Currency name is required"
+msgstr "货币名称必填"
+
+msgid "Currency rate"
+msgstr "汇率"
+
+msgid "Currency updated"
+msgstr "货币已更新"
+
+msgid "Current rate"
+msgstr "当前汇率"
+
+msgid "Customer account"
+msgstr "客户账户"
+
+msgid "Customer added"
+msgstr "客户已添加"
+
+msgid "Customer updated"
+msgstr "客户已更新"
+
+msgid "Daily count"
+msgstr "每日盘点"
+
+msgid "Daily count disabled"
+msgstr "每日盘点已关闭"
+
+msgid "Daily count enabled"
+msgstr "每日盘点已开启"
+
+msgid "Daily stock take"
+msgstr "每日盘点"
+
+msgid "Day end blocked"
+msgstr "日结已阻止"
+
+msgid "Deactivate"
+msgstr "停用"
+
+msgid "Deactivate all products in this category first"
+msgstr "请先停用该分类下的所有产品"
+
+msgid "Delete category"
+msgstr "删除分类"
+
+msgid "Delivery"
+msgstr "交货"
+
+msgid "Delivery note"
+msgstr "送货单"
+
+msgid "Dining table"
+msgstr "餐桌"
+
+msgid "Edit branch"
+msgstr "编辑分店"
+
+msgid "Edit category"
+msgstr "编辑分类"
+
+msgid "Edit currency"
+msgstr "编辑货币"
+
+msgid "Edit customer"
+msgstr "编辑客户"
+
+msgid "Edit ingredient"
+msgstr "编辑原料"
+
+msgid "Edit staff user"
+msgstr "编辑员工用户"
+
+msgid "Edit supplier"
+msgstr "编辑供应商"
+
+msgid "Enter a description"
+msgstr "请输入说明"
+
+msgid "Enter a valid selling price."
+msgstr "请输入有效售价。"
+
+msgid "Entity"
+msgstr "实体"
+
+msgid "Expense date"
+msgstr "费用日期"
+
+msgid "Expense date:"
+msgstr "费用日期："
+
+msgid "Expense period"
+msgstr "费用期间"
+
+msgid "Expense recorded"
+msgstr "费用已记录"
+
+msgid "Failed to load add-ons:"
+msgstr "加项加载失败："
+
+msgid "Failed to load audit log"
+msgstr "审计日志加载失败"
+
+msgid "Failed to load customers:"
+msgstr "客户加载失败："
+
+msgid "Failed to load expenses:"
+msgstr "费用加载失败："
+
+msgid "Failed to load history:"
+msgstr "历史加载失败："
+
+msgid "Failed to load ingredients:"
+msgstr "原料加载失败："
+
+msgid "Failed to load invoices:"
+msgstr "发票加载失败："
+
+msgid "Failed to load kitchen orders:"
+msgstr "厨房订单加载失败："
+
+msgid "Failed to load orders:"
+msgstr "订单加载失败："
+
+msgid "Failed to load page:"
+msgstr "页面加载失败："
+
+msgid "Failed to load products:"
+msgstr "产品加载失败："
+
+msgid "Failed to load suppliers:"
+msgstr "供应商加载失败："
+
+msgid "Failed to load users:"
+msgstr "用户加载失败："
+
+msgid "Failed to load:"
+msgstr "加载失败："
+
+msgid "Family"
+msgstr "家属"
+
+msgid "Family (cost price)"
+msgstr "家属（成本价）"
+
+msgid "Find product"
+msgstr "查找产品"
+
+msgid "First name"
+msgstr "名"
+
+msgid "Fiscal"
+msgstr "财"
+
+msgid "Fiscal failed"
+msgstr "财税失败"
+
+msgid "Fiscalization enabled"
+msgstr "已启用财税开票"
+
+msgid "Go to stock take"
+msgstr "前往盘点"
+
+msgid "Gross profit"
+msgstr "毛利"
+
+msgid "Group name"
+msgstr "组名"
+
+msgid "Headquarters"
+msgstr "总部"
+
+msgid "History"
+msgstr "历史"
+
+msgid "If this product appears in orders, purchases, or stock records it will be deactivated instead of removed."
+msgstr "若该产品出现在订单、采购或库存记录中，将停用而非删除。"
+
+msgid "Import POS menu items from this CSV?"
+msgstr "从此 CSV 导入收银菜单项？"
+
+msgid "Import complete"
+msgstr "导入完成"
+
+msgid "Import complete:"
+msgstr "导入完成："
+
+msgid "Import failed —"
+msgstr "导入失败 —"
+
+msgid "Include in daily branch stock counts"
+msgstr "计入分店每日库存盘点"
+
+msgid "Include in daily stock take"
+msgstr "计入每日盘点"
+
+msgid "Ingredient added"
+msgstr "原料已添加"
+
+msgid "Ingredient added."
+msgstr "原料已添加。"
+
+msgid "Ingredient removed."
+msgstr "原料已移除。"
+
+msgid "Ingredient updated"
+msgstr "原料已更新"
+
+msgid "Initial qty"
+msgstr "初始数量"
+
+msgid "Invoice #"
+msgstr "发票号"
+
+msgid "Invoice / ref"
+msgstr "发票/参考"
+
+msgid "Items"
+msgstr "项目"
+
+msgid "Joined"
+msgstr "加入时间"
+
+msgid "Kitchen app users only see and auto-print orders for categories on this station."
+msgstr "厨房应用用户仅查看并自动打印此工位分类的订单。"
+
+msgid "Kitchen display station"
+msgstr "厨房显示工位"
+
+msgid "Kitchen station"
+msgstr "厨房工位"
+
+msgid "Label"
+msgstr "标签"
+
+msgid "Last name"
+msgstr "姓"
+
+msgid "Leave blank for non-VAT suppliers"
+msgstr "非增值税供应商请留空"
+
+msgid "Leave blank to keep the current password."
+msgstr "留空以保留当前密码。"
+
+msgid "Line cost"
+msgstr "行成本"
+
+msgid "List"
+msgstr "列表"
+
+msgid "Loading roles…"
+msgstr "正在加载角色…"
+
+msgid "Location"
+msgstr "位置"
+
+msgid "Logged"
+msgstr "已记录"
+
+msgid "Loyalty"
+msgstr "积分"
+
+msgid "Loyalty points"
+msgstr "忠诚积分"
+
+msgid "Mark paid"
+msgstr "标为已付"
+
+msgid "Mark ready"
+msgstr "标为就绪"
+
+msgid "Max negative balance allowed on account (0 = prepaid only)."
+msgstr "账户允许的最大负余额（0 = 仅预付）。"
+
+msgid "Menu add-on"
+msgstr "菜单加项"
+
+msgid "Menu add-ons for this product"
+msgstr "此产品的菜单加项"
+
+msgid "Negative stock allowed"
+msgstr "允许负库存"
+
+msgid "New Sale"
+msgstr "新销售"
+
+msgid "New add-on group"
+msgstr "新建加项组"
+
+msgid "New option"
+msgstr "新选项"
+
+msgid "New orders"
+msgstr "新订单"
+
+msgid "No add-on groups yet — create one above."
+msgstr "尚无加项组 — 请在上方创建。"
+
+msgid "No add-on groups yet. Create them under"
+msgstr "尚无加项组。请在此处创建："
+
+msgid "No audit events in this period"
+msgstr "此期间无审计事件"
+
+msgid "No branch assigned — stock quantities unavailable."
+msgstr "未分配分店 — 无法显示库存数量。"
+
+msgid "No branches available"
+msgstr "无可用分店"
+
+msgid "No branches available."
+msgstr "无可用分店。"
+
+msgid "No branches configured"
+msgstr "未配置分店"
+
+msgid "No categories yet"
+msgstr "尚无分类"
+
+msgid "No categories — add one in admin first"
+msgstr "无分类 — 请先在管理后台添加"
+
+msgid "No category"
+msgstr "无分类"
+
+msgid "No contact details"
+msgstr "无联系方式"
+
+msgid "No currencies configured"
+msgstr "未配置货币"
+
+msgid "No currencies yet"
+msgstr "尚无货币"
+
+msgid "No customers yet — add your first customer above"
+msgstr "尚无客户 — 请在上方添加首位客户"
+
+msgid "No expenses in this period"
+msgstr "此期间无费用"
+
+msgid "No finished products found."
+msgstr "未找到成品。"
+
+msgid "No ingredients yet — add one above or import from CSV"
+msgstr "尚无原料 — 请在上方添加或从 CSV 导入"
+
+msgid "No ingredients yet. Add the first line below."
+msgstr "尚无原料。请在下方添加第一行。"
+
+msgid "No items"
+msgstr "无项目"
+
+msgid "No location set"
+msgstr "未设置位置"
+
+msgid "No matching POS invoices"
+msgstr "无匹配的收银发票"
+
+msgid "No matching audit events"
+msgstr "无匹配的审计事件"
+
+msgid "No matching categories"
+msgstr "无匹配分类"
+
+msgid "No matching expenses"
+msgstr "无匹配费用"
+
+msgid "No matching ingredients"
+msgstr "无匹配原料"
+
+msgid "No matching orders"
+msgstr "无匹配订单"
+
+msgid "No matching products"
+msgstr "无匹配产品"
+
+msgid "No matching transfer invoices"
+msgstr "无匹配的调拨发票"
+
+msgid "No new orders"
+msgstr "无新订单"
+
+msgid "No options yet"
+msgstr "尚无选项"
+
+msgid "No orders found"
+msgstr "未找到订单"
+
+msgid "No orders ready yet"
+msgstr "尚无就绪订单"
+
+msgid "No paid receipts yet"
+msgstr "尚无已付收据"
+
+msgid "No products found"
+msgstr "未找到产品"
+
+msgid "No products in this category"
+msgstr "此分类中无产品"
+
+msgid "No purchases recorded for this supplier yet"
+msgstr "该供应商尚无采购记录"
+
+msgid "No staff users yet"
+msgstr "尚无员工用户"
+
+msgid "No suppliers yet — add your first supplier above"
+msgstr "尚无供应商 — 请在上方添加首位供应商"
+
+msgid "No transfer invoices yet"
+msgstr "尚无调拨发票"
+
+msgid "Non-VAT"
+msgstr "非增值税"
+
+msgid "None (optional)"
+msgstr "无（可选）"
+
+msgid "Not set"
+msgstr "未设置"
+
+msgid "Nothing in progress"
+msgstr "暂无进行中"
+
+msgid "Off"
+msgstr "关"
+
+msgid "On"
+msgstr "开"
+
+msgid "Open POS orders appear here for the kitchen to prepare."
+msgstr "未结收银订单显示于此，供厨房备餐。"
+
+msgid "Option"
+msgstr "选项"
+
+msgid "Option name is required"
+msgstr "选项名称必填"
+
+msgid "POS"
+msgstr "收银"
+
+msgid "POS access (web & desktop)"
+msgstr "收银权限（网页与桌面）"
+
+msgid "POS branches"
+msgstr "收银分店"
+
+msgid "POS receipts"
+msgstr "收银收据"
+
+msgid "POS station"
+msgstr "收银工位"
+
+msgid "POS:"
+msgstr "收银："
+
+msgid "Password is required"
+msgstr "密码必填"
+
+msgid "Pay"
+msgstr "支付"
+
+msgid "Payment"
+msgstr "付款"
+
+msgid "Payment cancelled"
+msgstr "付款已取消"
+
+msgid "Payment reversed for order"
+msgstr "订单付款已冲回"
+
+msgid "Please select a branch"
+msgstr "请选择分店"
+
+msgid "Please select a role"
+msgstr "请选择角色"
+
+msgid "Prepared at (POS)"
+msgstr "制备工位（收银）"
+
+msgid "Preparing"
+msgstr "制备中"
+
+msgid "Price"
+msgstr "价格"
+
+msgid "Printed:"
+msgstr "打印时间："
+
+msgid "Product added"
+msgstr "产品已添加"
+
+msgid "Product deactivated (used in existing records)"
+msgstr "产品已停用（已用于现有记录）"
+
+msgid "Product deleted"
+msgstr "产品已删除"
+
+msgid "Product to edit"
+msgstr "要编辑的产品"
+
+msgid "Product updated"
+msgstr "产品已更新"
+
+msgid "Products in the file will be created or updated. "
+msgstr "文件中的产品将被创建或更新。"
+
+msgid "Products with recipes"
+msgstr "有配方的产品"
+
+msgid "Products without a recipe"
+msgstr "无配方产品"
+
+msgid "Proforma"
+msgstr "形式"
+
+msgid "Proforma #"
+msgstr "形式发票号"
+
+msgid "Purchase #"
+msgstr "采购号"
+
+msgid "Purchase history"
+msgstr "采购历史"
+
+msgid "Purchase order"
+msgstr "采购订单"
+
+msgid "Qty required"
+msgstr "所需数量"
+
+msgid "Quantity must be greater than zero."
+msgstr "数量必须大于零。"
+
+msgid "Quantity updated."
+msgstr "数量已更新。"
+
+msgid "Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets."
+msgstr "按分店原料 — 烘焙原料在烘焙店/中央仓库；分店原料在仓库与门店。"
+
+msgid "Ready for cashier"
+msgstr "收银就绪"
+
+msgid "Ready for pickup"
+msgstr "待取餐"
+
+msgid "Receipt"
+msgstr "收据"
+
+msgid "Receipt code"
+msgstr "收据代码"
+
+msgid "Receipt code:"
+msgstr "收据代码："
+
+msgid "Recipe"
+msgstr "配方"
+
+msgid "Recipe cost"
+msgstr "配方成本"
+
+msgid "Record expense"
+msgstr "记录费用"
+
+msgid "Recorded by"
+msgstr "记录人"
+
+msgid "Regular"
+msgstr "普通"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Remove this ingredient from the recipe?"
+msgstr "从配方中移除此原料？"
+
+msgid "Reverse payment for order"
+msgstr "冲回订单付款"
+
+msgid "Role"
+msgstr "角色"
+
+msgid "Save changes"
+msgstr "保存更改"
+
+msgid "Save expense"
+msgstr "保存费用"
+
+msgid "Search by name or category…"
+msgstr "按名称或分类搜索…"
+
+msgid "Search categories…"
+msgstr "搜索分类…"
+
+msgid "Search description, supplier, branch, recorded by…"
+msgstr "搜索说明、供应商、分店、记录人…"
+
+msgid "Search entity, type, actor…"
+msgstr "搜索实体、类型、操作者…"
+
+msgid "Search ingredients…"
+msgstr "搜索原料…"
+
+msgid "Search invoice #, branch…"
+msgstr "搜索发票号、分店…"
+
+msgid "Search order #, branch, receipt #, staff…"
+msgstr "搜索订单号、分店、收据号、员工…"
+
+msgid "Search products…"
+msgstr "搜索产品…"
+
+msgid "Search receipt #, order #, branch…"
+msgstr "搜索收据号、订单号、分店…"
+
+msgid "Search transfer invoice #, branch…"
+msgstr "搜索调拨发票号、分店…"
+
+msgid "Select a branch"
+msgstr "选择分店"
+
+msgid "Select a branch before downloading CSV"
+msgstr "下载 CSV 前请先选择分店"
+
+msgid "Select a branch before setting opening stock"
+msgstr "设置期初库存前请先选择分店"
+
+msgid "Select a branch before setting stock"
+msgstr "设置库存前请先选择分店"
+
+msgid "Select a branch before uploading CSV — remaining_qty is applied as stock at that branch"
+msgstr "上传 CSV 前请先选择分店 — remaining_qty 将作为该分店库存"
+
+msgid "Select a branch to view ingredient stock"
+msgstr "选择分店以查看原料库存"
+
+msgid "Select a branch to view stock quantities. Products are listed below."
+msgstr "选择分店以查看库存数量。产品列于下方。"
+
+msgid "Select a product above to view or edit its recipe."
+msgstr "在上方选择产品以查看或编辑其配方。"
+
+msgid "Select a product first."
+msgstr "请先选择产品。"
+
+msgid "Select a product…"
+msgstr "选择产品…"
+
+msgid "Select at least one branch, or choose All branches"
+msgstr "请至少选择一家分店，或选择全部分店"
+
+msgid "Select branch…"
+msgstr "选择分店…"
+
+msgid "Select category…"
+msgstr "选择分类…"
+
+msgid "Select ingredient…"
+msgstr "选择原料…"
+
+msgid "Select payment currency (enter number):"
+msgstr "选择付款货币（输入数字）："
+
+msgid "Selected only"
+msgstr "仅所选"
+
+msgid "Selection"
+msgstr "选择方式"
+
+msgid "Sell"
+msgstr "售价"
+
+msgid "Selling price"
+msgstr "售价"
+
+msgid "Selling price updated."
+msgstr "售价已更新。"
+
+msgid "Set as base currency (order prices are in this currency)"
+msgstr "设为本位货币（订单价格使用此货币）"
+
+msgid "Set exchange rates for each currency under Payment & Rates → Rates."
+msgstr "请在支付与汇率 → 汇率中为每种货币设置汇率。"
+
+msgid "Show on POS"
+msgstr "在收银显示"
+
+msgid "Showing"
+msgstr "显示"
+
+msgid "Showing stock at"
+msgstr "显示库存于"
+
+msgid "Since"
+msgstr "自"
+
+msgid "Split"
+msgstr "拆分"
+
+msgid "Staff"
+msgstr "员工"
+
+msgid "Staff (cost price)"
+msgstr "员工（成本价）"
+
+msgid "Staff members"
+msgstr "员工列表"
+
+msgid "Start preparing"
+msgstr "开始制备"
+
+msgid "Stock"
+msgstr "库存"
+
+msgid "Stock & status"
+msgstr "库存与状态"
+
+msgid "Stock at"
+msgstr "库存于"
+
+msgid "Stock updated"
+msgstr "库存已更新"
+
+msgid "Summary"
+msgstr "摘要"
+
+msgid "Supplier added"
+msgstr "供应商已添加"
+
+msgid "Supplier updated"
+msgstr "供应商已更新"
+
+msgid "Symbol"
+msgstr "符号"
+
+msgid "Tax"
+msgstr "税"
+
+msgid "Tax rate (%)"
+msgstr "税率 (%)"
+
+msgid "Tax:"
+msgstr "税："
+
+msgid "The order will be marked unpaid so it can be paid again."
+msgstr "订单将标为未付，以便再次收款。"
+
+msgid "Total purchases"
+msgstr "采购合计"
+
+msgid "Total spend"
+msgstr "总支出"
+
+msgid "Total spent"
+msgstr "已花费合计"
+
+msgid "Transfer invoice marked as paid"
+msgstr "调拨发票已标为已付"
+
+msgid "Transfer invoices"
+msgstr "调拨发票"
+
+msgid "US Dollar"
+msgstr "美元"
+
+msgid "Until"
+msgstr "截至"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Upload Excel"
+msgstr "上传 Excel"
+
+msgid "User"
+msgstr "用户"
+
+msgid "VAT number"
+msgstr "增值税号"
+
+msgid "View all add-on options"
+msgstr "查看全部加项选项"
+
+msgid "Void"
+msgstr "作废"
+
+msgid "When"
+msgstr "时间"
+
+msgid "When enabled, POS sales can sync even if stock goes below zero. Transfers and production still require stock."
+msgstr "启用后，即使库存为负，收银销售仍可同步。调拨与生产仍需要库存。"
+
+msgid "Who"
+msgstr "操作人"
+
+msgid "ZIMRA device ID"
+msgstr "ZIMRA 设备 ID"
+
+msgid "active"
+msgstr "启用"
+
+msgid "added"
+msgstr "已添加"
+
+msgid "bakery product"
+msgstr "烘焙产品"
+
+msgid "base"
+msgstr "根据"
+
+msgid "branches"
+msgstr "分店"
+
+msgid "cancelled"
+msgstr "已取消"
+
+msgid "created"
+msgstr "已创建"
+
+msgid "deactivated"
+msgstr "已停用"
+
+msgid "e.g. 30541"
+msgstr "例如 30541"
+
+msgid "e.g. Add Extra Shot"
+msgstr "例如：加一份浓缩"
+
+msgid "e.g. Coffee Extras"
+msgstr "例如：咖啡加项"
+
+msgid "e.g. HIG, CHU"
+msgstr "例如 HIG、CHU"
+
+msgid "e.g. Milk delivery, petty cash"
+msgstr "例如：牛奶配送、备用金"
+
+msgid "fiscalized — fiscal receipt ready to print"
+msgstr "已财税开票 — 财税收据可打印"
+
+msgid "ingredient"
+msgstr "原料"
+
+msgid "ingredient lines"
+msgstr "原料行"
+
+msgid "ingredients"
+msgstr "原料"
+
+msgid "is being prepared"
+msgstr "正在制备"
+
+msgid "is ready"
+msgstr "已就绪"
+
+msgid "it is now unpaid"
+msgstr "现为未付"
+
+msgid "items only."
+msgstr "项目。"
+
+msgid "more — use search"
+msgstr "更多 — 请使用搜索"
+
+msgid "no rate"
+msgstr "无汇率"
+
+msgid "not found — run ingredient import or seed first"
+msgstr "未找到 — 请先运行原料导入或种子数据"
+
+msgid "optional"
+msgstr "可选"
+
+msgid "options"
+msgstr "选项"
+
+msgid "paid in"
+msgstr "支付币种"
+
+msgid "product"
+msgstr "产品"
+
+msgid "products"
+msgstr "产品"
+
+msgid "row"
+msgstr "行"
+
+msgid "updated"
+msgstr "已更新"
+
+msgid "with recipes"
+msgstr "有配方"
+
+msgid "without recipes"
+msgstr "无配方"
+
+msgid "(optional)"
+msgstr "（可选）"
+
+msgid "Account balance"
+msgstr "账户余额"
+
+msgid "Action failed."
+msgstr "操作失败。"
+
+msgid "Active count"
+msgstr "进行中的盘点"
+
+msgid "Active production"
+msgstr "进行中的生产"
+
+msgid "Actual wastage/disposal"
+msgstr "实际损耗/报废"
+
+msgid "Add amounts to current stock"
+msgstr "加到当前库存"
+
+msgid "Add at least one product"
+msgstr "请至少添加一个产品"
+
+msgid "Add at least one product line"
+msgstr "请至少添加一行产品"
+
+msgid "Add expense"
+msgstr "添加费用"
+
+msgid "Add line"
+msgstr "添加行"
+
+msgid "Add qty"
+msgstr "加数量"
+
+msgid "Add table"
+msgstr "添加桌台"
+
+msgid "Add to cart"
+msgstr "加入购物车"
+
+msgid "Adjust balance"
+msgstr "调整余额"
+
+msgid "Adjustment amount"
+msgstr "调整金额"
+
+msgid "All purchases"
+msgstr "全部采购"
+
+msgid "All reasons"
+msgstr "全部原因"
+
+msgid "All statuses"
+msgstr "全部状态"
+
+msgid "All transactions"
+msgstr "全部交易"
+
+msgid "Amount received"
+msgstr "收到金额"
+
+msgid "Amount tendered"
+msgstr "实收金额"
+
+msgid "Amt"
+msgstr "金额"
+
+msgid "Apply adjustment"
+msgstr "应用调整"
+
+msgid "Apply all filled"
+msgstr "应用所有已填"
+
+msgid "Approved"
+msgstr "已批准"
+
+msgid "Available"
+msgstr "可用"
+
+msgid "Awaiting receipt"
+msgstr "待收货"
+
+msgid "Bakery destination"
+msgstr "烘焙目的地"
+
+msgid "Bakery transfers"
+msgstr "烘焙调拨"
+
+msgid "Bakery → Stores & Branches"
+msgstr "烘焙 → 仓库与分店"
+
+msgid "Balance"
+msgstr "余额"
+
+msgid "Balance adjustment"
+msgstr "余额调整"
+
+msgid "Balance adjustment recorded"
+msgstr "余额调整已记录"
+
+msgid "Bill To"
+msgstr "账单收件人"
+
+msgid "Branch filter"
+msgstr "分店筛选"
+
+msgid "Branch → Branch"
+msgstr "分店 → 分店"
+
+msgid "By payment method"
+msgstr "按付款方式"
+
+msgid "Cancel entire order"
+msgstr "取消整笔订单"
+
+msgid "Cancel this draft wastage entry?"
+msgstr "取消此损耗草稿？"
+
+msgid "Cancel this production sheet? Entered quantities will be discarded."
+msgstr "取消此生产单？已输入数量将被丢弃。"
+
+msgid "Cancel this stock take? Counted quantities will be discarded."
+msgstr "取消此盘点？已盘数量将被丢弃。"
+
+msgid "Cannot transfer an inactive product."
+msgstr "无法调拨停用产品。"
+
+msgid "Cash"
+msgstr "现金"
+
+msgid "Cash-up reconciliation"
+msgstr "现金核对"
+
+msgid "Central Bakery — Stock Distribution"
+msgstr "中央烘焙 — 库存配送"
+
+msgid "Central Stores — Inter-branch stock invoice"
+msgstr "中央仓库 — 分店间库存发票"
+
+msgid "Central Stores — Stock Distribution"
+msgstr "中央仓库 — 库存配送"
+
+msgid "Central Stores → Branches & Bakery"
+msgstr "中央仓库 → 分店与烘焙"
+
+msgid "Central bakery"
+msgstr "中央烘焙"
+
+msgid "Central stores"
+msgstr "中央仓库"
+
+msgid "Change"
+msgstr "找零"
+
+msgid "Choose an open takeaway order, or start a new one."
+msgstr "选择未结外卖单，或新建一单。"
+
+msgid "Choose table…"
+msgstr "选择桌台…"
+
+msgid "Choose the count type and start a count."
+msgstr "选择盘点类型并开始。"
+
+msgid "Clear Cart"
+msgstr "清空购物车"
+
+msgid "Close day"
+msgstr "关闭日"
+
+msgid "Closing balance"
+msgstr "期末余额"
+
+msgid "Collect Payment"
+msgstr "收款"
+
+msgid "Complete & post variances"
+msgstr "完成并过账差异"
+
+msgid "Complete production"
+msgstr "完成生产"
+
+msgid "Complete this production sheet and add finished goods to bakery stock?"
+msgstr "完成此生产单并将成品加入烘焙库存？"
+
+msgid "Complete this stock take and post inventory variances?"
+msgstr "完成此盘点并过账库存差异？"
+
+msgid "Completed"
+msgstr "已完成"
+
+msgid "Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients)."
+msgstr "完成生产单会将成品加入烘焙库存（并扣减配方原料）。"
+
+msgid "Confirm receive"
+msgstr "确认收货"
+
+msgid "Count date"
+msgstr "盘点日期"
+
+msgid "Count saved."
+msgstr "盘点已保存。"
+
+msgid "Count type"
+msgstr "盘点类型"
+
+msgid "Counted qty"
+msgstr "盘点数量"
+
+msgid "Create delivery note"
+msgstr "创建送货单"
+
+msgid "Create invoice"
+msgstr "创建发票"
+
+msgid "Create transfer"
+msgstr "创建调拨"
+
+msgid "Created"
+msgstr "已创建"
+
+msgid "Credit limit:"
+msgstr "信用额度："
+
+msgid "Credited"
+msgstr "已贷记"
+
+msgid "Cumulative spend"
+msgstr "累计支出"
+
+msgid "Currency code"
+msgstr "货币代码"
+
+msgid "Current Order"
+msgstr "当前订单"
+
+msgid "Current stock: 0"
+msgstr "当前库存：0"
+
+msgid "Customer (optional)"
+msgstr "客户（可选）"
+
+msgid "Customer account statement"
+msgstr "客户对账单"
+
+msgid "Customer account transactions"
+msgstr "客户账户交易"
+
+msgid "Customer payment"
+msgstr "客户付款"
+
+msgid "Customer statement"
+msgstr "客户对账单"
+
+msgid "DINE IN"
+msgstr "堂食"
+
+msgid "Daily"
+msgstr "日盘"
+
+msgid "Damaged"
+msgstr "损坏"
+
+msgid "Damaged (return)"
+msgstr "损坏（退回）"
+
+msgid "Damaged or short quantities are credited back to the sender. Variance auto-flags the note."
+msgstr "损坏或缺量会贷记回发货方。差异会自动标记单据。"
+
+msgid "Day end"
+msgstr "日结"
+
+msgid "Day-end cash-up"
+msgstr "日结现金核对"
+
+msgid "Debited"
+msgstr "已借记"
+
+msgid "Delivered"
+msgstr "已送达"
+
+msgid "Delivery Note"
+msgstr "送货单"
+
+msgid "Delivery instructions, PO reference, etc."
+msgstr "送货说明、采购单号等"
+
+msgid "Deposit recorded"
+msgstr "存款已记录"
+
+msgid "Destination"
+msgstr "目的地"
+
+msgid "Destination (branch, HQ, or bakery)"
+msgstr "目的地（分店、总部或烘焙）"
+
+msgid "Destination (stores or branch)"
+msgstr "目的地（仓库或分店）"
+
+msgid "Device"
+msgstr "设备"
+
+msgid "Device branch:"
+msgstr "设备分店："
+
+msgid "Device serial:"
+msgstr "设备序列号："
+
+msgid "Dine In"
+msgstr "堂食"
+
+msgid "Dispatched"
+msgstr "已发货"
+
+msgid "Dispatched by"
+msgstr "发货人"
+
+msgid "Dispatched by (Central Stores)"
+msgstr "发货人（中央仓库）"
+
+msgid "Draft"
+msgstr "草稿"
+
+msgid "Draft cancelled."
+msgstr "草稿已取消。"
+
+msgid "End of day summary"
+msgstr "日结摘要"
+
+msgid "Enter a non-zero adjustment amount (e.g. -12.00)"
+msgstr "请输入非零调整金额（例如 -12.00）"
+
+msgid "Enter a signed amount such as -12.00 to debit, or a positive amount to credit. This posts a Balance adjustment on the customer statement."
+msgstr "输入带符号金额如 -12.00 借记，或正数贷记。将在客户对账单上记一笔余额调整。"
+
+msgid "Enter a table name"
+msgstr "请输入桌台名称"
+
+msgid "Enter a valid amount"
+msgstr "请输入有效金额"
+
+msgid "Enter a valid line total"
+msgstr "请输入有效行合计"
+
+msgid "Enter a valid quantity"
+msgstr "请输入有效数量"
+
+msgid "Enter an amount"
+msgstr "请输入金额"
+
+msgid "Enter at least one currency amount, or turn off split payment"
+msgstr "请至少输入一种货币金额，或关闭拆分付款"
+
+msgid "Enter counted amounts per currency. Leave blank for currencies you have not counted."
+msgstr "按货币输入盘点金额。未盘点的货币留空。"
+
+msgid "Enter quantities produced for each destination — Highlands, Churchill, and Central stores."
+msgstr "为每个目的地输入产量 — Highlands、Churchill 与中央仓库。"
+
+msgid "Enter the physical quantity for every item. System quantities remain hidden while counting."
+msgstr "为每项输入实际数量。盘点时系统数量保持隐藏。"
+
+msgid "Exchange rate"
+msgstr "汇率"
+
+msgid "External customer"
+msgstr "外部客户"
+
+msgid "Failed to initialize wastage page."
+msgstr "损耗页面初始化失败。"
+
+msgid "Failed to record wastage."
+msgstr "损耗记录失败。"
+
+msgid "Fill in branch, product, quantity, and reason."
+msgstr "请填写分店、产品、数量和原因。"
+
+msgid "Filter by name or phone…"
+msgstr "按姓名或电话筛选…"
+
+msgid "Fiscal Information"
+msgstr "税务信息"
+
+msgid "Fiscal QR code"
+msgstr "财政二维码"
+
+msgid "Fiscal day"
+msgstr "财政日"
+
+msgid "Fiscal day #"
+msgstr "财政日编号"
+
+msgid "Fiscal day opened"
+msgstr "财政日已开启"
+
+msgid "Fiscal day:"
+msgstr "财政日："
+
+msgid "Fiscal invoice:"
+msgstr "财政发票："
+
+msgid "Fiscal receipt"
+msgstr "财政收据"
+
+msgid "Fiscal receipt No."
+msgstr "财政收据号"
+
+msgid "Flag this dnote for follow-up"
+msgstr "将此送货单标记为需跟进"
+
+msgid "Flagged"
+msgstr "已标记"
+
+msgid "Flagged for follow-up"
+msgstr "已标记需跟进"
+
+msgid "From (Supplier)"
+msgstr "发货方（供应商）"
+
+msgid "From branch"
+msgstr "来源分店"
+
+msgid "Goods Received Voucher"
+msgstr "收货凭证"
+
+msgid "ID"
+msgstr "ID"
+
+msgid "In progress"
+msgstr "进行中"
+
+msgid "Incoming"
+msgstr "入库"
+
+msgid "Ingredient already added — remove it first to change quantity"
+msgstr "原料已添加 — 请先移除再改数量"
+
+msgid "Ingredient type"
+msgstr "原料类型"
+
+msgid "Inv:"
+msgstr "发票："
+
+msgid "Invoice"
+msgstr "发票"
+
+msgid "Invoice / reference"
+msgstr "发票/参考号"
+
+msgid "Invoice No."
+msgstr "发票号"
+
+msgid "Invoice total"
+msgstr "发票合计"
+
+msgid "Issued by (Central Stores)"
+msgstr "开具人（中央仓库）"
+
+msgid "Item removed"
+msgstr "已移除项目"
+
+msgid "Item type"
+msgstr "物料类型"
+
+msgid "Items sold"
+msgstr "已售项目"
+
+msgid "Last receipt global #"
+msgstr "最近全局收据号"
+
+msgid "Less expenses"
+msgstr "减费用"
+
+msgid "Line items"
+msgstr "明细行"
+
+msgid "Line notes"
+msgstr "行备注"
+
+msgid "Lines"
+msgstr "行数"
+
+msgid "Manage tables"
+msgstr "管理桌台"
+
+msgid "Menu items sold at the till — same products as on POS."
+msgstr "收银台销售的菜单品 — 与收银相同产品。"
+
+msgid "Mode"
+msgstr "模式"
+
+msgid "Monthly"
+msgstr "月盘"
+
+msgid "Net expected in till"
+msgstr "钱箱预期净额"
+
+msgid "New balance"
+msgstr "新余额"
+
+msgid "New branch transfer"
+msgstr "新建分店调拨"
+
+msgid "New central invoice"
+msgstr "新建中央发票"
+
+msgid "New delivery note"
+msgstr "新建送货单"
+
+msgid "New delivery note & invoice"
+msgstr "新建送货单与发票"
+
+msgid "New production sheet"
+msgstr "新建生产单"
+
+msgid "New table name (e.g. T12)"
+msgstr "新桌台名称（如 T12）"
+
+msgid "No bakery branch configured."
+msgstr "未配置烘焙分店。"
+
+msgid "No branch assigned for recording deposits"
+msgstr "未分配可记录存款的分店"
+
+msgid "No branch assigned — stock adjustments unavailable."
+msgstr "未分配分店 — 无法调整库存。"
+
+msgid "No items for this type"
+msgstr "此类型无项目"
+
+msgid "No items sold"
+msgstr "无已售项目"
+
+msgid "No line items"
+msgstr "无明细行"
+
+msgid "No matching items"
+msgstr "无匹配项目"
+
+msgid "No matching wastage entries"
+msgstr "无匹配损耗记录"
+
+msgid "No open orders"
+msgstr "无未结订单"
+
+msgid "No purchases"
+msgstr "无采购"
+
+msgid "No sales recorded for this day."
+msgstr "此日无销售记录。"
+
+msgid "No transactions"
+msgstr "无交易"
+
+msgid "No wastage entries in this period"
+msgstr "此期间无损耗记录"
+
+msgid "Not a fiscal receipt — pending approval"
+msgstr "非财政收据 — 待审批"
+
+msgid "Not approved"
+msgstr "未批准"
+
+msgid "Note"
+msgstr "笔记"
+
+msgid "Note:"
+msgstr "备注："
+
+msgid "Notes:"
+msgstr "备注："
+
+msgid "On fiscal branches, count only one currency code (USD or ZWG) — do not mix them."
+msgstr "财政分店只盘一种货币代码（USD 或 ZWG）— 不要混用。"
+
+msgid "Open and unpaid · select to collect payment or cancel"
+msgstr "未结未付 · 选择以收款或取消"
+
+msgid "Open day"
+msgstr "开启日"
+
+msgid "Open orders"
+msgstr "未结订单"
+
+msgid "Open the fiscal day before approving receipts. Close it at end of trading."
+msgstr "审批收据前请开启财政日。营业结束时关闭。"
+
+msgid "Opening balance"
+msgstr "期初余额"
+
+msgid "Optional notes for bakery / stores"
+msgstr "烘焙/仓库可选备注"
+
+msgid "Order Type"
+msgstr "订单类型"
+
+msgid "Order actions"
+msgstr "订单操作"
+
+msgid "Order notes"
+msgstr "订单备注"
+
+msgid "Order ticket"
+msgstr "订单小票"
+
+msgid "PAID"
+msgstr "已付"
+
+msgid "PO #"
+msgstr "采购单号"
+
+msgid "POS mode"
+msgstr "收银模式"
+
+msgid "POS products"
+msgstr "收银产品"
+
+msgid "PROFORMA"
+msgstr "形式"
+
+msgid "PROFORMA — NOT FISCAL"
+msgstr "形式发票 — 非财政"
+
+msgid "Paid in"
+msgstr "付款货币"
+
+msgid "Paid on"
+msgstr "付款日期"
+
+msgid "Payment currency"
+msgstr "付款货币"
+
+msgid "Payment method"
+msgstr "付款方式"
+
+msgid "Payment options"
+msgstr "付款选项"
+
+msgid "Payment status"
+msgstr "付款状态"
+
+msgid "Payments collected"
+msgstr "已收付款"
+
+msgid "Payments received"
+msgstr "已收款项"
+
+msgid "Place Order"
+msgstr "下单"
+
+msgid "Please retain for your records."
+msgstr "请妥善保存备查。"
+
+msgid "Please select a payment currency"
+msgstr "请选择付款货币"
+
+msgid "Present this ticket when paying."
+msgstr "付款时出示此小票。"
+
+msgid "Previous balance"
+msgstr "上期余额"
+
+msgid "Priced at cost"
+msgstr "按成本计价"
+
+msgid "Print 80mm"
+msgstr "打印 80mm"
+
+msgid "Print A4"
+msgstr "打印 A4"
+
+msgid "Print cash-up"
+msgstr "打印现金核对"
+
+msgid "Print central invoice"
+msgstr "打印中央发票"
+
+msgid "Print delivery note"
+msgstr "打印送货单"
+
+msgid "Print invoice"
+msgstr "打印发票"
+
+msgid "Print order ticket"
+msgstr "打印订单小票"
+
+msgid "Print proforma"
+msgstr "打印形式发票"
+
+msgid "Print receipt"
+msgstr "打印收据"
+
+msgid "Print report"
+msgstr "打印报表"
+
+msgid "Print statement"
+msgstr "打印对账单"
+
+msgid "Print transfer invoice"
+msgstr "打印调拨发票"
+
+msgid "Printed"
+msgstr "打印于"
+
+msgid "Process this wastage entry and subtract from stock?"
+msgstr "处理此损耗并从库存扣减？"
+
+msgid "Processed"
+msgstr "已处理"
+
+msgid "Processing subtracts quantity from the source branch and, for bakery reuse, credits the bakery."
+msgstr "处理会从源分店扣减数量；若为烘焙再利用，则贷记烘焙。"
+
+msgid "Produced"
+msgstr "已生产"
+
+msgid "Product already added"
+msgstr "产品已添加"
+
+msgid "Product already added — remove it first to change quantity"
+msgstr "产品已添加 — 请先移除再改数量"
+
+msgid "Production completed."
+msgstr "生产已完成。"
+
+msgid "Production date"
+msgstr "生产日期"
+
+msgid "Production saved."
+msgstr "生产已保存。"
+
+msgid "Production sheet cancelled."
+msgstr "生产单已取消。"
+
+msgid "Production sheet started."
+msgstr "生产单已开始。"
+
+msgid "Proforma Invoice"
+msgstr "形式发票"
+
+msgid "Proforma No."
+msgstr "形式发票号"
+
+msgid "Proforma Receipt"
+msgstr "形式收据"
+
+msgid "Purchase for"
+msgstr "采购用途"
+
+msgid "Put rest on base"
+msgstr "其余放入基础货币"
+
+msgid "Quantity for"
+msgstr "数量："
+
+msgid "Quickly add or set stock for bakery goods, shop items, or ingredients at a branch."
+msgstr "快速为分店的烘焙品、店面商品或原料增减/设定库存。"
+
+msgid "Raw materials"
+msgstr "原材料"
+
+msgid "Reason"
+msgstr "原因"
+
+msgid "Receive GRV"
+msgstr "收货确认"
+
+msgid "Received"
+msgstr "已收"
+
+msgid "Received (good)"
+msgstr "已收（完好）"
+
+msgid "Received by"
+msgstr "收货人"
+
+msgid "Received by (Branch)"
+msgstr "收货人（分店）"
+
+msgid "Received by (Customer)"
+msgstr "收货人（客户）"
+
+msgid "Received in"
+msgstr "收款货币"
+
+msgid "Record & process"
+msgstr "记录并处理"
+
+msgid "Record a supplier purchase for any branch. Stock is added immediately when you save."
+msgstr "为任意分店记录供应商采购。保存后立即增加库存。"
+
+msgid "Record customer payment"
+msgstr "记录客户付款"
+
+msgid "Record deposit"
+msgstr "记录存款"
+
+msgid "Record items leaving sellable stock for bakery reuse, kitchen use, or disposal."
+msgstr "记录离开可售库存的商品：烘焙再利用、厨房使用或报废。"
+
+msgid "Record payment"
+msgstr "记录付款"
+
+msgid "Record production"
+msgstr "记录生产"
+
+msgid "Record purchase"
+msgstr "记录采购"
+
+msgid "Record wastage"
+msgstr "记录损耗"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Remarks"
+msgstr "备注"
+
+msgid "Remove one unit from this line?"
+msgstr "从此行移除一单位？"
+
+msgid "Rename or remove tables. Changes apply to this branch only."
+msgstr "重命名或删除桌台。更改仅作用于本分店。"
+
+msgid "Report date"
+msgstr "报表日期"
+
+msgid "Requested"
+msgstr "已申请"
+
+msgid "Sale Details"
+msgstr "销售明细"
+
+msgid "Sales Receipt"
+msgstr "销售收据"
+
+msgid "Save progress"
+msgstr "保存进度"
+
+msgid "Search items…"
+msgstr "搜索物料…"
+
+msgid "Search product, branch, reason, notes…"
+msgstr "搜索产品、分店、原因、备注…"
+
+msgid "Select a branch first"
+msgstr "请先选择分店"
+
+msgid "Select a branch first."
+msgstr "请先选择分店。"
+
+msgid "Select a branch to adjust stock."
+msgstr "选择分店以调整库存。"
+
+msgid "Select a branch to view items"
+msgstr "选择分店以查看物料"
+
+msgid "Select a count date."
+msgstr "请选择盘点日期。"
+
+msgid "Select a currency"
+msgstr "请选择货币"
+
+msgid "Select a customer"
+msgstr "请选择客户"
+
+msgid "Select a customer to pay from account"
+msgstr "选择客户以从账户付款"
+
+msgid "Select a customer to view their account or record a deposit."
+msgstr "选择客户以查看账户或记录存款。"
+
+msgid "Select a destination branch"
+msgstr "选择目的分店"
+
+msgid "Select a fiscal branch first"
+msgstr "请先选择财政分店"
+
+msgid "Select a product first"
+msgstr "请先选择产品"
+
+msgid "Select a production date."
+msgstr "请选择生产日期。"
+
+msgid "Select an ingredient first"
+msgstr "请先选择原料"
+
+msgid "Select at least one item to transfer"
+msgstr "请至少选择一项进行调拨"
+
+msgid "Select bakery…"
+msgstr "选择烘焙…"
+
+msgid "Select central stores or a branch as the destination"
+msgstr "选择中央仓库或分店作为目的地"
+
+msgid "Select customer…"
+msgstr "选择客户…"
+
+msgid "Select destination…"
+msgstr "选择目的地…"
+
+msgid "Select product…"
+msgstr "选择产品…"
+
+msgid "Select supplier…"
+msgstr "选择供应商…"
+
+msgid "Select table"
+msgstr "选择桌台"
+
+msgid "Select the bakery destination for reuse transfers."
+msgstr "请选择再利用调拨的烘焙目的地。"
+
+msgid "Sell or transfer bakery products from central stores to external customers. Stock is deducted when the invoice is created."
+msgstr "将中央仓库的烘焙产品销售或调拨给外部客户。创建发票时扣减库存。"
+
+msgid "Sent"
+msgstr "已发"
+
+msgid "Served by"
+msgstr "服务员"
+
+msgid "Set"
+msgstr "设定"
+
+msgid "Set qty"
+msgstr "设定数量"
+
+msgid "Set stock to an absolute quantity"
+msgstr "将库存设为绝对数量"
+
+msgid "Shop"
+msgstr "店面"
+
+msgid "Special instructions for kitchen…"
+msgstr "厨房特殊说明…"
+
+msgid "Spend before period"
+msgstr "期前支出"
+
+msgid "Split across payment currencies"
+msgstr "按多种付款货币拆分"
+
+msgid "Start count"
+msgstr "开始盘点"
+
+msgid "Start daily count"
+msgstr "开始日盘"
+
+msgid "Start monthly count"
+msgstr "开始月盘"
+
+msgid "Start stock take"
+msgstr "开始盘点"
+
+msgid "Stock Transfers"
+msgstr "库存调拨"
+
+msgid "Stock added"
+msgstr "库存已增加"
+
+msgid "Stock mode"
+msgstr "库存模式"
+
+msgid "Stock set"
+msgstr "库存已设定"
+
+msgid "Stock take"
+msgstr "盘点"
+
+msgid "Stock take cancelled."
+msgstr "盘点已取消。"
+
+msgid "Stock take completed."
+msgstr "盘点已完成。"
+
+msgid "Subtotal"
+msgstr "小计"
+
+msgid "Supplier invoice or delivery note number"
+msgstr "供应商发票或送货单号"
+
+msgid "Supplier purchase statement"
+msgstr "供应商采购对账单"
+
+msgid "Supplier statement"
+msgstr "供应商对账单"
+
+msgid "TAKEAWAY"
+msgstr "外卖"
+
+msgid "Table added"
+msgstr "桌台已添加"
+
+msgid "Table name is required"
+msgstr "需要桌台名称"
+
+msgid "Table removed"
+msgstr "桌台已删除"
+
+msgid "Table updated"
+msgstr "桌台已更新"
+
+msgid "Takeaway"
+msgstr "外卖"
+
+msgid "Tap a table to select it. Highlighted tables have open dine-in orders."
+msgstr "点按桌台以选择。高亮桌台有未结堂食订单。"
+
+msgid "Tap products to add items"
+msgstr "点按产品以添加"
+
+msgid "Tax Invoice"
+msgstr "税务发票"
+
+msgid "Thank you for your business."
+msgstr "感谢惠顾。"
+
+msgid "Thank you for your visit!"
+msgstr "感谢光临！"
+
+msgid "This ingredient has no unit cost configured"
+msgstr "此原料未配置单位成本"
+
+msgid "This order cannot be cancelled"
+msgstr "无法取消此订单"
+
+msgid "This order type cannot transfer items"
+msgstr "此订单类型无法调拨项目"
+
+msgid "To (Customer branch)"
+msgstr "至（客户分店）"
+
+msgid "To (Customer)"
+msgstr "至（客户）"
+
+msgid "To branch"
+msgstr "目标分店"
+
+msgid "Total qty"
+msgstr "总数量"
+
+msgid "Total quantity"
+msgstr "总数量"
+
+msgid "Transaction history"
+msgstr "交易历史"
+
+msgid "Transfer Invoice"
+msgstr "调拨发票"
+
+msgid "Transfer to order"
+msgstr "调至订单"
+
+msgid "Transfer to table"
+msgstr "调至桌台"
+
+msgid "Transfer to table…"
+msgstr "调至桌台…"
+
+msgid "Transferred for bakery reuse"
+msgstr "已调拨供烘焙再利用"
+
+msgid "Transferred to the kitchen"
+msgstr "已调拨至厨房"
+
+msgid "UNPAID"
+msgstr "未付"
+
+msgid "Updated"
+msgstr "已更新"
+
+msgid "Variances"
+msgstr "差异"
+
+msgid "Verification"
+msgstr "验证"
+
+msgid "Verification:"
+msgstr "验证："
+
+msgid "Walk-in"
+msgstr "散客"
+
+msgid "Walk-in (no account)"
+msgstr "散客（无账户）"
+
+msgid "Walk-in customer"
+msgstr "散客"
+
+msgid "Wastage processed; stock updated."
+msgstr "损耗已处理；库存已更新。"
+
+msgid "Wastage recorded and stock updated."
+msgstr "损耗已记录且库存已更新。"
+
+msgid "Wastage saved as draft."
+msgstr "损耗已存为草稿。"
+
+msgid "Withdrawals"
+msgstr "支取"
+
+msgid "at"
+msgstr "于"
+
+msgid "bakery goods"
+msgstr "烘焙商品"
+
+msgid "e.g. Cash top-up"
+msgstr "例如：现金充值"
+
+msgid "e.g. Correction"
+msgstr "例如：更正"
+
+msgid "e.g. end-of-day leftovers, damaged packaging"
+msgstr "例如：日终剩余、包装破损"
+
+msgid "each"
+msgstr "每件"
+
+msgid "expected"
+msgstr "预期"
+
+msgid "failed"
+msgstr "失败"
+
+msgid "for"
+msgstr "用于"
+
+msgid "ingredients plus fixed assets."
+msgstr "原料加固定资产。"
+
+msgid "item"
+msgstr "项"
+
+msgid "items"
+msgstr "项"
+
+msgid "products marked for daily count (shop stock and branch ingredients)."
+msgstr "标记为日盘的产品（店面库存与分店原料）。"
+
+msgid "qty"
+msgstr "数量"
+
+msgid "shop items"
+msgstr "店面商品"
+
+msgid "updates failed"
+msgstr "更新失败"
+
+msgid "Fiscal receipts issued after proforma approval"
+msgstr "形式发票批准后开具的财政收据"
+
+msgid "Search fiscal receipt #, proforma #, order…"
+msgstr "搜索财政收据号、形式发票号、订单…"
+
+msgid "Fiscal receipt #"
+msgstr "财政收据号"
+
+msgid "Fiscalized"
+msgstr "已财政化"
+
+msgid "No matching fiscal receipts"
+msgstr "无匹配财政收据"
+
+msgid "No fiscal receipts yet"
+msgstr "尚无财政收据"
+
+msgid "Failed to load receipts:"
+msgstr "收据加载失败："
+
+msgid "Currency Rates"
+msgstr "汇率"
+
+msgid "Add exchange rate"
+msgstr "添加汇率"
+
+msgid "Select currency…"
+msgstr "选择货币…"
+
+msgid "Rate (per 1 base unit)"
+msgstr "汇率（每 1 本位单位）"
+
+msgid "Effective from"
+msgstr "生效自"
+
+msgid "How many units of the selected currency equal 1 unit of the base currency."
+msgstr "所选货币多少单位等于 1 个本位货币单位。"
+
+msgid "Add rate"
+msgstr "添加汇率"
+
+msgid "Exchange rates"
+msgstr "汇率表"
+
+msgid "Rates used when customers pay in each currency at the receipt."
+msgstr "客户在收据处以各货币付款时使用的汇率。"
+
+msgid "No exchange rates yet"
+msgstr "尚无汇率"
+
+msgid "Rate"
+msgstr "汇率"
+
+msgid "Please select a currency"
+msgstr "请选择货币"
+
+msgid "Exchange rate added"
+msgstr "汇率已添加"
+
+msgid "Failed to load rates:"
+msgstr "汇率加载失败："
+
+msgid "Remaining: —"
+msgstr "剩余：—"
+
+msgid "Choose any table, including ones already in use. The current table is disabled."
+msgstr "可选择任意桌台（含使用中）。当前桌台已禁用。"
+
+msgid "Select for transfer"
+msgstr "选择以调拨"
+
+msgid "Remove one unit"
+msgstr "移除一单位"
+
+msgid "Remove 1"
+msgstr "移除 1"
+
+msgid "Leave blank to skip"
+msgstr "留空跳过"
+
+msgid "Stock leaves the sending branch when you dispatch."
+msgstr "发货时从发出分店扣减库存。"
+
+msgid "Creating…"
+msgstr "创建中…"
+
+msgid "Optional"
+msgstr "可选"
+
+msgid "Credit limit: —"
+msgstr "信用额度：—"
+
+msgid "New balance: —"
+msgstr "新余额：—"
+
+msgid "available at source · deducted on dispatch"
+msgstr "源库存可用 · 发货时扣减"

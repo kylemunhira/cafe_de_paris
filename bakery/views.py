@@ -39,23 +39,28 @@ class RecipeViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     queryset = Recipe.objects.select_related(
         "product",
         "product__category",
+        "menu_addon",
+        "menu_addon__group",
         "ingredient",
         "ingredient__category",
         "ingredient__group_category",
     ).all()
     serializer_class = RecipeSerializer
     audit_entity_type = "recipe"
-    audit_fields = ("product", "ingredient", "quantity_required")
+    audit_fields = ("product", "menu_addon", "ingredient", "quantity_required")
     audit_label_field = lambda recipe: (  # noqa: E731
-        f"{recipe.product} / {recipe.ingredient}"
+        f"{recipe.product or recipe.menu_addon} / {recipe.ingredient}"
     )
     def get_queryset(self):
         queryset = super().get_queryset()
         product_id = self.request.query_params.get("product")
+        menu_addon_id = self.request.query_params.get("menu_addon")
         ingredient_id = self.request.query_params.get("ingredient")
 
         if product_id:
             queryset = queryset.filter(product_id=product_id)
+        if menu_addon_id:
+            queryset = queryset.filter(menu_addon_id=menu_addon_id)
         if ingredient_id:
             queryset = queryset.filter(ingredient_id=ingredient_id)
         return queryset

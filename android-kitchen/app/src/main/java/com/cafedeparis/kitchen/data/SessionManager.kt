@@ -759,6 +759,7 @@ object JsonParsers {
             full_name = item.optString("full_name", item.optString("first_name", "Customer")),
             account_balance = jsonNumberAsString(item, "account_balance", "0"),
             credit_limit = jsonNumberAsString(item, "credit_limit", "0"),
+            account_type = item.optString("account_type", "regular").ifBlank { "regular" },
         )
     }
 
@@ -861,6 +862,12 @@ object JsonParsers {
             } else {
                 line.optString("variance", null)?.takeIf { it.isNotBlank() && it != "null" }
             }
+            val wastage = if (line.isNull("wastage_quantity")) {
+                "0"
+            } else {
+                line.optString("wastage_quantity", "0")
+                    ?.takeIf { it.isNotBlank() && it != "null" } ?: "0"
+            }
             StockTakeLine(
                 id = line.getInt("id"),
                 productId = line.optInt("product", 0),
@@ -873,6 +880,7 @@ object JsonParsers {
                     .takeIf { it.isNotBlank() && it != "null" } ?: "Shop",
                 systemQuantity = systemQty,
                 countedQuantity = counted,
+                wastageQuantity = wastage,
                 variance = variance,
                 notes = line.optString("notes", ""),
             )

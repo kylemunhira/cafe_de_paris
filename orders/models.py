@@ -166,6 +166,18 @@ class Order(models.Model):
         blank=True,
         related_name="orders_fiscal_approved",
     )
+    bill_print_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of guest-bill prints requested from POS.",
+    )
+    bill_last_printed_at = models.DateTimeField(null=True, blank=True)
+    bill_last_printed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_bill_printed",
+    )
 
     class Meta:
         ordering = ["-created_at"]

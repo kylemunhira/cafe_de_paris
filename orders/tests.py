@@ -1348,7 +1348,13 @@ class OrderCancelVoidTests(TestCase):
             location="Harare",
             branch_type=BranchType.BRANCH,
         )
-        StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
+        StaffProfile.objects.create(
+            user=self.user,
+            branch=self.branch,
+            pos_access=True,
+            role=StaffRole.BRANCH_MANAGER,
+            access_code="5555",
+        )
         self.client.force_authenticate(user=self.user)
         category = ProductCategory.objects.create(name="Coffee")
         self.product = Product.objects.create(
@@ -1629,6 +1635,55 @@ class OrderCancelVoidTests(TestCase):
         stock.refresh_from_db()
         self.assertEqual(stock.quantity, Decimal("1.00"))
 
+    def test_cashier_cannot_void_without_manager_code(self):
+        User = get_user_model()
+        cashier = User.objects.create_user(username="plaincashier", password="pass")
+        StaffProfile.objects.create(
+            user=cashier,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+            access_code="1111",
+        )
+        order = self._open_order()
+        self.client.force_authenticate(user=self.user)
+        self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.client.force_authenticate(user=cashier)
+        response = self.client.post(f"/api/orders/{order.id}/void/", {}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_cashier_void_with_manager_access_code(self):
+        User = get_user_model()
+        cashier = User.objects.create_user(username="plaincashier2", password="pass")
+        StaffProfile.objects.create(
+            user=cashier,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+            access_code="1112",
+        )
+        order = self._open_order()
+        self.client.force_authenticate(user=self.user)
+        self.client.post(
+            f"/api/orders/{order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.client.force_authenticate(user=cashier)
+        response = self.client.post(
+            f"/api/orders/{order.id}/void/",
+            {"access_code": "5555"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.UNPAID)
+        self.assertEqual(order.cancelled_by_id, self.user.id)
+
 
 class OrderItemRemoveTests(TestCase):
     def setUp(self):
@@ -1648,6 +1703,7 @@ class OrderItemRemoveTests(TestCase):
             user=self.hq_admin,
             branch=self.branch,
             role=StaffRole.HQ_ADMIN,
+            access_code="9999",
         )
         self.client.force_authenticate(user=self.hq_admin)
         category = ProductCategory.objects.create(name="Coffee")
@@ -1688,6 +1744,18 @@ class OrderItemRemoveTests(TestCase):
         self.assertEqual(response.status_code, 403)
         first.refresh_from_db()
         self.assertEqual(first.quantity, Decimal("2"))
+
+    def test_cashier_remove_with_manager_access_code(self):
+        order, first, _second = self._open_order_with_items()
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            f"/api/orders/{order.id}/items/{first.id}/remove-one/",
+            {"access_code": "9999"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        first.refresh_from_db()
+        self.assertEqual(first.quantity, Decimal("1"))
 
     def test_remove_item_requires_hq_admin(self):
         order, first, _second = self._open_order_with_items()
@@ -1751,7 +1819,7 @@ class OrderItemRemoveTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("open orders", response.data["detail"].lower())
+        self.assertIn("open or unpaid", response.data["detail"].lower())
 
 
 class OrderItemTransferTests(TestCase):
@@ -2412,3 +2480,119 @@ class FamilyStaffCostPriceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["account_type"], "family")
         self.assertEqual(response.data["account_type_display"], "Family")
+
+class WaiterOrderAccessCodeTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.branch = Branch.objects.create(
+            name="Waiter Branch",
+            code="WTR",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+        )
+        self.waiter = User.objects.create_user(username="waiter", password="pass")
+        StaffProfile.objects.create(
+            user=self.waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+            access_code="2001",
+        )
+        self.other_waiter = User.objects.create_user(username="waiter2", password="pass")
+        StaffProfile.objects.create(
+            user=self.other_waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+            access_code="2002",
+        )
+        self.client.force_authenticate(user=self.waiter)
+        category = ProductCategory.objects.create(name="Coffee")
+        self.product = Product.objects.create(
+            name="Latte",
+            category=category,
+            selling_price=Decimal("4.00"),
+        )
+
+    def test_waiter_must_send_access_code(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("access_code", response.data)
+
+    def test_waiter_order_attributed_to_access_code_user(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": "takeaway",
+                "items": [{"product_id": self.product.id, "quantity": "1"}],
+                "access_code": "2002",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["id"])
+        self.assertEqual(order.created_by_id, self.other_waiter.id)
+        self.assertEqual(response.data["created_by_name"], "waiter2")
+
+    def test_waiter_lists_only_own_orders(self):
+        own = Order.objects.create(
+            branch=self.branch,
+            order_type="takeaway",
+            created_by=self.waiter,
+        )
+        Order.objects.create(
+            branch=self.branch,
+            order_type="takeaway",
+            created_by=self.other_waiter,
+        )
+
+        response = self.client.get("/api/orders/")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(ids, {own.id})
+
+        other = Order.objects.exclude(pk=own.pk).get()
+        denied = self.client.get(f"/api/orders/{other.id}/")
+        self.assertEqual(denied.status_code, 404)
+
+    def test_second_bill_print_requires_hq_admin_access_code(self):
+        User = get_user_model()
+        hq_admin = User.objects.create_user(username="hqadmin", password="pass")
+        StaffProfile.objects.create(
+            user=hq_admin,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+            access_code="9000",
+        )
+        order = Order.objects.create(
+            branch=self.branch,
+            order_type="takeaway",
+            created_by=self.waiter,
+        )
+
+        first = self.client.post(f"/api/orders/{order.id}/print-bill/", {}, format="json")
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["bill_print_count"], 1)
+
+        denied = self.client.post(f"/api/orders/{order.id}/print-bill/", {}, format="json")
+        self.assertEqual(denied.status_code, 403)
+
+        approved = self.client.post(
+            f"/api/orders/{order.id}/print-bill/",
+            {"access_code": "9000"},
+            format="json",
+        )
+        self.assertEqual(approved.status_code, 200, approved.data)
+        self.assertEqual(approved.data["bill_print_count"], 2)
+        order.refresh_from_db()
+        self.assertEqual(order.bill_last_printed_by_id, hq_admin.id)

@@ -1,31 +1,31 @@
 {% extends "ui/base.html" %}
-{% load static l10n %}
+{% load static l10n i18n %}
 
-{% block title %}Point of Sale — Café de Paris{% endblock %}
-{% block page_title %}Point of Sale{% endblock %}
+{% block title %}{% trans "Point of Sale" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Point of Sale" %}{% endblock %}
 
 {% block topbar_actions %}
 {% if can_manage_fiscal_day %}
-<button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-btn" style="display: none;">Fiscal day</button>
+<button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-btn" style="display: none;">{% trans "Fiscal day" %}</button>
 {% endif %}
 {% if can_stock_take %}
-<button type="button" class="btn btn-ghost btn-sm" id="stock-take-btn">Stock take</button>
+<button type="button" class="btn btn-ghost btn-sm" id="stock-take-btn">{% trans "Stock take" %}</button>
 {% endif %}
 {% if can_record_customer_payment %}
-<button type="button" class="btn btn-ghost btn-sm" id="customer-payment-btn">Customer payment</button>
+<button type="button" class="btn btn-ghost btn-sm" id="customer-payment-btn">{% trans "Customer payment" %}</button>
 {% endif %}
 {% if can_collect_payment %}
-<button type="button" class="btn btn-ghost btn-sm" id="expense-btn">Add expense</button>
-<button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">Day end</button>
+<button type="button" class="btn btn-ghost btn-sm" id="expense-btn">{% trans "Add expense" %}</button>
+<button type="button" class="btn btn-ghost btn-sm" id="dayend-btn">{% trans "Day end" %}</button>
 {% endif %}
 {% endblock %}
 
 {% block content %}
 <div class="pos-mode-bar">
   {% if can_collect_payment %}
-  <div id="pos-mode-toggle" class="pos-mode-toggle" role="tablist" aria-label="POS mode">
-    <button type="button" class="pos-mode-btn active" data-mode="order" role="tab" aria-selected="true">Order</button>
-    <button type="button" class="pos-mode-btn" data-mode="receipt" role="tab" aria-selected="false">Receipt</button>
+  <div id="pos-mode-toggle" class="pos-mode-toggle" role="tablist" aria-label="{% trans "POS mode" %}">
+    <button type="button" class="pos-mode-btn active" data-mode="order" role="tab" aria-selected="true">{% trans "Order" %}</button>
+    <button type="button" class="pos-mode-btn" data-mode="receipt" role="tab" aria-selected="false">{% trans "Receipt" %}</button>
   </div>
   {% endif %}
 </div>
@@ -34,27 +34,27 @@
   <div class="pos-products">
     <div class="form-row">
       <div class="form-group">
-        <label for="branch-select">Branch</label>
-        <select id="branch-select"><option value="">Loading…</option></select>
+        <label for="branch-select">{% trans "Branch" %}</label>
+        <select id="branch-select"><option value="">{% trans "Loading…" %}</option></select>
       </div>
       <div class="form-group pos-order-only">
-        <label for="order-type">Order Type</label>
+        <label for="order-type">{% trans "Order Type" %}</label>
         <select id="order-type">
-          <option value="takeaway">Takeaway</option>
-          <option value="dine_in">Dine In</option>
+          <option value="takeaway">{% trans "Takeaway" %}</option>
+          <option value="dine_in">{% trans "Dine In" %}</option>
         </select>
       </div>
       <div class="form-group pos-order-only" id="table-group" style="display: none;">
-        <label for="table-select-btn">Table</label>
+        <label for="table-select-btn">{% trans "Table" %}</label>
         <button type="button" id="table-select-btn" class="table-select-trigger">
-          <span id="table-select-label">Choose table…</span>
+          <span id="table-select-label">{% trans "Choose table…" %}</span>
         </button>
         <input type="hidden" id="table-number" value="">
       </div>
       <div class="form-group pos-order-only">
-        <label for="order-customer">Customer (optional)</label>
+        <label for="order-customer">{% trans "Customer (optional)" %}</label>
         <select id="order-customer" class="searchable-select">
-          <option value="">Walk-in</option>
+          <option value="">{% trans "Walk-in" %}</option>
         </select>
       </div>
     </div>
@@ -65,7 +65,7 @@
           type="search"
           id="product-search"
           class="report-input"
-          placeholder="Search products…"
+          placeholder="{% trans "Search products…" %}"
           style="max-width: 360px;"
           autocomplete="off"
         >
@@ -84,83 +84,83 @@
 
     <div id="receipt-mode-panel" class="card" style="padding: 0; display: none;">
       <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-        <h3 style="margin: 0; font-size: 1rem;">Open orders</h3>
-        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">Open and unpaid · select to collect payment or cancel</p>
+        <h3 style="margin: 0; font-size: 1rem;">{% trans "Open orders" %}</h3>
+        <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">{% trans "Open and unpaid · select to collect payment or cancel" %}</p>
       </div>
       <div class="receipt-orders-list" id="receipt-orders-list">
-        <div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">No open orders</p></div>
+        <div class="empty-state" style="padding: 2rem;"><p style="margin: 0;">{% trans "No open orders" %}</p></div>
       </div>
     </div>
   </div>
 
   <div class="card cart-panel">
     <div class="cart-header">
-      <h3 style="margin: 0; font-size: 1.1rem;" id="panel-title">Current Order</h3>
+      <h3 style="margin: 0; font-size: 1.1rem;" id="panel-title">{% trans "Current Order" %}</h3>
     </div>
     <div class="cart-order-meta" id="cart-order-meta" hidden></div>
     <div class="cart-items" id="cart-items">
       <div class="empty-state" style="padding: 2rem 0;">
-        <p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p>
+        <p style="margin: 0; font-size: 0.85rem;">{% trans "Tap products to add items" %}</p>
       </div>
     </div>
     <div class="cart-footer">
       <div id="receipt-payment-section" style="display: none; margin-bottom: 1rem;">
         <div class="form-group">
-          <label>Payment method</label>
-          <div id="payment-method-toggle" class="pos-mode-toggle pos-segment-toggle" role="radiogroup" aria-label="Payment method">
-            <button type="button" class="pos-mode-btn active" data-method="cash">Cash</button>
-            <button type="button" class="pos-mode-btn" data-method="account">Customer account</button>
+          <label>{% trans "Payment method" %}</label>
+          <div id="payment-method-toggle" class="pos-mode-toggle pos-segment-toggle" role="radiogroup" aria-label="{% trans "Payment method" %}">
+            <button type="button" class="pos-mode-btn active" data-method="cash">{% trans "Cash" %}</button>
+            <button type="button" class="pos-mode-btn" data-method="account">{% trans "Customer account" %}</button>
           </div>
         </div>
         <div class="form-group" id="receipt-customer-group" style="display: none;">
-          <label for="receipt-customer">Customer</label>
+          <label for="receipt-customer">{% trans "Customer" %}</label>
           <select id="receipt-customer" class="searchable-select">
-            <option value="">Walk-in (no account)</option>
+            <option value="">{% trans "Walk-in (no account)" %}</option>
           </select>
         </div>
         <div id="account-balance-hint" style="display: none; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-muted);">
-          Credit limit: <strong id="receipt-credit-limit">—</strong>
-          <span id="cost-price-hint" style="display: none;"> · Priced at cost</span>
+          {% trans "Credit limit:" %} <strong id="receipt-credit-limit">—</strong>
+          <span id="cost-price-hint" style="display: none;"> · {% trans "Priced at cost" %}</span>
         </div>
         <div class="form-group" id="payment-currency-group">
-          <label>Payment currency</label>
-          <div id="payment-currency-toggle" class="pos-mode-toggle pos-segment-toggle pos-segment-grid" role="radiogroup" aria-label="Payment currency">
-            <span class="pos-segment-placeholder">Loading…</span>
+          <label>{% trans "Payment currency" %}</label>
+          <div id="payment-currency-toggle" class="pos-mode-toggle pos-segment-toggle pos-segment-grid" role="radiogroup" aria-label="{% trans "Payment currency" %}">
+            <span class="pos-segment-placeholder">{% trans "Loading…" %}</span>
           </div>
         </div>
         <div id="split-payment-group" style="display: none; margin-bottom: 0.75rem;">
           <label class="split-payment-toggle">
             <input type="checkbox" id="split-payment-enabled">
-            <span>Split across payment currencies</span>
+            <span>{% trans "Split across payment currencies" %}</span>
           </label>
           <div id="split-payment-fields" style="display: none; margin-top: 0.6rem;">
             <div class="split-payment-rows" id="split-payment-rows"></div>
             <div class="split-payment-meta">
-              <span><strong id="split-remaining">Remaining: —</strong></span>
-              <button type="button" class="btn btn-ghost btn-sm" id="split-fill-base-btn">Put rest on base</button>
+              <span><strong id="split-remaining">{% trans "Remaining: —" %}</strong></span>
+              <button type="button" class="btn btn-ghost btn-sm" id="split-fill-base-btn">{% trans "Put rest on base" %}</button>
             </div>
           </div>
         </div>
         <div class="receipt-totals" id="receipt-totals"></div>
       </div>
       <div class="cart-total">
-        <span style="font-weight: 600; color: var(--color-muted);" id="cart-total-label">Total</span>
+        <span style="font-weight: 600; color: var(--color-muted);" id="cart-total-label">{% trans "Total" %}</span>
         <span class="amount" id="cart-total">$0.00</span>
       </div>
       <button class="btn btn-primary" id="checkout-btn" style="width: 100%;" disabled>
-        Place Order
+        {% trans "Place Order" %}
       </button>
       <div id="receipt-actions-section" class="receipt-actions" style="display: none;">
-        <div class="receipt-actions-label">Order actions</div>
+        <div class="receipt-actions-label">{% trans "Order actions" %}</div>
         <button type="button" class="btn btn-danger-outline" id="cancel-order-btn" style="display: none;" disabled>
-          Cancel entire order
+          {% trans "Cancel entire order" %}
         </button>
         <button type="button" class="btn btn-ghost" id="transfer-items-btn" style="display: none;" disabled>
-          Transfer to table…
+          {% trans "Transfer to table…" %}
         </button>
       </div>
       <button class="btn btn-ghost" id="clear-btn" style="width: 100%; margin-top: 0.5rem;" disabled>
-        Clear Cart
+        {% trans "Clear Cart" %}
       </button>
     </div>
   </div>
@@ -169,19 +169,19 @@
 <div id="pos-stock-take-modal" class="pos-operation-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
   <div class="card" style="width:min(760px, 100%); max-height:92vh; overflow:auto; padding:1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
-      <h3 id="pos-stock-title" style="margin:0;">Start stock take</h3>
-      <button type="button" class="btn btn-ghost btn-sm" data-close-pos-modal>Close</button>
+      <h3 id="pos-stock-title" style="margin:0;">{% trans "Start stock take" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" data-close-pos-modal>{% trans "Close" %}</button>
     </div>
     <div class="form-row" style="margin-top:1rem;">
-      <div class="form-group"><label for="pos-stock-date">Count date</label><input type="date" id="pos-stock-date"></div>
-      <div class="form-group"><label for="pos-stock-type">Count type</label><select id="pos-stock-type"><option value="daily">Daily</option><option value="monthly">Monthly</option></select></div>
-      <div class="form-group" style="flex:0 0 auto; align-self:end;"><button type="button" class="btn btn-primary" id="pos-stock-start">Start count</button></div>
+      <div class="form-group"><label for="pos-stock-date">{% trans "Count date" %}</label><input type="date" id="pos-stock-date"></div>
+      <div class="form-group"><label for="pos-stock-type">{% trans "Count type" %}</label><select id="pos-stock-type"><option value="daily">{% trans "Daily" %}</option><option value="monthly">{% trans "Monthly" %}</option></select></div>
+      <div class="form-group" style="flex:0 0 auto; align-self:end;"><button type="button" class="btn btn-primary" id="pos-stock-start">{% trans "Start count" %}</button></div>
     </div>
-    <p style="font-size:0.82rem; color:var(--color-muted);">Enter the physical quantity for every item. System quantities remain hidden while counting.</p>
-    <div id="pos-stock-lines" style="margin-top:0.5rem;"><p class="empty-state">Choose the count type and start a count.</p></div>
+    <p style="font-size:0.82rem; color:var(--color-muted);">{% trans "Enter the physical quantity for every item. System quantities remain hidden while counting." %}</p>
+    <div id="pos-stock-lines" style="margin-top:0.5rem;"><p class="empty-state">{% trans "Choose the count type and start a count." %}</p></div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
-      <button type="button" class="btn btn-ghost" id="pos-stock-save" style="display:none;">Save progress</button>
-      <button type="button" class="btn btn-primary" id="pos-stock-complete" style="display:none;">Complete &amp; post variances</button>
+      <button type="button" class="btn btn-ghost" id="pos-stock-save" style="display:none;">{% trans "Save progress" %}</button>
+      <button type="button" class="btn btn-primary" id="pos-stock-complete" style="display:none;">{% trans "Complete & post variances" %}</button>
     </div>
   </div>
 </div>
@@ -189,19 +189,19 @@
 <div id="pos-customer-payment-modal" class="pos-operation-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
   <div class="card" style="width:min(500px, 100%); max-height:92vh; overflow:auto; padding:1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
-      <h3 style="margin:0;">Record customer payment</h3>
-      <button type="button" class="btn btn-ghost btn-sm" data-close-pos-modal>Close</button>
+      <h3 style="margin:0;">{% trans "Record customer payment" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" data-close-pos-modal>{% trans "Close" %}</button>
     </div>
-    <div class="form-group" style="margin-top:1rem;"><label for="pos-payment-customer">Customer</label><select id="pos-payment-customer"></select></div>
-    <p id="pos-payment-balance" style="font-size:0.85rem; color:var(--color-muted);">Select a customer</p>
+    <div class="form-group" style="margin-top:1rem;"><label for="pos-payment-customer">{% trans "Customer" %}</label><select id="pos-payment-customer"></select></div>
+    <p id="pos-payment-balance" style="font-size:0.85rem; color:var(--color-muted);">{% trans "Select a customer" %}</p>
     <div class="form-row">
-      <div class="form-group"><label for="pos-payment-currency">Currency</label><select id="pos-payment-currency"></select></div>
-      <div class="form-group"><label for="pos-payment-amount">Amount received</label><input type="number" id="pos-payment-amount" min="0.01" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><label for="pos-payment-currency">{% trans "Currency" %}</label><select id="pos-payment-currency"></select></div>
+      <div class="form-group"><label for="pos-payment-amount">{% trans "Amount received" %}</label><input type="number" id="pos-payment-amount" min="0.01" step="0.01" placeholder="0.00"></div>
     </div>
-    <div class="form-group"><label for="pos-payment-notes">Notes (optional)</label><input type="text" id="pos-payment-notes" maxlength="200"></div>
+    <div class="form-group"><label for="pos-payment-notes">{% trans "Notes (optional)" %}</label><input type="text" id="pos-payment-notes" maxlength="200"></div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
-      <button type="button" class="btn btn-ghost" data-close-pos-modal>Cancel</button>
-      <button type="button" class="btn btn-primary" id="pos-payment-save">Record payment</button>
+      <button type="button" class="btn btn-ghost" data-close-pos-modal>{% trans "Cancel" %}</button>
+      <button type="button" class="btn btn-primary" id="pos-payment-save">{% trans "Record payment" %}</button>
     </div>
   </div>
 </div>
@@ -212,36 +212,36 @@
 >
   <div class="card" style="width:min(480px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 style="margin:0; font-size:1.05rem;">Record expense</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="expense-close-btn">Close</button>
+      <h3 style="margin:0; font-size:1.05rem;">{% trans "Record expense" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="expense-close-btn">{% trans "Close" %}</button>
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
-      <label for="expense-date">Date</label>
+      <label for="expense-date">{% trans "Date" %}</label>
       <input type="date" id="expense-date">
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
-      <label for="expense-supplier">Supplier</label>
+      <label for="expense-supplier">{% trans "Supplier" %}</label>
       <select id="expense-supplier" class="searchable-select">
-        <option value="">None (optional)</option>
+        <option value="">{% trans "None (optional)" %}</option>
       </select>
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
-      <label for="expense-description">Description</label>
-      <input type="text" id="expense-description" maxlength="200" placeholder="e.g. Milk delivery, petty cash">
+      <label for="expense-description">{% trans "Description" %}</label>
+      <input type="text" id="expense-description" maxlength="200" placeholder="{% trans "e.g. Milk delivery, petty cash" %}">
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
-      <label for="expense-currency">Currency</label>
+      <label for="expense-currency">{% trans "Currency" %}</label>
       <select id="expense-currency">
-        <option value="">Loading…</option>
+        <option value="">{% trans "Loading…" %}</option>
       </select>
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
-      <label for="expense-amount">Amount</label>
+      <label for="expense-amount">{% trans "Amount" %}</label>
       <input type="number" id="expense-amount" step="0.01" min="0.01" placeholder="0.00">
     </div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
-      <button type="button" class="btn btn-ghost" id="expense-cancel-btn">Cancel</button>
-      <button type="button" class="btn btn-primary" id="expense-save-btn">Save expense</button>
+      <button type="button" class="btn btn-ghost" id="expense-cancel-btn">{% trans "Cancel" %}</button>
+      <button type="button" class="btn btn-primary" id="expense-save-btn">{% trans "Save expense" %}</button>
     </div>
   </div>
 </div>
@@ -252,25 +252,25 @@
 >
   <div class="card" style="width:min(560px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 style="margin:0; font-size:1.05rem;">Day-end cash-up</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="dayend-close-btn">Close</button>
+      <h3 style="margin:0; font-size:1.05rem;">{% trans "Day-end cash-up" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="dayend-close-btn">{% trans "Close" %}</button>
     </div>
     <div class="form-group" style="margin-bottom:0.75rem;">
-      <label for="dayend-date">Report date</label>
+      <label for="dayend-date">{% trans "Report date" %}</label>
       <input type="date" id="dayend-date">
     </div>
     <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
-      Enter counted amounts per currency. Leave blank for currencies you have not counted.
-      On fiscal branches, count only one currency code (USD or ZWG) — do not mix them.
+      {% trans "Enter counted amounts per currency. Leave blank for currencies you have not counted." %}
+      {% trans "On fiscal branches, count only one currency code (USD or ZWG) — do not mix them." %}
     </p>
     <div id="dayend-code-group" class="form-group" style="margin-bottom:0.75rem; display:none;">
-      <label for="dayend-currency-code">Currency code</label>
+      <label for="dayend-currency-code">{% trans "Currency code" %}</label>
       <select id="dayend-currency-code"></select>
     </div>
     <div id="dayend-currency-fields" style="display:grid; gap:0.6rem;"></div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
-      <button type="button" class="btn btn-ghost" id="dayend-cancel-btn">Cancel</button>
-      <button type="button" class="btn btn-primary" id="dayend-print-btn">Print cash-up</button>
+      <button type="button" class="btn btn-ghost" id="dayend-cancel-btn">{% trans "Cancel" %}</button>
+      <button type="button" class="btn btn-primary" id="dayend-print-btn">{% trans "Print cash-up" %}</button>
     </div>
   </div>
 </div>
@@ -281,13 +281,13 @@
 >
   <div class="card" style="width:min(480px, 100%); padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 style="margin:0; font-size:1.05rem;">Completed daily stock take required</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="stock-take-required-close-btn">Close</button>
+      <h3 style="margin:0; font-size:1.05rem;">{% trans "Completed daily stock take required" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="stock-take-required-close-btn">{% trans "Close" %}</button>
     </div>
     <p id="stock-take-required-message" style="margin:0 0 1rem; font-size:0.9rem; line-height:1.5; color:var(--color-muted);"></p>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
-      <button type="button" class="btn btn-ghost" id="stock-take-required-cancel-btn">Cancel</button>
-      <a href="{% url 'ui:stock-take' %}" class="btn btn-primary" id="stock-take-required-go-btn">Go to stock take</a>
+      <button type="button" class="btn btn-ghost" id="stock-take-required-cancel-btn">{% trans "Cancel" %}</button>
+      <a href="{% url 'ui:stock-take' %}" class="btn btn-primary" id="stock-take-required-go-btn">{% trans "Go to stock take" %}</a>
     </div>
   </div>
 </div>
@@ -298,30 +298,30 @@
 >
   <div class="card table-picker-card" style="width:min(920px, 100%); max-height:92vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 id="table-picker-title" style="margin:0; font-size:1.05rem;">Select table</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="table-picker-close-btn">Close</button>
+      <h3 id="table-picker-title" style="margin:0; font-size:1.05rem;">{% trans "Select table" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="table-picker-close-btn">{% trans "Close" %}</button>
     </div>
     <div id="table-picker-view">
       <p id="table-picker-hint" style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
-        Tap a table to select it. Highlighted tables have open dine-in orders.
+        {% trans "Tap a table to select it. Highlighted tables have open dine-in orders." %}
       </p>
       <div id="table-picker-grid" class="dining-table-grid"></div>
     </div>
     <div id="table-manage-view" style="display:none;">
       <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
-        Rename or remove tables. Changes apply to this branch only.
+        {% trans "Rename or remove tables. Changes apply to this branch only." %}
       </p>
       <div id="table-manage-list" class="table-manage-list"></div>
       <div class="table-manage-add">
-        <input type="text" id="table-add-name" class="report-input" maxlength="20" placeholder="New table name (e.g. T12)">
-        <button type="button" class="btn btn-primary btn-sm" id="table-add-btn">Add table</button>
+        <input type="text" id="table-add-name" class="report-input" maxlength="20" placeholder="{% trans "New table name (e.g. T12)" %}">
+        <button type="button" class="btn btn-primary btn-sm" id="table-add-btn">{% trans "Add table" %}</button>
       </div>
     </div>
     <div style="display:flex; justify-content:space-between; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
       {% if can_manage_dining_tables %}
-      <button type="button" class="btn btn-ghost" id="table-manage-toggle-btn">Manage tables</button>
+      <button type="button" class="btn btn-ghost" id="table-manage-toggle-btn">{% trans "Manage tables" %}</button>
       {% endif %}
-      <button type="button" class="btn btn-ghost" id="table-picker-cancel-btn">Cancel</button>
+      <button type="button" class="btn btn-ghost" id="table-picker-cancel-btn">{% trans "Cancel" %}</button>
     </div>
   </div>
 </div>
@@ -332,15 +332,15 @@
 >
   <div class="card" style="width:min(520px, 100%); max-height:92vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 id="order-transfer-title" style="margin:0; font-size:1.05rem;">Transfer to order</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="order-transfer-close-btn">Close</button>
+      <h3 id="order-transfer-title" style="margin:0; font-size:1.05rem;">{% trans "Transfer to order" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="order-transfer-close-btn">{% trans "Close" %}</button>
     </div>
     <p id="order-transfer-hint" style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
-      Choose an open takeaway order, or start a new one.
+      {% trans "Choose an open takeaway order, or start a new one." %}
     </p>
     <div id="order-transfer-list" class="receipt-orders-list" style="max-height:50vh; overflow:auto;"></div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
-      <button type="button" class="btn btn-ghost" id="order-transfer-cancel-btn">Cancel</button>
+      <button type="button" class="btn btn-ghost" id="order-transfer-cancel-btn">{% trans "Cancel" %}</button>
     </div>
   </div>
 </div>
@@ -351,8 +351,8 @@
 >
   <div class="card" style="width:min(480px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 style="margin:0; font-size:1.05rem;">Fiscal day</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-close-btn">Close</button>
+      <h3 style="margin:0; font-size:1.05rem;">{% trans "Fiscal day" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="fiscal-day-close-btn">{% trans "Close" %}</button>
     </div>
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
       <p id="fiscal-day-branch" style="margin:0; font-size:0.85rem; color:var(--color-muted);"></p>
@@ -360,22 +360,22 @@
     </div>
     <div class="form-row" style="margin:0 0 0.75rem;">
       <div class="form-group" style="margin:0;">
-        <label>Fiscal day #</label>
+        <label>{% trans "Fiscal day #" %}</label>
         <p id="fiscal-day-number" style="margin:0.25rem 0 0; font-weight:600;">—</p>
       </div>
       <div class="form-group" style="margin:0;">
-        <label>Last receipt global #</label>
+        <label>{% trans "Last receipt global #" %}</label>
         <p id="fiscal-day-global-no" style="margin:0.25rem 0 0; font-weight:600;">—</p>
       </div>
     </div>
     <p id="fiscal-day-error" style="display:none; margin:0 0 0.75rem; font-size:0.82rem; color:#b42318;"></p>
     <p style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
-      Open the fiscal day before approving receipts. Close it at end of trading.
+      {% trans "Open the fiscal day before approving receipts. Close it at end of trading." %}
     </p>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
-      <button type="button" class="btn btn-ghost" id="fiscal-day-refresh-btn">Refresh</button>
-      <button type="button" class="btn btn-primary" id="fiscal-day-open-btn">Open day</button>
-      <button type="button" class="btn btn-accent" id="fiscal-day-close-day-btn">Close day</button>
+      <button type="button" class="btn btn-ghost" id="fiscal-day-refresh-btn">{% trans "Refresh" %}</button>
+      <button type="button" class="btn btn-primary" id="fiscal-day-open-btn">{% trans "Open day" %}</button>
+      <button type="button" class="btn btn-accent" id="fiscal-day-close-day-btn">{% trans "Close day" %}</button>
     </div>
   </div>
 </div>
@@ -386,17 +386,17 @@
 >
   <div class="card" style="width:min(520px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 id="addon-modal-title" style="margin:0; font-size:1.05rem;">Add-ons</h3>
-      <button type="button" class="btn btn-ghost btn-sm" id="addon-modal-close-btn">Close</button>
+      <h3 id="addon-modal-title" style="margin:0; font-size:1.05rem;">{% trans "Add-ons" %}</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="addon-modal-close-btn">{% trans "Close" %}</button>
     </div>
     <div id="addon-modal-groups"></div>
     <div class="form-group" style="margin-top: 1rem;">
-      <label for="addon-modal-notes">Order notes</label>
-      <input type="text" id="addon-modal-notes" class="report-input" maxlength="200" placeholder="Special instructions for kitchen…">
+      <label for="addon-modal-notes">{% trans "Order notes" %}</label>
+      <input type="text" id="addon-modal-notes" class="report-input" maxlength="200" placeholder="{% trans "Special instructions for kitchen…" %}">
     </div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1rem;">
-      <button type="button" class="btn btn-ghost" id="addon-modal-cancel-btn">Cancel</button>
-      <button type="button" class="btn btn-primary" id="addon-modal-add-btn">Add to cart</button>
+      <button type="button" class="btn btn-ghost" id="addon-modal-cancel-btn">{% trans "Cancel" %}</button>
+      <button type="button" class="btn btn-primary" id="addon-modal-add-btn">{% trans "Add to cart" %}</button>
     </div>
   </div>
 </div>
@@ -408,6 +408,8 @@ import { apiGet, apiPost, apiPatch, fetchAllPages, unwrapList, formatCurrency, f
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 import { initPosOperations } from "{% static 'ui/js/pos-operations.js' %}?v=1";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const canFilterAnyBranch = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
 const canManagePosOrders = "{{ can_manage_pos_orders|yesno:'true,false' }}" === "true";
@@ -559,8 +561,8 @@ const addonModalAddBtn = document.getElementById("addon-modal-add-btn");
 let fiscalDayStatus = null;
 
 const FISCAL_STATUS_LABELS = {
-  FiscalDayClosed: "Closed",
-  FiscalDayOpened: "Open",
+  FiscalDayClosed: t("Closed"),
+  FiscalDayOpened: t("Open"),
   FiscalDayCloseFailed: "Close failed",
   FiscalDayCloseInitiated: "Closing…",
 };
@@ -649,7 +651,7 @@ async function runFiscalDayAction(action) {
   try {
     fiscalDayStatus = await apiPost(`/branches/${branch.id}/fiscal-day/${action}/`, {});
     renderFiscalDayModal(fiscalDayStatus);
-    showToast(action === "open" ? "Fiscal day opened" : "Fiscal day close requested");
+    showToast(action === "open" ? t("Fiscal day opened") : "Fiscal day close requested");
     if (action === "close") {
       setTimeout(() => refreshFiscalDayStatus().catch(() => {}), 2500);
     }
@@ -662,7 +664,7 @@ async function runFiscalDayAction(action) {
 function openFiscalDayModal() {
   const branch = selectedBranch();
   if (!branch?.fiscalization_enabled) {
-    showToast("Select a fiscal branch first", true);
+    showToast(t("Select a fiscal branch first"), true);
     return;
   }
   if (fiscalDayModal) fiscalDayModal.style.display = "flex";
@@ -694,7 +696,7 @@ orderType.addEventListener("change", () => {
 function setSelectedTable(name) {
   const value = (name || "").trim();
   tableNumber.value = value;
-  tableSelectLabel.textContent = value || "Choose table…";
+  tableSelectLabel.textContent = value || t("Choose table…");
   tableSelectBtn.classList.toggle("has-value", Boolean(value));
 }
 
@@ -734,7 +736,7 @@ function getReceiptOrders() {
 }
 
 function orderTypeLabel(orderType) {
-  return orderType === "dine_in" ? "Dine in" : "Takeaway";
+  return orderType === "dine_in" ? "Dine in" : t("Takeaway");
 }
 
 function orderReceiptLocationLabel(order) {
@@ -826,19 +828,19 @@ function setTablePickerManageMode(enabled) {
   tablePickerView.style.display = enabled ? "none" : "";
   tableManageView.style.display = enabled ? "" : "none";
   if (tablePickerPurpose === "transfer") {
-    tablePickerTitle.textContent = "Transfer to table";
+    tablePickerTitle.textContent = t("Transfer to table");
     if (tablePickerHint) {
-      tablePickerHint.textContent = "Choose any table, including ones already in use. The current table is disabled.";
+      tablePickerHint.textContent = t("Choose any table, including ones already in use. The current table is disabled.");
     }
   } else {
-    tablePickerTitle.textContent = enabled ? "Manage tables" : "Select table";
+    tablePickerTitle.textContent = enabled ? t("Manage tables") : t("Select table");
     if (tablePickerHint) {
-      tablePickerHint.textContent = "Tap a table to select it. Highlighted tables have open dine-in orders.";
+      tablePickerHint.textContent = "{% trans "Tap a table to select it. Highlighted tables have open dine-in orders." %}";
     }
   }
   if (tableManageToggleBtn) {
     tableManageToggleBtn.style.display = tablePickerPurpose === "transfer" ? "none" : "";
-    tableManageToggleBtn.textContent = enabled ? "Back to tables" : "Manage tables";
+    tableManageToggleBtn.textContent = enabled ? "Back to tables" : t("Manage tables");
   }
   if (enabled) {
     renderTableManageList();
@@ -856,7 +858,7 @@ function closeTablePickerModal() {
 
 async function openTablePickerModal(purpose = "select") {
   if (!branchSelect.value) {
-    showToast("Select a branch first", true);
+    showToast(t("Select a branch first"), true);
     return;
   }
   tablePickerPurpose = purpose === "transfer" ? "transfer" : "select";
@@ -898,12 +900,12 @@ if (canManageDiningTables) {
       const nameInput = row.querySelector(".table-manage-name");
       const name = (nameInput?.value || "").trim();
       if (!name) {
-        showToast("Table name is required", true);
+        showToast(t("Table name is required"), true);
         return;
       }
       try {
         await apiPatch(`/dining-tables/${tableId}/`, { name });
-        showToast("Table updated");
+        showToast(t("Table updated"));
         await loadDiningTables();
         if (tableNumber.value === table.name && name !== table.name) {
           setSelectedTable(name);
@@ -920,7 +922,7 @@ if (canManageDiningTables) {
       if (!window.confirm(`Remove table "${table.name}"?`)) return;
       try {
         await apiPatch(`/dining-tables/${tableId}/`, { is_active: false });
-        showToast("Table removed");
+        showToast(t("Table removed"));
         if (tableNumber.value === table.name) {
           setSelectedTable("");
         }
@@ -936,7 +938,7 @@ if (canManageDiningTables) {
   tableAddBtn.addEventListener("click", async () => {
     const name = (tableAddNameInput.value || "").trim();
     if (!name) {
-      showToast("Enter a table name", true);
+      showToast(t("Enter a table name"), true);
       return;
     }
     try {
@@ -948,7 +950,7 @@ if (canManageDiningTables) {
         is_active: true,
       });
       tableAddNameInput.value = "";
-      showToast("Table added");
+      showToast(t("Table added"));
       await loadDiningTables();
       renderTableManageList();
       renderTablePickerGrid();
@@ -1136,7 +1138,7 @@ function updateSplitPaymentRemaining() {
   }
   const orderTotal = getOrderTotalBase();
   if (orderTotal == null) {
-    splitRemainingEl.textContent = "Remaining: —";
+    splitRemainingEl.textContent = t("Remaining: —");
     splitRemainingEl.className = "";
     return;
   }
@@ -1268,8 +1270,8 @@ function renderCustomerSelects() {
     const limit = Number(c.credit_limit) > 0 ? ` · Limit ${formatCurrency(c.credit_limit)}` : "";
     return `<option value="${c.id}">${customerDisplayName(c)}${limit}</option>`;
   }).join("");
-  orderCustomerSelect.innerHTML = `<option value="">Walk-in</option>${options}`;
-  receiptCustomerSelect.innerHTML = `<option value="">Walk-in (no account)</option>${options}`;
+  orderCustomerSelect.innerHTML = `<option value="">${t("Walk-in")}</option>${options}`;
+  receiptCustomerSelect.innerHTML = `<option value="">{% trans "Walk-in (no account)" %}</option>${options}`;
   if (previousOrder && customers.some(c => String(c.id) === previousOrder)) {
     orderCustomerSelect.value = previousOrder;
   }
@@ -1291,6 +1293,8 @@ function usesCostPrice(customer) {
 
 function customerAvailableCredit(customer) {
   if (!customer) return 0;
+  // Staff accounts can charge regardless of credit limit / balance.
+  if (customer.account_type === "staff") return Number.POSITIVE_INFINITY;
   return Number(customer.credit_limit || 0) - Number(customer.account_balance);
 }
 
@@ -1393,7 +1397,7 @@ function setPosMode(mode) {
   } else {
     stopKitchenRefresh();
     receiptPaymentSection.style.display = "none";
-    cartTotalLabel.textContent = "Total";
+    cartTotalLabel.textContent = t("Total");
     renderCart();
   }
 }
@@ -1528,10 +1532,10 @@ function renderReceiptTotals(inclusiveTotal) {
   `;
   if (useFx && hasRate) {
     cartTotal.textContent = formatCurrencyAmount(amountDue, currency);
-    cartTotalLabel.textContent = currency && !currency.is_base ? "Amount due" : "Total";
+    cartTotalLabel.textContent = currency && !currency.is_base ? "Amount due" : t("Total");
   } else {
     cartTotal.textContent = formatCurrencyAmount(total, baseCurrency);
-    cartTotalLabel.textContent = "Total";
+    cartTotalLabel.textContent = t("Total");
   }
   updateSplitPaymentRemaining();
 }
@@ -1550,8 +1554,8 @@ function clearCartOrderMeta() {
 
 function renderCart() {
   clearCartOrderMeta();
-  panelTitle.textContent = "Current Order";
-  checkoutBtn.textContent = "Place Order";
+  panelTitle.textContent = t("Current Order");
+  checkoutBtn.textContent = t("Place Order");
   checkoutBtn.style.display = "";
   clearBtn.style.display = "";
   setReceiptActionsVisible(false);
@@ -1564,11 +1568,11 @@ function renderCart() {
     cancelOrderBtn.disabled = true;
   }
   receiptPaymentSection.style.display = "none";
-  cartTotalLabel.textContent = "Total";
+  cartTotalLabel.textContent = t("Total");
   selectedTransferKeys = new Set();
 
   if (cart.size === 0) {
-    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p></div>`;
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">${t("Tap products to add items")}</p></div>`;
     cartTotal.textContent = formatCurrency(0);
     checkoutBtn.disabled = true;
     clearBtn.disabled = true;
@@ -1603,7 +1607,7 @@ function renderReceiptPanel() {
     clearCartOrderMeta();
     receiptPaymentOrderKey = null;
     selectedTransferKeys = new Set();
-    panelTitle.textContent = "Receipt";
+    panelTitle.textContent = t("Receipt");
     clearBtn.style.display = "none";
     setReceiptActionsVisible(false);
     if (transferItemsBtn) {
@@ -1616,9 +1620,9 @@ function renderReceiptPanel() {
     }
     cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Select an open order to collect payment</p></div>`;
     cartTotal.textContent = formatCurrency(0);
-    cartTotalLabel.textContent = "Total";
+    cartTotalLabel.textContent = t("Total");
     receiptPaymentSection.style.display = "none";
-    checkoutBtn.textContent = "Collect Payment";
+    checkoutBtn.textContent = t("Collect Payment");
     checkoutBtn.style.display = "";
     checkoutBtn.disabled = true;
     return;
@@ -1654,11 +1658,15 @@ function renderReceiptPanel() {
     ? `<span class="cart-meta-chip">${receiptOrders.length} orders · Table ${selectedOrder.table_number}</span>`
     : "";
 
-  const canRemoveItems = canManagePosOrders && isAwaitingPaymentOrder(selectedOrder);
+  const canRemoveItems = isAwaitingPaymentOrder(selectedOrder);
   const removeHint = canRemoveItems
     ? (canTransferItems
-      ? "Use Remove on a line, transfer lines, or Cancel entire order below"
-      : "Use Remove on a line, or Cancel entire order below")
+      ? (canManagePosOrders
+        ? "Use Remove on a line, transfer lines, or Cancel entire order below"
+        : "Use Remove on a line (manager code), transfer lines, or Cancel entire order below")
+      : (canManagePosOrders
+        ? "Use Remove on a line, or Cancel entire order below"
+        : "Use Remove on a line (manager code), or Cancel entire order below"))
     : (canCancel
       ? "Use Cancel entire order below to remove this order"
       : "");
@@ -1693,7 +1701,7 @@ function renderReceiptPanel() {
         return `
         <div class="cart-item cart-product-line">
           ${canTransferItems ? `
-            <label class="transfer-line-check" title="Select for transfer">
+            <label class="transfer-line-check" title="${t("Select for transfer")}">
               <input type="checkbox" class="transfer-item-checkbox" data-order-id="${order.id}" data-item-id="${item.id}"${checked}>
             </label>
           ` : ""}
@@ -1703,7 +1711,7 @@ function renderReceiptPanel() {
           </div>
           <div class="cart-item-actions">
             ${canRemoveItems ? `
-              <button type="button" class="btn btn-ghost btn-sm remove-one-item-btn" data-order-id="${order.id}" data-item-id="${item.id}" title="Remove one unit">Remove 1</button>
+              <button type="button" class="btn btn-ghost btn-sm remove-one-item-btn" data-order-id="${order.id}" data-item-id="${item.id}" title="${t("Remove one unit")}">${t("Remove 1")}</button>
             ` : ""}
             <div class="line-total cart-item-amount">${formatCurrency(item.price * item.quantity)}</div>
           </div>
@@ -1733,7 +1741,7 @@ function renderReceiptPanel() {
   const inclusiveTotal = getReceiptInclusiveTotal();
   renderReceiptTotals(inclusiveTotal);
   checkoutBtn.style.display = "";
-  checkoutBtn.textContent = combined ? "Collect Table Payment" : "Collect Payment";
+  checkoutBtn.textContent = combined ? "Collect Table Payment" : t("Collect Payment");
   updateCheckoutButtonState(inclusiveTotal);
 }
 
@@ -1987,7 +1995,7 @@ cartItems.addEventListener("change", (e) => {
 });
 
 function renderCategories() {
-  const tabs = [{ id: "all", name: "All" }, ...categories];
+  const tabs = [{ id: "all", name: t("All") }, ...categories];
   categoryTabs.innerHTML = tabs.map(cat => `
     <button type="button" class="card category-tab category-card${activeCategory === String(cat.id) ? " active" : ""}" data-id="${cat.id}">
       <div class="name">${cat.name}</div>
@@ -2013,7 +2021,7 @@ function renderProducts() {
   if (!filtered.length) {
     const message = searchQuery
       ? "No matching products"
-      : "No products in this category";
+      : t("No products in this category");
     productGrid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>${message}</p></div>`;
     return;
   }
@@ -2085,7 +2093,7 @@ cartItems.addEventListener("click", async (e) => {
 async function cancelSelectedOrder() {
   if (!selectedOrder) return;
   if (!canCancelOrder(selectedOrder)) {
-    showToast("This order cannot be cancelled", true);
+    showToast(t("This order cannot be cancelled"), true);
     return;
   }
   const orderId = selectedOrder.id;
@@ -2104,16 +2112,39 @@ async function cancelSelectedOrder() {
   }
 }
 
+async function promptAccessCode(message) {
+  const code = window.prompt(message || t("Enter 4-digit access code"));
+  if (code == null) return null;
+  const trimmed = code.trim();
+  if (!/^\d{4}$/.test(trimmed)) {
+    showToast(t("Access code must be exactly 4 digits"), true);
+    return null;
+  }
+  return trimmed;
+}
+
+async function promptManagerAccessCode(actionLabel) {
+  return promptAccessCode(
+    t("Enter manager 4-digit access code") + (actionLabel ? ` (${actionLabel})` : "")
+  );
+}
+
 async function removeOneFromOrder(orderId, itemId, triggerBtn) {
-  if (!window.confirm("Remove one unit from this line?")) return;
+  if (!window.confirm(t("Remove one unit from this line?"))) return;
+  let accessCode = null;
+  if (!canManagePosOrders) {
+    accessCode = await promptManagerAccessCode(t("remove item"));
+    if (!accessCode) return;
+  }
   if (triggerBtn) triggerBtn.disabled = true;
   try {
-    const updated = await apiPost(`/orders/${orderId}/items/${itemId}/remove-one/`, {});
+    const payload = accessCode ? { access_code: accessCode } : {};
+    const updated = await apiPost(`/orders/${orderId}/items/${itemId}/remove-one/`, payload);
     if (updated.status === "cancelled") {
       showToast(`Order #${orderId} cancelled (no items left)`);
       selectedOrder = null;
     } else {
-      showToast("Item removed");
+      showToast(t("Item removed"));
       selectedOrder = updated;
     }
     await loadOpenOrders();
@@ -2141,7 +2172,7 @@ function chooseTransferDestination() {
         <div style="display:flex;flex-direction:column;gap:0.5rem;">
           <button type="button" class="btn btn-primary" data-dest="dine_in">Table (dine in)</button>
           <button type="button" class="btn btn-ghost" data-dest="takeaway">Takeaway order</button>
-          <button type="button" class="btn btn-ghost" data-dest="cancel">Cancel</button>
+          <button type="button" class="btn btn-ghost" data-dest="cancel">{% trans "Cancel" %}</button>
         </div>
       </div>
     `;
@@ -2235,14 +2266,14 @@ function openTakeawayOrderPicker({
 
 async function openOrderTransferModal() {
   if (!branchSelect.value) {
-    showToast("Select a branch first", true);
+    showToast(t("Select a branch first"), true);
     return;
   }
   await loadOpenOrders();
   const destinationOrderId = await openTakeawayOrderPicker({
     purpose: "transfer",
     title: "Transfer to order",
-    hint: "Choose an open takeaway order, or start a new one.",
+    hint: "{% trans "Choose an open takeaway order, or start a new one." %}",
     newOrderLabel: "New order",
     newOrderMeta: "Start a fresh takeaway order with selected lines",
     candidates: openTakeawayOrdersForTransfer(),
@@ -2294,7 +2325,7 @@ async function transferSelectedItemsToOrder(destinationOrderId) {
     groups.get(orderId).push(itemId);
   }
   if (!groups.size) {
-    showToast("Select at least one item to transfer", true);
+    showToast(t("Select at least one item to transfer"), true);
     return;
   }
 
@@ -2347,7 +2378,7 @@ async function transferSelectedItemsToTable(destinationTable) {
     groups.get(orderId).push(itemId);
   }
   if (!groups.size) {
-    showToast("Select at least one item to transfer", true);
+    showToast(t("Select at least one item to transfer"), true);
     return;
   }
 
@@ -2388,14 +2419,14 @@ async function transferSelectedItemsToTable(destinationTable) {
 
 transferItemsBtn?.addEventListener("click", async () => {
   if (!selectedTransferKeys.size) {
-    showToast("Select at least one item to transfer", true);
+    showToast(t("Select at least one item to transfer"), true);
     return;
   }
   if (
     selectedOrder?.order_type !== "dine_in"
     && selectedOrder?.order_type !== "takeaway"
   ) {
-    showToast("This order type cannot transfer items", true);
+    showToast(t("This order type cannot transfer items"), true);
     return;
   }
   const destinationType = await chooseTransferDestination();
@@ -2440,6 +2471,12 @@ async function placeOrder() {
     existingOrderId = choice;
   }
 
+  let accessCode = null;
+  if (!canCollectPayment) {
+    accessCode = await promptAccessCode(t("Enter your 4-digit access code to place this order"));
+    if (!accessCode) return;
+  }
+
   checkoutBtn.disabled = true;
   checkoutBtn.innerHTML = `<span class="loading-spinner"></span> Processing…`;
 
@@ -2462,6 +2499,9 @@ async function placeOrder() {
     }
     if (orderCustomerSelect.value) {
       payload.customer = Number(orderCustomerSelect.value);
+    }
+    if (accessCode) {
+      payload.access_code = accessCode;
     }
 
     const existingTableOrderId = orderType.value === "dine_in" && tableNumber.value.trim()
@@ -2491,7 +2531,7 @@ async function placeOrder() {
   } catch (err) {
     showToast(err.message, true);
   } finally {
-    checkoutBtn.textContent = "Place Order";
+    checkoutBtn.textContent = t("Place Order");
     checkoutBtn.disabled = cart.size === 0 || !branchSelect.value;
   }
 }
@@ -2505,7 +2545,7 @@ async function paySelectedOrder() {
   if (paymentMethod === "account") {
     const customer = getCustomerById(receiptCustomerSelect.value);
     if (!customer) {
-      showToast("Select a customer to pay from account", true);
+      showToast(t("Select a customer to pay from account"), true);
       return;
     }
     if (customerAvailableCredit(customer) < orderTotal) {
@@ -2518,7 +2558,7 @@ async function paySelectedOrder() {
   } else if (isSplitPaymentActive()) {
     // currency selection is replaced by per-currency split amounts
   } else if (!selectedCurrencyId) {
-    showToast("Please select a payment currency", true);
+    showToast(t("Please select a payment currency"), true);
     return;
   }
 
@@ -2529,7 +2569,7 @@ async function paySelectedOrder() {
     if (isSplitPaymentActive()) {
       splitLines = getSplitPaymentLines();
       if (!splitLines.length) {
-        showToast("Enter at least one currency amount, or turn off split payment", true);
+        showToast(t("Enter at least one currency amount, or turn off split payment"), true);
         return;
       }
       const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
@@ -2608,7 +2648,7 @@ async function paySelectedOrder() {
     if (printWindow) printWindow.close();
     showToast(err.message, true);
   } finally {
-    checkoutBtn.textContent = "Collect Payment";
+    checkoutBtn.textContent = t("Collect Payment");
     if (selectedOrder) {
       updateCheckoutButtonState(getReceiptInclusiveTotal());
     } else {
@@ -2619,7 +2659,7 @@ async function paySelectedOrder() {
 
 dayendBtn?.addEventListener("click", async () => {
   if (!branchSelect.value) {
-    showToast("Select a branch first", true);
+    showToast(t("Select a branch first"), true);
     return;
   }
   try {
@@ -2631,7 +2671,7 @@ dayendBtn?.addEventListener("click", async () => {
 
 expenseBtn?.addEventListener("click", () => {
   if (!branchSelect.value) {
-    showToast("Select a branch first", true);
+    showToast(t("Select a branch first"), true);
     return;
   }
   openExpenseModal();
@@ -2649,8 +2689,8 @@ function openExpenseModal() {
   expenseAmountInput.value = "";
   expenseSupplierSelect.value = "";
   expenseSupplierSelect.innerHTML = activeSuppliers.length
-    ? `<option value="">None (optional)</option>${activeSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
-    : `<option value="">None (optional)</option>`;
+    ? `<option value="">{% trans "None (optional)" %}</option>${activeSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}`
+    : `<option value="">{% trans "None (optional)" %}</option>`;
   syncSearchableSelect(expenseSupplierSelect);
   expenseCurrencySelect.innerHTML = activeCurrencies.map(currency => {
     const label = currency.code || currency.name || `Currency ${currency.id}`;
@@ -2673,23 +2713,23 @@ async function saveExpense() {
   const currencyId = expenseCurrencySelect.value;
 
   if (!description) {
-    showToast("Enter a description", true);
+    showToast(t("Enter a description"), true);
     expenseDescriptionInput.focus();
     return;
   }
   if (!amountRaw) {
-    showToast("Enter an amount", true);
+    showToast(t("Enter an amount"), true);
     expenseAmountInput.focus();
     return;
   }
   const amount = Number(amountRaw);
   if (!Number.isFinite(amount) || amount <= 0) {
-    showToast("Amount must be a positive number", true);
+    showToast(t("Amount must be a positive number"), true);
     expenseAmountInput.focus();
     return;
   }
   if (!currencyId) {
-    showToast("Select a currency", true);
+    showToast(t("Select a currency"), true);
     return;
   }
 
@@ -2704,7 +2744,7 @@ async function saveExpense() {
     };
     if (expenseSupplierSelect.value) payload.supplier = Number(expenseSupplierSelect.value);
     await apiPost("/expenses/", payload);
-    showToast("Expense recorded");
+    showToast(t("Expense recorded"));
     closeExpenseModal();
   } catch (err) {
     showToast(err.message, true);
@@ -2794,7 +2834,7 @@ function renderDayEndCurrencyFields() {
           data-currency-code="${currencyCodeOf(currency)}"
           step="0.01"
           min="0"
-          placeholder="Leave blank to skip"
+          placeholder="${t("Leave blank to skip")}"
         >
       </div>
     `;

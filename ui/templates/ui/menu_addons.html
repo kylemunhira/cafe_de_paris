@@ -1,33 +1,33 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Menu Add-ons — Café de Paris{% endblock %}
-{% block page_title %}Menu Add-ons{% endblock %}
+{% block title %}{% trans "Menu Add-ons" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Menu Add-ons" %}{% endblock %}
 
 {% block content %}
 <p class="products-page-description">
-  Create add-on groups and options for POS. Deactivated options stay in order history but are hidden at the till.
-  Attach groups to products under <a href="{% url 'ui:products' %}">List Products</a>.
+  {% trans "Create add-on groups and options for POS. Deactivated options stay in order history but are hidden at the till." %}
+  {% trans "Attach groups to products under" %} <a href="{% url 'ui:products' %}">{% trans "List Products" %}</a>.
 </p>
 
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1rem;">New add-on group</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1rem;">{% trans "New add-on group" %}</h3>
   <form id="group-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="group-name">Group name</label>
-        <input type="text" id="group-name" required autocomplete="off" placeholder="e.g. Coffee Extras">
+        <label for="group-name">{% trans "Group name" %}</label>
+        <input type="text" id="group-name" required autocomplete="off" placeholder="{% trans "e.g. Coffee Extras" %}">
       </div>
       <div class="form-group">
-        <label for="group-selection">Selection</label>
+        <label for="group-selection">{% trans "Selection" %}</label>
         <select id="group-selection">
-          <option value="multiple">Choose any</option>
-          <option value="single">Choose one</option>
+          <option value="multiple">{% trans "Choose any" %}</option>
+          <option value="single">{% trans "Choose one" %}</option>
         </select>
       </div>
     </div>
     <div style="display: flex; justify-content: flex-end;">
-      <button type="submit" class="btn btn-primary" id="group-submit">Create group</button>
+      <button type="submit" class="btn btn-primary" id="group-submit">{% trans "Create group" %}</button>
     </div>
   </form>
 </div>
@@ -41,6 +41,8 @@
 {% block extra_js %}
 <script type="module">
 import { apiGet, apiPost, apiPatch, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const container = document.getElementById("addon-groups-list");
 const groupForm = document.getElementById("group-form");
@@ -82,17 +84,21 @@ function renderAddonRow(addon) {
         >
       </td>
       <td style="white-space: nowrap; text-align: right;">
+        <a
+          class="btn btn-ghost btn-sm"
+          href="{% url 'ui:recipes' %}?addon=${addon.id}"
+        >${t("Recipe")}</a>
         <button
           type="button"
           class="btn btn-ghost btn-sm"
           data-save-addon="${addon.id}"
-        >Save</button>
+        >${t("Save")}</button>
         <button
           type="button"
           class="btn btn-ghost btn-sm"
           data-toggle-addon="${addon.id}"
           data-active="${active}"
-        >${active ? "On" : "Off"}</button>
+        >${active ? t("On") : t("Off")}</button>
       </td>
     </tr>
   `;
@@ -105,22 +111,22 @@ function renderGroup(group) {
     <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1rem;" data-group-id="${group.id}">
       <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
         <h3 style="margin: 0; font-size: 1rem;">${escapeHtml(group.name)}</h3>
-        <span class="badge badge-open">${group.selection_type === "single" ? "Choose one" : "Choose any"} · ${activeCount}/${addons.length} active</span>
+        <span class="badge badge-open">${group.selection_type === "single" ? t("Choose one") : t("Choose any")} · ${activeCount}/${addons.length} ${t("active")}</span>
       </div>
 
       <div class="table-wrap" style="margin-bottom: 1rem;">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Option</th>
-              <th>Price</th>
+              <th>${t("Option")}</th>
+              <th>${t("Price")}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             ${addons.length
               ? addons.map(renderAddonRow).join("")
-              : `<tr><td colspan="3" style="color: var(--color-muted);">No options yet</td></tr>`}
+              : `<tr><td colspan="3" style="color: var(--color-muted);">${t("No options yet")}</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -128,15 +134,15 @@ function renderGroup(group) {
       <form class="addon-create-form" data-group-id="${group.id}">
         <div class="form-row" style="align-items: end;">
           <div class="form-group" style="flex: 2;">
-            <label>New option</label>
-            <input type="text" name="name" required autocomplete="off" placeholder="e.g. Add Extra Shot">
+            <label>${t("New option")}</label>
+            <input type="text" name="name" required autocomplete="off" placeholder="${t("e.g. Add Extra Shot")}">
           </div>
           <div class="form-group">
-            <label>Price</label>
+            <label>${t("Price")}</label>
             <input type="number" name="price" min="0" step="0.01" value="0.00" placeholder="0.00">
           </div>
           <div class="form-group" style="flex: 0;">
-            <button type="submit" class="btn btn-primary btn-sm">Add option</button>
+            <button type="submit" class="btn btn-primary btn-sm">${t("Add option")}</button>
           </div>
         </div>
       </form>
@@ -154,7 +160,7 @@ async function createGroup(e) {
     });
     groupForm.reset();
     groupSelectionInput.value = "multiple";
-    showToast("Add-on group created");
+    showToast(t("Add-on group created"));
     await load();
   } catch (err) {
     showToast(err.message, true);
@@ -177,7 +183,7 @@ async function createAddon(form) {
     });
     form.reset();
     priceInput.value = "0.00";
-    showToast("Add-on option created");
+    showToast(t("Add-on option created"));
     await load();
   } catch (err) {
     showToast(err.message, true);
@@ -192,7 +198,7 @@ async function saveAddon(addonId) {
   const name = row.querySelector(".addon-name-input")?.value.trim();
   const price = row.querySelector(".addon-price-input")?.value || "0";
   if (!name) {
-    showToast("Option name is required", true);
+    showToast(t("Option name is required"), true);
     return;
   }
   try {
@@ -200,7 +206,7 @@ async function saveAddon(addonId) {
       name,
       selling_price: price,
     });
-    showToast("Add-on updated");
+    showToast(t("Add-on updated"));
     await load();
   } catch (err) {
     showToast(err.message, true);
@@ -213,7 +219,7 @@ async function toggleAddon(button) {
   button.disabled = true;
   try {
     await apiPatch(`/menu-addons/${addonId}/`, { is_active: nextActive });
-    showToast(nextActive ? "Add-on activated" : "Add-on deactivated");
+    showToast(nextActive ? t("Add-on activated") : t("Add-on deactivated"));
     await load();
   } catch (err) {
     showToast(err.message, true);
@@ -228,13 +234,13 @@ async function load() {
     if (!groups.length) {
       container.innerHTML = `
         <div class="empty-state">
-          <p>No add-on groups yet — create one above.</p>
+          <p>${t("No add-on groups yet — create one above.")}</p>
         </div>`;
       return;
     }
     container.innerHTML = groups.map(renderGroup).join("");
   } catch (err) {
-    container.innerHTML = `<div class="empty-state"><p>Failed to load add-ons: ${escapeHtml(err.message)}</p></div>`;
+    container.innerHTML = `<div class="empty-state"><p>${t("Failed to load add-ons:")} ${escapeHtml(err.message)}</p></div>`;
     showToast(err.message, true);
   }
 }

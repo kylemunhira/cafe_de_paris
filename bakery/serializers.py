@@ -28,12 +28,10 @@ from .services import (
 
 
 class RecipeSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source="product.name", read_only=True)
+    product_name = serializers.SerializerMethodField()
+    menu_addon_name = serializers.SerializerMethodField()
     ingredient_name = serializers.CharField(source="ingredient.name", read_only=True)
-    product_category = serializers.CharField(
-        source="product.category.name",
-        read_only=True,
-    )
+    product_category = serializers.SerializerMethodField()
     ingredient_category = serializers.SerializerMethodField()
     ingredient_unit_cost = serializers.DecimalField(
         source="ingredient.selling_price",
@@ -50,6 +48,8 @@ class RecipeSerializer(serializers.ModelSerializer):
             "product",
             "product_name",
             "product_category",
+            "menu_addon",
+            "menu_addon_name",
             "ingredient",
             "ingredient_name",
             "ingredient_category",
@@ -57,6 +57,23 @@ class RecipeSerializer(serializers.ModelSerializer):
             "ingredient_unit_cost",
             "line_cost",
         ]
+        extra_kwargs = {
+            "product": {"required": False, "allow_null": True},
+            "menu_addon": {"required": False, "allow_null": True},
+        }
+
+    def get_product_name(self, obj):
+        return obj.product.name if obj.product_id else None
+
+    def get_menu_addon_name(self, obj):
+        return obj.menu_addon.name if obj.menu_addon_id else None
+
+    def get_product_category(self, obj):
+        if obj.product_id and obj.product.category_id:
+            return obj.product.category.name
+        if obj.menu_addon_id and obj.menu_addon.group_id:
+            return obj.menu_addon.group.name
+        return None
 
     def get_ingredient_category(self, obj):
         group = obj.ingredient.group_category
@@ -75,8 +92,18 @@ class RecipeSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        product = attrs.get("product") or getattr(self.instance, "product", None)
+        product = attrs.get("product", getattr(self.instance, "product", None))
+        if "product" in attrs and attrs["product"] is None:
+            product = None
+        menu_addon = attrs.get("menu_addon", getattr(self.instance, "menu_addon", None))
+        if "menu_addon" in attrs and attrs["menu_addon"] is None:
+            menu_addon = None
         ingredient = attrs.get("ingredient") or getattr(self.instance, "ingredient", None)
+
+        if bool(product) == bool(menu_addon):
+            raise serializers.ValidationError(
+                "Provide either product or menu_addon (exactly one)."
+            )
 
         if product and ingredient and product == ingredient:
             raise serializers.ValidationError(
@@ -91,10 +118,32 @@ class RecipeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"product": "Cannot use an inactive product as recipe output."}
                 )
+        if creating or "menu_addon" in attrs:
+            if menu_addon and not menu_addon.is_active:
+                raise serializers.ValidationError(
+                    {"menu_addon": "Cannot use an inactive add-on as recipe output."}
+                )
         if creating or "ingredient" in attrs:
             if ingredient and not ingredient.is_active:
                 raise serializers.ValidationError(
                     {"ingredient": "Cannot use an inactive product as an ingredient."}
+                )
+
+        if product and ingredient:
+            qs = Recipe.objects.filter(product=product, ingredient=ingredient)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"ingredient": "This ingredient is already on the recipe."}
+                )
+        if menu_addon and ingredient:
+            qs = Recipe.objects.filter(menu_addon=menu_addon, ingredient=ingredient)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"ingredient": "This ingredient is already on the recipe."}
                 )
 
         return attrs

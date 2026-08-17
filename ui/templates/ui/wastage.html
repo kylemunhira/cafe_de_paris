@@ -1,59 +1,59 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Wastage — Café de Paris{% endblock %}
-{% block page_title %}Wastage{% endblock %}
+{% block title %}{% trans "Wastage" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Wastage" %}{% endblock %}
 
 {% block content %}
 <p class="products-page-description">
-  Record items leaving sellable stock for bakery reuse, kitchen use, or disposal.
-  Processing subtracts quantity from the source branch and, for bakery reuse, credits the bakery.
+  {% trans "Record items leaving sellable stock for bakery reuse, kitchen use, or disposal." %}
+  {% trans "Processing subtracts quantity from the source branch and, for bakery reuse, credits the bakery." %}
 </p>
 
 <div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">Record wastage</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "Record wastage" %}</h3>
   <form id="wastage-form">
     <div class="form-row">
       <div class="form-group">
-        <label for="wastage-branch">Branch</label>
+        <label for="wastage-branch">{% trans "Branch" %}</label>
         <select id="wastage-branch" required>
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="wastage-product">Product</label>
+        <label for="wastage-product">{% trans "Product" %}</label>
         <select id="wastage-product" class="searchable-select" required>
-          <option value="">Loading…</option>
+          <option value="">{% trans "Loading…" %}</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="wastage-quantity">Quantity</label>
+        <label for="wastage-quantity">{% trans "Quantity" %}</label>
         <input type="number" id="wastage-quantity" step="0.001" min="0.001" placeholder="0.000" required>
       </div>
       <div class="form-group">
-        <label for="wastage-reason">Reason</label>
+        <label for="wastage-reason">{% trans "Reason" %}</label>
         <select id="wastage-reason" required>
-          <option value="disposal">Actual wastage/disposal</option>
-          <option value="bakery_reuse">Transferred for bakery reuse</option>
-          <option value="kitchen">Transferred to the kitchen</option>
+          <option value="disposal">{% trans "Actual wastage/disposal" %}</option>
+          <option value="bakery_reuse">{% trans "Transferred for bakery reuse" %}</option>
+          <option value="kitchen">{% trans "Transferred to the kitchen" %}</option>
         </select>
       </div>
     </div>
     <div class="form-row" id="destination-row" style="display: none;">
       <div class="form-group">
-        <label for="wastage-destination">Bakery destination</label>
+        <label for="wastage-destination">{% trans "Bakery destination" %}</label>
         <select id="wastage-destination">
-          <option value="">Select bakery…</option>
+          <option value="">{% trans "Select bakery…" %}</option>
         </select>
       </div>
     </div>
     <div class="form-group">
-      <label for="wastage-notes">Notes <span style="color: var(--color-muted); font-weight: 400;">(optional)</span></label>
-      <input type="text" id="wastage-notes" maxlength="255" placeholder="e.g. end-of-day leftovers, damaged packaging">
+      <label for="wastage-notes">{% trans "Notes" %} <span style="color: var(--color-muted); font-weight: 400;">{% trans "(optional)" %}</span></label>
+      <input type="text" id="wastage-notes" maxlength="255" placeholder="{% trans "e.g. end-of-day leftovers, damaged packaging" %}">
     </div>
     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
       <button type="submit" class="btn btn-primary" id="wastage-process-btn" data-process="true">
-        Record &amp; process
+        {% trans "Record & process" %}
       </button>
       <button type="button" class="btn btn-ghost" id="wastage-draft-btn" data-process="false">
         Save as draft
@@ -66,41 +66,41 @@
 <div class="card report-filters" style="margin-bottom: 1.25rem;">
   <div class="report-filters-grid">
     <label>
-      <span>From</span>
+      <span>{% trans "From" %}</span>
       <input type="date" id="filter-from" class="report-input">
     </label>
     <label>
-      <span>To</span>
+      <span>{% trans "To" %}</span>
       <input type="date" id="filter-to" class="report-input">
     </label>
     {% if can_filter_any_branch %}
     <label>
-      <span>Branch</span>
+      <span>{% trans "Branch" %}</span>
       <select id="filter-branch" class="report-input">
-        <option value="">All branches</option>
+        <option value="">{% trans "All branches" %}</option>
       </select>
     </label>
     {% endif %}
     <label>
-      <span>Reason</span>
+      <span>{% trans "Reason" %}</span>
       <select id="filter-reason" class="report-input">
-        <option value="">All reasons</option>
-        <option value="bakery_reuse">Transferred for bakery reuse</option>
-        <option value="kitchen">Transferred to the kitchen</option>
-        <option value="disposal">Actual wastage/disposal</option>
+        <option value="">{% trans "All reasons" %}</option>
+        <option value="bakery_reuse">{% trans "Transferred for bakery reuse" %}</option>
+        <option value="kitchen">{% trans "Transferred to the kitchen" %}</option>
+        <option value="disposal">{% trans "Actual wastage/disposal" %}</option>
       </select>
     </label>
     <label>
-      <span>Status</span>
+      <span>{% trans "Status" %}</span>
       <select id="filter-status" class="report-input">
-        <option value="">All statuses</option>
-        <option value="draft">Draft</option>
-        <option value="processed">Processed</option>
-        <option value="cancelled">Cancelled</option>
+        <option value="">{% trans "All statuses" %}</option>
+        <option value="draft">{% trans "Draft" %}</option>
+        <option value="processed">{% trans "Processed" %}</option>
+        <option value="cancelled">{% trans "Cancelled" %}</option>
       </select>
     </label>
     <div class="report-filters-actions">
-      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
   </div>
 </div>
@@ -118,7 +118,7 @@
       type="search"
       id="wastage-search"
       class="report-input"
-      placeholder="Search product, branch, reason, notes…"
+      placeholder="{% trans "Search product, branch, reason, notes…" %}"
       style="max-width: 360px;"
     >
   </div>
@@ -134,6 +134,8 @@ import { apiGet, apiPost, fetchAllPages, formatDate, showToast, unwrapList } fro
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, effectiveBranchParam, setupBranchFilter, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
@@ -211,7 +213,7 @@ function updateStockHint() {
   }
   const qty = inventoryByProduct.get(String(productId));
   stockHint.textContent = qty == null
-    ? "Current stock: 0"
+    ? t("Current stock: 0")
     : `Current stock: ${formatQty(qty)}`;
 }
 
@@ -318,21 +320,21 @@ function statusBadge(entry) {
 function renderTable() {
   const filtered = sortItems(allEntries.filter(matchesSearch), sortState, ENTRY_SORT);
   if (!filtered.length) {
-    tableEl.innerHTML = `<div class="empty-state"><p>${searchQuery ? "No matching wastage entries" : "No wastage entries in this period"}</p></div>`;
+    tableEl.innerHTML = `<div class="empty-state"><p>${searchQuery ? t("No matching wastage entries") : t("No wastage entries in this period")}</p></div>`;
     return;
   }
   tableEl.innerHTML = `
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Logged", "created_at", sortState)}
-          ${sortTh("Branch", "branch_name", sortState)}
-          ${sortTh("Product", "product_name", sortState)}
-          ${sortTh("Qty", "quantity", sortState, { align: "right" })}
-          ${sortTh("Reason", "reason_display", sortState)}
-          ${sortTh("Destination", "destination_branch_name", sortState)}
-          ${sortTh("Status", "status_display", sortState)}
-          ${actionTh("Actions")}
+          ${sortTh(t("Logged"), "created_at", sortState)}
+          ${sortTh(t("Branch"), "branch_name", sortState)}
+          ${sortTh(t("Product"), "product_name", sortState)}
+          ${sortTh(t("Qty"), "quantity", sortState, { align: "right" })}
+          ${sortTh(t("Reason"), "reason_display", sortState)}
+          ${sortTh(t("Destination"), "destination_branch_name", sortState)}
+          ${sortTh(t("Status"), "status_display", sortState)}
+          ${actionTh(t("Actions"))}
         </tr>
       </thead>
       <tbody>
@@ -398,11 +400,11 @@ async function submitWastage(processNow) {
   const notes = notesInput.value.trim();
 
   if (!branchId || !productId || !quantity || !reason) {
-    showToast("Fill in branch, product, quantity, and reason.", "error");
+    showToast(t("Fill in branch, product, quantity, and reason."), "error");
     return;
   }
   if (reason === "bakery_reuse" && !destination) {
-    showToast("Select the bakery destination for reuse transfers.", "error");
+    showToast(t("Select the bakery destination for reuse transfers."), "error");
     return;
   }
 
@@ -423,8 +425,8 @@ async function submitWastage(processNow) {
     const created = await apiPost("/wastage/", payload);
     showToast(
       created.status === "processed"
-        ? "Wastage recorded and stock updated."
-        : "Wastage saved as draft.",
+        ? t("Wastage recorded and stock updated.")
+        : t("Wastage saved as draft."),
       "success",
     );
     quantityInput.value = "";
@@ -432,7 +434,7 @@ async function submitWastage(processNow) {
     await loadBranchInventory();
     await loadEntries();
   } catch (err) {
-    showToast(err.message || "Failed to record wastage.", "error");
+    showToast(err.message || t("Failed to record wastage."), "error");
   } finally {
     processBtn.disabled = false;
     draftBtn.disabled = false;
@@ -461,25 +463,25 @@ tableEl.addEventListener("click", async (event) => {
   if (!btn) return;
   const id = btn.dataset.id;
   const action = btn.dataset.action;
-  if (action === "process" && !confirm("Process this wastage entry and subtract from stock?")) {
+  if (action === "process" && !confirm(t("Process this wastage entry and subtract from stock?"))) {
     return;
   }
-  if (action === "cancel" && !confirm("Cancel this draft wastage entry?")) {
+  if (action === "cancel" && !confirm(t("Cancel this draft wastage entry?"))) {
     return;
   }
   btn.disabled = true;
   try {
     if (action === "process") {
       await apiPost(`/wastage/${id}/process/`, {});
-      showToast("Wastage processed; stock updated.", "success");
+      showToast(t("Wastage processed; stock updated."), "success");
     } else if (action === "cancel") {
       await apiPost(`/wastage/${id}/cancel/`, {});
-      showToast("Draft cancelled.", "success");
+      showToast(t("Draft cancelled."), "success");
     }
     await loadBranchInventory();
     await loadEntries();
   } catch (err) {
-    showToast(err.message || "Action failed.", "error");
+    showToast(err.message || t("Action failed."), "error");
     btn.disabled = false;
   }
 });
@@ -501,7 +503,7 @@ bindTableSort(tableEl, sortState, renderTable);
     await loadBranchInventory();
     await loadEntries();
   } catch (err) {
-    showToast(err.message || "Failed to initialize wastage page.", "error");
+    showToast(err.message || t("Failed to initialize wastage page."), "error");
     tableEl.innerHTML = `<div class="empty-state">Failed to load: ${err.message}</div>`;
   }
 })();

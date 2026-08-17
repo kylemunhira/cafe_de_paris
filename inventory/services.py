@@ -195,7 +195,9 @@ class InsufficientOrderMaterialsError(Exception):
 
 def order_recipe_material_requirements(order) -> dict[int, Decimal]:
     """Stock quantities to deduct when an order is paid."""
-    items = list(order.items.select_related("product__category"))
+    items = list(
+        order.items.select_related("product__category").prefetch_related("addons")
+    )
     if not items:
         return {}
 
@@ -204,18 +206,37 @@ def order_recipe_material_requirements(order) -> dict[int, Decimal]:
         for item in items
         if not is_bakery_transfer_product(item.product)
     }
+    addon_ids = {
+        addon.menu_addon_id
+        for item in items
+        for addon in item.addons.all()
+        if addon.menu_addon_id
+    }
+
     recipes_by_product: dict[int, list[Recipe]] = defaultdict(list)
     if kitchen_product_ids:
         for recipe in Recipe.objects.filter(product_id__in=kitchen_product_ids):
             recipes_by_product[recipe.product_id].append(recipe)
 
+    recipes_by_addon: dict[int, list[Recipe]] = defaultdict(list)
+    if addon_ids:
+        for recipe in Recipe.objects.filter(menu_addon_id__in=addon_ids):
+            recipes_by_addon[recipe.menu_addon_id].append(recipe)
+
     requirements: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
     for item in items:
         if is_bakery_transfer_product(item.product):
             requirements[item.product_id] += item.quantity
-            continue
-        for recipe in recipes_by_product.get(item.product_id, []):
-            requirements[recipe.ingredient_id] += item.quantity * recipe.quantity_required
+        else:
+            for recipe in recipes_by_product.get(item.product_id, []):
+                requirements[recipe.ingredient_id] += (
+                    item.quantity * recipe.quantity_required
+                )
+        for order_addon in item.addons.all():
+            for recipe in recipes_by_addon.get(order_addon.menu_addon_id, []):
+                requirements[recipe.ingredient_id] += (
+                    item.quantity * recipe.quantity_required
+                )
     return dict(requirements)
 
 
@@ -949,11 +970,21 @@ def update_stock_take_lines(stock_take: StockTake, lines_data: list) -> StockTak
             line = line_map.get(entry["id"])
             if line is None:
                 continue
+            update_fields = []
             if "counted_quantity" in entry:
                 line.counted_quantity = entry["counted_quantity"]
+                update_fields.append("counted_quantity")
+            if "wastage_quantity" in entry:
+                wastage = entry["wastage_quantity"]
+                line.wastage_quantity = (
+                    Decimal("0") if wastage is None else wastage
+                )
+                update_fields.append("wastage_quantity")
             if "notes" in entry:
                 line.notes = entry["notes"] or ""
-            line.save(update_fields=["counted_quantity", "notes"])
+                update_fields.append("notes")
+            if update_fields:
+                line.save(update_fields=update_fields)
     return stock_take
 
 

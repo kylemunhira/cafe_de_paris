@@ -1,0 +1,3236 @@
+# Café de Paris translations
+msgid ""
+msgstr ""
+"Project-Id-Version: cafe_de_paris\n"
+"Report-Msgid-Bugs-To: \n"
+"Language-Team: ar\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Language"
+msgstr "اللغة"
+
+msgid "Management Console"
+msgstr "وحدة التحكم الإدارية"
+
+msgid "Dashboard"
+msgstr "لوحة التحكم"
+
+msgid "Point of Sale"
+msgstr "نقطة البيع"
+
+msgid "Stock Take"
+msgstr "جرد المخزون"
+
+msgid "Branch Transfers"
+msgstr "تحويلات الفروع"
+
+msgid "Bakery Production"
+msgstr "إنتاج المخبز"
+
+msgid "Bakery Transfers"
+msgstr "تحويلات المخبز"
+
+msgid "Stock adjustment"
+msgstr "تعديل المخزون"
+
+msgid "Wastage"
+msgstr "الهدر"
+
+msgid "Customer Payment"
+msgstr "دفع العميل"
+
+msgid "Kitchen"
+msgstr "المطبخ"
+
+msgid "Orders"
+msgstr "الطلبات"
+
+msgid "Invoices"
+msgstr "الفواتير"
+
+msgid "Receipts"
+msgstr "الإيصالات"
+
+msgid "GRV"
+msgstr "استلام البضائع"
+
+msgid "Products"
+msgstr "المنتجات"
+
+msgid "List Products"
+msgstr "قائمة المنتجات"
+
+msgid "Menu Add-ons"
+msgstr "إضافات القائمة"
+
+msgid "List Ingredients"
+msgstr "قائمة المكونات"
+
+msgid "List Product Categories"
+msgstr "فئات المنتجات"
+
+msgid "Bakery Products"
+msgstr "منتجات المخبز"
+
+msgid "Branches"
+msgstr "الفروع"
+
+msgid "Stores Transfers"
+msgstr "تحويلات المخازن"
+
+msgid "Central Invoice"
+msgstr "فاتورة مركزية"
+
+msgid "Recipes"
+msgstr "الوصفات"
+
+msgid "Expenses"
+msgstr "المصروفات"
+
+msgid "Purchases"
+msgstr "المشتريات"
+
+msgid "Customers & Suppliers"
+msgstr "العملاء والموردون"
+
+msgid "List Customer"
+msgstr "قائمة العملاء"
+
+msgid "Customer Accounts"
+msgstr "حسابات العملاء"
+
+msgid "List Suppliers"
+msgstr "قائمة الموردين"
+
+msgid "Users"
+msgstr "المستخدمون"
+
+msgid "Audit log"
+msgstr "سجل التدقيق"
+
+msgid "Reports"
+msgstr "التقارير"
+
+msgid "Ingredient Stock"
+msgstr "مخزون المكونات"
+
+msgid "Ingredient Usage"
+msgstr "استخدام المكونات"
+
+msgid "Day End"
+msgstr "نهاية اليوم"
+
+msgid "Voided & Cancelled"
+msgstr "الملغاة والباطلة"
+
+msgid "Customer Balances"
+msgstr "أرصدة العملاء"
+
+msgid "VAT Report"
+msgstr "تقرير ضريبة القيمة المضافة"
+
+msgid "Supplier Statements"
+msgstr "كشوف الموردين"
+
+msgid "Payment & Rates"
+msgstr "الدفع والأسعار"
+
+msgid "Rates"
+msgstr "الأسعار"
+
+msgid "Currency"
+msgstr "العملة"
+
+msgid "Admin panel"
+msgstr "لوحة الإدارة"
+
+msgid "Toggle navigation"
+msgstr "إظهار/إخفاء التنقل"
+
+msgid "Hide navigation"
+msgstr "إخفاء التنقل"
+
+msgid "Show navigation"
+msgstr "إظهار التنقل"
+
+msgid "Log out"
+msgstr "تسجيل الخروج"
+
+msgid "Sign in"
+msgstr "تسجيل الدخول"
+
+msgid "All rights reserved."
+msgstr "جميع الحقوق محفوظة."
+
+msgid "Sign in to continue"
+msgstr "سجّل الدخول للمتابعة"
+
+msgid "Invalid username or password."
+msgstr "اسم المستخدم أو كلمة المرور غير صحيحة."
+
+msgid "Username"
+msgstr "اسم المستخدم"
+
+msgid "Password"
+msgstr "كلمة المرور"
+
+msgid "From"
+msgstr "من"
+
+msgid "To"
+msgstr "إلى"
+
+msgid "Branch"
+msgstr "الفرع"
+
+msgid "All branches"
+msgstr "جميع الفروع"
+
+msgid "Apply"
+msgstr "تطبيق"
+
+msgid "Print"
+msgstr "طباعة"
+
+msgid "Search"
+msgstr "بحث"
+
+msgid "Cancel"
+msgstr "إلغاء"
+
+msgid "Close"
+msgstr "إغلاق"
+
+msgid "Save"
+msgstr "حفظ"
+
+msgid "Delete"
+msgstr "حذف"
+
+msgid "Edit"
+msgstr "تعديل"
+
+msgid "Add"
+msgstr "إضافة"
+
+msgid "Name"
+msgstr "الاسم"
+
+msgid "Date"
+msgstr "تاريخ"
+
+msgid "Status"
+msgstr "الحالة"
+
+msgid "Active"
+msgstr "نشط"
+
+msgid "Inactive"
+msgstr "غير نشط"
+
+msgid "Loading…"
+msgstr "جارٍ التحميل…"
+
+msgid "Notes"
+msgstr "ملحوظات"
+
+msgid "Notes (optional)"
+msgstr "ملاحظات (اختياري)"
+
+msgid "Amount"
+msgstr "المبلغ"
+
+msgid "Total"
+msgstr "المجموع"
+
+msgid "Quantity"
+msgstr "الكمية"
+
+msgid "Qty"
+msgstr "الكمية"
+
+msgid "Product"
+msgstr "المنتج"
+
+msgid "Category"
+msgstr "الفئة"
+
+msgid "Customer"
+msgstr "العميل"
+
+msgid "Supplier"
+msgstr "المورد"
+
+msgid "Phone"
+msgstr "الهاتف"
+
+msgid "Email"
+msgstr "البريد الإلكتروني"
+
+msgid "Type"
+msgstr "يكتب"
+
+msgid "Description"
+msgstr "وصف"
+
+msgid "All"
+msgstr "الكل"
+
+msgid "Yes"
+msgstr "نعم"
+
+msgid "No"
+msgstr "لا"
+
+msgid "None"
+msgstr "لا شيء"
+
+msgid "Open"
+msgstr "مفتوح"
+
+msgid "Paid"
+msgstr "مدفوع"
+
+msgid "Unpaid"
+msgstr "غير مدفوع"
+
+msgid "Cancelled"
+msgstr "ملغى"
+
+msgid "Download CSV"
+msgstr "تنزيل CSV"
+
+msgid "Upload CSV"
+msgstr "رفع CSV"
+
+msgid "Import CSV"
+msgstr "استيراد CSV"
+
+msgid "Actions"
+msgstr "الإجراءات"
+
+msgid "Details"
+msgstr "التفاصيل"
+
+msgid "Revenue"
+msgstr "الإيرادات"
+
+msgid "Payments"
+msgstr "المدفوعات"
+
+msgid "Profit"
+msgstr "الربح"
+
+msgid "Charts"
+msgstr "الرسوم البيانية"
+
+msgid "Export Sales CSV"
+msgstr "تصدير المبيعات CSV"
+
+msgid "Paid collections by currency name for the selected period (amounts in base currency)."
+msgstr "التحصيلات المدفوعة حسب اسم العملة للفترة المحددة (المبالغ بالعملة الأساسية)."
+
+msgid "By Currency"
+msgstr "حسب العملة"
+
+msgid "Visual breakdown of sales and profit for the selected period."
+msgstr "تفصيل مرئي للمبيعات والأرباح للفترة المحددة."
+
+msgid "Sales by Branch"
+msgstr "المبيعات حسب الفرع"
+
+msgid "Revenue by Category"
+msgstr "الإيرادات حسب الفئة"
+
+msgid "Top Products"
+msgstr "أفضل المنتجات"
+
+msgid "Profit Breakdown"
+msgstr "تفصيل الربح"
+
+msgid "Sales by Category"
+msgstr "المبيعات حسب الفئة"
+
+msgid "Gross Profit by Product"
+msgstr "إجمالي الربح حسب المنتج"
+
+msgid "Low Stock"
+msgstr "مخزون منخفض"
+
+msgid "Products Without Recipe"
+msgstr "منتجات بدون وصفة"
+
+msgid "Total Revenue"
+msgstr "إجمالي الإيرادات"
+
+msgid "Paid Orders"
+msgstr "الطلبات المدفوعة"
+
+msgid "In selected period"
+msgstr "في الفترة المحددة"
+
+msgid "Avg Order Value"
+msgstr "متوسط قيمة الطلب"
+
+msgid "Per paid order"
+msgstr "لكل طلب مدفوع"
+
+msgid "Tax Collected"
+msgstr "الضريبة المحصلة"
+
+msgid "Based on inclusive tax in paid sales"
+msgstr "بناءً على الضريبة الشاملة في المبيعات المدفوعة"
+
+msgid "Cost of Sales"
+msgstr "تكلفة المبيعات"
+
+msgid "From recipe ingredient costs"
+msgstr "من تكاليف مكونات الوصفة"
+
+msgid "Gross Profit"
+msgstr "إجمالي الربح"
+
+msgid "margin"
+msgstr "هامش"
+
+msgid "Operating Expenses"
+msgstr "المصروفات التشغيلية"
+
+msgid "Recorded petty cash & expenses"
+msgstr "النثرية والمصروفات المسجلة"
+
+msgid "Net Profit"
+msgstr "صافي الربح"
+
+msgid "Gross profit less expenses"
+msgstr "إجمالي الربح ناقص المصروفات"
+
+msgid "Cost of sales is calculated from recipe ingredient costs."
+msgstr "تُحسب تكلفة المبيعات من تكاليف مكونات الوصفة."
+
+msgid "Qty Sold"
+msgstr "الكمية المباعة"
+
+msgid "Share"
+msgstr "الحصة"
+
+msgid "COGS"
+msgstr "تكلفة البضاعة"
+
+msgid "GP%"
+msgstr "نسبة الربح%"
+
+msgid "Remaining"
+msgstr "المتبقي"
+
+msgid "Edit recipe"
+msgstr "تعديل الوصفة"
+
+msgid "No paid orders for this period"
+msgstr "لا توجد طلبات مدفوعة لهذه الفترة"
+
+msgid "No category sales for this period"
+msgstr "لا توجد مبيعات حسب الفئة لهذه الفترة"
+
+msgid "No payment data for this period"
+msgstr "لا توجد بيانات دفع لهذه الفترة"
+
+msgid "No product sales for this period"
+msgstr "لا توجد مبيعات منتجات لهذه الفترة"
+
+msgid "No profit data for this period"
+msgstr "لا توجد بيانات ربح لهذه الفترة"
+
+msgid "No paid sales for this period"
+msgstr "لا توجد مبيعات مدفوعة لهذه الفترة"
+
+msgid "All sold products have recipes"
+msgstr "جميع المنتجات المباعة لها وصفات"
+
+msgid "All sold products have recipes for this period"
+msgstr "جميع المنتجات المباعة لها وصفات لهذه الفترة"
+
+msgid "All products are above the low-stock threshold"
+msgstr "جميع المنتجات فوق حد المخزون المنخفض"
+
+msgid "Failed to load dashboard:"
+msgstr "فشل تحميل لوحة التحكم:"
+
+msgid "units"
+msgstr "وحدات"
+
+msgid "Customer Balances Report"
+msgstr "تقرير أرصدة العملاء"
+
+msgid "Name, phone, or email…"
+msgstr "الاسم أو الهاتف أو البريد…"
+
+msgid "Only customers with balance"
+msgstr "العملاء ذوو الرصيد فقط"
+
+msgid "Customers listed"
+msgstr "العملاء المدرجون"
+
+msgid "With account balance"
+msgstr "برصيد حساب"
+
+msgid "Total prepaid balance"
+msgstr "إجمالي الرصيد المدفوع مسبقاً"
+
+msgid "Customers"
+msgstr "العملاء"
+
+msgid "Current balance"
+msgstr "الرصيد الحالي"
+
+msgid "View account"
+msgstr "عرض الحساب"
+
+msgid "No customers match your filters"
+msgstr "لا يوجد عملاء مطابقون للفلاتر"
+
+msgid "Failed to load report:"
+msgstr "فشل تحميل التقرير:"
+
+msgid "As at"
+msgstr "حتى"
+
+msgid "All physical branches"
+msgstr "جميع الفروع الفعلية"
+
+msgid "Output TAX Amount"
+msgstr "مبلغ ضريبة المخرجات"
+
+msgid "Total Sales Including VAT"
+msgstr "إجمالي المبيعات شامل الضريبة"
+
+msgid "Total Sales Excluding VAT"
+msgstr "إجمالي المبيعات بدون الضريبة"
+
+msgid "Total Taxable Sales (Excluding VAT)"
+msgstr "إجمالي المبيعات الخاضعة (بدون ضريبة)"
+
+msgid "Total Non-taxable Sales"
+msgstr "إجمالي المبيعات غير الخاضعة"
+
+msgid "VAT on Taxables Sales"
+msgstr "ضريبة على المبيعات الخاضعة"
+
+msgid "Sales Returns"
+msgstr "مردودات المبيعات"
+
+msgid "Discounts Given"
+msgstr "الخصومات الممنوحة"
+
+msgid "Input TAX"
+msgstr "ضريبة المدخلات"
+
+msgid "Total Purchases Including VAT"
+msgstr "إجمالي المشتريات شامل الضريبة"
+
+msgid "Total Purchases Excluding VAT"
+msgstr "إجمالي المشتريات بدون الضريبة"
+
+msgid "Total Raw Materials Purchases Including VAT"
+msgstr "مشتريات المواد الخام شامل الضريبة"
+
+msgid "Total Raw Materials Purchases Excluding VAT"
+msgstr "مشتريات المواد الخام بدون الضريبة"
+
+msgid "Credit Notes Excluding VAT"
+msgstr "إشعارات دائن بدون ضريبة"
+
+msgid "Credit Notes VAT"
+msgstr "ضريبة إشعارات دائن"
+
+msgid "Credit Notes Including VAT"
+msgstr "إشعارات دائن شامل الضريبة"
+
+msgid "Total Taxable Purchases (Excluding VAT)"
+msgstr "إجمالي المشتريات الخاضعة (بدون ضريبة)"
+
+msgid "Total Non-taxable Purchases"
+msgstr "إجمالي المشتريات غير الخاضعة"
+
+msgid "VAT on Taxable Purchases"
+msgstr "ضريبة على المشتريات الخاضعة"
+
+msgid "Purchases Returns"
+msgstr "مردودات المشتريات"
+
+msgid "Discount Given"
+msgstr "الخصم الممنوح"
+
+msgid "NET VAT"
+msgstr "صافي ضريبة القيمة المضافة"
+
+msgid "All Branches"
+msgstr "جميع الفروع"
+
+msgid "Select both from and to dates"
+msgstr "حدد تاريخي البداية والنهاية"
+
+msgid "Voided & Cancelled Items"
+msgstr "العناصر الملغاة والباطلة"
+
+msgid "Search product"
+msgstr "بحث عن منتج"
+
+msgid "Product name…"
+msgstr "اسم المنتج…"
+
+msgid "Voided items"
+msgstr "عناصر باطلة"
+
+msgid "Cancelled items"
+msgstr "عناصر ملغاة"
+
+msgid "Voided amount"
+msgstr "مبلغ باطل"
+
+msgid "Cancelled amount"
+msgstr "مبلغ ملغى"
+
+msgid "Voided & cancelled lines"
+msgstr "بنود ملغاة وباطلة"
+
+msgid "Time"
+msgstr "الوقت"
+
+msgid "Action"
+msgstr "فعل"
+
+msgid "Order"
+msgstr "الطلب"
+
+msgid "Table"
+msgstr "طاولة"
+
+msgid "Add-ons"
+msgstr "الإضافات"
+
+msgid "Unit price"
+msgstr "سعر الوحدة"
+
+msgid "Line total"
+msgstr "إجمالي السطر"
+
+msgid "By"
+msgstr "بواسطة"
+
+msgid "Voided"
+msgstr "باطل"
+
+msgid "No voided or cancelled items for this date"
+msgstr "لا توجد عناصر ملغاة أو باطلة لهذا التاريخ"
+
+msgid "Ingredient Stock Report"
+msgstr "تقرير مخزون المكونات"
+
+msgid "Search ingredient"
+msgstr "بحث عن مكون"
+
+msgid "Name…"
+msgstr "الاسم…"
+
+msgid "Active ingredients only"
+msgstr "المكونات النشطة فقط"
+
+msgid "Low stock only"
+msgstr "المخزون المنخفض فقط"
+
+msgid "Ingredients"
+msgstr "المكونات"
+
+msgid "Lines with stock"
+msgstr "بنود ذات مخزون"
+
+msgid "Total stock value"
+msgstr "إجمالي قيمة المخزون"
+
+msgid "Stock by branch"
+msgstr "المخزون حسب الفرع"
+
+msgid "Ingredient"
+msgstr "المكون"
+
+msgid "Unit cost"
+msgstr "تكلفة الوحدة"
+
+msgid "Stock qty"
+msgstr "كمية المخزون"
+
+msgid "Stock value"
+msgstr "قيمة المخزون"
+
+msgid "No ingredients match your filters"
+msgstr "لا توجد مكونات مطابقة للفلاتر"
+
+msgid "Daily Ingredient Usage"
+msgstr "استخدام المكونات اليومي"
+
+msgid "Ingredients used"
+msgstr "المكونات المستخدمة"
+
+msgid "Total quantity used"
+msgstr "إجمالي الكمية المستخدمة"
+
+msgid "Total usage cost"
+msgstr "إجمالي تكلفة الاستخدام"
+
+msgid "Usage by branch"
+msgstr "الاستخدام حسب الفرع"
+
+msgid "From sales"
+msgstr "من المبيعات"
+
+msgid "From production"
+msgstr "من الإنتاج"
+
+msgid "Total used"
+msgstr "إجمالي المستخدم"
+
+msgid "Usage cost"
+msgstr "تكلفة الاستخدام"
+
+msgid "No ingredient usage recorded for this date"
+msgstr "لا يوجد استخدام مكونات مسجل لهذا التاريخ"
+
+msgid "Day End Report"
+msgstr "تقرير نهاية اليوم"
+
+msgid "Closes listed"
+msgstr "عمليات الإغلاق المدرجة"
+
+msgid "With cash count"
+msgstr "مع عدّ النقد"
+
+msgid "Total variance"
+msgstr "إجمالي الفروقات"
+
+msgid "Saved day-end closes"
+msgstr "إغلاقات نهاية اليوم المحفوظة"
+
+msgid "Variance and activity saved when day end is printed from POS."
+msgstr "الفروقات والنشاط المحفوظان عند طباعة نهاية اليوم من نقطة البيع."
+
+msgid "Day-end detail"
+msgstr "تفاصيل نهاية اليوم"
+
+msgid "Closed by"
+msgstr "أغلقه"
+
+msgid "Gross"
+msgstr "الإجمالي"
+
+msgid "Variance"
+msgstr "الفرق"
+
+msgid "Sales"
+msgstr "المبيعات"
+
+msgid "Deposits"
+msgstr "الودائع"
+
+msgid "Net expected"
+msgstr "الصافي المتوقع"
+
+msgid "Counted"
+msgstr "المعدود"
+
+msgid "Cash variance"
+msgstr "فرق النقد"
+
+msgid "Activity at close"
+msgstr "النشاط عند الإغلاق"
+
+msgid "Payments by method"
+msgstr "المدفوعات حسب الطريقة"
+
+msgid "Top products"
+msgstr "أفضل المنتجات"
+
+msgid "No cash-up lines."
+msgstr "لا توجد بنود تسوية نقدية."
+
+msgid "No activity snapshot."
+msgstr "لا توجد لقطة نشاط."
+
+msgid "No saved day-end closes for this period."
+msgstr "لا توجد إغلاقات محفوظة لهذه الفترة."
+
+msgid "Search supplier"
+msgstr "بحث عن مورد"
+
+msgid "Name, phone, VAT…"
+msgstr "الاسم أو الهاتف أو الرقم الضريبي…"
+
+msgid "Suppliers listed"
+msgstr "الموردون المدرجون"
+
+msgid "With purchases in period"
+msgstr "بمشتريات في الفترة"
+
+msgid "Total spend in period"
+msgstr "إجمالي الإنفاق في الفترة"
+
+msgid "Spend by supplier"
+msgstr "الإنفاق حسب المورد"
+
+msgid "Selected period"
+msgstr "الفترة المحددة"
+
+msgid "Spend in period"
+msgstr "الإنفاق في الفترة"
+
+msgid "View statement"
+msgstr "عرض الكشف"
+
+msgid "No suppliers match your filters"
+msgstr "لا يوجد موردون مطابقون للفلاتر"
+
+msgid "Failed to load branches:"
+msgstr "فشل تحميل الفروع:"
+
+msgid "VAT"
+msgstr "ضريبة القيمة المضافة"
+
+msgid "to"
+msgstr "إلى"
+
+msgid "fiscal invoices (proforma excluded)"
+msgstr "فواتير ضريبية (باستثناء البروفورما)"
+
+msgid "purchases from VAT-registered suppliers"
+msgstr "مشتريات من موردين مسجلين بضريبة القيمة المضافة"
+
+msgid "voided order(s)"
+msgstr "طلب(ات) باطلة"
+
+msgid "cancelled order(s)"
+msgstr "طلب(ات) ملغاة"
+
+msgid "line(s)"
+msgstr "بند(بنود)"
+
+msgid "all branches"
+msgstr "جميع الفروع"
+
+msgid "lines"
+msgstr "بنود"
+
+msgid "Usage for"
+msgstr "الاستخدام لـ"
+
+msgid "Expense"
+msgstr "مصروف"
+
+msgid "Transaction"
+msgstr "عملية"
+
+msgid "Item"
+msgstr "عنصر"
+
+msgid "Customer accounts"
+msgstr "حسابات العملاء"
+
+msgid "Closed"
+msgstr "أُغلق"
+
+msgid "by"
+msgstr "بواسطة"
+
+msgid "Branch availability mode"
+msgstr "وضع التوفر حسب الفرع"
+
+msgid "Product view"
+msgstr "عرض المنتج"
+
+msgid "Card view"
+msgstr "عرض البطاقات"
+
+msgid "List view"
+msgstr "عرض القائمة"
+
+msgid "Daily count for"
+msgstr "العد اليومي لـ"
+
+msgid "A4 Invoice"
+msgstr "فاتورة A4"
+
+msgid "A4 Proforma"
+msgstr "بروفورما A4"
+
+msgid "Account"
+msgstr "الحساب"
+
+msgid "Account type"
+msgstr "نوع الحساب"
+
+msgid "Active branch"
+msgstr "فرع نشط"
+
+msgid "Active currency"
+msgstr "عملة نشطة"
+
+msgid "Active ingredient"
+msgstr "مكون نشط"
+
+msgid "Active product"
+msgstr "منتج نشط"
+
+msgid "Active supplier"
+msgstr "مورد نشط"
+
+msgid "Active user"
+msgstr "مستخدم نشط"
+
+msgid "Add bakery product"
+msgstr "إضافة منتج مخبز"
+
+msgid "Add branch"
+msgstr "إضافة فرع"
+
+msgid "Add category"
+msgstr "إضافة فئة"
+
+msgid "Add currency"
+msgstr "إضافة عملة"
+
+msgid "Add customer"
+msgstr "إضافة عميل"
+
+msgid "Add ingredient"
+msgstr "إضافة مكون"
+
+msgid "Add option"
+msgstr "إضافة خيار"
+
+msgid "Add product"
+msgstr "إضافة منتج"
+
+msgid "Add staff user"
+msgstr "إضافة مستخدم موظف"
+
+msgid "Add supplier"
+msgstr "إضافة مورد"
+
+msgid "Add user"
+msgstr "إضافة مستخدم"
+
+msgid "Add-on activated"
+msgstr "تم تفعيل الإضافة"
+
+msgid "Add-on deactivated"
+msgstr "تم إلغاء تفعيل الإضافة"
+
+msgid "Add-on group"
+msgstr "مجموعة إضافات"
+
+msgid "Add-on group created"
+msgstr "تم إنشاء مجموعة الإضافات"
+
+msgid "Add-on option created"
+msgstr "تم إنشاء خيار الإضافة"
+
+msgid "Add-on updated"
+msgstr "تم تحديث الإضافة"
+
+msgid "Add-ons:"
+msgstr "الإضافات:"
+
+msgid "Added"
+msgstr "أُضيف"
+
+msgid "Address"
+msgstr "العنوان"
+
+msgid "All actions"
+msgstr "جميع الإجراءات"
+
+msgid "All dates"
+msgstr "جميع التواريخ"
+
+msgid "All stations"
+msgstr "جميع المحطات"
+
+msgid "All types"
+msgstr "جميع الأنواع"
+
+msgid "Allow negative stock on sales"
+msgstr "السماح بالمخزون السالب عند البيع"
+
+msgid "Amount must be a positive number"
+msgstr "يجب أن يكون المبلغ رقمًا موجبًا"
+
+msgid "Amount paid"
+msgstr "المبلغ المدفوع"
+
+msgid "Any active POS products not in the file will be deactivated."
+msgstr "سيتم إلغاء تفعيل أي منتجات نقطة بيع نشطة غير موجودة في الملف."
+
+msgid "Approve fiscal"
+msgstr "اعتماد الضريبة"
+
+msgid "Asset"
+msgstr "أصل"
+
+msgid "Asset category (monthly stock take only)"
+msgstr "فئة أصول (جرد شهري فقط)"
+
+msgid "Attach groups to products under"
+msgstr "اربط المجموعات بالمنتجات تحت"
+
+msgid "Available at branches"
+msgstr "متاح في الفروع"
+
+msgid "Available for sale when enabled"
+msgstr "متاح للبيع عند التفعيل"
+
+msgid "Bakery"
+msgstr "المخبز"
+
+msgid "Bar"
+msgstr "حاجِز"
+
+msgid "Base"
+msgstr "قاعدة"
+
+msgid "Branch created"
+msgstr "تم إنشاء الفرع"
+
+msgid "Branch name is required"
+msgstr "اسم الفرع مطلوب"
+
+msgid "Branch stock"
+msgstr "مخزون الفرع"
+
+msgid "Branch updated"
+msgstr "تم تحديث الفرع"
+
+msgid "Branch:"
+msgstr "الفرع:"
+
+msgid "By currency"
+msgstr "حسب العملة"
+
+msgid "Cancel unpaid order"
+msgstr "إلغاء الطلب غير المدفوع"
+
+msgid "Cards"
+msgstr "بطاقات"
+
+msgid "Category added"
+msgstr "تمت إضافة الفئة"
+
+msgid "Category deleted"
+msgstr "تم حذف الفئة"
+
+msgid "Category is for grouping only; stock type stays Ingredients / Branch Ingredients."
+msgstr "الفئة للتجميع فقط؛ نوع المخزون يبقى المكونات / مكونات الفرع."
+
+msgid "Category updated"
+msgstr "تم تحديث الفئة"
+
+msgid "Central Stores"
+msgstr "المخازن المركزية"
+
+msgid "Choose any"
+msgstr "اختر أي عدد"
+
+msgid "Choose one"
+msgstr "اختر واحدًا"
+
+msgid "Choose where this product appears on POS. Use all branches to sell everywhere, including Central Stores."
+msgstr "اختر أين يظهر هذا المنتج في نقطة البيع. استخدم جميع الفروع للبيع في كل مكان بما في ذلك المخازن المركزية."
+
+msgid "Choose which add-on groups appear when this product is ordered on POS."
+msgstr "اختر مجموعات الإضافات التي تظهر عند طلب هذا المنتج في نقطة البيع."
+
+msgid "Click a product to edit its ingredients."
+msgstr "انقر على منتج لتعديل مكوناته."
+
+msgid "Click a product to start building its bill of materials."
+msgstr "انقر على منتج لبدء بناء قائمة المواد."
+
+msgid "Code"
+msgstr "شفرة"
+
+msgid "Completed daily stock take required"
+msgstr "يلزم إكمال الجرد اليومي"
+
+msgid "Contact"
+msgstr "اتصال"
+
+msgid "Contact person"
+msgstr "شخص الاتصال"
+
+msgid "Cost"
+msgstr "التكلفة"
+
+msgid "Cost of sales"
+msgstr "تكلفة المبيعات"
+
+msgid "Create add-on groups and options for POS. Deactivated options stay in order history but are hidden at the till."
+msgstr "أنشئ مجموعات وخيارات إضافات لنقطة البيع. الخيارات المعطّلة تبقى في السجل لكنها تُخفى عند الصندوق."
+
+msgid "Create group"
+msgstr "إنشاء مجموعة"
+
+msgid "Credit limit"
+msgstr "حد الائتمان"
+
+msgid "Currencies"
+msgstr "العملات"
+
+msgid "Currency name is required"
+msgstr "اسم العملة مطلوب"
+
+msgid "Currency rate"
+msgstr "سعر الصرف"
+
+msgid "Currency updated"
+msgstr "تم تحديث العملة"
+
+msgid "Current rate"
+msgstr "السعر الحالي"
+
+msgid "Customer account"
+msgstr "حساب العميل"
+
+msgid "Customer added"
+msgstr "تمت إضافة العميل"
+
+msgid "Customer updated"
+msgstr "تم تحديث العميل"
+
+msgid "Daily count"
+msgstr "العد اليومي"
+
+msgid "Daily count disabled"
+msgstr "تم تعطيل العد اليومي"
+
+msgid "Daily count enabled"
+msgstr "تم تفعيل العد اليومي"
+
+msgid "Daily stock take"
+msgstr "الجرد اليومي"
+
+msgid "Day end blocked"
+msgstr "نهاية اليوم محظورة"
+
+msgid "Deactivate"
+msgstr "إلغاء التفعيل"
+
+msgid "Deactivate all products in this category first"
+msgstr "عطّل أولاً جميع المنتجات في هذه الفئة"
+
+msgid "Delete category"
+msgstr "حذف الفئة"
+
+msgid "Delivery"
+msgstr "التسليم"
+
+msgid "Delivery note"
+msgstr "إذن تسليم"
+
+msgid "Dining table"
+msgstr "طاولة طعام"
+
+msgid "Edit branch"
+msgstr "تعديل الفرع"
+
+msgid "Edit category"
+msgstr "تعديل الفئة"
+
+msgid "Edit currency"
+msgstr "تعديل العملة"
+
+msgid "Edit customer"
+msgstr "تعديل العميل"
+
+msgid "Edit ingredient"
+msgstr "تعديل المكون"
+
+msgid "Edit staff user"
+msgstr "تعديل مستخدم الموظف"
+
+msgid "Edit supplier"
+msgstr "تعديل المورد"
+
+msgid "Enter a description"
+msgstr "أدخل وصفًا"
+
+msgid "Enter a valid selling price."
+msgstr "أدخل سعر بيع صالحًا."
+
+msgid "Entity"
+msgstr "الكيان"
+
+msgid "Expense date"
+msgstr "تاريخ المصروف"
+
+msgid "Expense date:"
+msgstr "تاريخ المصروف:"
+
+msgid "Expense period"
+msgstr "فترة المصروفات"
+
+msgid "Expense recorded"
+msgstr "تم تسجيل المصروف"
+
+msgid "Failed to load add-ons:"
+msgstr "فشل تحميل الإضافات:"
+
+msgid "Failed to load audit log"
+msgstr "فشل تحميل سجل التدقيق"
+
+msgid "Failed to load customers:"
+msgstr "فشل تحميل العملاء:"
+
+msgid "Failed to load expenses:"
+msgstr "فشل تحميل المصروفات:"
+
+msgid "Failed to load history:"
+msgstr "فشل تحميل السجل:"
+
+msgid "Failed to load ingredients:"
+msgstr "فشل تحميل المكونات:"
+
+msgid "Failed to load invoices:"
+msgstr "فشل تحميل الفواتير:"
+
+msgid "Failed to load kitchen orders:"
+msgstr "فشل تحميل طلبات المطبخ:"
+
+msgid "Failed to load orders:"
+msgstr "فشل تحميل الطلبات:"
+
+msgid "Failed to load page:"
+msgstr "فشل تحميل الصفحة:"
+
+msgid "Failed to load products:"
+msgstr "فشل تحميل المنتجات:"
+
+msgid "Failed to load suppliers:"
+msgstr "فشل تحميل الموردين:"
+
+msgid "Failed to load users:"
+msgstr "فشل تحميل المستخدمين:"
+
+msgid "Failed to load:"
+msgstr "فشل التحميل:"
+
+msgid "Family"
+msgstr "عائلة"
+
+msgid "Family (cost price)"
+msgstr "عائلة (سعر التكلفة)"
+
+msgid "Find product"
+msgstr "البحث عن منتج"
+
+msgid "First name"
+msgstr "الاسم الأول"
+
+msgid "Fiscal"
+msgstr "المالية"
+
+msgid "Fiscal failed"
+msgstr "فشل الاعتماد الضريبي"
+
+msgid "Fiscalization enabled"
+msgstr "الاعتماد الضريبي مفعّل"
+
+msgid "Go to stock take"
+msgstr "الانتقال إلى الجرد"
+
+msgid "Gross profit"
+msgstr "إجمالي الربح"
+
+msgid "Group name"
+msgstr "اسم المجموعة"
+
+msgid "Headquarters"
+msgstr "المقر الرئيسي"
+
+msgid "History"
+msgstr "السجل"
+
+msgid "If this product appears in orders, purchases, or stock records it will be deactivated instead of removed."
+msgstr "إذا ظهر هذا المنتج في طلبات أو مشتريات أو سجلات مخزون فسيتم إلغاء تفعيله بدل حذفه."
+
+msgid "Import POS menu items from this CSV?"
+msgstr "استيراد عناصر قائمة نقطة البيع من ملف CSV هذا؟"
+
+msgid "Import complete"
+msgstr "اكتمل الاستيراد"
+
+msgid "Import complete:"
+msgstr "اكتمل الاستيراد:"
+
+msgid "Import failed —"
+msgstr "فشل الاستيراد —"
+
+msgid "Include in daily branch stock counts"
+msgstr "تضمين في عدّ المخزون اليومي للفرع"
+
+msgid "Include in daily stock take"
+msgstr "تضمين في الجرد اليومي"
+
+msgid "Ingredient added"
+msgstr "تمت إضافة المكون"
+
+msgid "Ingredient added."
+msgstr "تمت إضافة المكون."
+
+msgid "Ingredient removed."
+msgstr "تمت إزالة المكون."
+
+msgid "Ingredient updated"
+msgstr "تم تحديث المكون"
+
+msgid "Initial qty"
+msgstr "الكمية الابتدائية"
+
+msgid "Invoice #"
+msgstr "فاتورة رقم"
+
+msgid "Invoice / ref"
+msgstr "فاتورة / مرجع"
+
+msgid "Items"
+msgstr "عناصر"
+
+msgid "Joined"
+msgstr "تاريخ الانضمام"
+
+msgid "Kitchen app users only see and auto-print orders for categories on this station."
+msgstr "مستخدمو تطبيق المطبخ يرون ويطبعون تلقائيًا فقط طلبات فئات هذه المحطة."
+
+msgid "Kitchen display station"
+msgstr "محطة عرض المطبخ"
+
+msgid "Kitchen station"
+msgstr "محطة المطبخ"
+
+msgid "Label"
+msgstr "التسمية"
+
+msgid "Last name"
+msgstr "اسم العائلة"
+
+msgid "Leave blank for non-VAT suppliers"
+msgstr "اتركه فارغًا للموردين غير الخاضعين للضريبة"
+
+msgid "Leave blank to keep the current password."
+msgstr "اتركه فارغًا للاحتفاظ بكلمة المرور الحالية."
+
+msgid "Line cost"
+msgstr "تكلفة السطر"
+
+msgid "List"
+msgstr "قائمة"
+
+msgid "Loading roles…"
+msgstr "جارٍ تحميل الأدوار…"
+
+msgid "Location"
+msgstr "الموقع"
+
+msgid "Logged"
+msgstr "مُسجَّل"
+
+msgid "Loyalty"
+msgstr "الولاء"
+
+msgid "Loyalty points"
+msgstr "نقاط الولاء"
+
+msgid "Mark paid"
+msgstr "تعيين كمدفوع"
+
+msgid "Mark ready"
+msgstr "تعيين كجاهز"
+
+msgid "Max negative balance allowed on account (0 = prepaid only)."
+msgstr "أقصى رصيد سالب مسموح به على الحساب (0 = مدفوع مسبقًا فقط)."
+
+msgid "Menu add-on"
+msgstr "إضافة قائمة"
+
+msgid "Menu add-ons for this product"
+msgstr "إضافات القائمة لهذا المنتج"
+
+msgid "Negative stock allowed"
+msgstr "المخزون السالب مسموح"
+
+msgid "New Sale"
+msgstr "بيع جديد"
+
+msgid "New add-on group"
+msgstr "مجموعة إضافات جديدة"
+
+msgid "New option"
+msgstr "خيار جديد"
+
+msgid "New orders"
+msgstr "طلبات جديدة"
+
+msgid "No add-on groups yet — create one above."
+msgstr "لا توجد مجموعات إضافات بعد — أنشئ واحدة أعلاه."
+
+msgid "No add-on groups yet. Create them under"
+msgstr "لا توجد مجموعات إضافات بعد. أنشئها تحت"
+
+msgid "No audit events in this period"
+msgstr "لا توجد أحداث تدقيق في هذه الفترة"
+
+msgid "No branch assigned — stock quantities unavailable."
+msgstr "لا يوجد فرع معيّن — كميات المخزون غير متاحة."
+
+msgid "No branches available"
+msgstr "لا توجد فروع متاحة"
+
+msgid "No branches available."
+msgstr "لا توجد فروع متاحة."
+
+msgid "No branches configured"
+msgstr "لا توجد فروع مُعدّة"
+
+msgid "No categories yet"
+msgstr "لا توجد فئات بعد"
+
+msgid "No categories — add one in admin first"
+msgstr "لا توجد فئات — أضف واحدة أولاً في الإدارة"
+
+msgid "No category"
+msgstr "بدون فئة"
+
+msgid "No contact details"
+msgstr "لا توجد بيانات اتصال"
+
+msgid "No currencies configured"
+msgstr "لا توجد عملات مُعدّة"
+
+msgid "No currencies yet"
+msgstr "لا توجد عملات بعد"
+
+msgid "No customers yet — add your first customer above"
+msgstr "لا يوجد عملاء بعد — أضف أول عميل أعلاه"
+
+msgid "No expenses in this period"
+msgstr "لا توجد مصروفات في هذه الفترة"
+
+msgid "No finished products found."
+msgstr "لم يتم العثور على منتجات نهائية."
+
+msgid "No ingredients yet — add one above or import from CSV"
+msgstr "لا توجد مكونات بعد — أضف واحدًا أعلاه أو استورد من CSV"
+
+msgid "No ingredients yet. Add the first line below."
+msgstr "لا توجد مكونات بعد. أضف السطر الأول أدناه."
+
+msgid "No items"
+msgstr "لا توجد عناصر"
+
+msgid "No location set"
+msgstr "لم يُحدَّد موقع"
+
+msgid "No matching POS invoices"
+msgstr "لا توجد فواتير نقطة بيع مطابقة"
+
+msgid "No matching audit events"
+msgstr "لا توجد أحداث تدقيق مطابقة"
+
+msgid "No matching categories"
+msgstr "لا توجد فئات مطابقة"
+
+msgid "No matching expenses"
+msgstr "لا توجد مصروفات مطابقة"
+
+msgid "No matching ingredients"
+msgstr "لا توجد مكونات مطابقة"
+
+msgid "No matching orders"
+msgstr "لا توجد طلبات مطابقة"
+
+msgid "No matching products"
+msgstr "لا توجد منتجات مطابقة"
+
+msgid "No matching transfer invoices"
+msgstr "لا توجد فواتير تحويل مطابقة"
+
+msgid "No new orders"
+msgstr "لا توجد طلبات جديدة"
+
+msgid "No options yet"
+msgstr "لا توجد خيارات بعد"
+
+msgid "No orders found"
+msgstr "لم يتم العثور على طلبات"
+
+msgid "No orders ready yet"
+msgstr "لا توجد طلبات جاهزة بعد"
+
+msgid "No paid receipts yet"
+msgstr "لا توجد إيصالات مدفوعة بعد"
+
+msgid "No products found"
+msgstr "لم يتم العثور على منتجات"
+
+msgid "No products in this category"
+msgstr "لا توجد منتجات في هذه الفئة"
+
+msgid "No purchases recorded for this supplier yet"
+msgstr "لا توجد مشتريات مسجلة لهذا المورد بعد"
+
+msgid "No staff users yet"
+msgstr "لا يوجد مستخدمو موظفين بعد"
+
+msgid "No suppliers yet — add your first supplier above"
+msgstr "لا يوجد موردون بعد — أضف أول مورد أعلاه"
+
+msgid "No transfer invoices yet"
+msgstr "لا توجد فواتير تحويل بعد"
+
+msgid "Non-VAT"
+msgstr "غير خاضع للضريبة"
+
+msgid "None (optional)"
+msgstr "لا شيء (اختياري)"
+
+msgid "Not set"
+msgstr "غير محدد"
+
+msgid "Nothing in progress"
+msgstr "لا شيء قيد التنفيذ"
+
+msgid "Off"
+msgstr "إيقاف"
+
+msgid "On"
+msgstr "تشغيل"
+
+msgid "Open POS orders appear here for the kitchen to prepare."
+msgstr "تظهر هنا طلبات نقطة البيع المفتوحة ليُعدّها المطبخ."
+
+msgid "Option"
+msgstr "خيار"
+
+msgid "Option name is required"
+msgstr "اسم الخيار مطلوب"
+
+msgid "POS"
+msgstr "نقطة البيع"
+
+msgid "POS access (web & desktop)"
+msgstr "وصول نقطة البيع (ويب وسطح المكتب)"
+
+msgid "POS branches"
+msgstr "فروع نقطة البيع"
+
+msgid "POS receipts"
+msgstr "إيصالات نقطة البيع"
+
+msgid "POS station"
+msgstr "محطة نقطة البيع"
+
+msgid "POS:"
+msgstr "نقطة البيع:"
+
+msgid "Password is required"
+msgstr "كلمة المرور مطلوبة"
+
+msgid "Pay"
+msgstr "دفع"
+
+msgid "Payment"
+msgstr "الدفع"
+
+msgid "Payment cancelled"
+msgstr "تم إلغاء الدفع"
+
+msgid "Payment reversed for order"
+msgstr "تم عكس الدفع للطلب"
+
+msgid "Please select a branch"
+msgstr "يرجى اختيار فرع"
+
+msgid "Please select a role"
+msgstr "يرجى اختيار دور"
+
+msgid "Prepared at (POS)"
+msgstr "يُحضَّر في (نقطة البيع)"
+
+msgid "Preparing"
+msgstr "قيد التحضير"
+
+msgid "Price"
+msgstr "السعر"
+
+msgid "Printed:"
+msgstr "طُبع:"
+
+msgid "Product added"
+msgstr "تمت إضافة المنتج"
+
+msgid "Product deactivated (used in existing records)"
+msgstr "تم إلغاء تفعيل المنتج (مستخدم في سجلات موجودة)"
+
+msgid "Product deleted"
+msgstr "تم حذف المنتج"
+
+msgid "Product to edit"
+msgstr "المنتج للتعديل"
+
+msgid "Product updated"
+msgstr "تم تحديث المنتج"
+
+msgid "Products in the file will be created or updated. "
+msgstr "سيتم إنشاء أو تحديث المنتجات في الملف. "
+
+msgid "Products with recipes"
+msgstr "منتجات ذات وصفات"
+
+msgid "Products without a recipe"
+msgstr "منتجات بدون وصفة"
+
+msgid "Proforma"
+msgstr "شكلية"
+
+msgid "Proforma #"
+msgstr "بروفورما رقم"
+
+msgid "Purchase #"
+msgstr "شراء رقم"
+
+msgid "Purchase history"
+msgstr "سجل المشتريات"
+
+msgid "Purchase order"
+msgstr "أمر شراء"
+
+msgid "Qty required"
+msgstr "الكمية المطلوبة"
+
+msgid "Quantity must be greater than zero."
+msgstr "يجب أن تكون الكمية أكبر من صفر."
+
+msgid "Quantity updated."
+msgstr "تم تحديث الكمية."
+
+msgid "Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets."
+msgstr "المواد الخام حسب الفرع — مكونات المخبز في المخبز/المخازن المركزية؛ مكونات الفرع في المخازن والفروع."
+
+msgid "Ready for cashier"
+msgstr "جاهز للصندوق"
+
+msgid "Ready for pickup"
+msgstr "جاهز للاستلام"
+
+msgid "Receipt"
+msgstr "إيصال"
+
+msgid "Receipt code"
+msgstr "رمز الإيصال"
+
+msgid "Receipt code:"
+msgstr "رمز الإيصال:"
+
+msgid "Recipe"
+msgstr "وصفة"
+
+msgid "Recipe cost"
+msgstr "تكلفة الوصفة"
+
+msgid "Record expense"
+msgstr "تسجيل مصروف"
+
+msgid "Recorded by"
+msgstr "سجّله"
+
+msgid "Regular"
+msgstr "عادي"
+
+msgid "Remove"
+msgstr "إزالة"
+
+msgid "Remove this ingredient from the recipe?"
+msgstr "إزالة هذا المكون من الوصفة؟"
+
+msgid "Reverse payment for order"
+msgstr "عكس دفع الطلب"
+
+msgid "Role"
+msgstr "الدور"
+
+msgid "Save changes"
+msgstr "حفظ التغييرات"
+
+msgid "Save expense"
+msgstr "حفظ المصروف"
+
+msgid "Search by name or category…"
+msgstr "ابحث بالاسم أو الفئة…"
+
+msgid "Search categories…"
+msgstr "ابحث في الفئات…"
+
+msgid "Search description, supplier, branch, recorded by…"
+msgstr "ابحث في الوصف أو المورد أو الفرع أو المسجّل…"
+
+msgid "Search entity, type, actor…"
+msgstr "ابحث عن الكيان أو النوع أو الفاعل…"
+
+msgid "Search ingredients…"
+msgstr "ابحث في المكونات…"
+
+msgid "Search invoice #, branch…"
+msgstr "ابحث برقم الفاتورة أو الفرع…"
+
+msgid "Search order #, branch, receipt #, staff…"
+msgstr "ابحث برقم الطلب أو الفرع أو الإيصال أو الموظف…"
+
+msgid "Search products…"
+msgstr "ابحث في المنتجات…"
+
+msgid "Search receipt #, order #, branch…"
+msgstr "ابحث برقم الإيصال أو الطلب أو الفرع…"
+
+msgid "Search transfer invoice #, branch…"
+msgstr "ابحث برقم فاتورة التحويل أو الفرع…"
+
+msgid "Select a branch"
+msgstr "اختر فرعًا"
+
+msgid "Select a branch before downloading CSV"
+msgstr "اختر فرعًا قبل تنزيل CSV"
+
+msgid "Select a branch before setting opening stock"
+msgstr "اختر فرعًا قبل تعيين المخزون الافتتاحي"
+
+msgid "Select a branch before setting stock"
+msgstr "اختر فرعًا قبل تعيين المخزون"
+
+msgid "Select a branch before uploading CSV — remaining_qty is applied as stock at that branch"
+msgstr "اختر فرعًا قبل رفع CSV — تُطبَّق remaining_qty كمخزون في ذلك الفرع"
+
+msgid "Select a branch to view ingredient stock"
+msgstr "اختر فرعًا لعرض مخزون المكونات"
+
+msgid "Select a branch to view stock quantities. Products are listed below."
+msgstr "اختر فرعًا لعرض الكميات. المنتجات مدرجة أدناه."
+
+msgid "Select a product above to view or edit its recipe."
+msgstr "اختر منتجًا أعلاه لعرض أو تعديل وصفته."
+
+msgid "Select a product first."
+msgstr "اختر منتجًا أولاً."
+
+msgid "Select a product…"
+msgstr "اختر منتجًا…"
+
+msgid "Select at least one branch, or choose All branches"
+msgstr "اختر فرعًا واحدًا على الأقل، أو اختر جميع الفروع"
+
+msgid "Select branch…"
+msgstr "اختر فرعًا…"
+
+msgid "Select category…"
+msgstr "اختر فئة…"
+
+msgid "Select ingredient…"
+msgstr "اختر مكونًا…"
+
+msgid "Select payment currency (enter number):"
+msgstr "اختر عملة الدفع (أدخل رقمًا):"
+
+msgid "Selected only"
+msgstr "المحدد فقط"
+
+msgid "Selection"
+msgstr "الاختيار"
+
+msgid "Sell"
+msgstr "البيع"
+
+msgid "Selling price"
+msgstr "سعر البيع"
+
+msgid "Selling price updated."
+msgstr "تم تحديث سعر البيع."
+
+msgid "Set as base currency (order prices are in this currency)"
+msgstr "تعيين كعملة أساسية (أسعار الطلبات بهذه العملة)"
+
+msgid "Set exchange rates for each currency under Payment & Rates → Rates."
+msgstr "عيّن أسعار الصرف لكل عملة تحت الدفع والأسعار ← الأسعار."
+
+msgid "Show on POS"
+msgstr "إظهار في نقطة البيع"
+
+msgid "Showing"
+msgstr "عرض"
+
+msgid "Showing stock at"
+msgstr "عرض المخزون في"
+
+msgid "Since"
+msgstr "منذ"
+
+msgid "Split"
+msgstr "مقسّم"
+
+msgid "Staff"
+msgstr "موظفون"
+
+msgid "Staff (cost price)"
+msgstr "موظفون (سعر التكلفة)"
+
+msgid "Staff members"
+msgstr "أعضاء الموظفين"
+
+msgid "Start preparing"
+msgstr "بدء التحضير"
+
+msgid "Stock"
+msgstr "مخزون"
+
+msgid "Stock & status"
+msgstr "المخزون والحالة"
+
+msgid "Stock at"
+msgstr "المخزون في"
+
+msgid "Stock updated"
+msgstr "تم تحديث المخزون"
+
+msgid "Summary"
+msgstr "الملخص"
+
+msgid "Supplier added"
+msgstr "تمت إضافة المورد"
+
+msgid "Supplier updated"
+msgstr "تم تحديث المورد"
+
+msgid "Symbol"
+msgstr "الرمز"
+
+msgid "Tax"
+msgstr "الضريبة"
+
+msgid "Tax rate (%)"
+msgstr "معدل الضريبة (%)"
+
+msgid "Tax:"
+msgstr "الضريبة:"
+
+msgid "The order will be marked unpaid so it can be paid again."
+msgstr "سيُعلَّم الطلب كغير مدفوع ليُدفع مجددًا."
+
+msgid "Total purchases"
+msgstr "إجمالي المشتريات"
+
+msgid "Total spend"
+msgstr "إجمالي الإنفاق"
+
+msgid "Total spent"
+msgstr "إجمالي المصروف"
+
+msgid "Transfer invoice marked as paid"
+msgstr "تم تعليم فاتورة التحويل كمدفوعة"
+
+msgid "Transfer invoices"
+msgstr "فواتير التحويل"
+
+msgid "US Dollar"
+msgstr "دولار أمريكي"
+
+msgid "Until"
+msgstr "حتى"
+
+msgid "Update"
+msgstr "تحديث"
+
+msgid "Upload Excel"
+msgstr "رفع Excel"
+
+msgid "User"
+msgstr "مستخدم"
+
+msgid "VAT number"
+msgstr "الرقم الضريبي"
+
+msgid "View all add-on options"
+msgstr "عرض جميع خيارات الإضافات"
+
+msgid "Void"
+msgstr "إبطال"
+
+msgid "When"
+msgstr "متى"
+
+msgid "When enabled, POS sales can sync even if stock goes below zero. Transfers and production still require stock."
+msgstr "عند التفعيل، يمكن مزامنة مبيعات نقطة البيع حتى لو أصبح المخزون سالبًا. التحويلات والإنتاج ما زالا يتطلبان مخزونًا."
+
+msgid "Who"
+msgstr "من"
+
+msgid "ZIMRA device ID"
+msgstr "معرّف جهاز ZIMRA"
+
+msgid "active"
+msgstr "نشط"
+
+msgid "added"
+msgstr "أُضيف"
+
+msgid "bakery product"
+msgstr "منتج مخبز"
+
+msgid "base"
+msgstr "قاعدة"
+
+msgid "branches"
+msgstr "فروع"
+
+msgid "cancelled"
+msgstr "ملغى"
+
+msgid "created"
+msgstr "أُنشئ"
+
+msgid "deactivated"
+msgstr "أُلغي تفعيلها"
+
+msgid "e.g. 30541"
+msgstr "مثال: 30541"
+
+msgid "e.g. Add Extra Shot"
+msgstr "مثال: إضافة شوت إضافي"
+
+msgid "e.g. Coffee Extras"
+msgstr "مثال: إضافات القهوة"
+
+msgid "e.g. HIG, CHU"
+msgstr "مثال: HIG، CHU"
+
+msgid "e.g. Milk delivery, petty cash"
+msgstr "مثال: توصيل حليب، نثرية"
+
+msgid "fiscalized — fiscal receipt ready to print"
+msgstr "تم الاعتماد الضريبي — الإيصال الضريبي جاهز للطباعة"
+
+msgid "ingredient"
+msgstr "مكون"
+
+msgid "ingredient lines"
+msgstr "بنود مكونات"
+
+msgid "ingredients"
+msgstr "مكونات"
+
+msgid "is being prepared"
+msgstr "قيد التحضير"
+
+msgid "is ready"
+msgstr "جاهز"
+
+msgid "it is now unpaid"
+msgstr "أصبح الآن غير مدفوع"
+
+msgid "items only."
+msgstr "عناصر فقط."
+
+msgid "more — use search"
+msgstr "المزيد — استخدم البحث"
+
+msgid "no rate"
+msgstr "لا يوجد سعر"
+
+msgid "not found — run ingredient import or seed first"
+msgstr "غير موجود — شغّل أولاً استيراد المكونات أو التهيئة"
+
+msgid "optional"
+msgstr "اختياري"
+
+msgid "options"
+msgstr "خيارات"
+
+msgid "paid in"
+msgstr "مدفوع بـ"
+
+msgid "product"
+msgstr "منتج"
+
+msgid "products"
+msgstr "منتجات"
+
+msgid "row"
+msgstr "صف"
+
+msgid "updated"
+msgstr "حُدِّث"
+
+msgid "with recipes"
+msgstr "ذات وصفات"
+
+msgid "without recipes"
+msgstr "بدون وصفات"
+
+msgid "(optional)"
+msgstr "(اختياري)"
+
+msgid "Account balance"
+msgstr "رصيد الحساب"
+
+msgid "Action failed."
+msgstr "فشل الإجراء."
+
+msgid "Active count"
+msgstr "الجرد النشط"
+
+msgid "Active production"
+msgstr "الإنتاج النشط"
+
+msgid "Actual wastage/disposal"
+msgstr "هدر/تخلص فعلي"
+
+msgid "Add amounts to current stock"
+msgstr "إضافة إلى المخزون الحالي"
+
+msgid "Add at least one product"
+msgstr "أضف منتجاً واحداً على الأقل"
+
+msgid "Add at least one product line"
+msgstr "أضف بند منتج واحداً على الأقل"
+
+msgid "Add expense"
+msgstr "إضافة مصروف"
+
+msgid "Add line"
+msgstr "إضافة بند"
+
+msgid "Add qty"
+msgstr "كمية الإضافة"
+
+msgid "Add table"
+msgstr "إضافة طاولة"
+
+msgid "Add to cart"
+msgstr "أضف إلى السلة"
+
+msgid "Adjust balance"
+msgstr "تعديل الرصيد"
+
+msgid "Adjustment amount"
+msgstr "مبلغ التعديل"
+
+msgid "All purchases"
+msgstr "جميع المشتريات"
+
+msgid "All reasons"
+msgstr "جميع الأسباب"
+
+msgid "All statuses"
+msgstr "جميع الحالات"
+
+msgid "All transactions"
+msgstr "جميع المعاملات"
+
+msgid "Amount received"
+msgstr "المبلغ المستلم"
+
+msgid "Amount tendered"
+msgstr "المبلغ المقدم"
+
+msgid "Amt"
+msgstr "المبلغ"
+
+msgid "Apply adjustment"
+msgstr "تطبيق التعديل"
+
+msgid "Apply all filled"
+msgstr "تطبيق جميع المعبأة"
+
+msgid "Approved"
+msgstr "موافق عليه"
+
+msgid "Available"
+msgstr "المتاح"
+
+msgid "Awaiting receipt"
+msgstr "بانتظار الاستلام"
+
+msgid "Bakery destination"
+msgstr "وجهة المخبز"
+
+msgid "Bakery transfers"
+msgstr "تحويلات المخبز"
+
+msgid "Bakery → Stores & Branches"
+msgstr "المخبز → المخازن والفروع"
+
+msgid "Balance"
+msgstr "الرصيد"
+
+msgid "Balance adjustment"
+msgstr "تعديل الرصيد"
+
+msgid "Balance adjustment recorded"
+msgstr "تم تسجيل تعديل الرصيد"
+
+msgid "Bill To"
+msgstr "فاتورة إلى"
+
+msgid "Branch filter"
+msgstr "فلتر الفرع"
+
+msgid "Branch → Branch"
+msgstr "فرع → فرع"
+
+msgid "By payment method"
+msgstr "حسب طريقة الدفع"
+
+msgid "Cancel entire order"
+msgstr "إلغاء الطلب بالكامل"
+
+msgid "Cancel this draft wastage entry?"
+msgstr "إلغاء مسودة الهدر هذه؟"
+
+msgid "Cancel this production sheet? Entered quantities will be discarded."
+msgstr "إلغاء ورقة الإنتاج هذه؟ سيتم تجاهل الكميات المدخلة."
+
+msgid "Cancel this stock take? Counted quantities will be discarded."
+msgstr "إلغاء هذا الجرد؟ سيتم تجاهل الكميات المعدودة."
+
+msgid "Cannot transfer an inactive product."
+msgstr "لا يمكن تحويل منتج غير نشط."
+
+msgid "Cash"
+msgstr "نقداً"
+
+msgid "Cash-up reconciliation"
+msgstr "تسوية الصندوق"
+
+msgid "Central Bakery — Stock Distribution"
+msgstr "المخبز المركزي — توزيع المخزون"
+
+msgid "Central Stores — Inter-branch stock invoice"
+msgstr "المخزن المركزي — فاتورة مخزون بين الفروع"
+
+msgid "Central Stores — Stock Distribution"
+msgstr "المخزن المركزي — توزيع المخزون"
+
+msgid "Central Stores → Branches & Bakery"
+msgstr "المخزن المركزي → الفروع والمخبز"
+
+msgid "Central bakery"
+msgstr "المخبز المركزي"
+
+msgid "Central stores"
+msgstr "المخزن المركزي"
+
+msgid "Change"
+msgstr "الباقي"
+
+msgid "Choose an open takeaway order, or start a new one."
+msgstr "اختر طلباً سفرياً مفتوحاً، أو ابدأ طلباً جديداً."
+
+msgid "Choose table…"
+msgstr "اختر طاولة…"
+
+msgid "Choose the count type and start a count."
+msgstr "اختر نوع الجرد وابدأ."
+
+msgid "Clear Cart"
+msgstr "إفراغ السلة"
+
+msgid "Close day"
+msgstr "إغلاق اليوم"
+
+msgid "Closing balance"
+msgstr "الرصيد الختامي"
+
+msgid "Collect Payment"
+msgstr "تحصيل الدفع"
+
+msgid "Complete & post variances"
+msgstr "إكمال وترحيل الفروقات"
+
+msgid "Complete production"
+msgstr "إكمال الإنتاج"
+
+msgid "Complete this production sheet and add finished goods to bakery stock?"
+msgstr "إكمال ورقة الإنتاج وإضافة المنتجات النهائية إلى مخزون المخبز؟"
+
+msgid "Complete this stock take and post inventory variances?"
+msgstr "إكمال هذا الجرد وترحيل فروقات المخزون؟"
+
+msgid "Completed"
+msgstr "مكتمل"
+
+msgid "Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients)."
+msgstr "إكمال الورقة يضيف المنتجات النهائية إلى مخزون المخبز (ويخصم مكونات الوصفة)."
+
+msgid "Confirm receive"
+msgstr "تأكيد الاستلام"
+
+msgid "Count date"
+msgstr "تاريخ الجرد"
+
+msgid "Count saved."
+msgstr "تم حفظ الجرد."
+
+msgid "Count type"
+msgstr "نوع الجرد"
+
+msgid "Counted qty"
+msgstr "الكمية المعدودة"
+
+msgid "Create delivery note"
+msgstr "إنشاء إذن تسليم"
+
+msgid "Create invoice"
+msgstr "إنشاء فاتورة"
+
+msgid "Create transfer"
+msgstr "إنشاء تحويل"
+
+msgid "Created"
+msgstr "تم الإنشاء"
+
+msgid "Credit limit:"
+msgstr "حد الائتمان:"
+
+msgid "Credited"
+msgstr "دائن"
+
+msgid "Cumulative spend"
+msgstr "الإنفاق التراكمي"
+
+msgid "Currency code"
+msgstr "رمز العملة"
+
+msgid "Current Order"
+msgstr "الطلب الحالي"
+
+msgid "Current stock: 0"
+msgstr "المخزون الحالي: 0"
+
+msgid "Customer (optional)"
+msgstr "العميل (اختياري)"
+
+msgid "Customer account statement"
+msgstr "كشف حساب العميل"
+
+msgid "Customer account transactions"
+msgstr "معاملات حساب العميل"
+
+msgid "Customer payment"
+msgstr "دفع العميل"
+
+msgid "Customer statement"
+msgstr "كشف العميل"
+
+msgid "DINE IN"
+msgstr "تناول في المكان"
+
+msgid "Daily"
+msgstr "يومي"
+
+msgid "Damaged"
+msgstr "تالف"
+
+msgid "Damaged (return)"
+msgstr "تالف (إرجاع)"
+
+msgid "Damaged or short quantities are credited back to the sender. Variance auto-flags the note."
+msgstr "الكميات التالفة أو الناقصة تُقيد لصالح المُرسل. الفرق يعلّم الإذن تلقائياً."
+
+msgid "Day end"
+msgstr "نهاية اليوم"
+
+msgid "Day-end cash-up"
+msgstr "تسوية نهاية اليوم"
+
+msgid "Debited"
+msgstr "مدين"
+
+msgid "Delivered"
+msgstr "تم التسليم"
+
+msgid "Delivery Note"
+msgstr "إذن تسليم"
+
+msgid "Delivery instructions, PO reference, etc."
+msgstr "تعليمات التسليم، مرجع أمر الشراء، إلخ."
+
+msgid "Deposit recorded"
+msgstr "تم تسجيل الإيداع"
+
+msgid "Destination"
+msgstr "وجهة"
+
+msgid "Destination (branch, HQ, or bakery)"
+msgstr "الوجهة (فرع أو مقر أو مخبز)"
+
+msgid "Destination (stores or branch)"
+msgstr "الوجهة (مخزن أو فرع)"
+
+msgid "Device"
+msgstr "الجهاز"
+
+msgid "Device branch:"
+msgstr "فرع الجهاز:"
+
+msgid "Device serial:"
+msgstr "الرقم التسلسلي للجهاز:"
+
+msgid "Dine In"
+msgstr "تناول في المكان"
+
+msgid "Dispatched"
+msgstr "تم الإرسال"
+
+msgid "Dispatched by"
+msgstr "أرسل بواسطة"
+
+msgid "Dispatched by (Central Stores)"
+msgstr "أرسل بواسطة (المخزن المركزي)"
+
+msgid "Draft"
+msgstr "مسودة"
+
+msgid "Draft cancelled."
+msgstr "تم إلغاء المسودة."
+
+msgid "End of day summary"
+msgstr "ملخص نهاية اليوم"
+
+msgid "Enter a non-zero adjustment amount (e.g. -12.00)"
+msgstr "أدخل مبلغ تعديل غير صفري (مثل -12.00)"
+
+msgid "Enter a signed amount such as -12.00 to debit, or a positive amount to credit. This posts a Balance adjustment on the customer statement."
+msgstr "أدخل مبلغاً بإشارة مثل -12.00 للخصم، أو مبلغاً موجباً للإضافة. يسجّل ذلك تعديلاً للرصيد في كشف العميل."
+
+msgid "Enter a table name"
+msgstr "أدخل اسم الطاولة"
+
+msgid "Enter a valid amount"
+msgstr "أدخل مبلغاً صالحاً"
+
+msgid "Enter a valid line total"
+msgstr "أدخل إجمالي بند صالحاً"
+
+msgid "Enter a valid quantity"
+msgstr "أدخل كمية صالحة"
+
+msgid "Enter an amount"
+msgstr "أدخل مبلغاً"
+
+msgid "Enter at least one currency amount, or turn off split payment"
+msgstr "أدخل مبلغ عملة واحداً على الأقل، أو أوقف الدفع المقسّم"
+
+msgid "Enter counted amounts per currency. Leave blank for currencies you have not counted."
+msgstr "أدخل المبالغ المعدودة لكل عملة. اترك فارغاً للعملات التي لم تُعدّ."
+
+msgid "Enter quantities produced for each destination — Highlands, Churchill, and Central stores."
+msgstr "أدخل الكميات المنتجة لكل وجهة — هايلاندز وتشرشل والمخزن المركزي."
+
+msgid "Enter the physical quantity for every item. System quantities remain hidden while counting."
+msgstr "أدخل الكمية الفعلية لكل صنف. تبقى كميات النظام مخفية أثناء الجرد."
+
+msgid "Exchange rate"
+msgstr "سعر الصرف"
+
+msgid "External customer"
+msgstr "عميل خارجي"
+
+msgid "Failed to initialize wastage page."
+msgstr "فشل تهيئة صفحة الهدر."
+
+msgid "Failed to record wastage."
+msgstr "فشل تسجيل الهدر."
+
+msgid "Fill in branch, product, quantity, and reason."
+msgstr "املأ الفرع والمنتج والكمية والسبب."
+
+msgid "Filter by name or phone…"
+msgstr "تصفية بالاسم أو الهاتف…"
+
+msgid "Fiscal Information"
+msgstr "معلومات ضريبية"
+
+msgid "Fiscal QR code"
+msgstr "رمز QR ضريبي"
+
+msgid "Fiscal day"
+msgstr "اليوم الضريبي"
+
+msgid "Fiscal day #"
+msgstr "رقم اليوم الضريبي"
+
+msgid "Fiscal day opened"
+msgstr "تم فتح اليوم الضريبي"
+
+msgid "Fiscal day:"
+msgstr "اليوم الضريبي:"
+
+msgid "Fiscal invoice:"
+msgstr "الفاتورة الضريبية:"
+
+msgid "Fiscal receipt"
+msgstr "إيصال ضريبي"
+
+msgid "Fiscal receipt No."
+msgstr "رقم الإيصال الضريبي"
+
+msgid "Flag this dnote for follow-up"
+msgstr "تعليم إذن التسليم للمتابعة"
+
+msgid "Flagged"
+msgstr "معلَّم"
+
+msgid "Flagged for follow-up"
+msgstr "معلَّم للمتابعة"
+
+msgid "From (Supplier)"
+msgstr "من (المورد)"
+
+msgid "From branch"
+msgstr "من الفرع"
+
+msgid "Goods Received Voucher"
+msgstr "سند استلام البضائع"
+
+msgid "ID"
+msgstr "بطاقة تعريف"
+
+msgid "In progress"
+msgstr "قيد التنفيذ"
+
+msgid "Incoming"
+msgstr "الواردة"
+
+msgid "Ingredient already added — remove it first to change quantity"
+msgstr "المكون مضاف مسبقاً — أزله أولاً لتغيير الكمية"
+
+msgid "Ingredient type"
+msgstr "نوع المكون"
+
+msgid "Inv:"
+msgstr "فاتورة:"
+
+msgid "Invoice"
+msgstr "فاتورة"
+
+msgid "Invoice / reference"
+msgstr "فاتورة / مرجع"
+
+msgid "Invoice No."
+msgstr "رقم الفاتورة"
+
+msgid "Invoice total"
+msgstr "إجمالي الفاتورة"
+
+msgid "Issued by (Central Stores)"
+msgstr "صادر عن (المخزن المركزي)"
+
+msgid "Item removed"
+msgstr "تمت إزالة العنصر"
+
+msgid "Item type"
+msgstr "نوع الصنف"
+
+msgid "Items sold"
+msgstr "العناصر المباعة"
+
+msgid "Last receipt global #"
+msgstr "آخر رقم إيصال عام"
+
+msgid "Less expenses"
+msgstr "ناقص المصروفات"
+
+msgid "Line items"
+msgstr "بنود"
+
+msgid "Line notes"
+msgstr "ملاحظات البند"
+
+msgid "Lines"
+msgstr "البنود"
+
+msgid "Manage tables"
+msgstr "إدارة الطاولات"
+
+msgid "Menu items sold at the till — same products as on POS."
+msgstr "أصناف القائمة المباعة عند الصندوق — نفس منتجات نقطة البيع."
+
+msgid "Mode"
+msgstr "وضع"
+
+msgid "Monthly"
+msgstr "شهري"
+
+msgid "Net expected in till"
+msgstr "الصافي المتوقع في الصندوق"
+
+msgid "New balance"
+msgstr "الرصيد الجديد"
+
+msgid "New branch transfer"
+msgstr "تحويل فرع جديد"
+
+msgid "New central invoice"
+msgstr "فاتورة مركزية جديدة"
+
+msgid "New delivery note"
+msgstr "إذن تسليم جديد"
+
+msgid "New delivery note & invoice"
+msgstr "إذن تسليم وفاتورة جديدان"
+
+msgid "New production sheet"
+msgstr "ورقة إنتاج جديدة"
+
+msgid "New table name (e.g. T12)"
+msgstr "اسم الطاولة (مثل T12)"
+
+msgid "No bakery branch configured."
+msgstr "لا يوجد فرع مخبز مُعدّ."
+
+msgid "No branch assigned for recording deposits"
+msgstr "لا يوجد فرع مخصص لتسجيل الإيداعات"
+
+msgid "No branch assigned — stock adjustments unavailable."
+msgstr "لا يوجد فرع مخصص — تعديلات المخزون غير متاحة."
+
+msgid "No items for this type"
+msgstr "لا توجد عناصر لهذا النوع"
+
+msgid "No items sold"
+msgstr "لا توجد عناصر مباعة"
+
+msgid "No line items"
+msgstr "لا توجد بنود"
+
+msgid "No matching items"
+msgstr "لا توجد عناصر مطابقة"
+
+msgid "No matching wastage entries"
+msgstr "لا توجد سجلات هدر مطابقة"
+
+msgid "No open orders"
+msgstr "لا توجد طلبات مفتوحة"
+
+msgid "No purchases"
+msgstr "لا توجد مشتريات"
+
+msgid "No sales recorded for this day."
+msgstr "لا توجد مبيعات مسجلة لهذا اليوم."
+
+msgid "No transactions"
+msgstr "لا توجد معاملات"
+
+msgid "No wastage entries in this period"
+msgstr "لا توجد سجلات هدر في هذه الفترة"
+
+msgid "Not a fiscal receipt — pending approval"
+msgstr "ليس إيصالاً ضريبياً — بانتظار الموافقة"
+
+msgid "Not approved"
+msgstr "غير موافق عليه"
+
+msgid "Note"
+msgstr "ملحوظة"
+
+msgid "Note:"
+msgstr "ملاحظة:"
+
+msgid "Notes:"
+msgstr "ملاحظات:"
+
+msgid "On fiscal branches, count only one currency code (USD or ZWG) — do not mix them."
+msgstr "في الفروع الضريبية، عُدّ رمز عملة واحداً فقط (USD أو ZWG) — لا تخلط بينهما."
+
+msgid "Open and unpaid · select to collect payment or cancel"
+msgstr "مفتوحة وغير مدفوعة · اختر للتحصيل أو الإلغاء"
+
+msgid "Open day"
+msgstr "فتح اليوم"
+
+msgid "Open orders"
+msgstr "الطلبات المفتوحة"
+
+msgid "Open the fiscal day before approving receipts. Close it at end of trading."
+msgstr "افتح اليوم الضريبي قبل اعتماد الإيصالات. أغلقه في نهاية العمل."
+
+msgid "Opening balance"
+msgstr "الرصيد الافتتاحي"
+
+msgid "Optional notes for bakery / stores"
+msgstr "ملاحظات اختيارية للمخبز / المخزن"
+
+msgid "Order Type"
+msgstr "نوع الطلب"
+
+msgid "Order actions"
+msgstr "إجراءات الطلب"
+
+msgid "Order notes"
+msgstr "ملاحظات الطلب"
+
+msgid "Order ticket"
+msgstr "تذكرة الطلب"
+
+msgid "PAID"
+msgstr "مدفوع"
+
+msgid "PO #"
+msgstr "أمر شراء #"
+
+msgid "POS mode"
+msgstr "وضع نقطة البيع"
+
+msgid "POS products"
+msgstr "منتجات نقطة البيع"
+
+msgid "PROFORMA"
+msgstr "بروفورما"
+
+msgid "PROFORMA — NOT FISCAL"
+msgstr "أولية — غير ضريبية"
+
+msgid "Paid in"
+msgstr "مدفوع بـ"
+
+msgid "Paid on"
+msgstr "دُفع في"
+
+msgid "Payment currency"
+msgstr "عملة الدفع"
+
+msgid "Payment method"
+msgstr "طريقة الدفع"
+
+msgid "Payment options"
+msgstr "خيارات الدفع"
+
+msgid "Payment status"
+msgstr "حالة الدفع"
+
+msgid "Payments collected"
+msgstr "المدفوعات المحصّلة"
+
+msgid "Payments received"
+msgstr "المدفوعات المستلمة"
+
+msgid "Place Order"
+msgstr "تأكيد الطلب"
+
+msgid "Please retain for your records."
+msgstr "يُرجى الاحتفاظ به لسجلاتك."
+
+msgid "Please select a payment currency"
+msgstr "يرجى اختيار عملة الدفع"
+
+msgid "Present this ticket when paying."
+msgstr "قدّم هذه التذكرة عند الدفع."
+
+msgid "Previous balance"
+msgstr "الرصيد السابق"
+
+msgid "Priced at cost"
+msgstr "مسعّر بالتكلفة"
+
+msgid "Print 80mm"
+msgstr "طباعة 80 مم"
+
+msgid "Print A4"
+msgstr "طباعة A4"
+
+msgid "Print cash-up"
+msgstr "طباعة تسوية الصندوق"
+
+msgid "Print central invoice"
+msgstr "طباعة الفاتورة المركزية"
+
+msgid "Print delivery note"
+msgstr "طباعة إذن التسليم"
+
+msgid "Print invoice"
+msgstr "طباعة الفاتورة"
+
+msgid "Print order ticket"
+msgstr "طباعة تذكرة الطلب"
+
+msgid "Print proforma"
+msgstr "طباعة الأولية"
+
+msgid "Print receipt"
+msgstr "طباعة الإيصال"
+
+msgid "Print report"
+msgstr "طباعة التقرير"
+
+msgid "Print statement"
+msgstr "طباعة الكشف"
+
+msgid "Print transfer invoice"
+msgstr "طباعة فاتورة التحويل"
+
+msgid "Printed"
+msgstr "طُبع"
+
+msgid "Process this wastage entry and subtract from stock?"
+msgstr "معالجة سجل الهدر هذا وخصمه من المخزون؟"
+
+msgid "Processed"
+msgstr "مُعالَج"
+
+msgid "Processing subtracts quantity from the source branch and, for bakery reuse, credits the bakery."
+msgstr "المعالجة تخصم الكمية من الفرع المصدر، ولإعادة استخدام المخبز تُقيد المخبز."
+
+msgid "Produced"
+msgstr "مُنتَج"
+
+msgid "Product already added"
+msgstr "المنتج مضاف مسبقاً"
+
+msgid "Product already added — remove it first to change quantity"
+msgstr "المنتج مضاف مسبقاً — أزله أولاً لتغيير الكمية"
+
+msgid "Production completed."
+msgstr "اكتمل الإنتاج."
+
+msgid "Production date"
+msgstr "تاريخ الإنتاج"
+
+msgid "Production saved."
+msgstr "تم حفظ الإنتاج."
+
+msgid "Production sheet cancelled."
+msgstr "تم إلغاء ورقة الإنتاج."
+
+msgid "Production sheet started."
+msgstr "بدأت ورقة الإنتاج."
+
+msgid "Proforma Invoice"
+msgstr "فاتورة أولية"
+
+msgid "Proforma No."
+msgstr "رقم الأولية"
+
+msgid "Proforma Receipt"
+msgstr "إيصال أولي"
+
+msgid "Purchase for"
+msgstr "شراء لـ"
+
+msgid "Put rest on base"
+msgstr "ضع الباقي على العملة الأساسية"
+
+msgid "Quantity for"
+msgstr "الكمية لـ"
+
+msgid "Quickly add or set stock for bakery goods, shop items, or ingredients at a branch."
+msgstr "أضف أو عيّن المخزون بسرعة لمنتجات المخبز أو المتجر أو المكونات في فرع."
+
+msgid "Raw materials"
+msgstr "مواد خام"
+
+msgid "Reason"
+msgstr "السبب"
+
+msgid "Receive GRV"
+msgstr "استلام سند الاستلام"
+
+msgid "Received"
+msgstr "مستلم"
+
+msgid "Received (good)"
+msgstr "مستلم (سليم)"
+
+msgid "Received by"
+msgstr "استلمه"
+
+msgid "Received by (Branch)"
+msgstr "استلمه (الفرع)"
+
+msgid "Received by (Customer)"
+msgstr "استلمه (العميل)"
+
+msgid "Received in"
+msgstr "مستلم بـ"
+
+msgid "Record & process"
+msgstr "تسجيل ومعالجة"
+
+msgid "Record a supplier purchase for any branch. Stock is added immediately when you save."
+msgstr "سجّل شراء مورّد لأي فرع. يُضاف المخزون فوراً عند الحفظ."
+
+msgid "Record customer payment"
+msgstr "تسجيل دفع عميل"
+
+msgid "Record deposit"
+msgstr "تسجيل إيداع"
+
+msgid "Record items leaving sellable stock for bakery reuse, kitchen use, or disposal."
+msgstr "سجّل الأصناف الخارجة من المخزون القابل للبيع لإعادة استخدام المخبز أو المطبخ أو التخلص."
+
+msgid "Record payment"
+msgstr "تسجيل الدفع"
+
+msgid "Record production"
+msgstr "تسجيل الإنتاج"
+
+msgid "Record purchase"
+msgstr "تسجيل الشراء"
+
+msgid "Record wastage"
+msgstr "تسجيل الهدر"
+
+msgid "Refresh"
+msgstr "تحديث"
+
+msgid "Remarks"
+msgstr "ملاحظات"
+
+msgid "Remove one unit from this line?"
+msgstr "إزالة وحدة واحدة من هذا البند؟"
+
+msgid "Rename or remove tables. Changes apply to this branch only."
+msgstr "أعد تسمية الطاولات أو احذفها. التغييرات تنطبق على هذا الفرع فقط."
+
+msgid "Report date"
+msgstr "تاريخ التقرير"
+
+msgid "Requested"
+msgstr "مطلوب"
+
+msgid "Sale Details"
+msgstr "تفاصيل البيع"
+
+msgid "Sales Receipt"
+msgstr "إيصال مبيعات"
+
+msgid "Save progress"
+msgstr "حفظ التقدم"
+
+msgid "Search items…"
+msgstr "بحث عن أصناف…"
+
+msgid "Search product, branch, reason, notes…"
+msgstr "بحث عن منتج أو فرع أو سبب أو ملاحظات…"
+
+msgid "Select a branch first"
+msgstr "اختر فرعاً أولاً"
+
+msgid "Select a branch first."
+msgstr "اختر فرعاً أولاً."
+
+msgid "Select a branch to adjust stock."
+msgstr "اختر فرعاً لتعديل المخزون."
+
+msgid "Select a branch to view items"
+msgstr "اختر فرعاً لعرض الأصناف"
+
+msgid "Select a count date."
+msgstr "اختر تاريخ الجرد."
+
+msgid "Select a currency"
+msgstr "اختر عملة"
+
+msgid "Select a customer"
+msgstr "اختر عميلاً"
+
+msgid "Select a customer to pay from account"
+msgstr "اختر عميلاً للدفع من الحساب"
+
+msgid "Select a customer to view their account or record a deposit."
+msgstr "اختر عميلاً لعرض حسابه أو تسجيل إيداع."
+
+msgid "Select a destination branch"
+msgstr "اختر فرع الوجهة"
+
+msgid "Select a fiscal branch first"
+msgstr "اختر فرعاً ضريبياً أولاً"
+
+msgid "Select a product first"
+msgstr "اختر منتجاً أولاً"
+
+msgid "Select a production date."
+msgstr "اختر تاريخ الإنتاج."
+
+msgid "Select an ingredient first"
+msgstr "اختر مكوناً أولاً"
+
+msgid "Select at least one item to transfer"
+msgstr "اختر عنصراً واحداً على الأقل للتحويل"
+
+msgid "Select bakery…"
+msgstr "اختر مخبزاً…"
+
+msgid "Select central stores or a branch as the destination"
+msgstr "اختر المخزن المركزي أو فرعاً كوجهة"
+
+msgid "Select customer…"
+msgstr "اختر عميلاً…"
+
+msgid "Select destination…"
+msgstr "اختر الوجهة…"
+
+msgid "Select product…"
+msgstr "اختر منتجاً…"
+
+msgid "Select supplier…"
+msgstr "اختر مورّداً…"
+
+msgid "Select table"
+msgstr "اختر طاولة"
+
+msgid "Select the bakery destination for reuse transfers."
+msgstr "اختر مخبز الوجهة لتحويلات إعادة الاستخدام."
+
+msgid "Sell or transfer bakery products from central stores to external customers. Stock is deducted when the invoice is created."
+msgstr "بِع أو حوّل منتجات المخبز من المخزن المركزي إلى عملاء خارجيين. يُخصم المخزون عند إنشاء الفاتورة."
+
+msgid "Sent"
+msgstr "مُرسَل"
+
+msgid "Served by"
+msgstr "قدّمه"
+
+msgid "Set"
+msgstr "تعيين"
+
+msgid "Set qty"
+msgstr "تعيين الكمية"
+
+msgid "Set stock to an absolute quantity"
+msgstr "تعيين المخزون إلى كمية مطلقة"
+
+msgid "Shop"
+msgstr "المتجر"
+
+msgid "Special instructions for kitchen…"
+msgstr "تعليمات خاصة للمطبخ…"
+
+msgid "Spend before period"
+msgstr "الإنفاق قبل الفترة"
+
+msgid "Split across payment currencies"
+msgstr "تقسيم على عملات دفع متعددة"
+
+msgid "Start count"
+msgstr "بدء الجرد"
+
+msgid "Start daily count"
+msgstr "بدء الجرد اليومي"
+
+msgid "Start monthly count"
+msgstr "بدء الجرد الشهري"
+
+msgid "Start stock take"
+msgstr "بدء الجرد"
+
+msgid "Stock Transfers"
+msgstr "تحويلات المخزون"
+
+msgid "Stock added"
+msgstr "تمت إضافة المخزون"
+
+msgid "Stock mode"
+msgstr "وضع المخزون"
+
+msgid "Stock set"
+msgstr "تم تعيين المخزون"
+
+msgid "Stock take"
+msgstr "الجرد"
+
+msgid "Stock take cancelled."
+msgstr "تم إلغاء الجرد."
+
+msgid "Stock take completed."
+msgstr "اكتمل الجرد."
+
+msgid "Subtotal"
+msgstr "المجموع الفرعي"
+
+msgid "Supplier invoice or delivery note number"
+msgstr "رقم فاتورة المورد أو إذن التسليم"
+
+msgid "Supplier purchase statement"
+msgstr "كشف مشتريات المورد"
+
+msgid "Supplier statement"
+msgstr "كشف المورد"
+
+msgid "TAKEAWAY"
+msgstr "سفري"
+
+msgid "Table added"
+msgstr "تمت إضافة الطاولة"
+
+msgid "Table name is required"
+msgstr "اسم الطاولة مطلوب"
+
+msgid "Table removed"
+msgstr "تمت إزالة الطاولة"
+
+msgid "Table updated"
+msgstr "تم تحديث الطاولة"
+
+msgid "Takeaway"
+msgstr "سفري"
+
+msgid "Tap a table to select it. Highlighted tables have open dine-in orders."
+msgstr "انقر طاولة لاختيارها. الطاولات المميزة لديها طلبات تناول مفتوحة."
+
+msgid "Tap products to add items"
+msgstr "انقر المنتجات لإضافة عناصر"
+
+msgid "Tax Invoice"
+msgstr "فاتورة ضريبية"
+
+msgid "Thank you for your business."
+msgstr "شكراً لتعاملكم معنا."
+
+msgid "Thank you for your visit!"
+msgstr "شكراً لزيارتكم!"
+
+msgid "This ingredient has no unit cost configured"
+msgstr "هذا المكون بلا تكلفة وحدة مُعدّة"
+
+msgid "This order cannot be cancelled"
+msgstr "لا يمكن إلغاء هذا الطلب"
+
+msgid "This order type cannot transfer items"
+msgstr "نوع الطلب هذا لا يدعم تحويل العناصر"
+
+msgid "To (Customer branch)"
+msgstr "إلى (فرع العميل)"
+
+msgid "To (Customer)"
+msgstr "إلى (العميل)"
+
+msgid "To branch"
+msgstr "إلى الفرع"
+
+msgid "Total qty"
+msgstr "إجمالي الكمية"
+
+msgid "Total quantity"
+msgstr "الكمية الإجمالية"
+
+msgid "Transaction history"
+msgstr "سجل المعاملات"
+
+msgid "Transfer Invoice"
+msgstr "فاتورة تحويل"
+
+msgid "Transfer to order"
+msgstr "تحويل إلى طلب"
+
+msgid "Transfer to table"
+msgstr "تحويل إلى طاولة"
+
+msgid "Transfer to table…"
+msgstr "تحويل إلى طاولة…"
+
+msgid "Transferred for bakery reuse"
+msgstr "محوّل لإعادة استخدام المخبز"
+
+msgid "Transferred to the kitchen"
+msgstr "محوّل إلى المطبخ"
+
+msgid "UNPAID"
+msgstr "غير مدفوع"
+
+msgid "Updated"
+msgstr "محدَّث"
+
+msgid "Variances"
+msgstr "الفروقات"
+
+msgid "Verification"
+msgstr "التحقق"
+
+msgid "Verification:"
+msgstr "التحقق:"
+
+msgid "Walk-in"
+msgstr "عميل عابر"
+
+msgid "Walk-in (no account)"
+msgstr "عميل عابر (بلا حساب)"
+
+msgid "Walk-in customer"
+msgstr "عميل عابر"
+
+msgid "Wastage processed; stock updated."
+msgstr "تمت معالجة الهدر؛ تم تحديث المخزون."
+
+msgid "Wastage recorded and stock updated."
+msgstr "تم تسجيل الهدر وتحديث المخزون."
+
+msgid "Wastage saved as draft."
+msgstr "تم حفظ الهدر كمسودة."
+
+msgid "Withdrawals"
+msgstr "السحوبات"
+
+msgid "at"
+msgstr "في"
+
+msgid "bakery goods"
+msgstr "منتجات المخبز"
+
+msgid "e.g. Cash top-up"
+msgstr "مثال: شحن نقدي"
+
+msgid "e.g. Correction"
+msgstr "مثال: تصحيح"
+
+msgid "e.g. end-of-day leftovers, damaged packaging"
+msgstr "مثال: بقايا نهاية اليوم، تغليف تالف"
+
+msgid "each"
+msgstr "للواحد"
+
+msgid "expected"
+msgstr "متوقع"
+
+msgid "failed"
+msgstr "فشل"
+
+msgid "for"
+msgstr "لـ"
+
+msgid "ingredients plus fixed assets."
+msgstr "المكونات والأصول الثابتة."
+
+msgid "item"
+msgstr "عنصر"
+
+msgid "items"
+msgstr "عناصر"
+
+msgid "products marked for daily count (shop stock and branch ingredients)."
+msgstr "منتجات مخصصة للجرد اليومي (مخزون المتجر ومكونات الفرع)."
+
+msgid "qty"
+msgstr "الكمية"
+
+msgid "shop items"
+msgstr "أصناف المتجر"
+
+msgid "updates failed"
+msgstr "فشل التحديث"
+
+msgid "Fiscal receipts issued after proforma approval"
+msgstr "إيصالات ضريبية صادرة بعد اعتماد العرض"
+
+msgid "Search fiscal receipt #, proforma #, order…"
+msgstr "بحث رقم الإيصال الضريبي، رقم العرض، الطلب…"
+
+msgid "Fiscal receipt #"
+msgstr "رقم الإيصال الضريبي"
+
+msgid "Fiscalized"
+msgstr "مُضبَّب"
+
+msgid "No matching fiscal receipts"
+msgstr "لا توجد إيصالات ضريبية مطابقة"
+
+msgid "No fiscal receipts yet"
+msgstr "لا توجد إيصالات ضريبية بعد"
+
+msgid "Failed to load receipts:"
+msgstr "فشل تحميل الإيصالات:"
+
+msgid "Currency Rates"
+msgstr "أسعار العملات"
+
+msgid "Add exchange rate"
+msgstr "إضافة سعر صرف"
+
+msgid "Select currency…"
+msgstr "اختر عملة…"
+
+msgid "Rate (per 1 base unit)"
+msgstr "السعر (لكل وحدة أساسية)"
+
+msgid "Effective from"
+msgstr "ساري من"
+
+msgid "How many units of the selected currency equal 1 unit of the base currency."
+msgstr "كم وحدة من العملة المحددة تساوي وحدة واحدة من العملة الأساسية."
+
+msgid "Add rate"
+msgstr "إضافة السعر"
+
+msgid "Exchange rates"
+msgstr "أسعار الصرف"
+
+msgid "Rates used when customers pay in each currency at the receipt."
+msgstr "الأسعار المستخدمة عند دفع العملاء بكل عملة عند الإيصال."
+
+msgid "No exchange rates yet"
+msgstr "لا توجد أسعار صرف بعد"
+
+msgid "Rate"
+msgstr "السعر"
+
+msgid "Please select a currency"
+msgstr "يرجى اختيار عملة"
+
+msgid "Exchange rate added"
+msgstr "تمت إضافة سعر الصرف"
+
+msgid "Failed to load rates:"
+msgstr "فشل تحميل الأسعار:"
+
+msgid "Remaining: —"
+msgstr "المتبقي: —"
+
+msgid "Choose any table, including ones already in use. The current table is disabled."
+msgstr "اختر أي طاولة، بما في ذلك المستخدمة. الطاولة الحالية معطّلة."
+
+msgid "Select for transfer"
+msgstr "تحديد للتحويل"
+
+msgid "Remove one unit"
+msgstr "إزالة وحدة"
+
+msgid "Remove 1"
+msgstr "إزالة 1"
+
+msgid "Leave blank to skip"
+msgstr "اتركه فارغاً للتخطي"
+
+msgid "Stock leaves the sending branch when you dispatch."
+msgstr "يغادر المخزون الفرع المرسل عند الإرسال."
+
+msgid "Creating…"
+msgstr "جارٍ الإنشاء…"
+
+msgid "Optional"
+msgstr "اختياري"
+
+msgid "Credit limit: —"
+msgstr "حد الائتمان: —"
+
+msgid "New balance: —"
+msgstr "الرصيد الجديد: —"
+
+msgid "available at source · deducted on dispatch"
+msgstr "متاح في المصدر · يُخصم عند الإرسال"

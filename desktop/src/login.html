@@ -18,11 +18,15 @@
     <form id="login-form" class="login-form">
       <div class="form-group">
         <label for="username">Username</label>
-        <input type="text" id="username" autocomplete="username" required>
+        <input type="text" id="username" autocomplete="username">
       </div>
       <div class="form-group">
         <label for="password">Password</label>
-        <input type="password" id="password" autocomplete="current-password" required>
+        <input type="password" id="password" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label for="access_code">Or 4-digit access code</label>
+        <input type="text" id="access_code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" placeholder="••••">
       </div>
       <button type="submit" class="btn btn-primary" style="width: 100%;">Sign in</button>
     </form>
@@ -34,14 +38,25 @@
 
     const form = document.getElementById("login-form");
     const errorBox = document.getElementById("login-error");
+    let loginInFlight = false;
 
     (async () => {
       const session = await window.pos.getSession();
       if (session?.token) window.location.href = "index.html";
     })();
 
+    const accessCodeInput = document.getElementById("access_code");
+    accessCodeInput.addEventListener("input", () => {
+      accessCodeInput.value = accessCodeInput.value.replace(/\D/g, "").slice(0, 4);
+      if (accessCodeInput.value.length === 4 && !loginInFlight) {
+        form.requestSubmit();
+      }
+    });
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (loginInFlight) return;
+      loginInFlight = true;
       errorBox.hidden = true;
       const submitBtn = form.querySelector("button[type=submit]");
       submitBtn.disabled = true;
@@ -50,7 +65,14 @@
         const { serverUrl } = await window.pos.getConfig();
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value;
-        const result = await desktopLogin(serverUrl, username, password);
+        const accessCode = accessCodeInput.value.trim();
+        if (!accessCode && (!username || !password)) {
+          throw new Error("Enter username and password, or a 4-digit access code.");
+        }
+        if (accessCode && !/^\d{4}$/.test(accessCode)) {
+          throw new Error("Access code must be exactly 4 digits.");
+        }
+        const result = await desktopLogin(serverUrl, username, password, accessCode);
 
         await window.pos.saveSession({
           token: result.token,
@@ -67,6 +89,7 @@
         errorBox.hidden = false;
         showToast(err.message, true);
       } finally {
+        loginInFlight = false;
         submitBtn.disabled = false;
       }
     });

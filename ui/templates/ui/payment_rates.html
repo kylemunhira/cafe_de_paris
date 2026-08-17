@@ -1,43 +1,43 @@
 {% extends "ui/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Currency Rates — Café de Paris{% endblock %}
-{% block page_title %}Currency Rates{% endblock %}
+{% block title %}{% trans "Currency Rates" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Currency Rates" %}{% endblock %}
 
 {% block content %}
 <div class="card user-form-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1rem;">Add exchange rate</h3>
+  <h3 style="margin: 0 0 1rem; font-size: 1rem;">{% trans "Add exchange rate" %}</h3>
   <form id="rate-form">
     <div class="form-group">
-      <label for="rate-currency">Currency</label>
+      <label for="rate-currency">{% trans "Currency" %}</label>
       <select id="rate-currency" name="currency" required>
-        <option value="">Select currency…</option>
+        <option value="">{% trans "Select currency…" %}</option>
       </select>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label for="rate-value">Rate (per 1 base unit)</label>
+        <label for="rate-value">{% trans "Rate (per 1 base unit)" %}</label>
         <input type="number" id="rate-value" name="rate" required min="0.000001" step="0.000001" placeholder="25.50">
       </div>
       <div class="form-group">
-        <label for="rate-date">Effective from</label>
+        <label for="rate-date">{% trans "Effective from" %}</label>
         <input type="date" id="rate-date" name="effective_from" required>
       </div>
     </div>
     <p style="margin: 0 0 1rem; font-size: 0.8rem; color: var(--color-muted);">
-      How many units of the selected currency equal 1 unit of the base currency.
+      {% trans "How many units of the selected currency equal 1 unit of the base currency." %}
     </p>
     <div style="display: flex; justify-content: flex-end;">
-      <button type="submit" class="btn btn-primary" id="submit-btn">Add rate</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">{% trans "Add rate" %}</button>
     </div>
   </form>
 </div>
 
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
-    <h3 style="margin: 0; font-size: 1rem;">Exchange rates</h3>
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Exchange rates" %}</h3>
     <p style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-muted);">
-      Rates used when customers pay in each currency at the receipt.
+      {% trans "Rates used when customers pay in each currency at the receipt." %}
     </p>
   </div>
   <div class="table-wrap" id="rates-table">
@@ -50,6 +50,8 @@
 <script type="module">
 import { apiGet, apiPost, unwrapList, formatDate, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
 
 const rateForm = document.getElementById("rate-form");
 const submitBtn = document.getElementById("submit-btn");
@@ -79,7 +81,7 @@ function formatRate(value) {
 function renderRates(rates) {
   allRates = rates;
   if (!allRates.length) {
-    ratesTable.innerHTML = `<div class="empty-state"><p>No exchange rates yet</p></div>`;
+    ratesTable.innerHTML = `<div class="empty-state"><p>${t("No exchange rates yet")}</p></div>`;
     return;
   }
 
@@ -89,11 +91,11 @@ function renderRates(rates) {
     <table class="data-table">
       <thead>
         <tr>
-          ${sortTh("Currency", "currency_name", sortState)}
-          ${sortTh("Rate", "rate", sortState)}
-          ${sortTh("Effective from", "effective_from", sortState)}
-          ${sortTh("Status", "is_active", sortState)}
-          ${sortTh("Added", "created_at", sortState)}
+          ${sortTh(t("Currency"), "currency_name", sortState)}
+          ${sortTh(t("Rate"), "rate", sortState)}
+          ${sortTh(t("Effective from"), "effective_from", sortState)}
+          ${sortTh(t("Status"), "is_active", sortState)}
+          ${sortTh(t("Added"), "created_at", sortState)}
         </tr>
       </thead>
       <tbody>
@@ -104,7 +106,7 @@ function renderRates(rates) {
             <td>${r.effective_from}</td>
             <td>
               <span class="badge ${r.is_active ? "badge-active" : "badge-inactive"}">
-                ${r.is_active ? "Active" : "Inactive"}
+                ${r.is_active ? t("Active") : t("Inactive")}
               </span>
             </td>
             <td>${formatDate(r.created_at)}</td>
@@ -118,7 +120,7 @@ function renderRates(rates) {
 function populateCurrencySelect(currencies) {
   const options = currencies.filter(c => c.is_active && !c.is_base);
   rateCurrencySelect.innerHTML = `
-    <option value="">Select currency…</option>
+    <option value="">${t("Select currency…")}</option>
     ${options.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
   `;
 }
@@ -137,7 +139,7 @@ rateForm.addEventListener("submit", async (e) => {
 
   const currencyId = Number(rateCurrencySelect.value);
   if (!currencyId) {
-    showToast("Please select a currency", true);
+    showToast(t("Please select a currency"), true);
     return;
   }
 
@@ -152,21 +154,21 @@ rateForm.addEventListener("submit", async (e) => {
 
   try {
     await apiPost("/currency-rates/", payload);
-    showToast("Exchange rate added");
+    showToast(t("Exchange rate added"));
     rateForm.rate.value = "";
     await loadAll();
   } catch (err) {
     showToast(err.message, true);
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Add rate";
+    submitBtn.textContent = t("Add rate");
   }
 });
 
 bindTableSort(ratesTable, sortState, () => renderRates(allRates));
 
 loadAll().catch(err => {
-  ratesTable.innerHTML = `<div class="empty-state">Failed to load rates: ${err.message}</div>`;
+  ratesTable.innerHTML = `<div class="empty-state">${t("Failed to load rates:")} ${err.message}</div>`;
 });
 </script>
 {% endblock %}

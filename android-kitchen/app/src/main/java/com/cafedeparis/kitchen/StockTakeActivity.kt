@@ -35,6 +35,7 @@ class StockTakeActivity : KeepScreenOnActivity() {
     private data class LineInputs(
         val lineId: Int,
         val counted: EditText,
+        val wastage: EditText,
         val notes: EditText,
     )
 
@@ -372,9 +373,10 @@ class StockTakeActivity : KeepScreenOnActivity() {
                 LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(0, 0, 0, 8)
-                    addView(headerCell(getString(R.string.stock_take_ingredient), 1.4f))
-                    addView(headerCell(getString(R.string.stock_take_counted), 0.8f))
-                    addView(headerCell(getString(R.string.stock_take_notes), 1.2f))
+                    addView(headerCell(getString(R.string.stock_take_ingredient), 1.3f))
+                    addView(headerCell(getString(R.string.stock_take_counted), 0.7f))
+                    addView(headerCell(getString(R.string.stock_take_wastage), 0.7f))
+                    addView(headerCell(getString(R.string.stock_take_notes), 1.0f))
                 },
             )
         } else {
@@ -382,10 +384,11 @@ class StockTakeActivity : KeepScreenOnActivity() {
                 LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(0, 0, 0, 8)
-                    addView(headerCell(getString(R.string.stock_take_ingredient), 1.4f))
-                    addView(headerCell(getString(R.string.stock_take_system_before), 0.7f))
-                    addView(headerCell(getString(R.string.stock_take_counted), 0.7f))
-                    addView(headerCell(getString(R.string.stock_take_variance), 0.7f))
+                    addView(headerCell(getString(R.string.stock_take_ingredient), 1.3f))
+                    addView(headerCell(getString(R.string.stock_take_system_before), 0.65f))
+                    addView(headerCell(getString(R.string.stock_take_counted), 0.65f))
+                    addView(headerCell(getString(R.string.stock_take_wastage), 0.65f))
+                    addView(headerCell(getString(R.string.stock_take_variance), 0.65f))
                 },
             )
         }
@@ -417,25 +420,38 @@ class StockTakeActivity : KeepScreenOnActivity() {
             setPadding(4, 6, 4, 6)
         }
         row.addView(TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.4f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.3f)
             text = line.productName
             setTextColor(getColor(R.color.text_primary))
         })
         val counted = EditText(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.8f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             hint = "0"
             setText(line.countedQuantity.orEmpty())
         }
+        val wastageRaw = line.wastageQuantity.orEmpty().trim()
+        val wastageDisplay = if (wastageRaw.isBlank() || wastageRaw.toDoubleOrNull() == 0.0) {
+            ""
+        } else {
+            wastageRaw
+        }
+        val wastage = EditText(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            hint = "0"
+            setText(wastageDisplay)
+        }
         val notes = EditText(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
             inputType = InputType.TYPE_CLASS_TEXT
             hint = getString(R.string.stock_take_notes_hint)
             setText(line.notes)
         }
         row.addView(counted)
+        row.addView(wastage)
         row.addView(notes)
-        lineInputs[line.id] = LineInputs(line.id, counted, notes)
+        lineInputs[line.id] = LineInputs(line.id, counted, wastage, notes)
         return row
     }
 
@@ -447,24 +463,30 @@ class StockTakeActivity : KeepScreenOnActivity() {
             setPadding(4, 8, 4, 8)
         }
         row.addView(TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.4f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.3f)
             text = line.productName
             setTextColor(getColor(R.color.text_primary))
         })
         row.addView(TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.65f)
             text = formatQty(line.systemQuantity)
             gravity = android.view.Gravity.END
             setTextColor(getColor(R.color.text_primary))
         })
         row.addView(TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.65f)
             text = formatQty(line.countedQuantity)
             gravity = android.view.Gravity.END
             setTextColor(getColor(R.color.text_primary))
         })
         row.addView(TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.65f)
+            text = formatQty(line.wastageQuantity)
+            gravity = android.view.Gravity.END
+            setTextColor(getColor(R.color.text_primary))
+        })
+        row.addView(TextView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.65f)
             text = formatVariance(variance)
             gravity = android.view.Gravity.END
             setTextColor(
@@ -484,8 +506,10 @@ class StockTakeActivity : KeepScreenOnActivity() {
         val updatedLines = stockTake.lines.map { line ->
             val input = lineInputs[line.id] ?: return@map line
             val raw = input.counted.text?.toString()?.trim().orEmpty()
+            val wastageRaw = input.wastage.text?.toString()?.trim().orEmpty()
             line.copy(
                 countedQuantity = raw.ifBlank { null },
+                wastageQuantity = wastageRaw.ifBlank { "0" },
                 notes = input.notes.text?.toString()?.trim().orEmpty(),
             )
         }
@@ -499,15 +523,18 @@ class StockTakeActivity : KeepScreenOnActivity() {
             val input = lineInputs[line.id]
             if (input != null) {
                 val raw = input.counted.text?.toString()?.trim().orEmpty()
+                val wastageRaw = input.wastage.text?.toString()?.trim().orEmpty()
                 StockTakeLineUpdate(
                     id = line.id,
                     countedQuantity = raw.ifBlank { null },
+                    wastageQuantity = wastageRaw.ifBlank { "0" },
                     notes = input.notes.text?.toString()?.trim().orEmpty(),
                 )
             } else {
                 StockTakeLineUpdate(
                     id = line.id,
                     countedQuantity = line.countedQuantity,
+                    wastageQuantity = line.wastageQuantity ?: "0",
                     notes = line.notes,
                 )
             }

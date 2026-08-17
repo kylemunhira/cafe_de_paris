@@ -23,6 +23,7 @@ import {
   showToast,
   updateDiningTable,
   updateStockTakeLines,
+  verifyAccessCode,
 } from "./api.js";
 import { printDayEndReport, printOrderSlip, printSalesReceipt } from "./print-client.js";
 import {
@@ -289,9 +290,10 @@ function renderStockTake(stockTake) {
         ${escapeOperationHtml(group.name)} · ${group.lines.length}
       </div>
       ${group.lines.map((line) => `
-        <div style="display:grid; grid-template-columns:minmax(180px,1fr) 130px; gap:0.75rem; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(44,24,16,0.08);">
+        <div style="display:grid; grid-template-columns:minmax(160px,1fr) 110px 110px; gap:0.75rem; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(44,24,16,0.08);">
           <div><strong>${escapeOperationHtml(line.product_name)}</strong></div>
           <input type="number" min="0" step="0.001" class="report-input" data-stock-line="${line.id}" value="${line.counted_quantity ?? ""}" placeholder="Counted">
+          <input type="number" min="0" step="0.001" class="report-input" data-stock-wastage="${line.id}" value="${Number(line.wastage_quantity) ? line.wastage_quantity : ""}" placeholder="Wastage">
         </div>
       `).join("")}
     `).join("");
@@ -346,6 +348,11 @@ function syncStockTakeLineDrafts() {
     if (!line) return;
     line.counted_quantity = input.value === "" ? null : input.value;
   });
+  stockTakeLines.querySelectorAll("[data-stock-wastage]").forEach((input) => {
+    const line = activeStockTake.lines.find((item) => item.id === Number(input.dataset.stockWastage));
+    if (!line) return;
+    line.wastage_quantity = input.value === "" ? "0" : input.value;
+  });
 }
 
 function stockTakeLinePayload() {
@@ -353,6 +360,7 @@ function stockTakeLinePayload() {
   return (activeStockTake?.lines || []).map((line) => ({
     id: line.id,
     counted_quantity: line.counted_quantity,
+    wastage_quantity: line.wastage_quantity ?? "0",
     notes: line.notes || "",
   }));
 }
@@ -1428,6 +1436,8 @@ function usesCostPrice(customer) {
 
 function customerAvailableCredit(customer) {
   if (!customer) return 0;
+  // Staff accounts can charge regardless of credit limit / balance.
+  if (customer.account_type === "staff") return Number.POSITIVE_INFINITY;
   return Number(customer.credit_limit || 0) - Number(customer.account_balance);
 }
 
@@ -2542,6 +2552,27 @@ async function placeOrder() {
     existingClientId = choice;
   }
 
+  let accessCode = "";
+  let createdByName = session.user?.display_name || session.user?.username || "";
+  if (!canCollectPayment()) {
+    const code = window.prompt("Enter your 4-digit access code to place this order");
+    if (code == null) return;
+    accessCode = code.trim();
+    if (!/^\d{4}$/.test(accessCode)) {
+      showToast("Access code must be exactly 4 digits", true);
+      return;
+    }
+    try {
+      if (navigator.onLine) {
+        const verified = await verifyAccessCode(session, accessCode, "order");
+        createdByName = verified?.user?.display_name || verified?.user?.username || createdByName;
+      }
+    } catch (err) {
+      showToast(err.message || "Invalid access code", true);
+      return;
+    }
+  }
+
   checkoutBtn.disabled = true;
   try {
     const table = orderType.value === "dine_in" ? tableNumber.value.trim() : "";
@@ -2550,7 +2581,8 @@ async function placeOrder() {
       orderType: orderType.value,
       tableNumber: table,
       existingClientId,
-      createdByName: session.user?.display_name || session.user?.username || "",
+      createdByName,
+      accessCode,
       items: [...cart.values()].map((item) => ({
         product_id: item.id,
         product_name: item.name,

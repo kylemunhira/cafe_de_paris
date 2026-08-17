@@ -6,6 +6,7 @@ from branches.models import Branch, BranchType
 
 from catalog.models import PosStation
 
+from .access_codes import is_valid_access_code_format, normalize_access_code
 from .models import StaffProfile, StaffRole
 
 User = get_user_model()
@@ -44,6 +45,13 @@ class StaffUserSerializer(serializers.ModelSerializer):
         source="staff_profile.get_kitchen_station_display",
         read_only=True,
     )
+    access_code = serializers.CharField(
+        source="staff_profile.access_code",
+        max_length=4,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
     password = serializers.CharField(write_only=True, min_length=4)
 
     class Meta:
@@ -59,6 +67,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
             "pos_access",
             "kitchen_station",
             "kitchen_station_display",
+            "access_code",
             "is_active",
             "date_joined",
             "password",
@@ -69,6 +78,9 @@ class StaffUserSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         if self.instance is not None:
             self.fields["password"].required = False
+        else:
+            self.fields["access_code"].required = True
+            self.fields["access_code"].allow_blank = False
 
     def validate_username(self, value):
         queryset = User.objects.filter(username__iexact=value)
@@ -78,6 +90,21 @@ class StaffUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A user with this username already exists.")
         return value
 
+    def validate_access_code(self, value):
+        code = normalize_access_code(value)
+        if not code:
+            if self.instance is None:
+                raise serializers.ValidationError("Access code is required.")
+            return None
+        if not is_valid_access_code_format(code):
+            raise serializers.ValidationError("Access code must be exactly 4 digits.")
+        queryset = StaffProfile.objects.filter(access_code=code)
+        if self.instance:
+            queryset = queryset.exclude(user_id=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("This access code is already in use.")
+        return code
+
     @transaction.atomic
     def create(self, validated_data):
         profile_data = validated_data.pop("staff_profile")
@@ -85,6 +112,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
         role = profile_data.get("role", StaffRole.CASHIER)
         pos_access = profile_data.get("pos_access")
         kitchen_station = profile_data.get("kitchen_station", "")
+        access_code = profile_data.get("access_code")
         if role in (StaffRole.CASHIER, StaffRole.WAITER):
             pos_access = True
         elif pos_access is None:
@@ -100,6 +128,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
             role=role,
             pos_access=pos_access,
             kitchen_station=kitchen_station,
+            access_code=access_code,
         )
         return user
 
@@ -123,6 +152,8 @@ class StaffUserSerializer(serializers.ModelSerializer):
             profile.pos_access = profile_data["pos_access"]
         if "kitchen_station" in profile_data:
             profile.kitchen_station = profile_data["kitchen_station"]
+        if "access_code" in profile_data and profile_data["access_code"] is not None:
+            profile.access_code = profile_data["access_code"]
         if profile.role in (StaffRole.CASHIER, StaffRole.WAITER):
             profile.pos_access = True
         profile.save()

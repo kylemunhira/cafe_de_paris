@@ -264,6 +264,10 @@ class PurchaseOrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         )
 
     def partial_update(self, request, *args, **kwargs):
+        if not user_can_create_purchase_orders(request.user):
+            raise PermissionDenied(
+                "Only HQ admins and central stores staff can edit draft purchases."
+            )
         purchase_order = self.get_object()
         before = self.get_audit_snapshot(purchase_order)
         serializer = self.get_serializer(purchase_order, data=request.data, partial=True)
@@ -278,11 +282,13 @@ class PurchaseOrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         purchase_order = self.get_object()
         if require_approve and not user_can_approve_purchase_orders(request.user):
             raise PermissionDenied("Only HQ admins can approve purchase orders.")
-        if require_receive and not user_can_receive_purchase_order(
-            request.user, purchase_order
+        if require_receive and not (
+            user_can_create_purchase_orders(request.user)
+            or user_can_receive_purchase_order(request.user, purchase_order)
         ):
             raise PermissionDenied(
-                "Only staff at the receiving branch can confirm receipt."
+                "Only HQ admins, central stores staff, or staff at the receiving "
+                "branch can confirm receipt."
             )
         try:
             purchase_order = handler(purchase_order)
