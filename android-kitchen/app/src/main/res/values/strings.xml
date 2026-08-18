@@ -40,6 +40,11 @@
     <string name="pos_mode_order">Order</string>
     <string name="pos_mode_receipt">Receipt</string>
     <string name="current_order">Current order</string>
+    <string name="already_on_order">Already on order</string>
+    <string name="adding_now">Adding now</string>
+    <string name="add_to_order">Add to order</string>
+    <string name="tap_products_add_more">Tap products to add more items</string>
+    <string name="no_items_yet">No items yet</string>
     <string name="collect_payment">Collect payment</string>
     <string name="collect_table_payment">Collect table payment</string>
     <string name="place_order">Place order</string>
@@ -53,6 +58,7 @@
     <string name="amount_due">Amount due</string>
     <string name="exchange_rate_label">Exchange rate: %1$s</string>
     <string name="tap_products_hint">Tap products to add items</string>
+    <string name="order_items_more"> +%1$d more</string>
     <string name="search_products">Search products</string>
     <string name="pos_categories">Categories</string>
     <string name="pos_products">Products</string>

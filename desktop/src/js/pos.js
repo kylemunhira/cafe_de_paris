@@ -650,6 +650,8 @@ orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
   if (orderType.value !== "dine_in") {
     setSelectedTable("");
+  } else if (posMode === "order") {
+    renderCart();
   }
   renderTablesInUseSummary();
 });
@@ -659,6 +661,65 @@ function setSelectedTable(name) {
   tableNumber.value = value;
   tableSelectLabel.textContent = value || "Choose table…";
   tableSelectBtn.classList.toggle("has-value", Boolean(value));
+  if (posMode === "order") renderCart();
+}
+
+function formatOrderItemsSummary(order, { maxItems = 6 } = {}) {
+  const items = order?.items || [];
+  if (!items.length) return "No items yet";
+  const parts = items.slice(0, maxItems).map((item) => {
+    const qty = Number(item.quantity);
+    const qtyLabel = Number.isFinite(qty) && qty !== 1 ? `${qty}× ` : "";
+    return `${qtyLabel}${item.product_name}`;
+  });
+  const more = items.length > maxItems ? ` +${items.length - maxItems} more` : "";
+  return parts.join(", ") + more;
+}
+
+function existingOrdersForCurrentSelection() {
+  if (posMode !== "order" || orderType.value !== "dine_in") return [];
+  const table = tableNumber.value.trim();
+  if (!table) return [];
+  const occupancy = ordersOnTable(table);
+  return [...occupancy.local, ...occupancy.remote];
+}
+
+function renderExistingOrderSectionHtml(orders) {
+  if (!orders.length) return "";
+  const combined = orders.length > 1;
+  return `
+    <div class="existing-order-section">
+      <div class="existing-order-heading">Already on order</div>
+      ${orders
+        .map(
+          (order) => `
+        <div class="existing-order-block">
+          <div class="existing-order-label">
+            Order ${orderDisplayLabel(order)}${combined && order.table_number ? ` · Table ${order.table_number}` : ""}
+            <span class="existing-order-total">${money(order.total_amount)}</span>
+          </div>
+          ${(order.items || [])
+            .map((item) => {
+              const addonNames = (item.addons || []).map((a) => a.name).filter(Boolean);
+              const detailParts = [];
+              if (addonNames.length) detailParts.push(addonNames.join(", "));
+              if (item.notes) detailParts.push(`Note: ${item.notes}`);
+              return `
+              <div class="cart-item existing-order-line">
+                <div class="info">
+                  <div class="name">${item.product_name}</div>
+                  ${detailParts.length ? `<div class="line-total">${detailParts.join(" · ")}</div>` : ""}
+                  <div class="line-total">${money(item.price)} × ${item.quantity}</div>
+                </div>
+                <div class="line-total">${money(item.price * item.quantity)}</div>
+              </div>`;
+            })
+            .join("")}
+        </div>`
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function occupiedTableNames() {
@@ -894,6 +955,7 @@ function chooseTakeawayDestinationForPlace() {
           <span class="receipt-order-amount">${money(order.total_amount)}</span>
         </div>
         <div class="receipt-order-card-meta">${order.items?.length || 0} items · ${formatDate(order.created_at)}</div>
+        <div class="receipt-order-card-meta receipt-order-items-preview">${formatOrderItemsSummary(order)}</div>
       </button>
     `
         )
@@ -967,10 +1029,15 @@ function renderTablePickerGrid() {
           ? `In use · ${occupancy.total} orders`
           : "In use"
         : "Available";
+      const allOrders = [...occupancy.local, ...occupancy.remote];
+      const itemsPreview = allOrders.length
+        ? `<div class="table-items-preview">${allOrders.map((order) => formatOrderItemsSummary(order)).join(" · ")}</div>`
+        : "";
       return `
         <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}">
           <div class="name">${table.name}</div>
           <div class="table-status">${statusLabel}</div>
+          ${itemsPreview}
         </button>`;
     })
     .join("");
@@ -1769,27 +1836,31 @@ function renderReceiptTotals(inclusiveTotal) {
 }
 
 function renderCart() {
-  panelTitle.textContent = "Current Order";
-  checkoutBtn.textContent = "Place Order";
+  const existingOrders = existingOrdersForCurrentSelection();
+  const primaryExisting = existingOrders[0] || null;
+  panelTitle.textContent = primaryExisting
+    ? existingOrders.length > 1
+      ? `Table ${tableNumber.value.trim()} — ${existingOrders.length} orders`
+      : `Order ${orderDisplayLabel(primaryExisting)}`
+    : "Current Order";
+  checkoutBtn.textContent = existingOrders.length ? "Add to Order" : "Place Order";
   clearBtn.style.display = "";
   if (cancelOrderBtn) {
     cancelOrderBtn.style.display = "none";
     cancelOrderBtn.disabled = true;
   }
   receiptPaymentSection.style.display = "none";
-  cartTotalLabel.textContent = "Total";
+  cartTotalLabel.textContent = existingOrders.length ? "Adding now" : "Total";
 
-  if (cart.size === 0) {
-    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p></div>`;
-    cartTotal.textContent = money(0);
-    checkoutBtn.disabled = true;
-    clearBtn.disabled = true;
-    return;
-  }
-
-  cartItems.innerHTML = [...cart.values()]
-    .map(
-      (item) => `
+  const existingHtml = renderExistingOrderSectionHtml(existingOrders);
+  const newLinesHtml =
+    cart.size === 0
+      ? ""
+      : `
+      ${existingOrders.length ? `<div class="existing-order-heading">Adding now</div>` : ""}
+      ${[...cart.values()]
+        .map(
+          (item) => `
     <div class="cart-item" data-line-key="${item.lineKey}">
       <div class="info">
         <div class="name">${item.name}</div>
@@ -1802,12 +1873,27 @@ function renderCart() {
         <button class="qty-btn" data-action="inc" data-line-key="${item.lineKey}">+</button>
       </div>
     </div>`
-    )
-    .join("");
+        )
+        .join("")}
+    `;
+
+  if (!existingHtml && !newLinesHtml) {
+    cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">Tap products to add items</p></div>`;
+    cartTotal.textContent = money(0);
+    checkoutBtn.disabled = true;
+    clearBtn.disabled = true;
+    return;
+  }
+
+  const emptyHint =
+    !newLinesHtml && existingHtml
+      ? `<div class="empty-state existing-order-hint"><p style="margin: 0; font-size: 0.85rem;">Tap products to add more items</p></div>`
+      : "";
+  cartItems.innerHTML = existingHtml + newLinesHtml + emptyHint;
 
   cartTotal.textContent = money(getCartTotal());
-  checkoutBtn.disabled = false;
-  clearBtn.disabled = false;
+  checkoutBtn.disabled = cart.size === 0;
+  clearBtn.disabled = cart.size === 0;
 }
 
 function renderReceiptPanel() {
@@ -1917,6 +2003,7 @@ function renderOpenOrdersList() {
           <span class="receipt-order-amount">${money(displayTotal)}</span>
         </div>
         <div class="receipt-order-card-meta">${tableOrders.length > 1 ? `${tableOrders.length} orders on table · ` : ""}${o.items.length} items</div>
+        <div class="receipt-order-card-meta receipt-order-items-preview">${formatOrderItemsSummary(o)}</div>
         <div class="receipt-order-card-meta" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
           <span>${formatDate(o.created_at)}</span>
           ${kitchenStatusBadge(o.kitchen_status || "pending")}
@@ -1939,6 +2026,7 @@ async function loadOpenOrders() {
     renderTablePickerGrid();
   }
   if (posMode === "receipt") renderReceiptPanel();
+  else if (posMode === "order") renderCart();
 }
 
 function renderCategories() {
@@ -2603,10 +2691,14 @@ async function placeOrder() {
         ? `Items added to order — ${money(order.total_amount)}`
         : `Order placed — ${money(order.total_amount)}`
     );
-    try {
-      await printOrderSlip(session, order, { taxRate: inclusiveTaxRate });
-    } catch (printErr) {
-      showToast(`Order saved but print failed: ${printErr.message}`, true);
+    // Adding to an open order: kitchen/bar tablets print only the new lines.
+    // Do not reprint the full POS order slip.
+    if (!addedToExisting) {
+      try {
+        await printOrderSlip(session, order, { taxRate: inclusiveTaxRate });
+      } catch (printErr) {
+        showToast(`Order saved but print failed: ${printErr.message}`, true);
+      }
     }
     runFullSyncIfOnline(session, { silent: true }).then(async (result) => {
       if (result.synced) {

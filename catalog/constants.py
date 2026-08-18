@@ -45,8 +45,11 @@ def ingredient_categories_for_branch_type(branch_type):
     """Which ingredient categories are stocked at a given branch type."""
     from branches.models import BranchType
 
+    # Central bakery and central stores both hold bakery raw materials and
+    # branch/kitchen supplies (cleaning, packaging, etc.) so stores can
+    # transfer either category to the bakery.
     if branch_type == BranchType.BAKERY:
-        return frozenset({INGREDIENTS_CATEGORY})
+        return ALL_INGREDIENT_CATEGORIES
     if branch_type == BranchType.BRANCH:
         return frozenset({BRANCH_INGREDIENTS_CATEGORY})
     if branch_type == BranchType.STORES:

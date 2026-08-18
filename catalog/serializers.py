@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from catalog.constants import ALL_INGREDIENT_CATEGORIES
+
 from .models import MenuAddon, MenuAddonGroup, Product, ProductCategory, ProductMenuAddonGroup
 
 
@@ -197,6 +199,27 @@ class ProductSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Name is required.")
         return name
 
+    @staticmethod
+    def _category_is_ingredient(category):
+        if category is None:
+            return False
+        return getattr(category, "name", None) in ALL_INGREDIENT_CATEGORIES
+
+    @classmethod
+    def _duplicate_name_error(cls, conflicts):
+        conflict = conflicts[0]
+        category_name = conflict.category.name if conflict.category_id else "Unknown"
+        return (
+            f'A product named "{conflict.name}" is already active under '
+            f"{category_name} (id={conflict.id}). "
+            "Deactivate or rename that product first."
+        )
+
+    def _deactivate_name_conflicts(self, ids):
+        if not ids:
+            return
+        Product.objects.filter(id__in=ids, is_active=True).update(is_active=False)
+
     def validate(self, attrs):
         name = attrs.get("name")
         if name is None and self.instance is not None:
@@ -220,15 +243,38 @@ class ProductSerializer(serializers.ModelSerializer):
             and not self.instance.is_active
         )
         should_check_unique = creating or name_changing or activating
+        self._deactivate_conflict_ids = []
 
         if name and is_active and should_check_unique:
-            qs = Product.objects.filter(name__iexact=name, is_active=True)
+            qs = (
+                Product.objects.filter(name__iexact=name, is_active=True)
+                .select_related("category")
+                .order_by("id")
+            )
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise serializers.ValidationError(
-                    {"name": "A product with this name already exists."}
-                )
+            conflicts = list(qs)
+            if conflicts:
+                category = attrs.get("category")
+                if category is None and self.instance is not None:
+                    category = self.instance.category
+                saving_ingredient = self._category_is_ingredient(category)
+                ingredient_conflicts = [
+                    row for row in conflicts if self._category_is_ingredient(row.category)
+                ]
+                # Finished goods / menu items often share names with leftover
+                # Ingredients rows from bakery CSV imports. Prefer the sellable
+                # product and retire those ingredient duplicates on activate.
+                if (
+                    not saving_ingredient
+                    and ingredient_conflicts
+                    and len(ingredient_conflicts) == len(conflicts)
+                ):
+                    self._deactivate_conflict_ids = [row.id for row in ingredient_conflicts]
+                else:
+                    raise serializers.ValidationError(
+                        {"name": self._duplicate_name_error(conflicts)}
+                    )
         return attrs
 
     def get_unit_cost(self, obj):
@@ -296,6 +342,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
         branch_ids = validated_data.pop("branch_ids", None)
+        self._deactivate_name_conflicts(getattr(self, "_deactivate_conflict_ids", []))
         name = validated_data["name"]
         inactive = (
             Product.objects.filter(name__iexact=name, is_active=False)
@@ -319,6 +366,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
         branch_ids = validated_data.pop("branch_ids", None)
+        self._deactivate_name_conflicts(getattr(self, "_deactivate_conflict_ids", []))
         product = super().update(instance, validated_data)
         if group_ids is not None:
             self._save_addon_groups(product, group_ids)

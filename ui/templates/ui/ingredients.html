@@ -86,7 +86,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, fetchAllPages, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { branchesForUser, setupBranchSelect } from "{% static 'ui/js/branch-select.js' %}";
 import { formatStockQty, stockAdjustInlineHtml, handleInlineStockApply, openStockMovementHistory } from "{% static 'ui/js/stock-adjust.js' %}";
@@ -171,20 +171,6 @@ function populateCategorySelect(selectedId = "") {
   if (selectedId && categorySelect.value !== String(selectedId)) {
     categorySelect.value = "";
   }
-}
-
-async function fetchAllInventory(params = {}) {
-  const query = new URLSearchParams({ page_size: "1000", ...params });
-  let page = 1;
-  let all = [];
-  while (true) {
-    query.set("page", String(page));
-    const data = await apiGet(`/inventory/?${query}`);
-    all = all.concat(unwrapList(data));
-    if (!data.next) break;
-    page += 1;
-  }
-  return all;
 }
 
 function resetForm() {
@@ -313,10 +299,12 @@ async function loadBranchInventory() {
     return;
   }
 
-  const rows = await fetchAllInventory({
+  const rows = await fetchAllPages("/inventory/", {
     branch: String(selectedBranchId),
   });
-  branchInventory = new Map(rows.map(row => [row.product, Number(row.quantity)]));
+  branchInventory = new Map(
+    rows.map(row => [String(row.product), Number(row.quantity)]),
+  );
 }
 
 async function loadIngredients() {
@@ -325,11 +313,12 @@ async function loadIngredients() {
     render();
     return;
   }
-  const data = await apiGet(`/products/?for_branch=${selectedBranchId}&page_size=500`);
-  const products = unwrapList(data);
+  const products = await fetchAllPages("/products/", {
+    for_branch: String(selectedBranchId),
+  });
   ingredients = products.map(product => ({
     ...product,
-    branch_qty: branchInventory.get(product.id) ?? 0,
+    branch_qty: branchInventory.get(String(product.id)) ?? 0,
   }));
   render();
 }
@@ -372,7 +361,7 @@ async function syncBranchStock(productId, newQty) {
     throw new Error(t("Select a branch before setting stock"));
   }
 
-  const currentQty = branchInventory.get(productId) ?? 0;
+  const currentQty = branchInventory.get(String(productId)) ?? 0;
   const delta = Number(newQty) - currentQty;
   if (delta === 0) return;
 
@@ -381,6 +370,7 @@ async function syncBranchStock(productId, newQty) {
     product: productId,
     delta,
   });
+  branchInventory.set(String(productId), Number(newQty));
 }
 
 ingredientForm.addEventListener("submit", async (e) => {
@@ -451,8 +441,8 @@ ingredientsTable.addEventListener("click", async (e) => {
         apiPost,
         branchId: selectedBranchId,
         onSuccess: (productId, newQty) => {
-          branchInventory.set(productId, newQty);
-          const item = ingredients.find(i => i.id === productId);
+          branchInventory.set(String(productId), newQty);
+          const item = ingredients.find(i => String(i.id) === String(productId));
           if (item) item.branch_qty = newQty;
           ingredientsTable.querySelectorAll(`[data-branch-qty="${productId}"]`).forEach(el => {
             el.textContent = formatQty(newQty);

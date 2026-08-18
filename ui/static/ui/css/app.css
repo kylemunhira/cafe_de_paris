@@ -1402,6 +1402,59 @@ table.data-table tbody tr:hover {
   line-height: 1.4;
 }
 
+.existing-order-section {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px dashed rgba(44, 24, 16, 0.12);
+}
+
+.existing-order-heading {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin: 0 0 0.45rem;
+}
+
+.existing-order-block + .existing-order-block {
+  margin-top: 0.65rem;
+}
+
+.existing-order-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-espresso);
+  margin-bottom: 0.25rem;
+}
+
+.existing-order-total {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.existing-order-line {
+  opacity: 0.88;
+}
+
+.existing-order-hint {
+  padding: 0.85rem 0 0.25rem !important;
+}
+
+.table-items-preview,
+.receipt-order-items-preview {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-muted);
+  text-align: left;
+  white-space: normal;
+}
+
 .cart-panel .cart-items {
   flex: 1 0 auto;
   display: flex;

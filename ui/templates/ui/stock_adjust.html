@@ -233,7 +233,10 @@ async function loadBranchInventory() {
     page_size: "1000",
     branch: String(selectedBranchId),
   });
-  branchInventory = new Map(rows.map(row => [row.product, Number(row.quantity)]));
+  // Key by string id — inventory/product payloads may mix number vs string.
+  branchInventory = new Map(
+    rows.map(row => [String(row.product), Number(row.quantity)]),
+  );
 }
 
 async function loadItems() {
@@ -260,16 +263,16 @@ async function loadItems() {
       items = [];
       return;
     }
-    products = unwrapList(
-      await apiGet(`/products/?for_branch=${selectedBranchId}&page_size=500`),
-    );
+    products = await fetchAllPages("/products/", {
+      for_branch: String(selectedBranchId),
+    });
   }
 
   items = products
     .filter(p => p.is_active !== false)
     .map(p => ({
       ...p,
-      branch_qty: branchInventory.get(p.id) ?? 0,
+      branch_qty: branchInventory.get(String(p.id)) ?? 0,
     }));
 }
 
@@ -315,8 +318,8 @@ async function applyOne(productId, amount) {
     amount,
   });
   const newQty = Number(result.quantity);
-  branchInventory.set(productId, newQty);
-  const item = items.find(i => i.id === productId);
+  branchInventory.set(String(productId), newQty);
+  const item = items.find(i => String(i.id) === String(productId));
   if (item) item.branch_qty = newQty;
   pendingQty.delete(productId);
   return newQty;

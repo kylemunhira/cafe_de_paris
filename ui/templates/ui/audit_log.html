@@ -77,6 +77,8 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ can_filter_any_branch|json_script:"can-filter-any-branch" }}
+{{ staff_branch_id|json_script:"staff-branch-id" }}
 <script type="module">
 import { apiGet, fetchAllPages, formatDate, showToast, unwrapList } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
@@ -84,8 +86,8 @@ import { effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch
 
 const t = (msgid) => window.CDP.t(msgid);
 
-const STAFF_BRANCH_ID = {{ staff_branch_id|default:"null" }};
-const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const STAFF_BRANCH_ID = JSON.parse(document.getElementById("staff-branch-id").textContent);
+const canFilterAnyBranch = JSON.parse(document.getElementById("can-filter-any-branch").textContent);
 
 let allEvents = [];
 let searchQuery = "";

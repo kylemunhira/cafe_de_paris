@@ -690,6 +690,8 @@ orderType.addEventListener("change", () => {
   tableGroup.style.display = orderType.value === "dine_in" ? "block" : "none";
   if (orderType.value !== "dine_in") {
     setSelectedTable("");
+  } else if (posMode === "order") {
+    renderCart();
   }
 });
 
@@ -698,6 +700,7 @@ function setSelectedTable(name) {
   tableNumber.value = value;
   tableSelectLabel.textContent = value || t("Choose table…");
   tableSelectBtn.classList.toggle("has-value", Boolean(value));
+  if (posMode === "order") renderCart();
 }
 
 function isAwaitingPaymentOrder(order) {
@@ -727,6 +730,59 @@ function openOrdersForTable(tableNumber) {
       order.order_type === "dine_in" &&
       order.table_number === table
   );
+}
+
+function formatOrderItemsSummary(order, { maxItems = 6 } = {}) {
+  const items = order?.items || [];
+  if (!items.length) return "No items yet";
+  const parts = items.slice(0, maxItems).map(item => {
+    const qty = Number(item.quantity);
+    const qtyLabel = Number.isFinite(qty) && qty !== 1 ? `${qty}× ` : "";
+    return `${qtyLabel}${item.product_name}`;
+  });
+  const more = items.length > maxItems ? ` +${items.length - maxItems} more` : "";
+  return parts.join(", ") + more;
+}
+
+function existingOrdersForCurrentSelection() {
+  if (posMode !== "order" || orderType.value !== "dine_in") return [];
+  const table = tableNumber.value.trim();
+  if (!table) return [];
+  return openOrdersForTable(table);
+}
+
+function renderExistingOrderSectionHtml(orders) {
+  if (!orders.length) return "";
+  const combined = orders.length > 1;
+  return `
+    <div class="existing-order-section">
+      <div class="existing-order-heading">${t("Already on order")}</div>
+      ${orders.map(order => `
+        <div class="existing-order-block">
+          <div class="existing-order-label">
+            Order #${order.id}${combined && order.table_number ? ` · Table ${order.table_number}` : ""}
+            <span class="existing-order-total">${formatCurrency(order.total_amount)}</span>
+          </div>
+          ${(order.items || []).map(item => {
+            const addonNames = (item.addons || []).map(a => a.name).filter(Boolean);
+            const detailParts = [];
+            if (addonNames.length) detailParts.push(addonNames.join(", "));
+            if (item.notes) detailParts.push(`Note: ${item.notes}`);
+            return `
+              <div class="cart-item cart-product-line existing-order-line">
+                <div class="info">
+                  <div class="name">${item.product_name}</div>
+                  ${detailParts.length ? `<div class="line-total cart-line-detail">${detailParts.join(" · ")}</div>` : ""}
+                  <div class="line-total cart-line-detail">${formatCurrency(item.price)} × ${item.quantity}</div>
+                </div>
+                <div class="line-total cart-item-amount">${formatCurrency(Number(item.price) * Number(item.quantity))}</div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function getReceiptOrders() {
@@ -798,10 +854,15 @@ function renderTablePickerGrid() {
     if (isSource) classes.push("disabled");
     let statusLabel = occupied.has(table.name) ? "In use" : "Available";
     if (isSource) statusLabel = "Current table";
+    const tableOrders = occupied.has(table.name) ? openOrdersForTable(table.name) : [];
+    const itemsPreview = tableOrders.length
+      ? `<div class="table-items-preview">${tableOrders.map(order => formatOrderItemsSummary(order)).join(" · ")}</div>`
+      : "";
     return `
       <button type="button" class="${classes.join(" ")}" data-table-name="${table.name}"${isSource ? " disabled" : ""}>
         <div class="name">${table.name}</div>
         <div class="table-status">${statusLabel}</div>
+        ${itemsPreview}
       </button>
     `;
   }).join("");
@@ -1398,7 +1459,7 @@ function setPosMode(mode) {
     stopKitchenRefresh();
     receiptPaymentSection.style.display = "none";
     cartTotalLabel.textContent = t("Total");
-    renderCart();
+    loadOpenOrders().then(() => renderCart()).catch(() => renderCart());
   }
 }
 
@@ -1554,8 +1615,14 @@ function clearCartOrderMeta() {
 
 function renderCart() {
   clearCartOrderMeta();
-  panelTitle.textContent = t("Current Order");
-  checkoutBtn.textContent = t("Place Order");
+  const existingOrders = existingOrdersForCurrentSelection();
+  const primaryExisting = existingOrders[0] || null;
+  panelTitle.textContent = primaryExisting
+    ? (existingOrders.length > 1
+      ? `Table ${tableNumber.value.trim()} — ${existingOrders.length} orders`
+      : `Order #${primaryExisting.id} · ${orderTypeLabel(primaryExisting.order_type)}`)
+    : t("Current Order");
+  checkoutBtn.textContent = existingOrders.length ? t("Add to Order") : t("Place Order");
   checkoutBtn.style.display = "";
   clearBtn.style.display = "";
   setReceiptActionsVisible(false);
@@ -1568,10 +1635,48 @@ function renderCart() {
     cancelOrderBtn.disabled = true;
   }
   receiptPaymentSection.style.display = "none";
-  cartTotalLabel.textContent = t("Total");
+  cartTotalLabel.textContent = existingOrders.length ? t("Adding now") : t("Total");
   selectedTransferKeys = new Set();
 
-  if (cart.size === 0) {
+  if (cartOrderMeta && primaryExisting) {
+    const tableChip = primaryExisting.table_number
+      ? `<span class="cart-meta-chip">Table ${primaryExisting.table_number}</span>`
+      : "";
+    cartOrderMeta.innerHTML = `
+      <div class="cart-meta-row">
+        ${kitchenStatusBadge(primaryExisting.kitchen_status || "pending")}
+        ${tableChip}
+        <span class="cart-meta-chip cart-meta-chip--muted">${formatDate(primaryExisting.created_at)}</span>
+      </div>
+    `;
+    cartOrderMeta.hidden = false;
+  }
+
+  const existingHtml = renderExistingOrderSectionHtml(existingOrders);
+  const newLinesHtml = cart.size === 0
+    ? ""
+    : `
+      ${existingOrders.length ? `<div class="existing-order-heading">${t("Adding now")}</div>` : ""}
+      ${[...cart.values()].map(item => {
+        const summary = formatAddonSummary(item);
+        return `
+        <div class="cart-item cart-product-line" data-line-key="${item.lineKey}">
+          <div class="info">
+            <div class="name">${item.name}</div>
+            ${summary ? `<div class="line-total cart-line-detail">${summary}</div>` : ""}
+            <div class="line-total cart-line-detail">${formatCurrency(item.price)} each</div>
+          </div>
+          <div class="qty-control">
+            <button class="qty-btn" data-action="dec" data-line-key="${item.lineKey}">−</button>
+            <span class="cart-qty-value">${item.quantity}</span>
+            <button class="qty-btn" data-action="inc" data-line-key="${item.lineKey}">+</button>
+          </div>
+        </div>
+      `;
+      }).join("")}
+    `;
+
+  if (!existingHtml && !newLinesHtml) {
     cartItems.innerHTML = `<div class="empty-state" style="padding: 2rem 0;"><p style="margin: 0; font-size: 0.85rem;">${t("Tap products to add items")}</p></div>`;
     cartTotal.textContent = formatCurrency(0);
     checkoutBtn.disabled = true;
@@ -1579,27 +1684,14 @@ function renderCart() {
     return;
   }
 
-  cartItems.innerHTML = [...cart.values()].map(item => {
-    const summary = formatAddonSummary(item);
-    return `
-    <div class="cart-item cart-product-line" data-line-key="${item.lineKey}">
-      <div class="info">
-        <div class="name">${item.name}</div>
-        ${summary ? `<div class="line-total cart-line-detail">${summary}</div>` : ""}
-        <div class="line-total cart-line-detail">${formatCurrency(item.price)} each</div>
-      </div>
-      <div class="qty-control">
-        <button class="qty-btn" data-action="dec" data-line-key="${item.lineKey}">−</button>
-        <span class="cart-qty-value">${item.quantity}</span>
-        <button class="qty-btn" data-action="inc" data-line-key="${item.lineKey}">+</button>
-      </div>
-    </div>
-  `;
-  }).join("");
+  const emptyHint = (!newLinesHtml && existingHtml)
+    ? `<div class="empty-state existing-order-hint"><p style="margin: 0; font-size: 0.85rem;">${t("Tap products to add more items")}</p></div>`
+    : "";
+  cartItems.innerHTML = existingHtml + newLinesHtml + emptyHint;
 
   cartTotal.textContent = formatCurrency(getCartTotal());
-  checkoutBtn.disabled = !branchSelect.value;
-  clearBtn.disabled = false;
+  checkoutBtn.disabled = cart.size === 0 || !branchSelect.value;
+  clearBtn.disabled = cart.size === 0;
 }
 
 function renderReceiptPanel() {
@@ -1766,6 +1858,7 @@ function renderReceiptOrderCard(o) {
         <span class="receipt-order-amount">${formatCurrency(displayTotal)}</span>
       </div>
       <div class="receipt-order-card-meta">${combinedLabel}${o.items?.length || 0} items</div>
+      <div class="receipt-order-card-meta receipt-order-items-preview">${formatOrderItemsSummary(o)}</div>
       <div class="receipt-order-card-meta" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
         <span>${formatDate(o.created_at)}</span>
         <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
@@ -1813,6 +1906,7 @@ async function loadOpenOrders({ notifyReady = false } = {}) {
     }
     renderOpenOrdersList();
     if (posMode === "receipt") renderReceiptPanel();
+    else if (posMode === "order") renderCart();
   } catch (err) {
     showToast(`Failed to load orders: ${err.message}`, true);
   }
@@ -2239,6 +2333,7 @@ function renderOrderTransferList(candidates, { newOrderLabel, newOrderMeta }) {
         <span class="receipt-order-amount">${formatCurrency(order.total_amount)}</span>
       </div>
       <div class="receipt-order-card-meta">${order.items?.length || 0} items · ${formatDate(order.created_at)}</div>
+      <div class="receipt-order-card-meta receipt-order-items-preview">${formatOrderItemsSummary(order)}</div>
     </button>
   `).join("");
 }
@@ -2521,17 +2616,23 @@ async function placeOrder() {
       showToast(`Order #${order.id} placed — ${formatCurrency(order.total_amount)}`);
     }
     await loadOpenOrders();
-    const printWindow = window.open("about:blank", "_blank");
-    const orderUrl = `/pos/order/${order.id}/print/?auto=1`;
-    if (printWindow) {
-      printWindow.location.href = orderUrl;
-    } else {
-      window.open(orderUrl, "_blank", "noopener");
+    // Adding to an open order: kitchen/bar tablets print only the new lines.
+    // Do not reprint the full POS order slip.
+    if (!addedToExisting) {
+      const printWindow = window.open("about:blank", "_blank");
+      const orderUrl = `/pos/order/${order.id}/print/?auto=1`;
+      if (printWindow) {
+        printWindow.location.href = orderUrl;
+      } else {
+        window.open(orderUrl, "_blank", "noopener");
+      }
     }
   } catch (err) {
     showToast(err.message, true);
   } finally {
-    checkoutBtn.textContent = t("Place Order");
+    checkoutBtn.textContent = existingOrdersForCurrentSelection().length
+      ? t("Add to Order")
+      : t("Place Order");
     checkoutBtn.disabled = cart.size === 0 || !branchSelect.value;
   }
 }

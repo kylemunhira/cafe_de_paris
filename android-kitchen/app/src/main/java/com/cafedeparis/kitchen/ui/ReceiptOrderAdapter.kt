@@ -51,6 +51,9 @@ class ReceiptOrderAdapter(
             binding.orderTotal.text = ProductAdapter.formatMoney(displayTotal.toString())
             val combined = if (tableOrders.size > 1) "${tableOrders.size} orders on table · " else ""
             binding.orderMeta.text = "$combined${order.items.size} items"
+            binding.orderItemsPreview.text = formatOrderItemsPreview(order)
+            binding.orderItemsPreview.visibility =
+                if (order.items.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
             binding.orderKitchenStatus.text = if (order.status == "unpaid") {
                 binding.root.context.getString(R.string.status_unpaid)
             } else {
@@ -68,6 +71,25 @@ class ReceiptOrderAdapter(
                 handler(order)
                 true
             }
+        }
+
+        private fun formatOrderItemsPreview(order: KitchenOrder, maxItems: Int = 6): String {
+            if (order.items.isEmpty()) return ""
+            val parts = order.items.take(maxItems).map { item ->
+                val qty = item.quantity.toDoubleOrNull() ?: 1.0
+                val qtyLabel = when {
+                    qty == 1.0 -> ""
+                    qty % 1.0 == 0.0 -> "${qty.toInt()}× "
+                    else -> String.format(java.util.Locale.US, "%.2f× ", qty)
+                }
+                "$qtyLabel${item.product_name}"
+            }
+            val more = if (order.items.size > maxItems) {
+                " +${order.items.size - maxItems} more"
+            } else {
+                ""
+            }
+            return parts.joinToString(", ") + more
         }
     }
 

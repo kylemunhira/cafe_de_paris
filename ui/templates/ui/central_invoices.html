@@ -92,7 +92,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
@@ -333,8 +333,7 @@ async function loadData() {
   syncSearchableSelect(customerSelect);
 
   const storesId = storesBranches[0].id;
-  const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
-  storesInventory = unwrapList(inventoryData);
+  storesInventory = await fetchAllPages("/inventory/", { branch: String(storesId) });
 
   const availableProducts = products
     .filter(p => p.is_active)
@@ -431,8 +430,7 @@ invoiceForm.addEventListener("submit", async (e) => {
 
     const storesId = storesBranches[0]?.id;
     if (storesId) {
-      const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
-      storesInventory = unwrapList(inventoryData);
+      storesInventory = await fetchAllPages("/inventory/", { branch: String(storesId) });
       const availableProducts = products.filter(p => p.is_active).sort((a, b) => a.name.localeCompare(b.name));
       productSelect.innerHTML = `
         <option value="">Select product…</option>
@@ -470,8 +468,7 @@ invoicesTable.addEventListener("click", async (e) => {
     if (action === "cancel") {
       const storesId = storesBranches[0]?.id;
       if (storesId) {
-        const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
-        storesInventory = unwrapList(inventoryData);
+        storesInventory = await fetchAllPages("/inventory/", { branch: String(storesId) });
       }
     }
 

@@ -1025,6 +1025,51 @@ class PosActivity : KeepScreenOnActivity() {
     private fun setSelectedTable(name: String?) {
         selectedTableName = name?.trim()?.takeIf { it.isNotEmpty() }
         binding.tableSelectButton.text = selectedTableName ?: getString(R.string.choose_table)
+        if (posMode == PosMode.ORDER) {
+            renderCart()
+        }
+    }
+
+    private fun existingOrdersForCurrentSelection(): List<KitchenOrder> {
+        if (posMode != PosMode.ORDER) return emptyList()
+        if (currentOrderType() != "dine_in") return emptyList()
+        val table = selectedTableName?.trim().orEmpty()
+        if (table.isEmpty()) return emptyList()
+        return openOrdersForTable(table)
+    }
+
+    private fun renderExistingOrderPreview(orders: List<KitchenOrder>) {
+        if (orders.isEmpty()) {
+            binding.existingOrderLabel.visibility = View.GONE
+            binding.existingOrderItems.visibility = View.GONE
+            return
+        }
+        val lines = buildString {
+            orders.forEachIndexed { index, order ->
+                if (index > 0) append("\n\n")
+                append("Order #${order.id}")
+                if (orders.size > 1 && order.table_number.isNotBlank()) {
+                    append(" · Table ${order.table_number}")
+                }
+                append(" · ${ProductAdapter.formatMoney(order.total_amount, baseCurrencySymbol())}")
+                order.items.forEach { item ->
+                    append('\n')
+                    val qty = item.quantity.toDoubleOrNull() ?: 1.0
+                    val qtyLabel = if (qty % 1.0 == 0.0) qty.toInt().toString() else item.quantity
+                    append("  $qtyLabel× ${item.product_name}")
+                    val addonNames = item.addons.map { it.name }.filter { it.isNotBlank() }
+                    if (addonNames.isNotEmpty()) {
+                        append(" (${addonNames.joinToString(", ")})")
+                    }
+                    if (item.notes.isNotBlank()) {
+                        append(" — Note: ${item.notes}")
+                    }
+                }
+            }
+        }
+        binding.existingOrderLabel.visibility = View.VISIBLE
+        binding.existingOrderItems.visibility = View.VISIBLE
+        binding.existingOrderItems.text = lines
     }
 
     private fun occupiedTableNames(orders: List<KitchenOrder>): Set<String> {
@@ -1642,7 +1687,7 @@ class PosActivity : KeepScreenOnActivity() {
             binding.transferItemsButton.visibility = View.GONE
             binding.clearButton.visibility = View.VISIBLE
             syncOrderTypeUi(if (binding.orderTypeSpinner.selectedItemPosition == 1) "dine_in" else "takeaway")
-            renderCart()
+            loadOpenOrders()
         }
     }
 
@@ -1795,6 +1840,8 @@ class PosActivity : KeepScreenOnActivity() {
                 }
                 if (posMode == PosMode.RECEIPT) {
                     renderReceiptPanel()
+                } else if (posMode == PosMode.ORDER) {
+                    renderCart()
                 }
             } catch (err: ApiException) {
                 if (!silent) handleApiError(err)
@@ -1854,9 +1901,28 @@ class PosActivity : KeepScreenOnActivity() {
     private fun renderCart() {
         selectedTransferKeys.clear()
         binding.cartList.adapter = cartAdapter
+        val existingOrders = existingOrdersForCurrentSelection()
+        renderExistingOrderPreview(existingOrders)
+        val primaryExisting = existingOrders.firstOrNull()
+        binding.panelTitle.text = when {
+            primaryExisting == null -> getString(R.string.current_order)
+            existingOrders.size > 1 -> "Table ${selectedTableName.orEmpty()} — ${existingOrders.size} orders"
+            else -> "Order #${primaryExisting.id}"
+        }
+        binding.checkoutButton.text = if (existingOrders.isNotEmpty()) {
+            getString(R.string.add_to_order)
+        } else {
+            getString(R.string.place_order)
+        }
         val lines = cart.values.toList()
         cartAdapter.submitList(lines)
         val hasLines = lines.isNotEmpty()
+        val emptyHint = if (existingOrders.isNotEmpty()) {
+            getString(R.string.tap_products_add_more)
+        } else {
+            getString(R.string.tap_products_hint)
+        }
+        binding.emptyCartLabel.text = emptyHint
         binding.emptyCartLabel.visibility = if (hasLines) View.GONE else View.VISIBLE
         binding.cartList.visibility = if (hasLines) View.VISIBLE else View.GONE
         binding.clearButton.visibility = View.VISIBLE
@@ -1864,7 +1930,9 @@ class PosActivity : KeepScreenOnActivity() {
         binding.checkoutButton.isEnabled = hasLines
         binding.transferItemsButton.visibility = View.GONE
         val total = lines.sumOf { it.price * it.quantity }
-        binding.totalCaption.setText(R.string.total)
+        binding.totalCaption.setText(
+            if (existingOrders.isNotEmpty()) R.string.adding_now else R.string.total,
+        )
         binding.totalLabel.text = ProductAdapter.formatMoney(total, baseCurrencySymbol())
         binding.exchangeRateLabel.visibility = View.GONE
     }
@@ -1885,6 +1953,8 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun renderReceiptPanel() {
+        binding.existingOrderLabel.visibility = View.GONE
+        binding.existingOrderItems.visibility = View.GONE
         val order = selectedOrder
         if (order == null) {
             receiptPaymentOrderId = null
@@ -2344,9 +2414,13 @@ class PosActivity : KeepScreenOnActivity() {
                 }
                 renderCart()
                 loadOpenOrders(silent = true)
-                printOrderTicket(order)
                 val addedToExisting = (existingOrderId != null && order.id == existingOrderId) ||
                     (existingTableOrderId != null && order.id == existingTableOrderId)
+                // Adding to an open order: kitchen/bar tablets print only the new lines.
+                // Do not reprint the full POS order slip.
+                if (!addedToExisting) {
+                    printOrderTicket(order)
+                }
                 Toast.makeText(
                     this@PosActivity,
                     if (addedToExisting) {

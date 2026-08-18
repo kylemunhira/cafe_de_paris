@@ -349,6 +349,56 @@ class ProductNameUniquenessTests(TestCase):
         self.product.refresh_from_db()
         self.assertFalse(self.product.is_active)
 
+    def test_activate_bakery_product_retires_ingredient_name_duplicate(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        bakery = ProductCategory.objects.create(name="Cakes & desserts")
+        ingredient = Product.objects.create(
+            name="LEMON MERINGUE",
+            category=ingredients,
+            selling_price=Decimal("1.92"),
+            is_active=True,
+        )
+        bakery_product = Product.objects.create(
+            name="LEMON MERINGUE",
+            category=bakery,
+            selling_price=Decimal("5.00"),
+            is_active=False,
+        )
+
+        response = self.client.patch(
+            f"/api/products/{bakery_product.id}/",
+            {"is_active": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        bakery_product.refresh_from_db()
+        ingredient.refresh_from_db()
+        self.assertTrue(bakery_product.is_active)
+        self.assertFalse(ingredient.is_active)
+
+    def test_activate_rejects_duplicate_non_ingredient_with_category_detail(self):
+        other = Product.objects.create(
+            name="Espresso",
+            category=self.category,
+            selling_price=Decimal("4.00"),
+            is_active=True,
+        )
+        self.product.is_active = False
+        self.product.save(update_fields=["is_active"])
+
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {"is_active": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+        message = " ".join(str(part) for part in response.data["name"])
+        self.assertIn("Coffee", message)
+        self.assertIn(str(other.id), message)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.is_active)
+
 
 class IngredientCsvTests(TestCase):
     def setUp(self):
@@ -542,11 +592,10 @@ class BranchIngredientFilterTests(TestCase):
         self.stores = Branch.objects.create(name="Stores", branch_type=BranchType.STORES)
         self.outlet = Branch.objects.create(name="Avondale", branch_type=BranchType.BRANCH)
 
-    def test_for_branch_bakery_excludes_branch_ingredients(self):
+    def test_for_branch_bakery_includes_both_ingredient_categories(self):
         response = self.client.get(f"/api/products/?for_branch={self.bakery.id}")
         names = {item["name"] for item in response.data["results"]}
-        self.assertIn("Flour", names)
-        self.assertNotIn("12 CM SAUCERS", names)
+        self.assertEqual(names, {"Flour", "12 CM SAUCERS"})
 
     def test_for_branch_outlet_excludes_bakery_ingredients(self):
         response = self.client.get(f"/api/products/?for_branch={self.outlet.id}")

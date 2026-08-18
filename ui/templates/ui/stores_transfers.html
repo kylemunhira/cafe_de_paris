@@ -95,7 +95,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatDate, formatCurrency, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, formatCurrency, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
@@ -107,6 +107,7 @@ const invoicePrintUrlTemplate = "{% url 'ui:transfer-invoice-print' 0 %}".replac
 
 let allNotes = [];
 let storesInventory = [];
+let storesInventoryByProduct = new Map();
 let storesBranches = [];
 let destinationBranches = [];
 let products = [];
@@ -151,8 +152,8 @@ function formatQty(value) {
 }
 
 function getStoresStock(productId) {
-  const item = storesInventory.find(i => String(i.product) === String(productId));
-  return item ? Number(item.quantity) : 0;
+  const qty = storesInventoryByProduct.get(String(productId));
+  return qty === undefined ? 0 : qty;
 }
 
 function getProduct(productId) {
@@ -390,7 +391,8 @@ function setIngredientFilter(nextFilter, { syncTabs = true } = {}) {
 function ingredientFilterForDestination(branchId) {
   const branch = destinationBranches.find(b => String(b.id) === String(branchId));
   if (!branch) return "all";
-  if (branch.branch_type === "bakery") return "bakery";
+  // Central bakery stocks both bakery and branch ingredients (same as stores).
+  if (branch.branch_type === "bakery") return "all";
   if (branch.branch_type === "branch") return "branch";
   return "all";
 }
@@ -447,12 +449,21 @@ function populateFormOptions() {
 }
 
 async function refreshStoresInventory() {
-  const storesId = storesBranches[0]?.id;
-  if (!storesId) return;
-  const inventoryData = await apiGet(`/inventory/?branch=${storesId}`);
-  storesInventory = unwrapList(inventoryData);
+  const storesId = fromBranchSelect.value || storesBranches[0]?.id;
+  if (!storesId) {
+    storesInventory = [];
+    storesInventoryByProduct = new Map();
+    return;
+  }
+  // Must paginate — default API page size is 50; Central Stores has 700+ SKUs.
+  storesInventory = await fetchAllPages("/inventory/", { branch: String(storesId) });
+  storesInventoryByProduct = new Map(
+    storesInventory.map(row => [String(row.product), Number(row.quantity)]),
+  );
   populateFormOptions();
   updateStockHint();
+  renderDraftLines();
+  renderStoresStats();
 }
 
 async function loadData() {
@@ -460,12 +471,14 @@ async function loadData() {
   const branches = unwrapList(branchesData);
   const storesBranch = branches.find(b => b.branch_type === "stores" && b.is_active);
 
-  const [productsData, notesData] = await Promise.all([
-    apiGet(`/products/?page_size=1000&for_branch=${storesBranch?.id || ""}`),
+  const [productsList, notesData] = await Promise.all([
+    storesBranch?.id
+      ? fetchAllPages("/products/", { for_branch: String(storesBranch.id) })
+      : Promise.resolve([]),
     apiGet("/delivery-notes/?stores_only=true"),
   ]);
 
-  products = unwrapList(productsData);
+  products = productsList;
   allNotes = unwrapList(notesData);
 
   storesBranches = branches.filter(b => b.branch_type === "stores" && b.is_active);
