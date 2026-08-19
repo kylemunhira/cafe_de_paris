@@ -5,9 +5,9 @@
 {% block page_title %}{% trans "Purchases" %}{% endblock %}
 
 {% block content %}
-<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "Record purchase" %}</h3>
-  <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted);">
+<div class="card" id="po-form-card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="po-form-title" style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "Record purchase" %}</h3>
+  <p id="po-form-hint" style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--text-muted);">
     {% trans "Save as draft to finish later, or record the purchase to add stock now." %}
   </p>
   <form id="po-form">
@@ -96,6 +96,7 @@
     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
       <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Record purchase" %}</button>
       <button type="button" class="btn btn-ghost" id="draft-btn" disabled>{% trans "Save as draft" %}</button>
+      <button type="button" class="btn btn-ghost" id="cancel-edit-btn" style="display: none;">{% trans "Cancel editing" %}</button>
     </div>
   </form>
 </div>
@@ -121,7 +122,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, unwrapList, formatCurrency, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
@@ -134,6 +135,7 @@ let products = [];
 let draftLines = [];
 let activeFilter = "all";
 let purchaseType = "pos";
+let editingDraftId = null;
 
 const canPurchaseForAnyBranch = {{ can_purchase_for_any_branch|yesno:"true,false" }};
 const staffBranchId = "{{ staff_branch_id|default:'' }}";
@@ -177,6 +179,9 @@ const linesVat = document.getElementById("lines-vat");
 const linesTotal = document.getElementById("lines-total");
 const submitBtn = document.getElementById("submit-btn");
 const draftBtn = document.getElementById("draft-btn");
+const cancelEditBtn = document.getElementById("cancel-edit-btn");
+const formTitle = document.getElementById("po-form-title");
+const formHint = document.getElementById("po-form-hint");
 const poTable = document.getElementById("po-table");
 const poStats = document.getElementById("po-stats");
 const addLineBtn = document.getElementById("add-line-btn");
@@ -201,6 +206,10 @@ function formatQty(value) {
   return Number.isFinite(qty)
     ? qty.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 4 })
     : "0";
+}
+
+function poLabel(id) {
+  return `PO-${String(id).padStart(5, "0")}`;
 }
 
 function roundMoney(value) {
@@ -390,6 +399,93 @@ function setFormButtonsDisabled(disabled) {
   draftBtn.disabled = !canSubmit;
 }
 
+function setBranchSelectEnabled() {
+  if (!branches.length || branches.length === 1 || !canPurchaseForAnyBranch || editingDraftId) {
+    branchSelect.disabled = true;
+    return;
+  }
+  branchSelect.disabled = false;
+}
+
+function inferPurchaseType(lines) {
+  if (isIngredientsOnlyBranch(selectedBranch())) return "ingredients";
+  if (!lines?.length) return purchaseType;
+  const hasPosProduct = lines.some((line) => {
+    const product = products.find((p) => String(p.id) === String(line.product));
+    return product && !isIngredientProduct(product);
+  });
+  return hasPosProduct ? "pos" : "ingredients";
+}
+
+function updateFormModeUi() {
+  if (editingDraftId) {
+    formTitle.textContent = `${t("Edit draft")} ${poLabel(editingDraftId)}`;
+    formHint.textContent = t("Add or remove products, then save the draft or record the purchase.");
+    cancelEditBtn.style.display = "";
+  } else {
+    formTitle.textContent = t("Record purchase");
+    formHint.textContent = t("Save as draft to finish later, or record the purchase to add stock now.");
+    cancelEditBtn.style.display = "none";
+  }
+  setBranchSelectEnabled();
+}
+
+function resetLineInputs() {
+  productSelect.value = "";
+  qtyInput.value = "";
+  lineTotalInput.value = "";
+  syncSearchableSelect(productSelect);
+}
+
+function stopEditing() {
+  editingDraftId = null;
+  draftLines = [];
+  notesInput.value = "";
+  resetLineInputs();
+  populateProductSelect();
+  renderDraftLines();
+  updateFormModeUi();
+  renderOrders();
+}
+
+function startEditing(order) {
+  editingDraftId = order.id;
+  branchSelect.value = String(order.branch);
+  supplierSelect.value = String(order.supplier);
+  syncSearchableSelect(supplierSelect);
+  notesInput.value = order.notes || "";
+  purchaseType = inferPurchaseType(order.lines || []);
+  draftLines = (order.lines || []).map((line) => ({
+    product: Number(line.product),
+    product_name: line.product_name,
+    quantity: roundDecimal(Number(line.quantity)),
+    unit_cost: roundDecimal(Number(line.unit_cost)),
+  }));
+  resetLineInputs();
+  populateProductSelect();
+  renderDraftLines();
+  updateFormModeUi();
+  renderOrders();
+  document.getElementById("po-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function openDraft(order) {
+  const switching = String(editingDraftId || "") !== String(order.id);
+  if (switching && draftLines.length) {
+    if (!confirm(t("Open this draft instead? Unsaved changes will be lost."))) return;
+  }
+  try {
+    const detail = await apiGet(`/purchase-orders/${order.id}/`);
+    if (detail.status !== "draft") {
+      showToast(t("Only draft purchase orders can be edited."), true);
+      return;
+    }
+    startEditing(detail);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
 function renderDraftLines() {
   if (!draftLines.length) {
     linesWrap.style.display = "none";
@@ -448,7 +544,11 @@ function renderStats() {
 
 function draftActions(order) {
   if (order.status !== "draft") return "—";
+  if (editingDraftId && String(editingDraftId) === String(order.id)) {
+    return `<span style="color: var(--text-muted); font-size: 0.85rem;">${t("Editing")}</span>`;
+  }
   return `
+    <button type="button" class="btn btn-ghost btn-sm" data-action="edit" data-id="${order.id}">${t("Edit")}</button>
     <button type="button" class="btn btn-primary btn-sm" data-action="receive" data-id="${order.id}">${t("Record purchase")}</button>
     <button type="button" class="btn btn-ghost btn-sm" data-action="cancel" data-id="${order.id}">${t("Cancel")}</button>
   `;
@@ -546,6 +646,7 @@ async function loadData() {
   renderStats();
   renderOrders();
   renderDraftLines();
+  updateFormModeUi();
 }
 
 addLineBtn.addEventListener("click", () => {
@@ -629,29 +730,41 @@ async function submitPurchase(asDraft) {
 
   submitBtn.disabled = true;
   draftBtn.disabled = true;
+  const wasEditing = Boolean(editingDraftId);
   try {
-    const created = await apiPost("/purchase-orders/", {
-      branch: Number(branchSelect.value),
+    const lines = draftLines.map(l => ({
+      product: l.product,
+      quantity: roundDecimal(l.quantity),
+      unit_cost: roundDecimal(l.unit_cost),
+    }));
+    const payload = {
       supplier: Number(supplierSelect.value),
       notes: notesInput.value.trim(),
-      as_draft: asDraft,
-      lines: draftLines.map(l => ({
-        product: l.product,
-        quantity: roundDecimal(l.quantity),
-        unit_cost: roundDecimal(l.unit_cost),
-      })),
-    });
-    allOrders.unshift(created);
-    draftLines = [];
-    notesInput.value = "";
-    renderDraftLines();
+      lines,
+    };
+    let saved;
+    if (editingDraftId) {
+      saved = await apiPatch(`/purchase-orders/${editingDraftId}/`, payload);
+      if (!asDraft) {
+        saved = await apiPost(`/purchase-orders/${editingDraftId}/receive/`, {});
+      }
+    } else {
+      saved = await apiPost("/purchase-orders/", {
+        branch: Number(branchSelect.value),
+        as_draft: asDraft,
+        ...payload,
+      });
+    }
+    const index = allOrders.findIndex(o => String(o.id) === String(saved.id));
+    if (index >= 0) allOrders[index] = saved;
+    else allOrders.unshift(saved);
+    stopEditing();
     renderStats();
-    renderOrders();
-    const poLabel = `PO-${String(created.id).padStart(5, "0")}`;
+    const label = poLabel(saved.id);
     showToast(
       asDraft
-        ? `${poLabel} ${t("saved as draft")}`
-        : `${poLabel} ${t("recorded — stock updated")}`,
+        ? `${label} ${wasEditing ? t("draft updated") : t("saved as draft")}`
+        : `${label} ${t("recorded — stock updated")}`,
     );
   } catch (err) {
     showToast(err.message, true);
@@ -669,11 +782,23 @@ draftBtn.addEventListener("click", async () => {
   await submitPurchase(true);
 });
 
+cancelEditBtn.addEventListener("click", () => {
+  if (draftLines.length && !confirm(t("Stop editing this draft? Unsaved changes will be lost."))) {
+    return;
+  }
+  stopEditing();
+});
+
 poTable.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-action]");
   if (!btn) return;
   const id = btn.dataset.id;
   const action = btn.dataset.action;
+  const order = allOrders.find(o => String(o.id) === String(id));
+  if (action === "edit") {
+    if (order) await openDraft(order);
+    return;
+  }
   if (action === "receive" && !confirm(t("Record this purchase and add stock now?"))) {
     return;
   }
@@ -685,6 +810,7 @@ poTable.addEventListener("click", async (e) => {
     const updated = await apiPost(`/purchase-orders/${id}/${action}/`, {});
     const index = allOrders.findIndex(o => String(o.id) === String(id));
     if (index >= 0) allOrders[index] = updated;
+    if (String(editingDraftId) === String(id)) stopEditing();
     renderStats();
     renderOrders();
     showToast(

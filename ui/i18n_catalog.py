@@ -988,6 +988,38 @@ _add("Record this purchase and add stock now?", "Enregistrer cet achat et ajoute
 _add("Cancel this draft purchase?", "Annuler ce brouillon d'achat ?", "¿Cancelar este borrador de compra?", "إلغاء مسودة الشراء هذه؟", "取消此采购草稿？")
 _add("Purchase recorded — stock updated", "Achat enregistré — stock mis à jour", "Compra registrada — stock actualizado", "تم تسجيل الشراء — تم تحديث المخزون", "采购已记录 — 库存已更新")
 _add("Draft cancelled", "Brouillon annulé", "Borrador cancelado", "تم إلغاء المسودة", "草稿已取消")
+_add("Edit draft", "Modifier le brouillon", "Editar borrador", "تعديل المسودة", "编辑草稿")
+_add("Editing", "Modification", "Editando", "جارٍ التعديل", "正在编辑")
+_add("Cancel editing", "Annuler la modification", "Cancelar edición", "إلغاء التعديل", "取消编辑")
+_add(
+    "Add or remove products, then save the draft or record the purchase.",
+    "Ajoutez ou retirez des produits, puis enregistrez le brouillon ou l'achat.",
+    "Agregue o quite productos, luego guarde el borrador o registre la compra.",
+    "أضف منتجات أو أزلها، ثم احفظ المسودة أو سجّل الشراء.",
+    "添加或移除产品，然后保存草稿或记录采购。",
+)
+_add(
+    "Open this draft instead? Unsaved changes will be lost.",
+    "Ouvrir ce brouillon à la place ? Les modifications non enregistrées seront perdues.",
+    "¿Abrir este borrador en su lugar? Se perderán los cambios no guardados.",
+    "فتح هذه المسودة بدلاً من ذلك؟ ستُفقد التغييرات غير المحفوظة.",
+    "改为打开此草稿？未保存的更改将丢失。",
+)
+_add(
+    "Stop editing this draft? Unsaved changes will be lost.",
+    "Arrêter de modifier ce brouillon ? Les modifications non enregistrées seront perdues.",
+    "¿Dejar de editar este borrador? Se perderán los cambios no guardados.",
+    "إيقاف تعديل هذه المسودة؟ ستُفقد التغييرات غير المحفوظة.",
+    "停止编辑此草稿？未保存的更改将丢失。",
+)
+_add(
+    "Only draft purchase orders can be edited.",
+    "Seuls les bons de commande en brouillon peuvent être modifiés.",
+    "Solo se pueden editar los pedidos de compra en borrador.",
+    "يمكن تعديل أوامر الشراء المسودة فقط.",
+    "只能编辑草稿采购单。",
+)
+_add("draft updated", "brouillon mis à jour", "borrador actualizado", "تم تحديث المسودة", "草稿已更新")
 _add("No purchases recorded yet", "Aucun achat enregistré pour le moment", "Aún no hay compras registradas", "لا توجد مشتريات مسجلة بعد", "尚无采购记录")
 _add("Record wastage", "Enregistrer les pertes", "Registrar merma", "تسجيل الهدر", "记录损耗")
 _add("Refresh", "Actualiser", "Actualizar", "تحديث", "刷新")

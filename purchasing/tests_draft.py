@@ -109,3 +109,61 @@ class PurchaseOrderDraftFlowTests(APITestCase):
         )
         with self.assertRaises(InvalidPurchaseOrderStateError):
             receive_purchase_order(po)
+
+    def test_update_draft_can_add_and_remove_products(self):
+        flour = Product.objects.create(
+            name="Flour",
+            category=self.product.category,
+            selling_price=Decimal("1.50"),
+        )
+        self.client.force_authenticate(user=self.hq)
+        created = self.client.post(
+            "/api/purchase-orders/",
+            {**self.payload, "as_draft": True},
+            format="json",
+        )
+        po_id = created.data["id"]
+
+        response = self.client.patch(
+            f"/api/purchase-orders/{po_id}/",
+            {
+                "notes": "INV-2",
+                "lines": [
+                    {
+                        "product": flour.id,
+                        "quantity": "6",
+                        "unit_cost": "2.50",
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], PurchaseOrderStatus.DRAFT)
+        self.assertEqual(response.data["notes"], "INV-2")
+        self.assertEqual(len(response.data["lines"]), 1)
+        self.assertEqual(response.data["lines"][0]["product"], flour.id)
+        self.assertEqual(response.data["lines"][0]["quantity"], "6.0000")
+        self.assertFalse(
+            BranchInventory.objects.filter(branch=self.stores).exists()
+        )
+
+    def test_update_received_purchase_is_rejected(self):
+        self.client.force_authenticate(user=self.hq)
+        created = self.client.post("/api/purchase-orders/", self.payload, format="json")
+        po_id = created.data["id"]
+
+        response = self.client.patch(
+            f"/api/purchase-orders/{po_id}/",
+            {
+                "lines": [
+                    {
+                        "product": self.product.id,
+                        "quantity": "1",
+                        "unit_cost": "3.00",
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
