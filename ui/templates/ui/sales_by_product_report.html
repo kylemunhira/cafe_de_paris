@@ -1,0 +1,238 @@
+{% extends "ui/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% trans "Sales by Product" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Sales by Product" %}{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-ghost btn-sm" id="print-report-btn">{% trans "Print" %}</button>
+{% endblock %}
+
+{% block content %}
+<div class="card report-filters">
+  <div class="report-filters-grid">
+    <label>
+      <span>{% trans "From" %}</span>
+      <input type="date" id="filter-from" class="report-input">
+    </label>
+    <label>
+      <span>{% trans "To" %}</span>
+      <input type="date" id="filter-to" class="report-input">
+    </label>
+    {% if can_filter_any_branch %}
+    <label>
+      <span>{% trans "Branch" %}</span>
+      <select id="filter-branch" class="report-input">
+        <option value="">{% trans "All branches" %}</option>
+      </select>
+    </label>
+    {% endif %}
+    <label style="grid-column: span 2;">
+      <span>{% trans "Search product" %}</span>
+      <input type="search" id="filter-search" class="report-input" placeholder="{% trans "Product name…" %}" autocomplete="off">
+    </label>
+    <div class="report-filters-actions">
+      <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
+    </div>
+  </div>
+</div>
+
+<div class="stat-grid" id="report-summary">
+  <div class="card stat-card">
+    <div class="stat-label">{% trans "Products" %}</div>
+    <div class="stat-value" id="summary-products">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">{% trans "Qty Sold" %}</div>
+    <div class="stat-value" id="summary-qty">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">{% trans "Total Sales" %}</div>
+    <div class="stat-value" id="summary-total">—</div>
+  </div>
+</div>
+
+<div class="card report-panel" id="report-table-card" style="padding: 0;">
+  <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Sales by product" %}</h3>
+    <p class="report-panel-note" id="report-generated-at" style="margin: 0.35rem 0 0;"></p>
+  </div>
+  <div class="table-wrap" id="report-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, unwrapList, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { branchesForUser, effectiveBranchParam, setupBranchFilter } from "{% static 'ui/js/branch-select.js' %}";
+import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
+
+const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const staffBranchId = {{ staff_branch_id|default:"null" }};
+
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
+const filterBranch = document.getElementById("filter-branch");
+const filterSearch = document.getElementById("filter-search");
+const applyFilters = document.getElementById("apply-filters");
+const printReportBtn = document.getElementById("print-report-btn");
+const summaryProducts = document.getElementById("summary-products");
+const summaryQty = document.getElementById("summary-qty");
+const summaryTotal = document.getElementById("summary-total");
+const reportTable = document.getElementById("report-table");
+const reportGeneratedAt = document.getElementById("report-generated-at");
+
+let reportData = null;
+const sortState = createSortState("total", "desc");
+
+const REPORT_SORT = {
+  product_name: (r) => r.product_name || "",
+  quantity: (r) => Number(r.quantity),
+  unit_price: (r) => Number(r.unit_price),
+  total: (r) => Number(r.total),
+};
+
+function formatQty(value) {
+  const qty = Number(value);
+  return Number.isFinite(qty) ? qty.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "0";
+}
+
+function toLocalDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function defaultDates() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  return {
+    from: toLocalDateInput(start),
+    to: toLocalDateInput(today),
+  };
+}
+
+function queryString() {
+  const params = new URLSearchParams();
+  if (filterFrom.value) params.set("from", filterFrom.value);
+  if (filterTo.value) params.set("to", filterTo.value);
+  const branch = effectiveBranchParam(canFilterAnyBranch, staffBranchId, filterBranch?.value);
+  if (branch) params.set("branch", branch);
+  const search = filterSearch.value.trim();
+  if (search) params.set("search", search);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function formatPeriod(from, to) {
+  if (!from || !to) return "—";
+  return `${from} ${t("to")} ${to}`;
+}
+
+function renderReport(data) {
+  reportData = data;
+  const summary = data.summary || {};
+  summaryProducts.textContent = summary.product_count ?? 0;
+  summaryQty.textContent = formatQty(summary.total_quantity ?? 0);
+  summaryTotal.textContent = formatCurrency(summary.total_sales ?? 0);
+
+  const periodFrom = data.period?.from || filterFrom.value;
+  const periodTo = data.period?.to || filterTo.value;
+  const branchLabel = data.filters?.branch_name || t("All branches");
+  reportGeneratedAt.textContent =
+    `${branchLabel} — ${formatPeriod(periodFrom, periodTo)} — ${summary.product_count ?? 0} ${t("product(s)")}`;
+
+  const rows = data.rows || [];
+  if (!rows.length) {
+    reportTable.innerHTML = `<div class="empty-state"><p>${t("No product sales for this period")}</p></div>`;
+    return;
+  }
+
+  const sorted = sortItems(rows, sortState, REPORT_SORT);
+
+  reportTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh(t("Product"), "product_name", sortState)}
+          ${sortTh(t("Qty"), "quantity", sortState, { align: "right" })}
+          ${sortTh(t("Price"), "unit_price", sortState, { align: "right" })}
+          ${sortTh(t("Total price"), "total", sortState, { align: "right" })}
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(row => `
+          <tr>
+            <td><strong>${row.product_name}</strong></td>
+            <td style="text-align: right;">${formatQty(row.quantity)}</td>
+            <td style="text-align: right;">${formatCurrency(row.unit_price)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatCurrency(row.total)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>${t("Total")}</strong></td>
+          <td style="text-align: right; font-weight: 700;">${formatQty(summary.total_quantity ?? 0)}</td>
+          <td></td>
+          <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_sales ?? 0)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+async function loadReport() {
+  reportTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  try {
+    const data = await apiGet(`/reports/sales-by-product/${queryString()}`);
+    renderReport(data);
+  } catch (err) {
+    reportTable.innerHTML = `<div class="empty-state">${t("Failed to load report:")} ${err.message}</div>`;
+    showToast(err.message, true);
+  }
+}
+
+async function loadBranches() {
+  if (!canFilterAnyBranch || !filterBranch) return;
+  const data = await apiGet("/branches/?page_size=500");
+  const branches = branchesForUser(
+    unwrapList(data).filter(b => b.is_active),
+    staffBranchId,
+    true,
+  );
+  setupBranchFilter(filterBranch, branches, {
+    canSelectAny: true,
+    allLabel: t("All branches"),
+  });
+}
+
+const defaults = defaultDates();
+filterFrom.value = defaults.from;
+filterTo.value = defaults.to;
+
+applyFilters.addEventListener("click", loadReport);
+filterSearch.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    loadReport();
+  }
+});
+printReportBtn?.addEventListener("click", () => window.print());
+
+bindTableSort(reportTable, sortState, () => {
+  if (reportData) renderReport(reportData);
+});
+
+loadBranches()
+  .then(loadReport)
+  .catch(err => {
+    reportTable.innerHTML = `<div class="empty-state">${t("Failed to load report:")} ${err.message}</div>`;
+  });
+</script>
+{% endblock %}

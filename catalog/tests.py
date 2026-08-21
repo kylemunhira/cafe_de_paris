@@ -597,11 +597,10 @@ class BranchIngredientFilterTests(TestCase):
         names = {item["name"] for item in response.data["results"]}
         self.assertEqual(names, {"Flour", "12 CM SAUCERS"})
 
-    def test_for_branch_outlet_excludes_bakery_ingredients(self):
+    def test_for_branch_outlet_includes_both_ingredient_categories(self):
         response = self.client.get(f"/api/products/?for_branch={self.outlet.id}")
         names = {item["name"] for item in response.data["results"]}
-        self.assertIn("12 CM SAUCERS", names)
-        self.assertNotIn("Flour", names)
+        self.assertEqual(names, {"Flour", "12 CM SAUCERS"})
 
     def test_for_branch_ignores_null_string(self):
         response = self.client.get("/api/products/?for_branch=null")

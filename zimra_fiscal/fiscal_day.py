@@ -85,6 +85,7 @@ def open_fiscal_day(branch) -> dict:
         method="POST",
         payload={},
     )
+    normalized = normalize_fiscal_day_status(result)
     normalized["device_id"] = device_id
     normalized["branch_id"] = branch.id
     normalized["branch_name"] = branch.name

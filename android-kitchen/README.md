@@ -73,9 +73,7 @@ Polls every 5 seconds.
 
 Receipt tab refreshes every 10 seconds. After payment, a **sales receipt** is printed automatically on the paired Bluetooth printer (same as web POS).
 
-Use **Customer payment** in the header to record account deposits. From that dialog, **Print statement** prints the customer’s full account statement (all transactions and outstanding balance) on the paired Bluetooth printer.
-
-Use **Day end** in the header to run cash-up: enter counted till amounts per currency and print the day-end summary (requires a completed daily stock take for that date).
+Use **☰ → Fiscalise** to list **today's** paid fiscal invoices. Cashiers and managers on fiscal branches can tap **Approve fiscal** to send pending proformas to ZIMRA (then a fiscal receipt with QR prints). Approved invoices can be reprinted.
 
 ## API used
 
@@ -86,6 +84,11 @@ Use **Day end** in the header to run cash-up: enter counted till amounts per cur
 - `GET /api/currencies/` — payment currencies
 - `GET /api/stock-takes/day-end-check/` — verify daily stock take before day end
 - `GET /api/reports/day-end/` — day-end cash-up report
+- `GET /api/branches/{id}/fiscal-day/status/` — ZIMRA fiscal day status
+- `POST /api/branches/{id}/fiscal-day/open/` — open fiscal day
+- `POST /api/branches/{id}/fiscal-day/close/` — close fiscal day
+- `GET /api/orders/?status=paid&fiscal_only=1&paid_date=YYYY-MM-DD` — today's fiscal invoices
+- `POST /api/orders/{id}/approve-fiscal/` — approve proforma and submit to ZIMRA
 - `GET /api/customers/` — customers with account balances
 - `GET /api/customers/{id}/statement/?all=1` — customer account statement (transactions + balances)
 - `POST /api/customers/{id}/deposit/` — record customer account deposit

@@ -9,7 +9,12 @@ from bakery.models import Recipe
 from catalog.models import Product, ProductCategory
 from orders.models import Expense, Order, OrderItem, OrderPayment, OrderStatus, OrderType, PaymentMethod
 from orders.tax import split_inclusive_total
-from reports.services import build_profit_report, build_report_summary, export_sales_csv
+from reports.services import (
+    build_profit_report,
+    build_report_summary,
+    build_sales_by_product_report,
+    export_sales_csv,
+)
 
 
 class ReportServiceTests(TestCase):
@@ -54,6 +59,56 @@ class ReportServiceTests(TestCase):
         self.assertEqual(len(report["top_products"]), 1)
         self.assertEqual(report["top_products"][0]["product_name"], "Espresso")
         self.assertEqual(len(report["low_stock"]), 1)
+
+    def test_sales_by_product_aggregates_qty_price_total(self):
+        other = Product.objects.create(
+            name="Latte",
+            category=self.category,
+            selling_price=Decimal("5.00"),
+            remaining_qty=Decimal("20"),
+        )
+        order2 = Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.TAKEAWAY,
+            status=OrderStatus.PAID,
+            total_amount=Decimal("9.00"),
+        )
+        OrderItem.objects.create(
+            order=order2,
+            product=self.product,
+            quantity=Decimal("1"),
+            price=Decimal("4.00"),
+        )
+        OrderItem.objects.create(
+            order=order2,
+            product=other,
+            quantity=Decimal("1"),
+            price=Decimal("5.00"),
+        )
+
+        today = timezone.localdate()
+        report = build_sales_by_product_report(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+        )
+        self.assertEqual(report["summary"]["product_count"], 2)
+        self.assertEqual(report["summary"]["total_quantity"], Decimal("4"))
+        self.assertEqual(report["summary"]["total_sales"], Decimal("17.00"))
+
+        by_name = {row["product_name"]: row for row in report["rows"]}
+        espresso = by_name["Espresso"]
+        self.assertEqual(espresso["quantity"], Decimal("3"))
+        self.assertEqual(espresso["unit_price"], Decimal("4.00"))
+        self.assertEqual(espresso["total"], Decimal("12.00"))
+        self.assertEqual(by_name["Latte"]["total"], Decimal("5.00"))
+
+        filtered = build_sales_by_product_report(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            search="lat",
+        )
+        self.assertEqual(filtered["summary"]["product_count"], 1)
+        self.assertEqual(filtered["rows"][0]["product_name"], "Latte")
 
     def test_summary_excludes_unpaid_orders(self):
         Order.objects.create(

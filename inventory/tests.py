@@ -1065,6 +1065,36 @@ class StoresTransferTests(TestCase):
         )
         self.assertEqual(stores_stock.quantity, Decimal("25"))
 
+    def test_stores_to_branch_accepts_bakery_ingredients(self):
+        """Outlets can receive bakery Ingredients from Central Stores."""
+        self.client.force_authenticate(user=self.stores_clerk)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-stores/",
+            {
+                "from_branch": self.stores.id,
+                "to_branch": self.branch.id,
+                "lines": [{"product": self.flour.id, "quantity": "4"}],
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        note_id = create_response.data["id"]
+
+        approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200)
+        self.assertEqual(approve_response.data["status"], "delivered")
+
+        branch_stock = BranchInventory.objects.get(
+            branch=self.branch,
+            product=self.flour,
+        )
+        self.assertEqual(branch_stock.quantity, Decimal("4"))
+        stores_stock = BranchInventory.objects.get(
+            branch=self.stores,
+            product=self.flour,
+        )
+        self.assertEqual(stores_stock.quantity, Decimal("26"))
+
     def test_transfer_invoice_print_page(self):
         self.client.force_login(self.stores_clerk)
         note = DeliveryNote.objects.create(

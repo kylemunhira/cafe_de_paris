@@ -52,6 +52,26 @@ class ApiClient(
         return fetchOrdersByStatus("open,unpaid")
     }
 
+    fun fetchTodaysFiscalInvoices(date: String): List<KitchenOrder> {
+        val token = requireToken()
+        val branchId = session.branchId
+        val url =
+            "${config.serverUrl}/api/orders/?status=paid&branch=$branchId" +
+                "&fiscal_only=1&paid_date=$date&page_size=500"
+        val body = getJson(url, token)
+        return JsonParsers.parseOrders(body)
+    }
+
+    fun approveFiscalReceipt(orderId: Int): KitchenOrder {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/orders/$orderId/approve-fiscal/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseOrder(body)
+    }
+
     private fun fetchOrdersByStatus(status: String): List<KitchenOrder> {
         val token = session.token ?: throw ApiException(401, "Not logged in")
         val branchId = session.branchId
@@ -359,6 +379,35 @@ class ApiClient(
         val url = "${config.serverUrl}/api/stock-takes/day-end-check/?branch=$branchId&date=$date"
         val body = getJson(url, token)
         return JsonParsers.parseDayEndStockTakeCheck(body)
+    }
+
+    fun fetchFiscalDayStatus(): FiscalDayStatus {
+        val token = requireToken()
+        val branchId = session.branchId
+        val body = getJson("${config.serverUrl}/api/branches/$branchId/fiscal-day/status/", token)
+        return JsonParsers.parseFiscalDayStatus(body)
+    }
+
+    fun openFiscalDay(): FiscalDayStatus {
+        val token = requireToken()
+        val branchId = session.branchId
+        val body = postJson(
+            "${config.serverUrl}/api/branches/$branchId/fiscal-day/open/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseFiscalDayStatus(body)
+    }
+
+    fun closeFiscalDay(): FiscalDayStatus {
+        val token = requireToken()
+        val branchId = session.branchId
+        val body = postJson(
+            "${config.serverUrl}/api/branches/$branchId/fiscal-day/close/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseFiscalDayStatus(body)
     }
 
     fun fetchStockTakes(

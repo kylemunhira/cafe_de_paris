@@ -392,11 +392,7 @@ function setIngredientFilter(nextFilter, { syncTabs = true } = {}) {
 }
 
 function ingredientFilterForDestination(branchId) {
-  const branch = destinationBranches.find(b => String(b.id) === String(branchId));
-  if (!branch) return "all";
-  // Central bakery stocks both bakery and branch ingredients (same as stores).
-  if (branch.branch_type === "bakery") return "all";
-  if (branch.branch_type === "branch") return "branch";
+  // Outlets, bakery, and HQ can receive both bakery and branch ingredients.
   return "all";
 }
 

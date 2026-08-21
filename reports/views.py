@@ -14,7 +14,12 @@ from customers.reports import build_customer_balances_report
 from purchasing.reports import build_supplier_spend_summary_report
 
 from .ingredients import build_ingredient_stock_report, build_ingredient_usage_report
-from .services import build_profit_report, build_report_summary, export_sales_csv
+from .services import (
+    build_profit_report,
+    build_report_summary,
+    build_sales_by_product_report,
+    export_sales_csv,
+)
 from .vat import build_vat_report
 from .voided import build_voided_cancelled_report
 from orders.day_end import build_day_end_report
@@ -166,6 +171,28 @@ class ReportVoidedCancelledView(APIView):
             )
             data = build_voided_cancelled_report(
                 report_date=request.query_params.get("date"),
+                branch_id=branch_id,
+                search=request.query_params.get("search"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(data)
+
+
+class ReportSalesByProductView(APIView):
+    def get(self, request):
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied(
+                "Only authorized staff can view sales by product reports."
+            )
+
+        try:
+            branch_id = effective_branch_id(
+                request.user, request.query_params.get("branch")
+            )
+            data = build_sales_by_product_report(
+                from_date=request.query_params.get("from"),
+                to_date=request.query_params.get("to"),
                 branch_id=branch_id,
                 search=request.query_params.get("search"),
             )

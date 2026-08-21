@@ -432,9 +432,21 @@ class EscPosPrinter {
         output.write(textLine("Proforma #$it"))
       }
     } else {
-      output.write(textLine("Sales Receipt", bold = true))
-      order.receipt_number?.takeIf { it.isNotBlank() }?.let {
-        output.write(textLine("Receipt #$it"))
+      val isFiscal = order.branch_fiscalization_enabled &&
+        order.fiscal_approval_status == "approved"
+      if (isFiscal) {
+        output.write(textLine("Fiscal Receipt", bold = true))
+        order.fiscal_receipt_number?.takeIf { it.isNotBlank() }?.let {
+          output.write(textLine("Fiscal #$it"))
+        }
+        order.receipt_number?.takeIf { it.isNotBlank() }?.let {
+          output.write(textLine("Proforma #$it"))
+        }
+      } else {
+        output.write(textLine("Sales Receipt", bold = true))
+        order.receipt_number?.takeIf { it.isNotBlank() }?.let {
+          output.write(textLine("Receipt #$it"))
+        }
       }
     }
 
@@ -546,9 +558,76 @@ class EscPosPrinter {
     output.write(textLine("Thank you for your visit!"))
     if (isProforma) {
       output.write(textLine("PROFORMA - NOT FISCAL", bold = true))
+    } else if (
+      order.branch_fiscalization_enabled &&
+      order.fiscal_approval_status == "approved"
+    ) {
+      writeFiscalFooter(output, order)
     }
     output.write(textLine("PAID", bold = true, doubleHeight = true))
     output.write(LF)
+  }
+
+  private fun writeFiscalFooter(output: OutputStream, order: KitchenOrder) {
+    val fiscal = order.fiscal
+    output.write(textLine("--------------------------------"))
+    output.write(ALIGN_CENTER)
+    output.write(textLine("ZIMRA Fiscal", bold = true))
+    output.write(ALIGN_LEFT)
+    fiscal?.deviceBranchName?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine(it))
+    }
+    fiscal?.deviceSerialNo?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Device: $it"))
+    }
+    val invoiceNo = fiscal?.invoiceNumber?.takeIf { it.isNotBlank() }
+      ?: order.fiscal_receipt_number?.takeIf { it.isNotBlank() }
+    invoiceNo?.let { output.write(textLine("Invoice: $it")) }
+    fiscal?.fiscalDayNumber?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Fiscal day: $it"))
+    }
+    val counter = fiscal?.receiptCounter?.takeIf { it.isNotBlank() }
+    val globalNo = fiscal?.receiptGlobalNo?.takeIf { it.isNotBlank() }
+    if (counter != null) {
+      val suffix = if (globalNo != null) " / $globalNo" else ""
+      output.write(textLine("Receipt #$counter$suffix"))
+    }
+    fiscal?.verificationCode?.takeIf { it.isNotBlank() }?.let {
+      output.write(textLine("Verification: $it"))
+    }
+
+    val qrPayload = fiscal?.qrPayload()
+    if (!qrPayload.isNullOrBlank()) {
+      output.write(LF)
+      output.write(ALIGN_CENTER)
+      output.write(textLine("Scan to verify", bold = true))
+      writeQrCode(output, qrPayload)
+      output.write(LF)
+    } else {
+      output.write(ALIGN_CENTER)
+      output.write(textLine("FISCAL RECEIPT", bold = true))
+    }
+  }
+
+  private fun writeQrCode(output: OutputStream, payload: String, moduleSize: Int = 6) {
+    val data = payload.toByteArray(Charsets.UTF_8)
+    if (data.isEmpty()) return
+
+    // QR Model 2
+    output.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00))
+    // Module size (1-16)
+    val size = moduleSize.coerceIn(3, 12).toByte()
+    output.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, size))
+    // Error correction level M
+    output.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31))
+    // Store data
+    val storeLen = data.size + 3
+    val pL = (storeLen and 0xFF).toByte()
+    val pH = ((storeLen shr 8) and 0xFF).toByte()
+    output.write(byteArrayOf(0x1D, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30))
+    output.write(data)
+    // Print symbol
+    output.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30))
   }
 
   private fun writePaymentOptions(output: OutputStream, options: List<PaymentOptionLine>) {

@@ -418,16 +418,8 @@ def user_can_approve_purchase_orders(user):
 
 
 def user_can_approve_fiscal_receipt(user):
-    """Branch managers and HQ admins approve proforma invoices for fiscalization."""
-    if not user or not user.is_authenticated:
-        return False
-    if user_has_global_branch_access(user):
-        return True
-    try:
-        profile = user.staff_profile
-    except StaffProfile.DoesNotExist:
-        return False
-    return profile.role == StaffRole.BRANCH_MANAGER
+    """POS staff on a fiscal branch may approve proforma invoices for ZIMRA."""
+    return user_can_manage_fiscal_day(user)
 
 
 def user_can_manage_fiscal_day(user):

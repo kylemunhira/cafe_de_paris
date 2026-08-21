@@ -15,6 +15,7 @@ data class UserInfo(
     val display_name: String,
     val role: String,
     val can_manage_fiscal_day: Boolean = false,
+    val can_approve_fiscal_receipt: Boolean = false,
     val can_manage_dining_tables: Boolean = false,
     val can_collect_payment: Boolean = true,
     val is_superuser: Boolean = false,
@@ -63,12 +64,30 @@ data class KitchenOrder(
     val payment_currency_symbol: String? = null,
     val amount_paid: String? = null,
     val receipt_number: String? = null,
+    val fiscal_receipt_number: String? = null,
+    val fiscal: FiscalReceiptInfo? = null,
     val paid_by_name: String? = null,
     val fiscal_approval_status: String? = null,
     val payment_method: String? = null,
     val customer_account_balance: String? = null,
     val payments: List<OrderPaymentLine> = emptyList(),
 )
+
+data class FiscalReceiptInfo(
+    val invoiceNumber: String? = null,
+    val deviceBranchName: String? = null,
+    val deviceSerialNo: String? = null,
+    val fiscalDayNumber: String? = null,
+    val receiptCounter: String? = null,
+    val receiptGlobalNo: String? = null,
+    val verificationCode: String? = null,
+    val qrUrl: String? = null,
+    val qrString: String? = null,
+) {
+    fun qrPayload(): String? {
+        return qrString?.takeIf { it.isNotBlank() }
+    }
+}
 
 fun KitchenOrder.receiptLocationLabel(): String {
     return when {
@@ -293,6 +312,17 @@ data class DayEndStockTakeCheck(
     val completed: Boolean,
     val detail: String,
     val draftInProgress: Boolean = false,
+)
+
+data class FiscalDayStatus(
+    val fiscalDayStatus: String = "",
+    val fiscalDayNumber: Any? = null,
+    val lastReceiptGlobalNo: Any? = null,
+    val deviceId: String? = null,
+    val branchId: Int? = null,
+    val branchName: String? = null,
+    val canOpenDay: Boolean = false,
+    val canCloseDay: Boolean = false,
 )
 
 data class StockTakeLine(

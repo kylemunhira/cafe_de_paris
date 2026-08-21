@@ -1,10 +1,12 @@
 from decimal import Decimal
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from rest_framework import serializers
 
 from catalog.models import Product
 from payments.models import Currency
+from zimra_fiscal.response import fiscal_receipt_summary
 
 from accounts.access_codes import normalize_access_code, resolve_order_taker
 from accounts.branch_access import user_is_waiter
@@ -185,6 +187,7 @@ class OrderSerializer(serializers.ModelSerializer):
     cancelled_by_name = serializers.SerializerMethodField()
     fiscal_approved_by_name = serializers.SerializerMethodField()
     fiscal_receipt_number = serializers.SerializerMethodField()
+    fiscal = serializers.SerializerMethodField()
     customer_name = serializers.SerializerMethodField()
     customer_account_balance = serializers.SerializerMethodField()
     branch_fiscalization_enabled = serializers.BooleanField(
@@ -225,6 +228,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "fiscal_approved_at",
             "fiscal_approved_by",
             "fiscal_approved_by_name",
+            "fiscal",
             "created_by",
             "created_by_name",
             "paid_by",
@@ -250,10 +254,18 @@ class OrderSerializer(serializers.ModelSerializer):
         return staff_display_name(obj.fiscal_approved_by)
 
     def get_fiscal_receipt_number(self, obj):
-        fiscal_receipt = getattr(obj, "fiscal_receipt", None)
-        if fiscal_receipt is None:
+        try:
+            fiscal_receipt = obj.fiscal_receipt
+        except ObjectDoesNotExist:
             return None
         return fiscal_receipt.invoice_no
+
+    def get_fiscal(self, obj):
+        try:
+            fiscal_receipt = obj.fiscal_receipt
+        except ObjectDoesNotExist:
+            return None
+        return fiscal_receipt_summary(fiscal_receipt)
 
     def get_customer_name(self, obj):
         if not obj.customer_id:

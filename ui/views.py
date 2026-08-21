@@ -359,6 +359,14 @@ class VoidedItemsReportView(BaseUIView):
         return user_can_access_pos(user)
 
 
+class SalesByProductReportView(BaseUIView):
+    template_name = "ui/sales_by_product_report.html"
+    active_nav = "sales_by_product_report"
+
+    def access_allowed(self, user):
+        return user_can_access_pos(user)
+
+
 class SupplierStatementView(BaseUIView):
     template_name = "ui/supplier_statement.html"
     active_nav = "supplier_statement"

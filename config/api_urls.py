@@ -32,6 +32,7 @@ from reports.views import (
     ReportIngredientStockView,
     ReportIngredientUsageView,
     ReportProfitView,
+    ReportSalesByProductView,
     ReportSummaryView,
     ReportSupplierSpendView,
     ReportVATView,
@@ -106,6 +107,11 @@ urlpatterns = [
         "reports/voided-cancelled/",
         ReportVoidedCancelledView.as_view(),
         name="report-voided-cancelled",
+    ),
+    path(
+        "reports/sales-by-product/",
+        ReportSalesByProductView.as_view(),
+        name="report-sales-by-product",
     ),
     path(
         "reports/supplier-spend/",

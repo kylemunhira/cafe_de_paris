@@ -150,14 +150,7 @@ function isIngredientProduct(product) {
 }
 
 function ingredientProductsForBranch(branch) {
-  if (!branch) return products.filter(isIngredientProduct);
-  // Central bakery and stores stock both ingredient categories.
-  if (branch.branch_type === "bakery" || branch.branch_type === "stores") {
-    return products.filter(isIngredientProduct);
-  }
-  if (branch.branch_type === "branch") {
-    return products.filter(p => p.category_name === BRANCH_INGREDIENTS_CATEGORY);
-  }
+  // Branches, bakery, and stores all stock both ingredient categories.
   return products.filter(isIngredientProduct);
 }
 

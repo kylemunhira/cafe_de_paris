@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
@@ -499,6 +500,49 @@ class OrderPayFiscalizationTests(TestCase):
         mock_submit.assert_called_once()
 
     @patch("zimra_fiscal.services.submit_receipt_payload")
+    @patch("zimra_fiscal.services.timezone.localdate")
+    def test_cashier_can_approve_fiscal(self, mock_localdate, mock_submit):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        mock_localdate.return_value = timezone.datetime(2026, 6, 9).date()
+        mock_submit.return_value = {
+            "status_code": 200,
+            "body": {
+                "verificationCode": "DONE-456",
+                "qrUrl": "https://fdms.zimra.co.zw/qr/test",
+            },
+        }
+        cashier = User.objects.create_user(username="fiscalcashier", password="pass")
+        StaffProfile.objects.create(
+            user=cashier,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        self.client.force_authenticate(cashier)
+        self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/approve-fiscal/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["fiscal_approval_status"], "approved")
+        self.assertEqual(
+            response.data["fiscal_result"]["verificationCode"],
+            "DONE-456",
+        )
+        self.assertEqual(
+            response.data["fiscal_result"]["qrUrl"],
+            "https://fdms.zimra.co.zw/qr/test",
+        )
+
+    @patch("zimra_fiscal.services.submit_receipt_payload")
     def test_approve_fiscal_keeps_proforma_when_zimra_fails(self, mock_submit):
         from zimra_fiscal.exceptions import ZimraSubmissionError
 
@@ -534,3 +578,39 @@ class OrderPayFiscalizationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("fiscal_receipt", response.data)
         self.assertFalse(FiscalReceipt.objects.filter(order=self.order).exists())
+
+    def test_list_orders_paid_date_filters_local_day(self):
+        self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {"currency_id": self.usd.id},
+            format="json",
+        )
+        self.order.refresh_from_db()
+        today = timezone.localdate().isoformat()
+        yesterday = (timezone.localdate() - timedelta(days=1)).isoformat()
+
+        today_response = self.client.get(
+            "/api/orders/",
+            {
+                "status": "paid",
+                "branch": self.branch.id,
+                "fiscal_only": "1",
+                "paid_date": today,
+            },
+        )
+        self.assertEqual(today_response.status_code, 200)
+        today_ids = [row["id"] for row in today_response.data["results"]]
+        self.assertIn(self.order.id, today_ids)
+
+        yesterday_response = self.client.get(
+            "/api/orders/",
+            {
+                "status": "paid",
+                "branch": self.branch.id,
+                "fiscal_only": "1",
+                "paid_date": yesterday,
+            },
+        )
+        self.assertEqual(yesterday_response.status_code, 200)
+        yesterday_ids = [row["id"] for row in yesterday_response.data["results"]]
+        self.assertNotIn(self.order.id, yesterday_ids)

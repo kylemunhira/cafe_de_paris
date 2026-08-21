@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_fiscal_day"
+        android:title="@string/fiscal_day" />
+    <item
+        android:id="@+id/menu_fiscal_invoices"
+        android:title="@string/fiscal_invoices" />
+    <item
+        android:id="@+id/menu_day_end"
+        android:title="@string/day_end" />
+    <item
+        android:id="@+id/menu_stock_take"
+        android:title="@string/stock_take" />
+    <item
+        android:id="@+id/menu_grv"
+        android:title="@string/grv" />
+    <item
+        android:id="@+id/menu_expense"
+        android:title="@string/add_expense" />
+    <item
+        android:id="@+id/menu_settings"
+        android:title="@string/settings" />
+</menu>

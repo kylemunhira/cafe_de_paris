@@ -63,70 +63,39 @@
                 android:text="@string/pos_mode_receipt" />
         </com.google.android.material.button.MaterialButtonToggleGroup>
 
-            <ProgressBar
+        <ProgressBar
             android:id="@+id/refreshProgress"
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:layout_marginEnd="8dp"
             android:visibility="gone" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/stockTakeButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="@string/stock_take"
-                android:visibility="gone" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/grvButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="@string/grv"
-                android:visibility="gone" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/customerPaymentButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="@string/customer_payment"
-                android:visibility="gone" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/expenseButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="@string/add_expense" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/dayEndButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="@string/day_end" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/settingsButton"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/customerPaymentButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
-            android:text="@string/settings" />
+            android:text="@string/customer_payment"
+            android:visibility="gone" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/logoutButton"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
             android:text="@string/logout" />
+
+        <ImageButton
+            android:id="@+id/moreMenuButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/more_menu"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_menu" />
     </LinearLayout>
 
     <TextView

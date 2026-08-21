@@ -32,6 +32,7 @@ from customers.services import (
 
 from inventory.services import InsufficientOrderMaterialsError, consume_order_recipe_materials
 
+from .day_end import local_day_range
 from .kitchen_station import filter_orders_for_kitchen_station, resolve_kitchen_station_filter
 from .models import (
     Expense,
@@ -142,6 +143,13 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             qs = qs.filter(fiscal_approval_status=fiscal_approval_status)
         if fiscal_only in ("1", "true", "yes"):
             qs = qs.filter(branch__fiscalization_enabled=True)
+        paid_date = self.request.query_params.get("paid_date")
+        if paid_date:
+            try:
+                start, end, _ = local_day_range(paid_date)
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(paid_at__gte=start, paid_at__lt=end)
         qs = filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
         if user_is_waiter(self.request.user):
             qs = qs.filter(created_by=self.request.user)
@@ -599,7 +607,7 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     def approve_fiscal(self, request, pk=None):
         if not user_can_approve_fiscal_receipt(request.user):
             raise PermissionDenied(
-                "Branch manager or HQ admin access is required to approve fiscal receipts."
+                "POS access on a fiscal branch is required to approve fiscal receipts."
             )
 
         order = self.get_object()

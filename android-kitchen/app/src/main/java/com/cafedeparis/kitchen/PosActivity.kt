@@ -18,6 +18,8 @@ import android.widget.TextView
 import android.widget.Toast
 import android.view.ViewGroup
 import android.util.TypedValue
+import android.view.MenuItem
+import android.widget.PopupMenu
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
@@ -43,18 +45,22 @@ import com.cafedeparis.kitchen.databinding.ActivityPosBinding
 import com.cafedeparis.kitchen.databinding.DialogCustomerPaymentBinding
 import com.cafedeparis.kitchen.databinding.DialogCustomerPickerBinding
 import com.cafedeparis.kitchen.databinding.DialogDayEndBinding
+import com.cafedeparis.kitchen.databinding.DialogFiscalDayBinding
+import com.cafedeparis.kitchen.databinding.DialogFiscalInvoicesBinding
 import java.util.Locale
 import com.cafedeparis.kitchen.databinding.DialogExpenseBinding
 import com.cafedeparis.kitchen.databinding.DialogOrderPickerBinding
 import com.cafedeparis.kitchen.databinding.DialogTablePickerBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
+import com.cafedeparis.kitchen.data.FiscalDayStatus
 import com.cafedeparis.kitchen.data.cartLineKey
 import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.ui.AddonPickerDialog
 import com.cafedeparis.kitchen.ui.CartLineAdapter
 import com.cafedeparis.kitchen.ui.CategoryChipAdapter
 import com.cafedeparis.kitchen.ui.DiningTableAdapter
+import com.cafedeparis.kitchen.ui.FiscalInvoiceAdapter
 import com.cafedeparis.kitchen.ui.ProductAdapter
 import com.cafedeparis.kitchen.ui.ReceiptOrderAdapter
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -114,6 +120,12 @@ class PosActivity : KeepScreenOnActivity() {
     private var tablePickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var orderPickerDialog: androidx.appcompat.app.AlertDialog? = null
     private var dayEndDialog: androidx.appcompat.app.AlertDialog? = null
+    private var fiscalDayDialog: androidx.appcompat.app.AlertDialog? = null
+    private var fiscalDayDialogBinding: DialogFiscalDayBinding? = null
+    private var fiscalDayStatus: FiscalDayStatus? = null
+    private var fiscalInvoicesDialog: androidx.appcompat.app.AlertDialog? = null
+    private var fiscalInvoicesDialogBinding: DialogFiscalInvoicesBinding? = null
+    private var fiscalInvoiceAdapter: FiscalInvoiceAdapter? = null
     private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPaymentDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPickerDialog: androidx.appcompat.app.AlertDialog? = null
@@ -770,6 +782,247 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
+    private fun openFiscalDayDialog() {
+        if (!session.fiscalizationEnabled) {
+            Toast.makeText(this, R.string.fiscal_day_not_configured, Toast.LENGTH_LONG).show()
+            return
+        }
+        val dialogBinding = DialogFiscalDayBinding.inflate(layoutInflater)
+        fiscalDayDialogBinding = dialogBinding
+        renderFiscalDayDialog(fiscalDayStatus)
+
+        dialogBinding.fiscalDayRefreshButton.setOnClickListener { refreshFiscalDayStatus() }
+        dialogBinding.fiscalDayOpenButton.setOnClickListener { runFiscalDayAction(open = true) }
+        dialogBinding.fiscalDayCloseDayButton.setOnClickListener { runFiscalDayAction(open = false) }
+
+        fiscalDayDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.fiscal_day_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        fiscalDayDialog?.setOnDismissListener {
+            fiscalDayDialog = null
+            fiscalDayDialogBinding = null
+        }
+        fiscalDayDialog?.show()
+        refreshFiscalDayStatus()
+    }
+
+    private fun fiscalDayStatusLabel(status: String?): String {
+        return when (status) {
+            "FiscalDayOpened" -> getString(R.string.fiscal_day_status_open)
+            "FiscalDayClosed" -> getString(R.string.fiscal_day_status_closed)
+            "FiscalDayCloseFailed" -> getString(R.string.fiscal_day_status_close_failed)
+            "FiscalDayCloseInitiated" -> getString(R.string.fiscal_day_status_closing)
+            null, "" -> getString(R.string.fiscal_day_status_unknown)
+            else -> status
+        }
+    }
+
+    private fun renderFiscalDayDialog(status: FiscalDayStatus?, error: String = "") {
+        val dialogBinding = fiscalDayDialogBinding ?: return
+        val deviceId = status?.deviceId
+        val branchName = status?.branchName ?: session.branchName.orEmpty()
+        dialogBinding.fiscalDayBranchLabel.text = if (!deviceId.isNullOrBlank()) {
+            getString(R.string.fiscal_day_branch_device, branchName, deviceId)
+        } else {
+            branchName
+        }
+
+        if (error.isNotBlank()) {
+            dialogBinding.fiscalDayErrorLabel.visibility = View.VISIBLE
+            dialogBinding.fiscalDayErrorLabel.text = error
+            dialogBinding.fiscalDayStatusLabel.text = getString(R.string.fiscal_day_status_error)
+            dialogBinding.fiscalDayStatusLabel.setTextColor(getColor(R.color.error))
+        } else {
+            dialogBinding.fiscalDayErrorLabel.visibility = View.GONE
+            dialogBinding.fiscalDayStatusLabel.text = fiscalDayStatusLabel(status?.fiscalDayStatus)
+            dialogBinding.fiscalDayStatusLabel.setTextColor(
+                when (status?.fiscalDayStatus) {
+                    "FiscalDayOpened" -> getColor(R.color.status_ready)
+                    "FiscalDayCloseFailed" -> getColor(R.color.error)
+                    else -> getColor(R.color.text_primary)
+                },
+            )
+        }
+
+        dialogBinding.fiscalDayNumberLabel.text =
+            status?.fiscalDayNumber?.toString()?.takeIf { it.isNotBlank() && it != "null" } ?: "—"
+        dialogBinding.fiscalDayGlobalNoLabel.text =
+            status?.lastReceiptGlobalNo?.toString()?.takeIf { it.isNotBlank() && it != "null" } ?: "—"
+
+        val busyError = error.isNotBlank()
+        dialogBinding.fiscalDayRefreshButton.isEnabled = true
+        dialogBinding.fiscalDayOpenButton.isEnabled = !busyError && status?.canOpenDay == true
+        dialogBinding.fiscalDayCloseDayButton.isEnabled = !busyError && status?.canCloseDay == true
+    }
+
+    private fun setFiscalDayButtonsEnabled(enabled: Boolean) {
+        val dialogBinding = fiscalDayDialogBinding ?: return
+        dialogBinding.fiscalDayRefreshButton.isEnabled = enabled
+        if (!enabled) {
+            dialogBinding.fiscalDayOpenButton.isEnabled = false
+            dialogBinding.fiscalDayCloseDayButton.isEnabled = false
+        }
+    }
+
+    private fun refreshFiscalDayStatus() {
+        if (!session.fiscalizationEnabled) return
+        lifecycleScope.launch {
+            setFiscalDayButtonsEnabled(false)
+            try {
+                fiscalDayStatus = withContext(Dispatchers.IO) { api.fetchFiscalDayStatus() }
+                renderFiscalDayDialog(fiscalDayStatus)
+            } catch (err: ApiException) {
+                fiscalDayStatus = null
+                renderFiscalDayDialog(null, err.message ?: getString(R.string.fiscal_day_status_error))
+                handleApiError(err)
+            } catch (err: Exception) {
+                fiscalDayStatus = null
+                val message = getString(R.string.connection_failed, err.message ?: "")
+                renderFiscalDayDialog(null, message)
+                showError(message)
+            }
+        }
+    }
+
+    private fun runFiscalDayAction(open: Boolean) {
+        if (!session.fiscalizationEnabled) return
+        lifecycleScope.launch {
+            setFiscalDayButtonsEnabled(false)
+            try {
+                fiscalDayStatus = withContext(Dispatchers.IO) {
+                    if (open) api.openFiscalDay() else api.closeFiscalDay()
+                }
+                renderFiscalDayDialog(fiscalDayStatus)
+                Toast.makeText(
+                    this@PosActivity,
+                    if (open) R.string.fiscal_day_opened else R.string.fiscal_day_close_requested,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                if (!open) {
+                    delay(2500)
+                    if (fiscalDayDialog != null) {
+                        refreshFiscalDayStatus()
+                    }
+                }
+            } catch (err: ApiException) {
+                handleApiError(err)
+                refreshFiscalDayStatus()
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+                refreshFiscalDayStatus()
+            }
+        }
+    }
+
+    private fun openFiscalInvoicesDialog() {
+        if (!session.fiscalizationEnabled) {
+            Toast.makeText(this, R.string.fiscal_day_not_configured, Toast.LENGTH_LONG).show()
+            return
+        }
+        val dialogBinding = DialogFiscalInvoicesBinding.inflate(layoutInflater)
+        fiscalInvoicesDialogBinding = dialogBinding
+        val date = todayIso()
+        dialogBinding.fiscalInvoicesDateLabel.text = getString(R.string.fiscal_invoices_date, date)
+
+        val adapter = FiscalInvoiceAdapter(
+            canApprove = session.canApproveFiscalReceipt,
+            onApprove = ::approveFiscalInvoice,
+            onReprint = ::reprintFiscalInvoice,
+        )
+        fiscalInvoiceAdapter = adapter
+        dialogBinding.fiscalInvoiceList.layoutManager = LinearLayoutManager(this)
+        dialogBinding.fiscalInvoiceList.adapter = adapter
+        dialogBinding.fiscalInvoicesRefreshButton.setOnClickListener { loadTodaysFiscalInvoices() }
+
+        fiscalInvoicesDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.fiscal_invoices_title)
+            .setView(dialogBinding.root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        fiscalInvoicesDialog?.setOnDismissListener {
+            fiscalInvoicesDialog = null
+            fiscalInvoicesDialogBinding = null
+            fiscalInvoiceAdapter = null
+        }
+        fiscalInvoicesDialog?.show()
+        loadTodaysFiscalInvoices()
+    }
+
+    private fun loadTodaysFiscalInvoices() {
+        val dialogBinding = fiscalInvoicesDialogBinding ?: return
+        lifecycleScope.launch {
+            dialogBinding.fiscalInvoicesRefreshButton.isEnabled = false
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                val date = todayIso()
+                dialogBinding.fiscalInvoicesDateLabel.text =
+                    getString(R.string.fiscal_invoices_date, date)
+                val orders = withContext(Dispatchers.IO) { api.fetchTodaysFiscalInvoices(date) }
+                    .sortedWith(
+                        compareBy<KitchenOrder> {
+                            when (it.fiscal_approval_status) {
+                                "pending", "failed" -> 0
+                                "approved" -> 1
+                                else -> 2
+                            }
+                        }.thenByDescending { it.id },
+                    )
+                fiscalInvoiceAdapter?.submitList(orders)
+                dialogBinding.fiscalInvoiceEmptyLabel.visibility =
+                    if (orders.isEmpty()) View.VISIBLE else View.GONE
+                dialogBinding.fiscalInvoiceList.visibility =
+                    if (orders.isEmpty()) View.GONE else View.VISIBLE
+            } catch (err: ApiException) {
+                handleApiError(err)
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                dialogBinding.fiscalInvoicesRefreshButton.isEnabled = true
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun approveFiscalInvoice(order: KitchenOrder) {
+        if (!session.canApproveFiscalReceipt) return
+        lifecycleScope.launch {
+            Toast.makeText(this@PosActivity, R.string.fiscal_invoice_approving, Toast.LENGTH_SHORT).show()
+            binding.refreshProgress.visibility = View.VISIBLE
+            try {
+                val updated = withContext(Dispatchers.IO) { api.approveFiscalReceipt(order.id) }
+                Toast.makeText(
+                    this@PosActivity,
+                    R.string.fiscal_invoice_approved,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                if (updated.fiscal?.qrPayload().isNullOrBlank()) {
+                    Toast.makeText(
+                        this@PosActivity,
+                        R.string.fiscal_invoice_approved_no_qr,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+                printReceipt(updated)
+                loadTodaysFiscalInvoices()
+            } catch (err: ApiException) {
+                handleApiError(err)
+                loadTodaysFiscalInvoices()
+            } catch (err: Exception) {
+                showError(getString(R.string.connection_failed, err.message ?: ""))
+            } finally {
+                binding.refreshProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun reprintFiscalInvoice(order: KitchenOrder) {
+        lifecycleScope.launch {
+            printReceipt(order)
+        }
+    }
+
     private fun showDayEndDialog(initialDate: String) {
         val dialogBinding = DialogDayEndBinding.inflate(layoutInflater)
         dialogBinding.dayEndDateInput.setText(initialDate)
@@ -1195,14 +1448,46 @@ class PosActivity : KeepScreenOnActivity() {
     private fun updateReceiptModeVisibility() {
         val showReceipt = session.canCollectPayment
         binding.receiptModeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
-        binding.stockTakeButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
-        binding.grvButton.visibility = if (session.canAccessGrv) View.VISIBLE else View.GONE
         binding.customerPaymentButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
-        binding.expenseButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
-        binding.dayEndButton.visibility = if (showReceipt) View.VISIBLE else View.GONE
         if (!showReceipt && posMode == PosMode.RECEIPT) {
             setPosMode(PosMode.ORDER)
         }
+    }
+
+    private fun showMoreMenu() {
+        val popup = PopupMenu(this, binding.moreMenuButton)
+        popup.menuInflater.inflate(R.menu.pos_overflow, popup.menu)
+
+        val showReceiptActions = session.canCollectPayment
+        val showFiscalDay = session.canManageFiscalDay && session.fiscalizationEnabled
+        val showFiscalInvoices = session.fiscalizationEnabled &&
+            (session.canApproveFiscalReceipt || session.canManageFiscalDay)
+
+        popup.menu.findItem(R.id.menu_fiscal_day)?.isVisible = showFiscalDay
+        popup.menu.findItem(R.id.menu_fiscal_invoices)?.isVisible = showFiscalInvoices
+        popup.menu.findItem(R.id.menu_day_end)?.isVisible = showReceiptActions
+        popup.menu.findItem(R.id.menu_stock_take)?.isVisible = showReceiptActions
+        popup.menu.findItem(R.id.menu_grv)?.isVisible = session.canAccessGrv
+        popup.menu.findItem(R.id.menu_expense)?.isVisible = showReceiptActions
+
+        popup.setOnMenuItemClickListener { item ->
+            handleMoreMenuItem(item)
+        }
+        popup.show()
+    }
+
+    private fun handleMoreMenuItem(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_fiscal_day -> openFiscalDayDialog()
+            R.id.menu_fiscal_invoices -> openFiscalInvoicesDialog()
+            R.id.menu_day_end -> openDayEndDialog()
+            R.id.menu_stock_take -> openStockTake()
+            R.id.menu_grv -> startActivity(Intent(this, GrvActivity::class.java))
+            R.id.menu_expense -> openExpenseDialog()
+            R.id.menu_settings -> startActivity(Intent(this, SettingsActivity::class.java))
+            else -> return false
+        }
+        return true
     }
 
     private fun setupPaymentMethodToggle() {
@@ -1610,6 +1895,8 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun setupActions() {
+        binding.moreMenuButton.setOnClickListener { showMoreMenu() }
+        binding.customerPaymentButton.setOnClickListener { openCustomerPaymentDialog() }
         binding.logoutButton.setOnClickListener {
             refreshJob?.cancel()
             session.clearLogin()
@@ -1618,16 +1905,6 @@ class PosActivity : KeepScreenOnActivity() {
             })
             finish()
         }
-        binding.settingsButton.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
-        binding.expenseButton.setOnClickListener { openExpenseDialog() }
-        binding.stockTakeButton.setOnClickListener { openStockTake() }
-        binding.grvButton.setOnClickListener {
-            startActivity(Intent(this, GrvActivity::class.java))
-        }
-        binding.customerPaymentButton.setOnClickListener { openCustomerPaymentDialog() }
-        binding.dayEndButton.setOnClickListener { openDayEndDialog() }
         binding.clearButton.setOnClickListener {
             if (posMode == PosMode.ORDER) {
                 cart.clear()

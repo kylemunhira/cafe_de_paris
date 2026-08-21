@@ -366,6 +366,83 @@ def _period_expenses(from_date, to_date, branch_id):
     return expenses
 
 
+def build_sales_by_product_report(
+    from_date=None, to_date=None, branch_id=None, search=None
+):
+    """Paid sales aggregated by product: name, qty, unit price, total."""
+    from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
+    paid_items = _paid_order_items(from_date, to_date, branch_id)
+
+    search_term = (search or "").strip()
+    if search_term:
+        paid_items = paid_items.filter(product__name__icontains=search_term)
+
+    product_buckets = {}
+    total_qty = Decimal("0")
+    total_amount = Decimal("0")
+
+    for item in paid_items.select_related("product"):
+        line_total = item.quantity * item.price
+        total_qty += item.quantity
+        total_amount += line_total
+
+        product_row = product_buckets.setdefault(
+            item.product_id,
+            {
+                "product_id": item.product_id,
+                "product_name": item.product.name,
+                "quantity": Decimal("0"),
+                "total": Decimal("0"),
+            },
+        )
+        product_row["quantity"] += item.quantity
+        product_row["total"] += line_total
+
+    rows = []
+    for row in product_buckets.values():
+        qty = row["quantity"]
+        total = row["total"]
+        unit_price = (
+            (total / qty).quantize(Decimal("0.01")) if qty else Decimal("0")
+        )
+        rows.append(
+            {
+                "product_id": row["product_id"],
+                "product_name": row["product_name"],
+                "quantity": qty,
+                "unit_price": unit_price,
+                "total": total,
+            }
+        )
+
+    rows.sort(key=lambda row: (-row["total"], row["product_name"]))
+
+    branch_name = None
+    if branch_id:
+        from branches.models import Branch
+
+        branch = Branch.objects.filter(pk=branch_id).first()
+        branch_name = branch.name if branch else None
+
+    return {
+        "period": {
+            "from": from_date.isoformat() if from_date else None,
+            "to": to_date.isoformat() if to_date else None,
+        },
+        "filters": {
+            "branch_id": branch_id,
+            "branch_name": branch_name,
+            "search": search_term or None,
+        },
+        "summary": {
+            "product_count": len(rows),
+            "total_quantity": total_qty,
+            "total_sales": total_amount,
+        },
+        "rows": rows,
+    }
+
+
 def build_profit_report(from_date=None, to_date=None, branch_id=None):
     from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
     paid_items = list(_paid_order_items(from_date, to_date, branch_id))

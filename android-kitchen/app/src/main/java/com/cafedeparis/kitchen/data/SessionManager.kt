@@ -57,6 +57,27 @@ class SessionManager(context: Context) {
         get() = prefs.getBoolean(KEY_FISCALIZATION_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_FISCALIZATION_ENABLED, value).apply()
 
+    var canManageFiscalDay: Boolean
+        get() {
+            if (prefs.contains(KEY_CAN_MANAGE_FISCAL_DAY)) {
+                return prefs.getBoolean(KEY_CAN_MANAGE_FISCAL_DAY, false)
+            }
+            // Sessions saved before this flag: POS staff on fiscal branches (not waiters).
+            return fiscalizationEnabled && canAccessPos && userRole != "waiter"
+        }
+        set(value) = prefs.edit().putBoolean(KEY_CAN_MANAGE_FISCAL_DAY, value).apply()
+
+    var canApproveFiscalReceipt: Boolean
+        get() {
+            if (prefs.contains(KEY_CAN_APPROVE_FISCAL_RECEIPT)) {
+                val stored = prefs.getBoolean(KEY_CAN_APPROVE_FISCAL_RECEIPT, false)
+                // Older logins may have stored false for cashiers; fiscal POS staff can approve.
+                return stored || canManageFiscalDay
+            }
+            return canManageFiscalDay
+        }
+        set(value) = prefs.edit().putBoolean(KEY_CAN_APPROVE_FISCAL_RECEIPT, value).apply()
+
     var canManageDiningTables: Boolean
         get() = prefs.getBoolean(KEY_CAN_MANAGE_DINING_TABLES, false)
         set(value) = prefs.edit().putBoolean(KEY_CAN_MANAGE_DINING_TABLES, value).apply()
@@ -94,6 +115,8 @@ class SessionManager(context: Context) {
         kitchenStation = response.user.kitchen_station
         kitchenStationDisplay = response.user.kitchen_station_display
         fiscalizationEnabled = response.branch.fiscalization_enabled
+        canManageFiscalDay = response.user.can_manage_fiscal_day
+        canApproveFiscalReceipt = response.user.can_approve_fiscal_receipt
         canManageDiningTables = response.user.can_manage_dining_tables
     }
 
@@ -112,6 +135,8 @@ class SessionManager(context: Context) {
             .remove(KEY_KITCHEN_STATION)
             .remove(KEY_KITCHEN_STATION_DISPLAY)
             .remove(KEY_FISCALIZATION_ENABLED)
+            .remove(KEY_CAN_MANAGE_FISCAL_DAY)
+            .remove(KEY_CAN_APPROVE_FISCAL_RECEIPT)
             .remove(KEY_CAN_MANAGE_DINING_TABLES)
             .apply()
     }
@@ -305,6 +330,8 @@ class SessionManager(context: Context) {
         private const val KEY_KITCHEN_STATION = "kitchen_station"
         private const val KEY_KITCHEN_STATION_DISPLAY = "kitchen_station_display"
         private const val KEY_FISCALIZATION_ENABLED = "fiscalization_enabled"
+        private const val KEY_CAN_MANAGE_FISCAL_DAY = "can_manage_fiscal_day"
+        private const val KEY_CAN_APPROVE_FISCAL_RECEIPT = "can_approve_fiscal_receipt"
         private const val KEY_CAN_MANAGE_DINING_TABLES = "can_manage_dining_tables"
         private const val KEY_PRINTER_ADDRESS = "printer_address"
         private const val KEY_PRINTED_IDS = "printed_order_ids"
@@ -354,6 +381,7 @@ object JsonParsers {
                 display_name = user.getString("display_name"),
                 role = user.getString("role"),
                 can_manage_fiscal_day = user.optBoolean("can_manage_fiscal_day", false),
+                can_approve_fiscal_receipt = user.optBoolean("can_approve_fiscal_receipt", false),
                 can_manage_dining_tables = user.optBoolean("can_manage_dining_tables", false),
                 can_collect_payment = user.optBoolean("can_collect_payment", true),
                 is_superuser = user.optBoolean("is_superuser", false),
@@ -701,6 +729,9 @@ object JsonParsers {
                 currency_symbol = payment.optString("currency_symbol", null),
             )
         }
+        val fiscalInfo = parseFiscalReceiptInfo(
+            json.optJSONObject("fiscal") ?: json.optJSONObject("fiscal_result"),
+        )
         return KitchenOrder(
             id = json.getInt("id"),
             branch = json.getInt("branch"),
@@ -720,12 +751,55 @@ object JsonParsers {
             payment_currency_symbol = json.optString("payment_currency_symbol", null),
             amount_paid = json.optString("amount_paid", null),
             receipt_number = json.optString("receipt_number", null),
+            fiscal_receipt_number = json.optString("fiscal_receipt_number", null)?.takeIf { it.isNotBlank() }
+                ?: fiscalInfo?.invoiceNumber,
+            fiscal = fiscalInfo,
             paid_by_name = json.optString("paid_by_name", null),
-            fiscal_approval_status = json.optString("fiscal_approval_status", null),
+            fiscal_approval_status = json.optString("fiscal_approval_status", null)?.takeIf { it.isNotBlank() },
             payment_method = json.optString("payment_method", null),
             customer_account_balance = json.optString("customer_account_balance", null),
             payments = payments,
         )
+    }
+
+    private fun parseFiscalReceiptInfo(json: org.json.JSONObject?): FiscalReceiptInfo? {
+        if (json == null) return null
+        fun optText(vararg keys: String): String? {
+            for (key in keys) {
+                val value = json.optString(key, null)?.takeIf { it.isNotBlank() && it != "null" }
+                if (value != null) return value
+                if (json.has(key) && !json.isNull(key)) {
+                    val raw = json.opt(key)
+                    if (raw != null && raw != org.json.JSONObject.NULL) {
+                        val text = raw.toString().trim()
+                        if (text.isNotEmpty() && text != "null") return text
+                    }
+                }
+            }
+            return null
+        }
+        val info = FiscalReceiptInfo(
+            invoiceNumber = optText("invoiceNumber", "fiscal_invoice_number", "invoice_no"),
+            deviceBranchName = optText("deviceBranchName", "device_branch_name"),
+            deviceSerialNo = optText("deviceSerialNo", "device_serial_no"),
+            fiscalDayNumber = optText("fiscalDayNumber", "fiscal_day_number"),
+            receiptCounter = optText("receiptCounter", "receipt_counter"),
+            receiptGlobalNo = optText("receiptGlobalNo", "receipt_global_no"),
+            verificationCode = optText("verificationCode", "verification_code"),
+            qrUrl = optText("qrUrl", "qr_url"),
+            qrString = optText("qrString", "qr_string"),
+        )
+        return if (
+            info.invoiceNumber == null &&
+            info.verificationCode == null &&
+            info.qrUrl == null &&
+            info.qrString == null &&
+            info.deviceSerialNo == null
+        ) {
+            null
+        } else {
+            info
+        }
     }
 
     fun parseSuppliers(body: String): List<Supplier> {
@@ -796,6 +870,20 @@ object JsonParsers {
             completed = json.optBoolean("completed", false),
             detail = json.optString("detail", ""),
             draftInProgress = json.optBoolean("draft_in_progress", false),
+        )
+    }
+
+    fun parseFiscalDayStatus(body: String): FiscalDayStatus {
+        val json = org.json.JSONObject(body)
+        return FiscalDayStatus(
+            fiscalDayStatus = json.optString("fiscal_day_status", ""),
+            fiscalDayNumber = json.opt("fiscal_day_number").takeUnless { it == org.json.JSONObject.NULL },
+            lastReceiptGlobalNo = json.opt("last_receipt_global_no").takeUnless { it == org.json.JSONObject.NULL },
+            deviceId = json.optString("device_id", null)?.takeIf { it.isNotBlank() },
+            branchId = if (json.has("branch_id") && !json.isNull("branch_id")) json.optInt("branch_id") else null,
+            branchName = json.optString("branch_name", null)?.takeIf { it.isNotBlank() },
+            canOpenDay = json.optBoolean("can_open_day", false),
+            canCloseDay = json.optBoolean("can_close_day", false),
         )
     }
 
