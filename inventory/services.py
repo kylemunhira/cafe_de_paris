@@ -417,26 +417,54 @@ class InvalidDeliveryNoteReceiptError(Exception):
         super().__init__(detail)
 
 
-def finalize_bakery_delivery_note_creation(note: DeliveryNote) -> DeliveryNote:
-    """Deduct bakery stock as soon as the delivery note is created."""
+def _available_quantity(branch, product) -> Decimal:
+    try:
+        return BranchInventory.objects.get(branch=branch, product=product).quantity
+    except BranchInventory.DoesNotExist:
+        return Decimal("0")
+
+
+def assert_bakery_delivery_stock_available(from_branch, lines) -> None:
+    """Ensure bakery has enough stock for each line without moving inventory yet."""
+    for line in lines:
+        product = line["product"] if isinstance(line, dict) else line.product
+        quantity = line["quantity"] if isinstance(line, dict) else line.quantity
+        available = _available_quantity(from_branch, product)
+        if available < quantity:
+            raise InsufficientStockError(from_branch, product, available, quantity)
+
+
+def create_bakery_delivery_note(
+    *,
+    from_branch,
+    to_branch,
+    lines,
+    check_stock: bool = True,
+) -> DeliveryNote:
+    """
+    Create a pending bakery delivery note.
+
+    Stock stays at the bakery until GRV approve (DELIVERY_OUT + DELIVERY_IN).
+    """
+    if not lines:
+        raise ValueError("Add at least one product line.")
     with transaction.atomic():
-        note = DeliveryNote.objects.select_for_update().select_related(
-            "from_branch", "to_branch"
-        ).get(pk=note.pk)
-        lines = _delivery_note_lines(note)
-        if not lines:
-            raise InvalidDeliveryNoteStateError(
-                note, "at least one product line", "create"
-            )
-        for line in lines:
-            adjust_inventory(
-                note.from_branch,
-                line.product,
-                -line.quantity,
-                reason=StockMovementReason.DELIVERY_OUT,
-                reference_type="delivery_note",
-                reference_id=note.pk,
-            )
+        if check_stock:
+            assert_bakery_delivery_stock_available(from_branch, lines)
+        note = DeliveryNote.objects.create(
+            from_branch=from_branch,
+            to_branch=to_branch,
+        )
+        DeliveryNoteLine.objects.bulk_create(
+            [
+                DeliveryNoteLine(
+                    delivery_note=note,
+                    product=line["product"],
+                    quantity=line["quantity"],
+                )
+                for line in lines
+            ]
+        )
     return note
 
 
@@ -559,7 +587,7 @@ def approve_delivery_note(note: DeliveryNote, receipt=None, user=None) -> Delive
         raise InvalidDeliveryNoteStateError(
             note, StockTransferStatus.REQUESTED, "approve"
         )
-    if _is_bakery_outbound_delivery(note):
+    if _is_bakery_outbound_delivery(note) or _is_stores_outbound_delivery(note):
         with transaction.atomic():
             note = DeliveryNote.objects.select_for_update().select_related(
                 "from_branch", "to_branch"
@@ -576,41 +604,7 @@ def approve_delivery_note(note: DeliveryNote, receipt=None, user=None) -> Delive
             receipt_lines, _ = _normalize_receipt_lines(lines, receipt)
             for item in receipt_lines:
                 line = item["line"]
-                if item["received"] > 0:
-                    adjust_inventory(
-                        note.to_branch,
-                        line.product,
-                        item["received"],
-                        reason=StockMovementReason.DELIVERY_IN,
-                        reference_type="delivery_note",
-                        reference_id=note.pk,
-                    )
-                _credit_return_to_source(
-                    note,
-                    line.product,
-                    item["returned"],
-                    damaged=item["damaged"],
-                    notes=item["notes"],
-                )
-            return _apply_receipt_fields(note, receipt_lines, receipt, user=user)
-    if _is_stores_outbound_delivery(note):
-        with transaction.atomic():
-            note = DeliveryNote.objects.select_for_update().select_related(
-                "from_branch", "to_branch"
-            ).get(pk=note.pk)
-            if note.status != StockTransferStatus.REQUESTED:
-                raise InvalidDeliveryNoteStateError(
-                    note, StockTransferStatus.REQUESTED, "approve"
-                )
-            lines = _delivery_note_lines(note)
-            if not lines:
-                raise InvalidDeliveryNoteStateError(
-                    note, "at least one product line", "approve"
-                )
-            receipt_lines, _ = _normalize_receipt_lines(lines, receipt)
-            for item in receipt_lines:
-                line = item["line"]
-                # Stock is still at stores until approve — only move accepted qty.
+                # Stock stays at source until GRV — only move accepted qty.
                 if item["received"] > 0:
                     adjust_inventory(
                         note.from_branch,
@@ -1049,27 +1043,8 @@ def cancel_delivery_note(note: DeliveryNote) -> DeliveryNote:
             f"{StockTransferStatus.REQUESTED} or {StockTransferStatus.APPROVED}",
             "cancel",
         )
-    if note.status == StockTransferStatus.REQUESTED and _is_bakery_outbound_delivery(note):
-        with transaction.atomic():
-            note = DeliveryNote.objects.select_for_update().select_related(
-                "from_branch", "to_branch"
-            ).get(pk=note.pk)
-            if note.status != StockTransferStatus.REQUESTED:
-                raise InvalidDeliveryNoteStateError(
-                    note, StockTransferStatus.REQUESTED, "cancel"
-                )
-            for line in _delivery_note_lines(note):
-                adjust_inventory(
-                    note.from_branch,
-                    line.product,
-                    line.quantity,
-                    reason=StockMovementReason.DELIVERY_CANCEL,
-                    reference_type="delivery_note",
-                    reference_id=note.pk,
-                )
-            note.status = StockTransferStatus.CANCELLED
-            note.save(update_fields=["status"])
-        return note
+    # Bakery/stores outbound notes do not deduct stock until GRV approve,
+    # so cancelling a requested note is a status change only.
     note.status = StockTransferStatus.CANCELLED
     note.save(update_fields=["status"])
     return note

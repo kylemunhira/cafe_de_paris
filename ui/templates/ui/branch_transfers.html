@@ -160,7 +160,10 @@ function renderDraftLines() {
   linesBody.innerHTML = draftLines.map((line, index) => `
     <tr>
       <td>${line.product_name}</td>
-      <td style="text-align: right;">${formatQty(line.quantity)}</td>
+      <td style="text-align: right;">
+        <input type="number" class="report-input line-qty-input" min="0.001" step="0.001"
+          data-index="${index}" value="${line.quantity}" style="width: 6.5rem; text-align: right;">
+      </td>
       <td style="text-align: right;">${formatQty(getSourceStock(line.product))}</td>
       <td style="text-align: right;">
         <button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button>
@@ -393,10 +396,6 @@ addLineBtn.addEventListener("click", () => {
     showToast(t("Enter a valid quantity"), true);
     return;
   }
-  if (draftLines.some(line => String(line.product) === String(productId))) {
-    showToast(t("Product already added — remove it first to change quantity"), true);
-    return;
-  }
   const available = getSourceStock(productId);
   if (quantity > available) {
     showToast(
@@ -406,11 +405,17 @@ addLineBtn.addEventListener("click", () => {
     return;
   }
 
-  draftLines.push({
-    product: Number(productId),
-    product_name: getProductName(productId),
-    quantity: String(quantity),
-  });
+  const existing = draftLines.find(line => String(line.product) === String(productId));
+  if (existing) {
+    existing.quantity = String(quantity);
+    showToast(t("Quantity updated."));
+  } else {
+    draftLines.push({
+      product: Number(productId),
+      product_name: getProductName(productId),
+      quantity: String(quantity),
+    });
+  }
 
   productSelect.value = "";
   quantityInput.value = "";
@@ -422,6 +427,37 @@ linesBody.addEventListener("click", (e) => {
   const btn = e.target.closest(".remove-line-btn");
   if (!btn) return;
   draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+linesBody.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.closest(".line-qty-input")) {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+
+linesBody.addEventListener("change", (e) => {
+  const input = e.target.closest(".line-qty-input");
+  if (!input) return;
+  const line = draftLines[Number(input.dataset.index)];
+  if (!line) return;
+  const quantity = Number(input.value);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showToast(t("Enter a valid quantity"), true);
+    input.value = line.quantity;
+    return;
+  }
+  const available = getSourceStock(line.product);
+  if (quantity > available) {
+    showToast(
+      `Insufficient stock for ${line.product_name}: available ${formatQty(available)}, requested ${formatQty(quantity)}`,
+      true,
+    );
+    input.value = line.quantity;
+    return;
+  }
+  line.quantity = String(quantity);
   renderDraftLines();
 });
 

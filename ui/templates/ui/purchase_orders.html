@@ -501,13 +501,19 @@ function renderDraftLines() {
 
   let totals = { subtotal_amount: 0, vat_amount: 0, total_amount: 0 };
   linesBody.innerHTML = draftLines.map((line, index) => {
-    const lineTotal = line.quantity * line.unit_cost;
+    const lineTotal = roundDecimal(line.quantity * line.unit_cost);
     return `
       <tr>
         <td>${line.product_name}</td>
-        <td style="text-align: right;">${formatQty(line.quantity)}</td>
+        <td style="text-align: right;">
+          <input type="number" class="report-input line-qty-input" min="0.0001" step="0.0001"
+            data-index="${index}" value="${line.quantity}" style="width: 6.5rem; text-align: right;">
+        </td>
         <td style="text-align: right;">${formatLineAmount(line.unit_cost)}</td>
-        <td style="text-align: right;">${formatLineAmount(lineTotal)}</td>
+        <td style="text-align: right;">
+          <input type="number" class="report-input line-total-input" min="0" step="0.01"
+            data-index="${index}" value="${lineTotal}" style="width: 7rem; text-align: right;">
+        </td>
         <td><button type="button" class="btn btn-ghost btn-sm remove-line-btn" data-index="${index}">Remove</button></td>
       </tr>
     `;
@@ -668,19 +674,21 @@ addLineBtn.addEventListener("click", () => {
     showToast(t("Enter a valid line total"), true);
     return;
   }
-  if (draftLines.some(l => String(l.product) === productId)) {
-    showToast(t("Product already added"), true);
-    return;
-  }
-
   const product = products.find(p => String(p.id) === productId);
   const unitCost = roundDecimal(lineTotal / quantity);
-  draftLines.push({
-    product: Number(productId),
-    product_name: product.name,
-    quantity: roundDecimal(quantity),
-    unit_cost: unitCost,
-  });
+  const existing = draftLines.find(l => String(l.product) === productId);
+  if (existing) {
+    existing.quantity = roundDecimal(quantity);
+    existing.unit_cost = unitCost;
+    showToast(t("Quantity updated."));
+  } else {
+    draftLines.push({
+      product: Number(productId),
+      product_name: product.name,
+      quantity: roundDecimal(quantity),
+      unit_cost: unitCost,
+    });
+  }
 
   productSelect.value = "";
   qtyInput.value = "";
@@ -692,6 +700,41 @@ linesBody.addEventListener("click", (e) => {
   const btn = e.target.closest(".remove-line-btn");
   if (!btn) return;
   draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+linesBody.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.closest(".line-qty-input, .line-total-input")) {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+
+linesBody.addEventListener("change", (e) => {
+  const qtyEl = e.target.closest(".line-qty-input");
+  const totalEl = e.target.closest(".line-total-input");
+  if (!qtyEl && !totalEl) return;
+  const input = qtyEl || totalEl;
+  const line = draftLines[Number(input.dataset.index)];
+  if (!line) return;
+
+  if (qtyEl) {
+    const quantity = Number(qtyEl.value);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      showToast(t("Enter a valid quantity"), true);
+      qtyEl.value = line.quantity;
+      return;
+    }
+    line.quantity = roundDecimal(quantity);
+  } else {
+    const newTotal = Number(totalEl.value);
+    if (!Number.isFinite(newTotal) || newTotal < 0) {
+      showToast(t("Enter a valid line total"), true);
+      totalEl.value = roundDecimal(line.quantity * line.unit_cost);
+      return;
+    }
+    line.unit_cost = roundDecimal(newTotal / line.quantity);
+  }
   renderDraftLines();
 });
 

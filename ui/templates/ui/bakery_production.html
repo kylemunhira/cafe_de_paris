@@ -27,7 +27,7 @@
   </div>
   <p style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
     {% trans "Enter quantities produced for each destination — Highlands, Churchill, and Central stores." %}
-    {% trans "Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients)." %}
+    {% trans "Completing a sheet adds finished goods at the bakery, deducts recipe ingredients, and creates pending deliveries for each destination. Stock moves on GRV approval." %}
   </p>
 </div>
 
@@ -492,10 +492,10 @@ async function completeSheet() {
   if (!activeSheet) return;
   const saved = await saveLines();
   if (!saved) return;
-  if (!confirm(t("Complete this production sheet and add finished goods to bakery stock?"))) return;
+  if (!confirm(t("Complete this production sheet? Finished goods are added at the bakery and pending deliveries are sent to each destination for GRV approval."))) return;
   try {
     activeSheet = await apiPost(`/production-sheets/${activeSheet.id}/complete/`, {});
-    showToast(t("Production completed."));
+    showToast(t("Production completed. Pending deliveries created for GRV approval."));
     renderActiveSheet();
     await loadSheets();
   } catch (err) {

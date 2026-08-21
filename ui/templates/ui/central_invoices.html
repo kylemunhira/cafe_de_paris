@@ -189,7 +189,10 @@ function renderDraftLines() {
   const rows = draftLines.map((line, index) => `
     <tr>
       <td>${line.product_name}</td>
-      <td style="text-align: right;">${formatQty(line.quantity)}</td>
+      <td style="text-align: right;">
+        <input type="number" class="report-input line-qty-input" min="0.01" step="0.01"
+          data-index="${index}" value="${line.quantity}" style="width: 6.5rem; text-align: right;">
+      </td>
       <td style="text-align: right;">${formatCurrency(line.unit_price)}</td>
       <td style="text-align: right;">${formatCurrency(draftLineTotal(line))}</td>
       <td style="text-align: right;">${formatQty(getStoresStock(line.product))}</td>
@@ -370,17 +373,19 @@ addLineBtn.addEventListener("click", () => {
     showToast(t("Enter a valid quantity"), true);
     return;
   }
-  if (draftLines.some(line => String(line.product) === String(productId))) {
-    showToast(t("Product already added — remove it first to change quantity"), true);
-    return;
+  const existing = draftLines.find(line => String(line.product) === String(productId));
+  if (existing) {
+    existing.quantity = String(quantity);
+    existing.unit_price = String(getProductPrice(productId));
+    showToast(t("Quantity updated."));
+  } else {
+    draftLines.push({
+      product: Number(productId),
+      product_name: getProductName(productId),
+      quantity: String(quantity),
+      unit_price: String(getProductPrice(productId)),
+    });
   }
-
-  draftLines.push({
-    product: Number(productId),
-    product_name: getProductName(productId),
-    quantity: String(quantity),
-    unit_price: String(getProductPrice(productId)),
-  });
 
   productSelect.value = "";
   quantityInput.value = "";
@@ -392,6 +397,28 @@ linesBody.addEventListener("click", (e) => {
   const btn = e.target.closest(".remove-line-btn");
   if (!btn) return;
   draftLines.splice(Number(btn.dataset.index), 1);
+  renderDraftLines();
+});
+
+linesBody.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.closest(".line-qty-input")) {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+
+linesBody.addEventListener("change", (e) => {
+  const input = e.target.closest(".line-qty-input");
+  if (!input) return;
+  const line = draftLines[Number(input.dataset.index)];
+  if (!line) return;
+  const quantity = Number(input.value);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showToast(t("Enter a valid quantity"), true);
+    input.value = line.quantity;
+    return;
+  }
+  line.quantity = String(quantity);
   renderDraftLines();
 });
 

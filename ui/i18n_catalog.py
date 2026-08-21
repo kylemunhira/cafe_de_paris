@@ -760,9 +760,12 @@ _add("Collect Payment", "Encaisser", "Cobrar", "تحصيل الدفع", "收款"
 _add("Complete & post variances", "Terminer et comptabiliser les écarts", "Completar y registrar variaciones", "إكمال وترحيل الفروقات", "完成并过账差异")
 _add("Complete production", "Terminer la production", "Completar producción", "إكمال الإنتاج", "完成生产")
 _add("Complete this production sheet and add finished goods to bakery stock?", "Terminer cette feuille et ajouter les produits finis au stock boulangerie ?", "¿Completar esta hoja y agregar productos terminados al stock de panadería?", "إكمال ورقة الإنتاج وإضافة المنتجات النهائية إلى مخزون المخبز؟", "完成此生产单并将成品加入烘焙库存？")
+_add("Complete this production sheet? Finished goods are added at the bakery and pending deliveries are sent to each destination for GRV approval.", "Terminer cette feuille ? Les produits finis sont ajoutés à la boulangerie et des livraisons en attente sont envoyées à chaque destination pour validation GRV.", "¿Completar esta hoja? Los productos terminados se agregan en panadería y se envían entregas pendientes a cada destino para aprobación GRV.", "إكمال ورقة الإنتاج؟ تُضاف المنتجات النهائية في المخبز وتُرسل عمليات التسليم المعلقة إلى كل وجهة لاعتماد GRV.", "完成此生产单？成品将加入烘焙库存，并向各目的地发送待 GRV 审批的交货单。")
+_add("Production completed. Pending deliveries created for GRV approval.", "Production terminée. Livraisons en attente créées pour validation GRV.", "Producción completada. Entregas pendientes creadas para aprobación GRV.", "اكتمل الإنتاج. تم إنشاء عمليات تسليم معلقة لاعتماد GRV.", "生产已完成。已创建待 GRV 审批的交货单。")
 _add("Complete this stock take and post inventory variances?", "Terminer cet inventaire et comptabiliser les écarts ?", "¿Completar este inventario y registrar las variaciones?", "إكمال هذا الجرد وترحيل فروقات المخزون؟", "完成此盘点并过账库存差异？")
 _add("Completed", "Terminé", "Completado", "مكتمل", "已完成")
 _add("Completing a sheet adds finished goods to bakery stock (and deducts recipe ingredients).", "Terminer une feuille ajoute les produits finis au stock boulangerie (et déduit les ingrédients de recette).", "Completar una hoja agrega productos terminados al stock de panadería (y deduce ingredientes de receta).", "إكمال الورقة يضيف المنتجات النهائية إلى مخزون المخبز (ويخصم مكونات الوصفة).", "完成生产单会将成品加入烘焙库存（并扣减配方原料）。")
+_add("Completing a sheet adds finished goods at the bakery, deducts recipe ingredients, and creates pending deliveries for each destination. Stock moves on GRV approval.", "Terminer une feuille ajoute les produits finis à la boulangerie, déduit les ingrédients et crée des livraisons en attente pour chaque destination. Le stock bouge à la validation GRV.", "Completar una hoja agrega productos terminados en panadería, deduce ingredientes y crea entregas pendientes para cada destino. El stock se mueve al aprobar GRV.", "إكمال الورقة يضيف المنتجات النهائية في المخبز ويخصم المكونات وينشئ عمليات تسليم معلقة لكل وجهة. يتحرك المخزون عند اعتماد GRV.", "完成生产单会将成品加入烘焙库存、扣减配方原料，并为各目的地创建待审批交货单。库存在 GRV 审批时移动。")
 _add("Confirm receive", "Confirmer la réception", "Confirmar recepción", "تأكيد الاستلام", "确认收货")
 _add("Count date", "Date du comptage", "Fecha de conteo", "تاريخ الجرد", "盘点日期")
 _add("Count saved.", "Comptage enregistré.", "Conteo guardado.", "تم حفظ الجرد.", "盘点已保存。")
@@ -883,6 +886,15 @@ _add("No open orders", "Aucune commande ouverte", "No hay pedidos abiertos", "ل
 _add("No purchases", "Aucun achat", "Sin compras", "لا توجد مشتريات", "无采购")
 _add("No sales recorded for this day.", "Aucune vente enregistrée pour ce jour.", "No hay ventas registradas para este día.", "لا توجد مبيعات مسجلة لهذا اليوم.", "此日无销售记录。")
 _add("No transactions", "Aucune transaction", "Sin transacciones", "لا توجد معاملات", "无交易")
+_add(
+    "No transactions in this period",
+    "Aucune transaction sur cette période",
+    "No hay transacciones en este período",
+    "لا توجد معاملات في هذه الفترة",
+    "此期间无交易",
+)
+_add("This month", "Ce mois-ci", "Este mes", "هذا الشهر", "本月")
+_add("All time", "Tout l'historique", "Todo el historial", "كل الفترات", "全部时间")
 _add("No wastage entries in this period", "Aucune perte sur cette période", "No hay mermas en este periodo", "لا توجد سجلات هدر في هذه الفترة", "此期间无损耗记录")
 _add("Not a fiscal receipt — pending approval", "Pas un reçu fiscal — en attente d'approbation", "No es un recibo fiscal — pendiente de aprobación", "ليس إيصالاً ضريبياً — بانتظار الموافقة", "非财政收据 — 待审批")
 _add("Not approved", "Non approuvé", "No aprobado", "غير موافق عليه", "未批准")

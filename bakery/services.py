@@ -433,6 +433,29 @@ def complete_production_sheet(sheet: ProductionSheet) -> ProductionSheet:
                 quantity,
                 created_by=sheet.created_by,
             )
+
+        # Auto-create pending bakery delivery notes (one per destination).
+        # Stock stays at bakery until GRV approve.
+        from inventory.services import create_bakery_delivery_note
+
+        by_destination = defaultdict(list)
+        for line in lines:
+            for allocation in line.allocations.all():
+                if allocation.quantity is not None and allocation.quantity > 0:
+                    by_destination[allocation.destination_branch].append(
+                        {
+                            "product": line.product,
+                            "quantity": allocation.quantity,
+                        }
+                    )
+        for destination, dest_lines in by_destination.items():
+            create_bakery_delivery_note(
+                from_branch=sheet.branch,
+                to_branch=destination,
+                lines=dest_lines,
+                check_stock=True,
+            )
+
         sheet.status = ProductionSheetStatus.COMPLETED
         sheet.completed_at = timezone.now()
         sheet.save(update_fields=["status", "completed_at"])

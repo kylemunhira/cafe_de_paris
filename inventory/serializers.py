@@ -369,22 +369,14 @@ class BakeryDeliveryNoteCreateSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
-        from inventory.services import finalize_bakery_delivery_note_creation
+        from inventory.services import create_bakery_delivery_note
 
         lines_data = validated_data.pop("lines")
-        with transaction.atomic():
-            note = DeliveryNote.objects.create(**validated_data)
-            DeliveryNoteLine.objects.bulk_create(
-                [
-                    DeliveryNoteLine(
-                        delivery_note=note,
-                        product=line["product"],
-                        quantity=line["quantity"],
-                    )
-                    for line in lines_data
-                ]
-            )
-            return finalize_bakery_delivery_note_creation(note)
+        return create_bakery_delivery_note(
+            from_branch=validated_data["from_branch"],
+            to_branch=validated_data["to_branch"],
+            lines=lines_data,
+        )
 
 
 class StoresDeliveryNoteLineCreateSerializer(serializers.Serializer):

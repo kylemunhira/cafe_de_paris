@@ -616,13 +616,15 @@ class CustomerFullStatementPrintView(
             latest = customer.account_transactions.select_related("branch").first()
             branch = latest.branch if latest else Branch.objects.filter(is_active=True).first()
 
+        # Customer ledgers are company-wide; only filter by branch when asked.
+        requested_branch = self.request.GET.get("branch")
         all_time = self.request.GET.get("all") == "1"
         try:
             statement = build_customer_statement_report(
                 customer,
                 from_date=self.request.GET.get("from"),
                 to_date=self.request.GET.get("to"),
-                branch_id=branch_id,
+                branch_id=requested_branch,
                 all_time=all_time,
             )
         except ValueError as exc:

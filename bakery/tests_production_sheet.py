@@ -153,6 +153,48 @@ class BakeryProductionSheetTests(TestCase):
             1,
         )
 
+        from inventory.models import DeliveryNote, StockTransferStatus
+
+        notes = list(
+            DeliveryNote.objects.filter(
+                from_branch=self.bakery,
+                status=StockTransferStatus.REQUESTED,
+            ).prefetch_related("lines")
+        )
+        self.assertEqual(len(notes), 3)
+        by_dest = {note.to_branch_id: note for note in notes}
+        self.assertEqual(
+            by_dest[self.highlands.id].lines.get().quantity,
+            Decimal("10"),
+        )
+        self.assertEqual(
+            by_dest[self.churchill.id].lines.get().quantity,
+            Decimal("5"),
+        )
+        self.assertEqual(
+            by_dest[self.stores.id].lines.get().quantity,
+            Decimal("2"),
+        )
+
+        # GRV approve moves stock bakery → destination.
+        highland_note = by_dest[self.highlands.id]
+        cashier = User.objects.create_user(username="highland_cashier", password="pass")
+        StaffProfile.objects.create(
+            user=cashier,
+            branch=self.highlands,
+            role=StaffRole.CASHIER,
+        )
+        self.client.force_login(cashier)
+        approve = self.client.post(f"/api/delivery-notes/{highland_note.id}/approve/")
+        self.assertEqual(approve.status_code, 200)
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal("7"))
+        highland_stock = BranchInventory.objects.get(
+            branch=self.highlands,
+            product=self.croissant,
+        )
+        self.assertEqual(highland_stock.quantity, Decimal("10"))
+
     def test_cannot_complete_empty_sheet(self):
         create = self.client.post(
             "/api/production-sheets/",

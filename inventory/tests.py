@@ -532,13 +532,19 @@ class DeliveryNoteTests(TestCase):
             branch=self.bakery,
             product=self.muffin,
         )
-        self.assertEqual(croissant_bakery.quantity, Decimal("40"))
-        self.assertEqual(muffin_bakery.quantity, Decimal("45"))
+        # Stock stays at bakery until GRV approve.
+        self.assertEqual(croissant_bakery.quantity, Decimal("50"))
+        self.assertEqual(muffin_bakery.quantity, Decimal("50"))
 
         self.client.force_authenticate(user=self.stores_clerk)
         approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
         self.assertEqual(approve_response.status_code, 200)
         self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
+
+        croissant_bakery.refresh_from_db()
+        muffin_bakery.refresh_from_db()
+        self.assertEqual(croissant_bakery.quantity, Decimal("40"))
+        self.assertEqual(muffin_bakery.quantity, Decimal("45"))
 
         croissant_stores = BranchInventory.objects.get(
             branch=self.stores,
@@ -569,12 +575,15 @@ class DeliveryNoteTests(TestCase):
             branch=self.bakery,
             product=self.croissant,
         )
-        self.assertEqual(bakery_stock.quantity, Decimal("44"))
+        self.assertEqual(bakery_stock.quantity, Decimal("50"))
 
         self.client.force_authenticate(user=self.cashier)
         approve_response = self.client.post(f"/api/delivery-notes/{note_id}/approve/")
         self.assertEqual(approve_response.status_code, 200)
         self.assertEqual(approve_response.data["status"], StockTransferStatus.DELIVERED)
+
+        bakery_stock.refresh_from_db()
+        self.assertEqual(bakery_stock.quantity, Decimal("44"))
 
         branch_stock = BranchInventory.objects.get(
             branch=self.branch,
@@ -582,7 +591,7 @@ class DeliveryNoteTests(TestCase):
         )
         self.assertEqual(branch_stock.quantity, Decimal("6"))
 
-    def test_partial_receive_credits_damaged_back_to_bakery(self):
+    def test_partial_receive_only_moves_accepted_qty_from_bakery(self):
         self.client.force_authenticate(user=self.baker)
         create_response = self.client.post(
             "/api/delivery-notes/from-bakery/",
@@ -597,11 +606,11 @@ class DeliveryNoteTests(TestCase):
         note_id = create_response.data["id"]
         line_id = create_response.data["lines"][0]["id"]
 
-        bakery_after_send = BranchInventory.objects.get(
+        bakery_after_create = BranchInventory.objects.get(
             branch=self.bakery,
             product=self.croissant,
         )
-        self.assertEqual(bakery_after_send.quantity, Decimal("43"))
+        self.assertEqual(bakery_after_create.quantity, Decimal("50"))
 
         self.client.force_authenticate(user=self.cashier)
         approve_response = self.client.post(
@@ -637,6 +646,7 @@ class DeliveryNoteTests(TestCase):
             branch=self.bakery,
             product=self.croissant,
         )
+        # Only accepted qty leaves bakery; shortfall/damaged never left.
         self.assertEqual(branch_stock.quantity, Decimal("5"))
         self.assertEqual(bakery_stock.quantity, Decimal("45"))
 
@@ -648,8 +658,15 @@ class DeliveryNoteTests(TestCase):
             reason=StockMovementReason.DELIVERY_RETURN,
             reference_id=note_id,
         )
-        self.assertEqual(returns.count(), 1)
-        self.assertEqual(returns.first().delta, Decimal("2"))
+        self.assertEqual(returns.count(), 0)
+        outs = StockMovement.objects.filter(
+            branch=self.bakery,
+            product=self.croissant,
+            reason=StockMovementReason.DELIVERY_OUT,
+            reference_id=note_id,
+        )
+        self.assertEqual(outs.count(), 1)
+        self.assertEqual(outs.first().delta, Decimal("-5"))
 
     def test_partial_receive_rejects_over_sent_quantity(self):
         self.client.force_authenticate(user=self.baker)
@@ -808,8 +825,8 @@ class DeliveryNoteTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("Insufficient stock", response.data["detail"])
-        self.assertEqual(response.data["available"], "50.00")
-        self.assertEqual(response.data["requested"], "999.00")
+        self.assertEqual(Decimal(response.data["available"]), Decimal("50"))
+        self.assertEqual(Decimal(response.data["requested"]), Decimal("999"))
         self.assertFalse(
             DeliveryNote.objects.filter(
                 from_branch=self.bakery,
