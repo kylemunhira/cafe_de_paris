@@ -266,11 +266,16 @@ def import_menu_items_csv(file_obj, *, replace=False):
     return import_menu_items_from_list(items, replace=replace)
 
 
-def export_menu_items_csv():
+def export_menu_items_csv(queryset=None):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=MENU_ITEMS_CSV_HEADERS)
     writer.writeheader()
-    for product in pos_catalog_products():
+    products = (
+        pos_catalog_products()
+        if queryset is None
+        else queryset.select_related("category").order_by("name")
+    )
+    for product in products:
         writer.writerow(
             {
                 "ch": product.category.name,

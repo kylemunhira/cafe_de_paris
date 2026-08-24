@@ -53,11 +53,15 @@ INGREDIENT_CSV_HEADERS = [
 ]
 
 
-def export_products_csv():
+def export_products_csv(queryset=None):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_HEADERS)
     writer.writeheader()
-    for product in Product.objects.select_related("category").order_by("name"):
+    if queryset is None:
+        queryset = Product.objects.select_related("category").order_by("name")
+    else:
+        queryset = queryset.select_related("category").order_by("name")
+    for product in queryset:
         writer.writerow(
             {
                 "id": product.id,

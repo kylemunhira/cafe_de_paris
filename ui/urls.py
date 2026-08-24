@@ -33,6 +33,8 @@ urlpatterns = [
     path("orders/", views.OrdersView.as_view(), name="orders"),
     path("invoices/", views.InvoicesView.as_view(), name="invoices"),
     path("receipts/", views.ReceiptsView.as_view(), name="receipts"),
+    path("fiscalise/", views.FiscaliseView.as_view(), name="fiscalise"),
+    path("proforma/", views.ProformaView.as_view(), name="proforma"),
     path(
         "invoices/<int:pk>/print/",
         views.InvoicePrintView.as_view(),

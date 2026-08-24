@@ -1,0 +1,267 @@
+{% extends "ui/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% trans "Proforma" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Proforma" %}{% endblock %}
+
+{% block content %}
+<div class="stat-grid" id="fiscalised-snapshot" style="margin-bottom: 1.25rem; grid-template-columns: repeat(3, 1fr);">
+  <div class="card stat-card">
+    <div class="label">{% trans "Fiscalised receipts" %}</div>
+    <div class="value" id="snapshot-count">—</div>
+    <div class="sub">{% trans "Fiscalised today" %}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="label">{% trans "Total sales" %}</div>
+    <div class="value" id="snapshot-total">—</div>
+    <div class="sub">{% trans "Including VAT" %}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="label">{% trans "VAT" %}</div>
+    <div class="value" id="snapshot-vat">—</div>
+    <div class="sub">{% trans "Output tax today" %}</div>
+  </div>
+</div>
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">{% trans "Paid invoices awaiting fiscal approval" %}</p>
+    <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--text-muted); margin-left: auto;">
+      {% trans "Date" %}
+      <input type="date" id="proforma-date" class="report-input">
+    </label>
+    <input
+      type="search"
+      id="proforma-search"
+      class="report-input"
+      placeholder="{% trans "Search proforma #, order #, branch…" %}"
+      style="max-width: 360px;"
+    >
+  </div>
+  <div class="table-wrap" id="proforma-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
+import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
+
+const CAN_APPROVE_FISCAL = "{{ can_approve_fiscal_receipt|yesno:'true,false' }}" === "true";
+
+const invoicePrintUrlTemplate = "{% url 'ui:invoice-print' 0 %}".replace("/0/", "/{id}/");
+const receiptPrintUrlTemplate = "{% url 'ui:receipt-print' 0 %}".replace("/0/", "/{id}/");
+
+let proformaOrders = [];
+let searchQuery = "";
+let baseCurrency = null;
+const container = document.getElementById("proforma-table");
+const searchInput = document.getElementById("proforma-search");
+const dateInput = document.getElementById("proforma-date");
+const sortState = createSortState("created_at", "desc");
+
+const PROFORMA_SORT = {
+  receipt_number: (o) => o.receipt_number || "",
+  id: (o) => Number(o.id),
+  branch_name: (o) => o.branch_name || "",
+  order_type: (o) => o.order_type || "",
+  total_amount: (o) => Number(o.total_amount),
+  amount_paid: (o) => Number(o.amount_paid),
+  payment_currency: (o) => paymentCurrencyLabel(o),
+  created_at: (o) => o.created_at || "",
+};
+
+function todayIso() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function paymentCurrencyLabel(order) {
+  if (order.payment_method === "account") {
+    const code = order.payment_currency_code || order.payment_currency_name || "";
+    return code
+      ? `${order.payment_method_display || t("Customer account")} · ${code}`
+      : (order.payment_method_display || t("Customer account"));
+  }
+  if (order.payment_method === "multi" && order.payments?.length) {
+    const codes = [...new Set(order.payments.map((p) => p.currency_code || p.currency_name).filter(Boolean))];
+    return codes.length ? codes.join(" + ") : (order.payment_method_display || t("Split"));
+  }
+  return order.payment_currency_code || order.payment_currency_name || "—";
+}
+
+function formatPaidAmount(order) {
+  if (order.amount_paid == null) return "—";
+  if (order.payment_method === "multi" && order.payments?.length) {
+    return order.payments
+      .map((p) => formatCurrency(p.amount, {
+        code: p.currency_code,
+        symbol: p.currency_symbol,
+      }))
+      .join(" + ");
+  }
+  return formatCurrency(order.amount_paid, {
+    code: order.payment_currency_code,
+    symbol: order.payment_currency_symbol,
+    name: order.payment_currency_name,
+  });
+}
+
+function matchesSearch(order) {
+  if (!searchQuery) return true;
+  const haystack = [
+    order.receipt_number,
+    order.id,
+    order.branch_name,
+    order.payment_currency_name,
+    order.payment_currency_code,
+    order.payment_method_display,
+    order.order_type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(searchQuery);
+}
+
+function statusBadge(order) {
+  if (order.fiscal_approval_status === "failed") {
+    return `<span class="badge badge-cancelled">${t("Fiscal failed")}</span>`;
+  }
+  return `<span class="badge badge-open">${t("Proforma")}</span>`;
+}
+
+function proformaActions(order) {
+  const actions = [
+    `<a href="${invoicePrintUrlTemplate.replace("{id}", order.id)}" target="_blank" class="btn btn-accent btn-sm">${t("A4 Proforma")}</a>`,
+  ];
+  if (CAN_APPROVE_FISCAL) {
+    actions.push(`<button class="btn btn-primary btn-sm action-btn" data-action="approve-fiscal" data-id="${order.id}">${t("Approve fiscal")}</button>`);
+  }
+  return actions.join(" ");
+}
+
+function renderProforma() {
+  const filtered = sortItems(proformaOrders.filter(matchesSearch), sortState, PROFORMA_SORT);
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state"><p>${searchQuery ? t("No matching proforma invoices") : t("No proforma invoices awaiting fiscalisation")}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${sortTh(t("Proforma #"), "receipt_number", sortState)}
+          ${sortTh(t("Order"), "id", sortState)}
+          ${sortTh(t("Branch"), "branch_name", sortState)}
+          ${sortTh(t("Type"), "order_type", sortState)}
+          ${sortTh(t("Total"), "total_amount", sortState)}
+          ${sortTh(t("Amount paid"), "amount_paid", sortState)}
+          ${sortTh(t("Currency"), "payment_currency", sortState)}
+          ${sortTh(t("Date"), "created_at", sortState)}
+          <th scope="col">{% trans "Status" %}</th>
+          ${actionTh()}
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(o => `
+          <tr>
+            <td><strong>${o.receipt_number || "—"}</strong></td>
+            <td>#${o.id}</td>
+            <td>${o.branch_name}</td>
+            <td>${o.order_type.replace("_", " ")}</td>
+            <td>${formatCurrency(o.total_amount, baseCurrency)}</td>
+            <td>${formatPaidAmount(o)}</td>
+            <td>${paymentCurrencyLabel(o)}</td>
+            <td>${formatDate(o.created_at)}</td>
+            <td>${statusBadge(o)}</td>
+            <td style="white-space: nowrap;">${proformaActions(o)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderSnapshot(data) {
+  const meta = data.meta || {};
+  const output = data.output_tax || {};
+  document.getElementById("snapshot-count").textContent = meta.fiscalized_sales_count ?? 0;
+  document.getElementById("snapshot-total").textContent = formatCurrency(output.total_sales_including_vat ?? 0, baseCurrency);
+  document.getElementById("snapshot-vat").textContent = formatCurrency(output.vat_on_taxable_sales ?? 0, baseCurrency);
+}
+
+function loadProforma() {
+  const paidDate = dateInput.value || todayIso();
+  container.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+
+  Promise.all([
+    apiGet(`/orders/?status=paid&fiscal_only=1&paid_date=${paidDate}&page_size=500`),
+    apiGet(`/reports/vat/?from=${paidDate}&to=${paidDate}`),
+  ])
+    .then(([ordersData, vatData]) => {
+      renderSnapshot(vatData);
+      const orders = unwrapList(ordersData);
+      proformaOrders = orders.filter(o => o.fiscal_approval_status === "pending" || o.fiscal_approval_status === "failed");
+      renderProforma();
+    })
+    .catch((err) => {
+      showToast(`${t("Failed to load proforma invoices:")} ${err.message}`, true);
+      container.innerHTML = `<div class="empty-state">${t("Failed to load proforma invoices:")} ${err.message}</div>`;
+    });
+}
+
+bindTableSort(container, sortState, renderProforma);
+
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderProforma();
+});
+
+dateInput.value = todayIso();
+dateInput.addEventListener("change", loadProforma);
+
+container.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".action-btn");
+  if (!btn) return;
+
+  const { action, id } = btn.dataset;
+  if (action !== "approve-fiscal") return;
+
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    await apiPost(`/orders/${id}/approve-fiscal/`, {});
+    showToast(t("fiscalized — fiscal receipt ready to print"));
+    window.open(receiptPrintUrlTemplate.replace("{id}", id) + "?auto=1", "_blank", "noopener");
+    loadProforma();
+  } catch (err) {
+    showToast(err.message, true);
+    btn.textContent = t("Approve fiscal");
+    btn.disabled = false;
+  }
+});
+
+Promise.all([
+  apiGet("/currencies/?page_size=500"),
+])
+  .then(([currenciesData]) => {
+    const currencies = unwrapList(currenciesData);
+    baseCurrency = currencies.find((c) => c.is_base) || null;
+    setBaseCurrency(baseCurrency);
+    loadProforma();
+  })
+  .catch((err) => {
+    container.innerHTML = `<div class="empty-state">${t("Failed to load proforma invoices:")} ${err.message}</div>`;
+  });
+</script>
+{% endblock %}

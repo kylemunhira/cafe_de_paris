@@ -11,7 +11,7 @@ from catalog.csv_io import (
     import_products_csv,
 )
 from catalog.menu_items_import import export_menu_items_csv
-from catalog.constants import BRANCH_INGREDIENTS_CATEGORY, INGREDIENTS_CATEGORY
+from catalog.constants import BRANCH_INGREDIENTS_CATEGORY, INGREDIENTS_CATEGORY, BAKERY_CATEGORIES
 from catalog.models import Product, ProductCategory
 
 
@@ -81,6 +81,28 @@ class ProductCsvTests(TestCase):
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertIn(b"Espresso", response.content)
+
+    def test_export_endpoint_respects_bakery_filter(self):
+        bakery_category = ProductCategory.objects.create(name="Breads & pastries")
+        component_category = ProductCategory.objects.create(name="Components")
+        Product.objects.create(
+            name="Croissant",
+            category=bakery_category,
+            selling_price="2.75",
+        )
+        Product.objects.create(
+            name="Pastry Cream",
+            category=component_category,
+            selling_price="0",
+        )
+
+        response = self.client.get("/api/products/export-csv/?bakery_manufactured=true")
+
+        self.assertEqual(response.status_code, 200)
+        csv_text = response.content.decode("utf-8")
+        self.assertIn("Croissant", csv_text)
+        self.assertIn("Pastry Cream", csv_text)
+        self.assertNotIn("Espresso", csv_text)
 
     def test_import_endpoint(self):
         csv_content = b"name,category,selling_price\nCappuccino,Coffee,3.75\n"
@@ -805,11 +827,56 @@ class MenuItemsCsvApiTests(TestCase):
         self.assertEqual(response.data["deactivated"], 1)
         self.assertFalse(Product.objects.get(name="Old Tart").is_active)
 
+    def test_import_menu_items_endpoint_does_not_replace_missing_products_by_default(self):
+        desserts = ProductCategory.objects.create(name="Desserts")
+        Product.objects.create(name="Old Tart", category=desserts, selling_price=Decimal("5"))
+
+        csv_content = (
+            "ch,name,category,selling_price,remaining_qty,tax_rate,is_active,id\n"
+            f"Coffee,Espresso (Short),,2,15,0,TRUE,{self.product.id}\n"
+        ).encode()
+        upload = io.BytesIO(csv_content)
+        upload.name = "menu_items.csv"
+        response = self.client.post(
+            "/api/products/import-menu-items-csv/",
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        # Should update only items included in CSV; missing products remain active.
+        self.assertEqual(response.data["products_updated"], 1)
+        self.assertEqual(response.data["deactivated"], 0)
+        self.assertTrue(Product.objects.get(name="Old Tart").is_active)
+
     def test_export_menu_items_endpoint(self):
-        response = self.client.get("/api/products/export-menu-items-csv/")
+        ingredient_category = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        Product.objects.create(
+            name="Flour",
+            category=ingredient_category,
+            selling_price=Decimal("1.00"),
+            tax_rate=Decimal("0"),
+            is_active=True,
+        )
+
+        bakery_category = next(iter(BAKERY_CATEGORIES))
+        bakery_pc = ProductCategory.objects.create(name=bakery_category)
+        Product.objects.create(
+            name="Croissant",
+            category=bakery_pc,
+            selling_price=Decimal("2.75"),
+            tax_rate=Decimal("0"),
+            is_active=True,
+        )
+
+        response = self.client.get(
+            "/api/products/export-menu-items-csv/?exclude_ingredients=true&exclude_bakery=true"
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn(b"Espresso (Short)", response.content)
+        self.assertNotIn(b"Flour", response.content)
+        self.assertNotIn(b"Croissant", response.content)
 
 
 class ProductDeleteTests(TestCase):

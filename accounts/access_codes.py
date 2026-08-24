@@ -5,8 +5,10 @@ from django.contrib.auth import get_user_model
 from accounts.branch_access import (
     user_can_access_pos,
     user_has_global_branch_access,
+    user_is_cashier,
     user_is_hq_admin,
     user_is_branch_manager,
+    user_is_waiter,
 )
 from accounts.models import StaffProfile
 
@@ -96,5 +98,35 @@ def resolve_order_taker(code):
         raise ValueError("Access code must be exactly 4 digits.")
     user = get_user_by_access_code(code)
     if user is None or not user_can_access_pos(user):
+        raise ValueError("Invalid access code.")
+    return user
+
+
+def user_can_access_fiscal_menu(user):
+    """Waiter, cashier, or superuser may open the fiscal Menu screen."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if not user.is_active:
+        return False
+    if user.is_superuser:
+        return True
+    return user_is_cashier(user) or user_is_waiter(user)
+
+
+def resolve_menu_access_user(code):
+    """
+    Return a waiter, cashier, or superuser for fiscal Menu access.
+
+    Raises ValueError when the code is missing/invalid.
+    """
+    code = normalize_access_code(code)
+    if not code:
+        raise ValueError("Access code is required.")
+    if not is_valid_access_code_format(code):
+        raise ValueError("Access code must be exactly 4 digits.")
+    user = get_user_by_access_code(code)
+    if user is None or not user_can_access_fiscal_menu(user):
+        raise ValueError("Waiter, cashier, or admin access code is required.")
+    if not user.is_superuser and not user_can_access_pos(user):
         raise ValueError("Invalid access code.")
     return user

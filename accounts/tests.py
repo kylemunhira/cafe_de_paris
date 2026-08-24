@@ -1033,6 +1033,46 @@ class MobileAppLoginTests(APITestCase):
         self.assertEqual(order_ok.status_code, status.HTTP_200_OK)
         self.assertEqual(order_ok.data["user"]["username"], "cashier")
 
+    def test_verify_menu_access_code_for_waiter_cashier_and_superuser(self):
+        waiter = User.objects.create_user(username="waiter1", password="secret")
+        StaffProfile.objects.create(
+            user=waiter,
+            branch=self.branch,
+            role=StaffRole.WAITER,
+            pos_access=True,
+            access_code="1111",
+        )
+        superuser = User.objects.create_superuser(
+            username="boss",
+            password="secret",
+            email="boss@example.com",
+        )
+        StaffProfile.objects.create(
+            user=superuser,
+            branch=self.branch,
+            role=StaffRole.HQ_ADMIN,
+            pos_access=True,
+            access_code="9999",
+        )
+        self.client.force_authenticate(user=self.cashier)
+
+        for code, username in (("4321", "cashier"), ("1111", "waiter1"), ("9999", "boss")):
+            with self.subTest(code=code):
+                response = self.client.post(
+                    "/api/auth/verify-access-code/",
+                    {"access_code": code, "purpose": "menu"},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response.data["user"]["username"], username)
+
+        denied = self.client.post(
+            "/api/auth/verify-access-code/",
+            {"access_code": "4322", "purpose": "menu"},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class CaseInsensitiveLoginTests(APITestCase):
     def setUp(self):
@@ -1120,7 +1160,11 @@ class CashierConsoleAccessTests(APITestCase):
         self.assertTrue(user_can_access_cashier_invoices(self.cashier))
         self.client.force_login(self.cashier)
         self.assertEqual(self.client.get(reverse("ui:invoices")).status_code, 200)
-        self.assertEqual(self.client.get(reverse("ui:receipts")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:proforma")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("ui:fiscalise")).status_code, 200)
+        response = self.client.get(reverse("ui:receipts"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("ui:fiscalise"))
 
     def test_non_fiscal_cashier_cannot_access_invoices_or_receipts(self):
         self.assertFalse(user_can_access_cashier_invoices(self.non_fiscal_cashier))
@@ -1128,6 +1172,8 @@ class CashierConsoleAccessTests(APITestCase):
         self.client.force_login(self.non_fiscal_cashier)
         self.assertEqual(self.client.get(reverse("ui:invoices")).status_code, 403)
         self.assertEqual(self.client.get(reverse("ui:receipts")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:fiscalise")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("ui:proforma")).status_code, 403)
 
     def test_branch_manager_retains_operational_console_access(self):
         self.assertFalse(user_is_cashier(self.manager))

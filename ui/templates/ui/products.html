@@ -7,9 +7,9 @@
 {% block topbar_actions %}
 <div style="display: flex; align-items: center; gap: 0.5rem;">
   {% if product_list_mode == "bakery" %}
-  <a href="/api/products/export-csv/" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
+  <a href="/api/products/export-csv/?bakery_manufactured=true" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
   {% else %}
-  <a href="/api/products/export-menu-items-csv/" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
+  <a href="/api/products/export-menu-items-csv/?exclude_ingredients=true&exclude_bakery=true" class="btn btn-ghost btn-sm" download>{% trans "Download CSV" %}</a>
   {% endif %}
   <label class="btn btn-primary btn-sm" style="cursor: pointer;">
     {% trans "Upload CSV" %}
@@ -151,7 +151,7 @@ const productListMode = "{{ product_list_mode|default:'menu' }}";
 const productLabelKey = productListMode === "bakery" ? "bakery product" : "product";
 const csvImportUrl = productListMode === "bakery"
   ? "/products/import-csv/"
-  : "/products/import-menu-items-csv/?replace=true";
+  : "/products/import-menu-items-csv/";
 const BAKERY_CATEGORY_NAMES = new Set(
   JSON.parse(document.getElementById("bakery-category-names").textContent),
 );

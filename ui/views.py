@@ -1042,6 +1042,42 @@ class ReceiptsView(BaseUIView):
     def access_allowed(self, user):
         return user_can_access_fiscal_receipts(user)
 
+    def get(self, request, *args, **kwargs):
+        return redirect(reverse("ui:fiscalise"))
+
+
+class FiscaliseView(BaseUIView):
+    template_name = "ui/fiscalise.html"
+    active_nav = "fiscalise"
+    allow_cashier = True
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
+
+    def access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
+
+
+class ProformaView(BaseUIView):
+    template_name = "ui/proforma.html"
+    active_nav = "proforma"
+    allow_cashier = True
+
+    def cashier_access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
+
+    def access_allowed(self, user):
+        return user_can_access_fiscal_receipts(user)
+
+    def get_context_data(self, **kwargs):
+        from accounts.branch_access import user_can_approve_fiscal_receipt
+
+        context = super().get_context_data(**kwargs)
+        context["can_approve_fiscal_receipt"] = user_can_approve_fiscal_receipt(
+            self.request.user
+        )
+        return context
+
 
 class ExpensesView(BaseUIView):
     template_name = "ui/expenses.html"

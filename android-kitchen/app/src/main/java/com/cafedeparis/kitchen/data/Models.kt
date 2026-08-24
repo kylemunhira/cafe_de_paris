@@ -325,6 +325,12 @@ data class FiscalDayStatus(
     val canCloseDay: Boolean = false,
 )
 
+data class FiscalisedSnapshot(
+    val count: Int = 0,
+    val totalIncludingVat: String = "0",
+    val vatAmount: String = "0",
+)
+
 data class StockTakeLine(
     val id: Int,
     val productId: Int,

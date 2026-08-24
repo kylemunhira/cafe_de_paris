@@ -61,6 +61,7 @@ import com.cafedeparis.kitchen.ui.CartLineAdapter
 import com.cafedeparis.kitchen.ui.CategoryChipAdapter
 import com.cafedeparis.kitchen.ui.DiningTableAdapter
 import com.cafedeparis.kitchen.ui.FiscalInvoiceAdapter
+import com.cafedeparis.kitchen.ui.FiscalInvoiceListMode
 import com.cafedeparis.kitchen.ui.ProductAdapter
 import com.cafedeparis.kitchen.ui.ReceiptOrderAdapter
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -126,6 +127,7 @@ class PosActivity : KeepScreenOnActivity() {
     private var fiscalInvoicesDialog: androidx.appcompat.app.AlertDialog? = null
     private var fiscalInvoicesDialogBinding: DialogFiscalInvoicesBinding? = null
     private var fiscalInvoiceAdapter: FiscalInvoiceAdapter? = null
+    private var fiscalInvoiceDialogMode: FiscalInvoiceListMode? = null
     private var expenseDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPaymentDialog: androidx.appcompat.app.AlertDialog? = null
     private var customerPickerDialog: androidx.appcompat.app.AlertDialog? = null
@@ -916,17 +918,111 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
-    private fun openFiscalInvoicesDialog() {
+    private fun openProformaDialog() {
         if (!session.fiscalizationEnabled) {
             Toast.makeText(this, R.string.fiscal_day_not_configured, Toast.LENGTH_LONG).show()
             return
         }
+        promptMenuAccessCode { verified ->
+            if (verified) {
+                openFiscalInvoiceDialog(FiscalInvoiceListMode.PROFORMA)
+            }
+        }
+    }
+
+    private fun promptMenuAccessCode(onVerified: (Boolean) -> Unit) {
+        val input = TextInputEditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = getString(R.string.access_code_hint)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(4))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        var settled = false
+        fun finish(verified: Boolean) {
+            if (settled) return
+            settled = true
+            onVerified(verified)
+        }
+        fun submitCode(code: String) {
+            if (!code.matches(Regex("^\\d{4}$"))) {
+                Toast.makeText(this, R.string.access_code_invalid, Toast.LENGTH_SHORT).show()
+                finish(false)
+                return
+            }
+            lifecycleScope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        api.verifyAccessCode(code, "menu")
+                    }
+                    finish(true)
+                } catch (err: ApiException) {
+                    handleApiError(err)
+                    finish(false)
+                } catch (err: Exception) {
+                    showError(getString(R.string.connection_failed, err.message ?: ""))
+                    finish(false)
+                }
+            }
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.access_code_menu_title)
+            .setMessage(R.string.access_code_menu_message)
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> finish(false) }
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                submitCode(input.text?.toString()?.trim().orEmpty())
+            }
+            .setOnCancelListener { finish(false) }
+            .create()
+        input.doAfterTextChanged { editable ->
+            val code = editable?.toString()?.trim().orEmpty()
+            if (code.matches(Regex("^\\d{4}$")) && dialog.isShowing) {
+                dialog.dismiss()
+                submitCode(code)
+            }
+        }
+        dialog.show()
+        input.requestFocus()
+    }
+
+    private fun openFiscaliseDialog() {
+        openFiscalInvoiceDialog(FiscalInvoiceListMode.FISCALISED)
+    }
+
+    private fun openFiscalInvoiceDialog(mode: FiscalInvoiceListMode) {
+        if (!session.fiscalizationEnabled) {
+            Toast.makeText(this, R.string.fiscal_day_not_configured, Toast.LENGTH_LONG).show()
+            return
+        }
+        fiscalInvoiceDialogMode = mode
         val dialogBinding = DialogFiscalInvoicesBinding.inflate(layoutInflater)
         fiscalInvoicesDialogBinding = dialogBinding
         val date = todayIso()
         dialogBinding.fiscalInvoicesDateLabel.text = getString(R.string.fiscal_invoices_date, date)
+        dialogBinding.fiscalInvoicesHint.setText(
+            if (mode == FiscalInvoiceListMode.PROFORMA) {
+                R.string.proforma_hint
+            } else {
+                R.string.fiscalise_hint
+            },
+        )
+        dialogBinding.fiscalInvoiceEmptyLabel.setText(
+            if (mode == FiscalInvoiceListMode.PROFORMA) {
+                R.string.proforma_empty
+            } else {
+                R.string.fiscalise_empty
+            },
+        )
+        dialogBinding.fiscalInvoicesSummary.visibility =
+            if (mode == FiscalInvoiceListMode.PROFORMA) View.VISIBLE else View.GONE
 
         val adapter = FiscalInvoiceAdapter(
+            mode = mode,
             canApprove = session.canApproveFiscalReceipt,
             onApprove = ::approveFiscalInvoice,
             onReprint = ::reprintFiscalInvoice,
@@ -934,10 +1030,16 @@ class PosActivity : KeepScreenOnActivity() {
         fiscalInvoiceAdapter = adapter
         dialogBinding.fiscalInvoiceList.layoutManager = LinearLayoutManager(this)
         dialogBinding.fiscalInvoiceList.adapter = adapter
-        dialogBinding.fiscalInvoicesRefreshButton.setOnClickListener { loadTodaysFiscalInvoices() }
+        dialogBinding.fiscalInvoicesRefreshButton.setOnClickListener { loadFiscalInvoiceDialog() }
 
         fiscalInvoicesDialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.fiscal_invoices_title)
+            .setTitle(
+                if (mode == FiscalInvoiceListMode.PROFORMA) {
+                    R.string.proforma_title
+                } else {
+                    R.string.fiscalise_title
+                },
+            )
             .setView(dialogBinding.root)
             .setNegativeButton(android.R.string.cancel, null)
             .create()
@@ -945,13 +1047,15 @@ class PosActivity : KeepScreenOnActivity() {
             fiscalInvoicesDialog = null
             fiscalInvoicesDialogBinding = null
             fiscalInvoiceAdapter = null
+            fiscalInvoiceDialogMode = null
         }
         fiscalInvoicesDialog?.show()
-        loadTodaysFiscalInvoices()
+        loadFiscalInvoiceDialog()
     }
 
-    private fun loadTodaysFiscalInvoices() {
+    private fun loadFiscalInvoiceDialog() {
         val dialogBinding = fiscalInvoicesDialogBinding ?: return
+        val mode = fiscalInvoiceDialogMode ?: return
         lifecycleScope.launch {
             dialogBinding.fiscalInvoicesRefreshButton.isEnabled = false
             binding.refreshProgress.visibility = View.VISIBLE
@@ -959,16 +1063,30 @@ class PosActivity : KeepScreenOnActivity() {
                 val date = todayIso()
                 dialogBinding.fiscalInvoicesDateLabel.text =
                     getString(R.string.fiscal_invoices_date, date)
+                if (mode == FiscalInvoiceListMode.PROFORMA) {
+                    try {
+                        val snapshot = withContext(Dispatchers.IO) {
+                            api.fetchFiscalisedSnapshot(date)
+                        }
+                        renderFiscalisedSnapshot(dialogBinding, snapshot)
+                    } catch (_: Exception) {
+                        renderFiscalisedSnapshot(
+                            dialogBinding,
+                            com.cafedeparis.kitchen.data.FiscalisedSnapshot(),
+                        )
+                    }
+                }
                 val orders = withContext(Dispatchers.IO) { api.fetchTodaysFiscalInvoices(date) }
-                    .sortedWith(
-                        compareBy<KitchenOrder> {
-                            when (it.fiscal_approval_status) {
-                                "pending", "failed" -> 0
-                                "approved" -> 1
-                                else -> 2
-                            }
-                        }.thenByDescending { it.id },
-                    )
+                    .filter { order ->
+                        when (mode) {
+                            FiscalInvoiceListMode.PROFORMA ->
+                                order.fiscal_approval_status == "pending" ||
+                                    order.fiscal_approval_status == "failed"
+                            FiscalInvoiceListMode.FISCALISED ->
+                                order.fiscal_approval_status == "approved"
+                        }
+                    }
+                    .sortedByDescending { it.id }
                 fiscalInvoiceAdapter?.submitList(orders)
                 dialogBinding.fiscalInvoiceEmptyLabel.visibility =
                     if (orders.isEmpty()) View.VISIBLE else View.GONE
@@ -983,6 +1101,17 @@ class PosActivity : KeepScreenOnActivity() {
                 binding.refreshProgress.visibility = View.GONE
             }
         }
+    }
+
+    private fun renderFiscalisedSnapshot(
+        dialogBinding: DialogFiscalInvoicesBinding,
+        snapshot: com.cafedeparis.kitchen.data.FiscalisedSnapshot,
+    ) {
+        dialogBinding.fiscalisedCountValue.text = snapshot.count.toString()
+        dialogBinding.fiscalisedTotalValue.text =
+            ProductAdapter.formatMoney(snapshot.totalIncludingVat)
+        dialogBinding.fiscalisedVatValue.text =
+            ProductAdapter.formatMoney(snapshot.vatAmount)
     }
 
     private fun approveFiscalInvoice(order: KitchenOrder) {
@@ -1005,10 +1134,10 @@ class PosActivity : KeepScreenOnActivity() {
                     ).show()
                 }
                 printReceipt(updated)
-                loadTodaysFiscalInvoices()
+                loadFiscalInvoiceDialog()
             } catch (err: ApiException) {
                 handleApiError(err)
-                loadTodaysFiscalInvoices()
+                loadFiscalInvoiceDialog()
             } catch (err: Exception) {
                 showError(getString(R.string.connection_failed, err.message ?: ""))
             } finally {
@@ -1460,11 +1589,13 @@ class PosActivity : KeepScreenOnActivity() {
 
         val showReceiptActions = session.canCollectPayment
         val showFiscalDay = session.canManageFiscalDay && session.fiscalizationEnabled
-        val showFiscalInvoices = session.fiscalizationEnabled &&
+        val showFiscaliseMenu = session.fiscalizationEnabled &&
             (session.canApproveFiscalReceipt || session.canManageFiscalDay)
+        val showMenu = session.fiscalizationEnabled && session.canAccessPos
 
         popup.menu.findItem(R.id.menu_fiscal_day)?.isVisible = showFiscalDay
-        popup.menu.findItem(R.id.menu_fiscal_invoices)?.isVisible = showFiscalInvoices
+        popup.menu.findItem(R.id.menu_proforma)?.isVisible = showMenu
+        popup.menu.findItem(R.id.menu_fiscalise)?.isVisible = showFiscaliseMenu
         popup.menu.findItem(R.id.menu_day_end)?.isVisible = showReceiptActions
         popup.menu.findItem(R.id.menu_stock_take)?.isVisible = showReceiptActions
         popup.menu.findItem(R.id.menu_grv)?.isVisible = session.canAccessGrv
@@ -1479,7 +1610,8 @@ class PosActivity : KeepScreenOnActivity() {
     private fun handleMoreMenuItem(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_fiscal_day -> openFiscalDayDialog()
-            R.id.menu_fiscal_invoices -> openFiscalInvoicesDialog()
+            R.id.menu_proforma -> openProformaDialog()
+            R.id.menu_fiscalise -> openFiscaliseDialog()
             R.id.menu_day_end -> openDayEndDialog()
             R.id.menu_stock_take -> openStockTake()
             R.id.menu_grv -> startActivity(Intent(this, GrvActivity::class.java))

@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from accounts.access_codes import (
     is_valid_access_code_format,
     normalize_access_code,
+    resolve_menu_access_user,
     resolve_order_taker,
     resolve_pos_override_authorizer,
 )
@@ -249,6 +250,8 @@ class VerifyAccessCodeView(APIView):
         try:
             if purpose == "order":
                 authorizer = resolve_order_taker(code)
+            elif purpose == "menu":
+                authorizer = resolve_menu_access_user(code)
             else:
                 authorizer = resolve_pos_override_authorizer(code)
         except ValueError as exc:

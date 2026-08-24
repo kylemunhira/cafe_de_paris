@@ -12,7 +12,13 @@ import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.databinding.ItemFiscalInvoiceBinding
 
+enum class FiscalInvoiceListMode {
+    PROFORMA,
+    FISCALISED,
+}
+
 class FiscalInvoiceAdapter(
+    private val mode: FiscalInvoiceListMode,
     private val canApprove: Boolean,
     private val onApprove: (KitchenOrder) -> Unit,
     private val onReprint: (KitchenOrder) -> Unit,
@@ -56,18 +62,23 @@ class FiscalInvoiceAdapter(
             binding.fiscalInvoiceTotal.text = ProductAdapter.formatMoney(order.total_amount)
 
             val status = order.fiscal_approval_status.orEmpty()
-            when (status) {
-                "pending" -> {
-                    binding.fiscalInvoiceStatus.text =
-                        context.getString(R.string.fiscal_invoice_status_pending)
+            when (mode) {
+                FiscalInvoiceListMode.PROFORMA -> {
+                    binding.fiscalInvoiceStatus.text = when (status) {
+                        "failed" -> context.getString(R.string.fiscal_invoice_status_failed)
+                        else -> context.getString(R.string.fiscal_invoice_status_pending)
+                    }
                     binding.fiscalInvoiceStatus.setTextColor(
-                        ContextCompat.getColor(context, R.color.status_pending),
+                        ContextCompat.getColor(
+                            context,
+                            if (status == "failed") R.color.error else R.color.status_pending,
+                        ),
                     )
                     binding.fiscalInvoiceApproveButton.visibility =
                         if (canApprove) View.VISIBLE else View.GONE
                     binding.fiscalInvoiceReprintButton.visibility = View.GONE
                 }
-                "approved" -> {
+                FiscalInvoiceListMode.FISCALISED -> {
                     val fiscalNo = order.fiscal_receipt_number?.takeIf { it.isNotBlank() }
                     binding.fiscalInvoiceStatus.text = if (fiscalNo != null) {
                         context.getString(R.string.fiscal_invoice_status_approved_no, fiscalNo)
@@ -79,26 +90,6 @@ class FiscalInvoiceAdapter(
                     )
                     binding.fiscalInvoiceApproveButton.visibility = View.GONE
                     binding.fiscalInvoiceReprintButton.visibility = View.VISIBLE
-                }
-                "failed" -> {
-                    binding.fiscalInvoiceStatus.text =
-                        context.getString(R.string.fiscal_invoice_status_failed)
-                    binding.fiscalInvoiceStatus.setTextColor(
-                        ContextCompat.getColor(context, R.color.error),
-                    )
-                    binding.fiscalInvoiceApproveButton.visibility =
-                        if (canApprove) View.VISIBLE else View.GONE
-                    binding.fiscalInvoiceReprintButton.visibility = View.GONE
-                }
-                else -> {
-                    binding.fiscalInvoiceStatus.text = status.ifBlank {
-                        context.getString(R.string.fiscal_day_status_unknown)
-                    }
-                    binding.fiscalInvoiceStatus.setTextColor(
-                        ContextCompat.getColor(context, R.color.text_muted),
-                    )
-                    binding.fiscalInvoiceApproveButton.visibility = View.GONE
-                    binding.fiscalInvoiceReprintButton.visibility = View.GONE
                 }
             }
 

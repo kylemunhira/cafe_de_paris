@@ -4,8 +4,11 @@
         android:id="@+id/menu_fiscal_day"
         android:title="@string/fiscal_day" />
     <item
-        android:id="@+id/menu_fiscal_invoices"
-        android:title="@string/fiscal_invoices" />
+        android:id="@+id/menu_proforma"
+        android:title="@string/proforma" />
+    <item
+        android:id="@+id/menu_fiscalise"
+        android:title="@string/fiscalise" />
     <item
         android:id="@+id/menu_day_end"
         android:title="@string/day_end" />

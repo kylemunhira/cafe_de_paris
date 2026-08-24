@@ -321,7 +321,11 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export-csv")
     def export_csv(self, request):
-        response = HttpResponse(export_products_csv(), content_type="text/csv; charset=utf-8")
+        queryset = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(
+            export_products_csv(queryset),
+            content_type="text/csv; charset=utf-8",
+        )
         response["Content-Disposition"] = 'attachment; filename="products.csv"'
         return response
 
@@ -415,7 +419,11 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export-menu-items-csv")
     def export_menu_items_csv(self, request):
-        response = HttpResponse(export_menu_items_csv(), content_type="text/csv; charset=utf-8")
+        queryset = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(
+            export_menu_items_csv(queryset=queryset),
+            content_type="text/csv; charset=utf-8",
+        )
         response["Content-Disposition"] = 'attachment; filename="menu_items.csv"'
         return response
 
@@ -433,7 +441,9 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        replace = request.query_params.get("replace", "true").lower() in ("1", "true", "yes")
+        # By default, imports only update/create the rows present in the uploaded CSV.
+        # Passing replace=true enables deactivation of products missing from the CSV.
+        replace = request.query_params.get("replace", "false").lower() in ("1", "true", "yes")
         try:
             result = import_menu_items_csv(upload, replace=replace)
         except ValueError as exc:

@@ -28,6 +28,15 @@ class ApiClient(
         return JsonParsers.parseLoginResponse(body)
     }
 
+    fun verifyAccessCode(accessCode: String, purpose: String): JSONObject {
+        val token = requireToken()
+        val payload = JSONObject()
+            .put("access_code", accessCode.trim())
+            .put("purpose", purpose)
+        val body = postJson("${config.serverUrl}/api/auth/verify-access-code/", payload, token)
+        return JSONObject(body)
+    }
+
     fun fetchOpenOrders(): List<KitchenOrder> {
         return fetchOrdersByStatus("open")
     }
@@ -60,6 +69,15 @@ class ApiClient(
                 "&fiscal_only=1&paid_date=$date&page_size=500"
         val body = getJson(url, token)
         return JsonParsers.parseOrders(body)
+    }
+
+    fun fetchFiscalisedSnapshot(date: String): FiscalisedSnapshot {
+        val token = requireToken()
+        val branchId = session.branchId
+        val url =
+            "${config.serverUrl}/api/reports/vat/?from=$date&to=$date&branch=$branchId"
+        val body = getJson(url, token)
+        return JsonParsers.parseFiscalisedSnapshot(body)
     }
 
     fun approveFiscalReceipt(orderId: Int): KitchenOrder {

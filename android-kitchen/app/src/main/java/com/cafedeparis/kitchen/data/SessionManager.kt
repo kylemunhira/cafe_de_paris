@@ -887,6 +887,17 @@ object JsonParsers {
         )
     }
 
+    fun parseFiscalisedSnapshot(body: String): FiscalisedSnapshot {
+        val json = org.json.JSONObject(body)
+        val meta = json.optJSONObject("meta") ?: org.json.JSONObject()
+        val outputTax = json.optJSONObject("output_tax") ?: org.json.JSONObject()
+        return FiscalisedSnapshot(
+            count = meta.optInt("fiscalized_sales_count", 0),
+            totalIncludingVat = outputTax.optString("total_sales_including_vat", "0"),
+            vatAmount = outputTax.optString("vat_on_taxable_sales", "0"),
+        )
+    }
+
     fun parseDayEndReport(body: String): DayEndReportResponse {
         val json = org.json.JSONObject(body)
         val branch = json.getJSONObject("branch")
