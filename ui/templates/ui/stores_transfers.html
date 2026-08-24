@@ -10,8 +10,11 @@
   <div class="card stat-card"><div class="skeleton" style="height: 60px;"></div></div>
 </div>
 
-<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-  <h3 style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New delivery note & invoice" %}</h3>
+<div class="card" id="transfer-form-card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="transfer-form-title" style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New delivery note" %}</h3>
+  <p id="transfer-form-hint" style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
+    {% trans "Save as draft to finish later, or create the delivery note when ready." %}
+  </p>
   <form id="transfer-form">
     <div class="form-row">
       <div class="form-group">
@@ -72,8 +75,10 @@
       </table>
     </div>
 
-    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
       <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Create delivery note" %}</button>
+      <button type="button" class="btn btn-ghost" id="draft-btn" disabled>{% trans "Save as draft" %}</button>
+      <button type="button" class="btn btn-ghost" id="cancel-edit-btn" style="display: none;">{% trans "Cancel editing" %}</button>
     </div>
   </form>
 </div>
@@ -81,6 +86,7 @@
 <div class="card" style="padding: 0;">
   <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap;">
     <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="draft">{% trans "Draft" %}</button>
     <button class="category-tab" data-filter="requested">{% trans "Requested" %}</button>
     <button class="category-tab" data-filter="approved">{% trans "Approved" %}</button>
     <button class="category-tab" data-filter="dispatched">{% trans "Dispatched" %}</button>
@@ -95,7 +101,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, fetchAllPages, formatDate, formatCurrency, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, unwrapList, fetchAllPages, formatDate, formatCurrency, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 import { initSearchableSelect, syncSearchableSelect } from "{% static 'ui/js/searchable-select.js' %}";
 
@@ -103,7 +109,6 @@ const t = (msgid) => window.CDP.t(msgid);
 
 const CAN_RECEIVE = "{{ can_receive_on_transfers_page|yesno:'true,false' }}" === "true";
 const printUrlTemplate = "{% url 'ui:delivery-note-print' 0 %}".replace("/0/", "/{id}/");
-const invoicePrintUrlTemplate = "{% url 'ui:transfer-invoice-print' 0 %}".replace("/0/", "/{id}/");
 
 let allNotes = [];
 let storesInventory = [];
@@ -114,6 +119,7 @@ let products = [];
 let draftLines = [];
 let activeFilter = "all";
 let ingredientFilter = "all";
+let editingDraftId = null;
 const sortState = createSortState("created_at", "desc");
 
 const BAKERY_INGREDIENT_CATEGORY = "Ingredients";
@@ -121,13 +127,11 @@ const BRANCH_INGREDIENT_CATEGORY = "Branch Ingredients";
 
 const NOTE_SORT = {
   id: (n) => Number(n.id),
-  invoice_number: (n) => n.invoice_number || "",
   products: (n) => formatLineSummary(n),
   line_count: (n) => Number(n.line_count ?? n.lines?.length ?? 0),
   total_amount: (n) => Number(n.total_amount),
   to_branch_name: (n) => n.to_branch_name || "",
   status: (n) => n.status || "",
-  payment_status: (n) => n.payment_status || "",
   created_at: (n) => n.created_at || "",
 };
 
@@ -139,12 +143,87 @@ const stockHint = document.getElementById("stock-hint");
 const transfersTable = document.getElementById("transfers-table");
 const storesStats = document.getElementById("stores-stats");
 const transferForm = document.getElementById("transfer-form");
+const transferFormTitle = document.getElementById("transfer-form-title");
+const transferFormHint = document.getElementById("transfer-form-hint");
 const linesWrap = document.getElementById("lines-wrap");
 const linesBody = document.getElementById("lines-body");
 const submitBtn = document.getElementById("submit-btn");
+const draftBtn = document.getElementById("draft-btn");
+const cancelEditBtn = document.getElementById("cancel-edit-btn");
 const addLineBtn = document.getElementById("add-line-btn");
 
 initSearchableSelect(productSelect);
+
+function noteLabel(id) {
+  return `DN-${String(id).padStart(5, "0")}`;
+}
+
+function setFormButtonsDisabled(disabled) {
+  submitBtn.disabled = disabled;
+  draftBtn.disabled = disabled;
+}
+
+function updateFormModeUi() {
+  if (editingDraftId) {
+    transferFormTitle.textContent = `${t("Edit draft")} ${noteLabel(editingDraftId)}`;
+    transferFormHint.textContent = t("Add or remove products, then save the draft or create the delivery note.");
+    cancelEditBtn.style.display = "";
+  } else {
+    transferFormTitle.textContent = t("New delivery note");
+    transferFormHint.textContent = t("Save as draft to finish later, or create the delivery note when ready.");
+    cancelEditBtn.style.display = "none";
+  }
+}
+
+function stopEditing() {
+  editingDraftId = null;
+  draftLines = [];
+  toBranchSelect.value = "";
+  productSelect.value = "";
+  quantityInput.value = "";
+  syncSearchableSelect(productSelect);
+  updateStockHint();
+  renderDraftLines();
+  updateFormModeUi();
+  renderNotes();
+}
+
+function startEditing(note) {
+  editingDraftId = note.id;
+  toBranchSelect.value = String(note.to_branch);
+  setIngredientFilter(ingredientFilterForDestination(toBranchSelect.value));
+  draftLines = (note.lines || []).map((line) => ({
+    product: Number(line.product),
+    product_name: line.product_name,
+    quantity: String(line.quantity),
+    unit_price: String(line.unit_price ?? getProductUnitCost(line.product)),
+  }));
+  productSelect.value = "";
+  quantityInput.value = "";
+  syncSearchableSelect(productSelect);
+  updateStockHint();
+  renderDraftLines();
+  updateFormModeUi();
+  renderNotes();
+  document.getElementById("transfer-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function openDraft(note) {
+  const switching = String(editingDraftId || "") !== String(note.id);
+  if (switching && draftLines.length) {
+    if (!confirm(t("Open this draft instead? Unsaved changes will be lost."))) return;
+  }
+  try {
+    const detail = await apiGet(`/delivery-notes/${note.id}/`);
+    if (detail.status !== "draft") {
+      showToast(t("Only draft delivery notes can be edited."), true);
+      return;
+    }
+    startEditing(detail);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
 
 function formatQty(value) {
   const qty = Number(value);
@@ -203,12 +282,12 @@ function renderDraftLines() {
   if (!draftLines.length) {
     linesWrap.style.display = "none";
     linesBody.innerHTML = "";
-    submitBtn.disabled = true;
+    setFormButtonsDisabled(true);
     return;
   }
 
   linesWrap.style.display = "block";
-  submitBtn.disabled = false;
+  setFormButtonsDisabled(false);
   const rows = draftLines.map((line, index) => `
     <tr>
       <td>${line.product_name}</td>
@@ -227,7 +306,7 @@ function renderDraftLines() {
 
   linesBody.innerHTML = `${rows}
     <tr>
-      <td colspan="3" style="text-align: right;"><strong>Invoice total</strong></td>
+      <td colspan="3" style="text-align: right;"><strong>${t("Total")}</strong></td>
       <td style="text-align: right;"><strong>${formatCurrency(draftGrandTotal())}</strong></td>
       <td colspan="2"></td>
     </tr>`;
@@ -237,6 +316,7 @@ function renderStoresStats() {
   const totalSkus = storesInventory.length;
   const totalUnits = storesInventory.reduce((sum, item) => sum + Number(item.quantity), 0);
   const pending = allNotes.filter(n => ["requested", "approved", "dispatched"].includes(n.status)).length;
+  const drafts = allNotes.filter(n => n.status === "draft").length;
 
   storesStats.innerHTML = `
     <div class="card stat-card">
@@ -247,22 +327,28 @@ function renderStoresStats() {
     <div class="card stat-card">
       <div class="label">Active dispatches</div>
       <div class="value">${pending}</div>
-      <div class="sub">Awaiting branch receipt</div>
+      <div class="sub">${drafts} ${t("Drafts")} · awaiting branch receipt</div>
     </div>
   `;
 }
 
 function noteActions(note) {
   const id = note.id;
+
+  if (note.status === "draft") {
+    if (editingDraftId && String(editingDraftId) === String(id)) {
+      return `<span style="color: var(--color-muted); font-size: 0.85rem;">${t("Editing")}</span>`;
+    }
+    return [
+      `<button type="button" class="btn btn-ghost btn-sm" data-action="edit" data-id="${id}">${t("Edit")}</button>`,
+      `<button type="button" class="btn btn-primary btn-sm action-btn" data-action="submit" data-id="${id}">${t("Create delivery note")}</button>`,
+      `<button type="button" class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">${t("Cancel")}</button>`,
+    ].join(" ");
+  }
+
   const actions = [
     `<a href="${printUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-ghost btn-sm">Delivery note</a>`,
   ];
-  if (note.invoice_number) {
-    actions.push(`<a href="${invoicePrintUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-accent btn-sm">Invoice</a>`);
-    if (note.payment_status !== "paid") {
-      actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="mark-paid" data-id="${id}">Mark paid</button>`);
-    }
-  }
 
   if (note.status === "requested") {
     actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="approve" data-id="${id}">Approve &amp; deliver</button>`);
@@ -311,7 +397,6 @@ function transferActionToast(action, updated) {
   const actionLabels = {
     approve: "approved",
     cancel: "cancelled",
-    "mark-paid": "marked as paid",
   };
   return `Delivery note ${noteRef} ${actionLabels[action] || action}`;
 }
@@ -333,13 +418,11 @@ function renderNotes() {
       <thead>
         <tr>
           ${sortTh(t("Note"), "id", sortState)}
-          ${sortTh(t("Invoice"), "invoice_number", sortState)}
           ${sortTh(t("Products"), "products", sortState)}
           ${sortTh(t("Items"), "line_count", sortState)}
           ${sortTh(t("Total"), "total_amount", sortState)}
           ${sortTh(t("To"), "to_branch_name", sortState)}
           ${sortTh(t("Delivery"), "status", sortState)}
-          ${sortTh(t("Payment"), "payment_status", sortState)}
           ${sortTh(t("Date"), "created_at", sortState)}
           ${actionTh()}
         </tr>
@@ -348,13 +431,11 @@ function renderNotes() {
         ${filtered.map(n => `
           <tr>
             <td><strong>DN-${String(n.id).padStart(5, "0")}</strong></td>
-            <td>${n.invoice_number || "—"}</td>
             <td style="max-width: 220px;">${formatLineSummary(n)}</td>
             <td>${n.line_count || n.lines?.length || 0}</td>
             <td>${formatCurrency(n.total_amount)}</td>
             <td>${n.to_branch_name}</td>
             <td>${statusBadge(n.status)}</td>
-            <td>${n.invoice_number ? statusBadge(n.payment_status || "unpaid") : "—"}</td>
             <td>${formatDate(n.created_at)}</td>
             <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${noteActions(n)}</td>
           </tr>
@@ -581,9 +662,7 @@ linesBody.addEventListener("change", (e) => {
   renderDraftLines();
 });
 
-transferForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-
+async function submitTransfer(asDraft) {
   if (!toBranchSelect.value) {
     showToast(t("Select a destination branch"), true);
     return;
@@ -593,8 +672,9 @@ transferForm.addEventListener("submit", async (e) => {
     return;
   }
 
+  setFormButtonsDisabled(true);
+  const wasEditing = Boolean(editingDraftId);
   const payload = {
-    from_branch: Number(fromBranchSelect.value),
     to_branch: Number(toBranchSelect.value),
     lines: draftLines.map(line => ({
       product: line.product,
@@ -602,32 +682,78 @@ transferForm.addEventListener("submit", async (e) => {
     })),
   };
 
-  submitBtn.disabled = true;
-
   try {
-    const note = await apiPost("/delivery-notes/from-stores/", payload);
-    allNotes.unshift(note);
-    draftLines = [];
-    renderDraftLines();
-    toBranchSelect.value = "";
-    renderNotes();
-    renderStoresStats();
-    showToast(`Delivery note DN-${String(note.id).padStart(5, "0")} created`);
-    window.open(printUrlTemplate.replace("{id}", note.id), "_blank");
-    if (note.invoice_number) {
-      window.open(invoicePrintUrlTemplate.replace("{id}", note.id), "_blank");
+    let note;
+    if (editingDraftId) {
+      note = await apiPatch(`/delivery-notes/${editingDraftId}/`, payload);
+      if (!asDraft) {
+        note = await apiPost(`/delivery-notes/${editingDraftId}/submit/`, {});
+      }
+    } else {
+      note = await apiPost("/delivery-notes/from-stores/", {
+        from_branch: Number(fromBranchSelect.value),
+        as_draft: asDraft,
+        ...payload,
+      });
+    }
+
+    const index = allNotes.findIndex(n => String(n.id) === String(note.id));
+    if (index >= 0) allNotes[index] = note;
+    else allNotes.unshift(note);
+
+    const label = noteLabel(note.id);
+    if (asDraft) {
+      stopEditing();
+      renderStoresStats();
+      showToast(`${label} ${wasEditing ? t("draft updated") : t("saved as draft")}`);
+    } else {
+      stopEditing();
+      renderStoresStats();
+      showToast(`${label} ${t("created")}`);
+      window.open(printUrlTemplate.replace("{id}", note.id), "_blank");
     }
   } catch (err) {
     showToast(err.message, true);
-    submitBtn.disabled = draftLines.length > 0;
+    setFormButtonsDisabled(draftLines.length === 0);
   }
+}
+
+transferForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await submitTransfer(false);
+});
+
+draftBtn.addEventListener("click", async () => {
+  await submitTransfer(true);
+});
+
+cancelEditBtn.addEventListener("click", () => {
+  if (draftLines.length && !confirm(t("Stop editing this draft? Unsaved changes will be lost."))) {
+    return;
+  }
+  stopEditing();
 });
 
 transfersTable.addEventListener("click", async (e) => {
+  const editBtn = e.target.closest("[data-action='edit']");
+  if (editBtn) {
+    const note = allNotes.find(n => String(n.id) === String(editBtn.dataset.id));
+    if (note) await openDraft(note);
+    return;
+  }
+
   const btn = e.target.closest(".action-btn");
   if (!btn) return;
 
   const { action, id } = btn.dataset;
+  const note = allNotes.find(n => String(n.id) === String(id));
+  if (action === "cancel" && note?.status === "draft" && !confirm(t("Cancel this draft?"))) {
+    return;
+  }
+  if (action === "submit" && !confirm(t("Create this delivery note now?"))) {
+    return;
+  }
+
   btn.disabled = true;
   btn.innerHTML = `<span class="loading-spinner"></span>`;
 
@@ -636,13 +762,17 @@ transfersTable.addEventListener("click", async (e) => {
     dispatch: "dispatched",
     deliver: "delivered",
     cancel: "cancelled",
-    "mark-paid": "marked as paid",
+    submit: "created",
   };
 
   try {
     const updated = await apiPost(`/delivery-notes/${id}/${action}/`, {});
     const index = allNotes.findIndex(n => String(n.id) === id);
     if (index >= 0) allNotes[index] = updated;
+
+    if (String(editingDraftId) === String(id) && (action === "cancel" || action === "submit")) {
+      stopEditing();
+    }
 
     if (
       action === "dispatch"
@@ -654,16 +784,22 @@ transfersTable.addEventListener("click", async (e) => {
 
     renderNotes();
     renderStoresStats();
-    showToast(
-      action === "approve" || action === "dispatch" || action === "deliver"
-        ? transferActionToast(action, updated)
-        : `Delivery note #${id} ${actionLabels[action] || action}`
-    );
+    if (action === "submit") {
+      showToast(`${noteLabel(updated.id)} ${t("created")}`);
+      window.open(printUrlTemplate.replace("{id}", updated.id), "_blank");
+    } else {
+      showToast(
+        action === "approve" || action === "dispatch" || action === "deliver"
+          ? transferActionToast(action, updated)
+          : `Delivery note #${id} ${actionLabels[action] || action}`
+      );
+    }
   } catch (err) {
     showToast(err.message, true);
     const labels = {
-      "mark-paid": t("Mark paid"),
       approve: "Approve & deliver",
+      submit: t("Create delivery note"),
+      cancel: t("Cancel"),
     };
     btn.textContent = labels[action] || action.charAt(0).toUpperCase() + action.slice(1);
     btn.disabled = false;

@@ -29,6 +29,7 @@ class BranchInventory(models.Model):
 
 
 class StockTransferStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
     REQUESTED = "requested", "Requested"
     APPROVED = "approved", "Approved"
     DISPATCHED = "dispatched", "Dispatched"

@@ -29,6 +29,7 @@ from .models import (
     StockTakeLine,
     StockTakeType,
     StockTransfer,
+    StockTransferStatus,
     WastageEntry,
     WastageReason,
 )
@@ -466,6 +467,24 @@ class BranchDeliveryNoteCreateSerializer(serializers.Serializer):
         return note
 
 
+def _validate_stores_delivery_lines(to_branch, lines):
+    allowed_categories = ingredient_categories_for_branch_type(to_branch.branch_type)
+    for index, line in enumerate(lines):
+        if line["product"].category.name not in allowed_categories:
+            raise serializers.ValidationError(
+                {
+                    "lines": {
+                        index: {
+                            "product": (
+                                f"{line['product'].name} is not stocked at "
+                                f"{to_branch.name}."
+                            )
+                        }
+                    }
+                }
+            )
+
+
 class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
     from_branch = serializers.PrimaryKeyRelatedField(
         queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.STORES)
@@ -477,6 +496,7 @@ class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
         )
     )
     lines = StoresDeliveryNoteLineCreateSerializer(many=True)
+    as_draft = serializers.BooleanField(required=False, default=False)
 
     def validate_lines(self, value):
         if not value:
@@ -491,28 +511,20 @@ class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"to_branch": "Source and destination branches must differ."}
             )
-        allowed_categories = ingredient_categories_for_branch_type(attrs["to_branch"].branch_type)
-        for index, line in enumerate(attrs["lines"]):
-            if line["product"].category.name not in allowed_categories:
-                raise serializers.ValidationError(
-                    {
-                        "lines": {
-                            index: {
-                                "product": (
-                                    f"{line['product'].name} is not stocked at "
-                                    f"{attrs['to_branch'].name}."
-                                )
-                            }
-                        }
-                    }
-                )
+        _validate_stores_delivery_lines(attrs["to_branch"], attrs["lines"])
         return attrs
 
     def create(self, validated_data):
         from .services import assign_transfer_invoice_number
 
         lines_data = validated_data.pop("lines")
-        note = DeliveryNote.objects.create(**validated_data)
+        as_draft = validated_data.pop("as_draft", False)
+        status = (
+            StockTransferStatus.DRAFT
+            if as_draft
+            else StockTransferStatus.REQUESTED
+        )
+        note = DeliveryNote.objects.create(status=status, **validated_data)
         DeliveryNoteLine.objects.bulk_create(
             [
                 DeliveryNoteLine(
@@ -524,8 +536,70 @@ class StoresDeliveryNoteCreateSerializer(serializers.Serializer):
                 for line in lines_data
             ]
         )
-        assign_transfer_invoice_number(note)
+        if not as_draft:
+            assign_transfer_invoice_number(note)
         return note
+
+
+class StoresDeliveryNoteUpdateSerializer(serializers.Serializer):
+    to_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(
+            is_active=True,
+            branch_type__in=STORES_TRANSFER_DESTINATION_TYPES,
+        ),
+        required=False,
+    )
+    lines = StoresDeliveryNoteLineCreateSerializer(many=True, required=False)
+
+    def validate_lines(self, value):
+        if value is not None:
+            if not value:
+                raise serializers.ValidationError("Add at least one product line.")
+            product_ids = [line["product"].id for line in value]
+            if len(product_ids) != len(set(product_ids)):
+                raise serializers.ValidationError("Each product may only appear once.")
+        return value
+
+    def validate(self, attrs):
+        to_branch = attrs.get("to_branch", self.instance.to_branch)
+        if self.instance.from_branch_id == to_branch.id:
+            raise serializers.ValidationError(
+                {"to_branch": "Source and destination branches must differ."}
+            )
+        lines = attrs.get("lines")
+        if lines is not None:
+            _validate_stores_delivery_lines(to_branch, lines)
+        return attrs
+
+    def update(self, instance, validated_data):
+        if instance.status != StockTransferStatus.DRAFT:
+            raise serializers.ValidationError(
+                "Only draft delivery notes can be edited."
+            )
+        if instance.from_branch.branch_type != BranchType.STORES:
+            raise serializers.ValidationError(
+                "Only central stores delivery notes can be edited as drafts."
+            )
+
+        lines_data = validated_data.pop("lines", None)
+        with transaction.atomic():
+            if "to_branch" in validated_data:
+                instance.to_branch = validated_data["to_branch"]
+            if lines_data is not None:
+                instance.lines.all().delete()
+                DeliveryNoteLine.objects.bulk_create(
+                    [
+                        DeliveryNoteLine(
+                            delivery_note=instance,
+                            product=line["product"],
+                            quantity=line["quantity"],
+                            unit_price=line["product"].selling_price,
+                        )
+                        for line in lines_data
+                    ]
+                )
+            instance.save()
+        return instance
 
 
 class StockTakeLineSerializer(serializers.ModelSerializer):

@@ -209,16 +209,14 @@ class ProductSerializer(serializers.ModelSerializer):
     def _duplicate_name_error(cls, conflicts):
         conflict = conflicts[0]
         category_name = conflict.category.name if conflict.category_id else "Unknown"
+        group = getattr(conflict, "group_category", None)
+        if group is not None:
+            category_name = f"{category_name} / {group.name}"
         return (
             f'A product named "{conflict.name}" is already active under '
             f"{category_name} (id={conflict.id}). "
             "Deactivate or rename that product first."
         )
-
-    def _deactivate_name_conflicts(self, ids):
-        if not ids:
-            return
-        Product.objects.filter(id__in=ids, is_active=True).update(is_active=False)
 
     def validate(self, attrs):
         name = attrs.get("name")
@@ -228,53 +226,64 @@ class ProductSerializer(serializers.ModelSerializer):
         if is_active is None:
             is_active = True if self.instance is None else self.instance.is_active
 
-        # Only active products must have unique names. Deactivating a duplicate
-        # must always be allowed so existing case-variant rows can be cleaned up.
-        # Unrelated partial updates (e.g. daily_stock_take) must also succeed when
-        # duplicate active names already exist in the database.
+        category = attrs.get("category")
+        if category is None and self.instance is not None:
+            category = self.instance.category
+
+        if "group_category" in attrs:
+            group_category = attrs.get("group_category")
+        elif self.instance is not None:
+            group_category = self.instance.group_category
+        else:
+            group_category = None
+
+        # Active product names must be unique within a category.
+        # Ingredients also key uniqueness on group_category (the Category
+        # shown on the ingredients screen), so "Coke" under BARISTA does
+        # not clash with "Coke" under another group or with no group.
         creating = self.instance is None
         name_changing = False
         if self.instance is not None and "name" in attrs:
             name_changing = (attrs["name"] or "").casefold() != (self.instance.name or "").casefold()
+        category_changing = (
+            self.instance is not None
+            and "category" in attrs
+            and attrs["category"] is not None
+            and attrs["category"].pk != self.instance.category_id
+        )
+        group_changing = False
+        if self.instance is not None and "group_category" in attrs:
+            new_group_id = attrs["group_category"].pk if attrs["group_category"] else None
+            group_changing = new_group_id != self.instance.group_category_id
         activating = (
             self.instance is not None
             and "is_active" in attrs
             and bool(attrs["is_active"])
             and not self.instance.is_active
         )
-        should_check_unique = creating or name_changing or activating
-        self._deactivate_conflict_ids = []
+        should_check_unique = (
+            creating or name_changing or category_changing or group_changing or activating
+        )
 
-        if name and is_active and should_check_unique:
+        if name and is_active and should_check_unique and category is not None:
             qs = (
-                Product.objects.filter(name__iexact=name, is_active=True)
-                .select_related("category")
+                Product.objects.filter(
+                    name__iexact=name,
+                    category=category,
+                    is_active=True,
+                )
+                .select_related("category", "group_category")
                 .order_by("id")
             )
+            if self._category_is_ingredient(category):
+                qs = qs.filter(group_category=group_category)
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
             conflicts = list(qs)
             if conflicts:
-                category = attrs.get("category")
-                if category is None and self.instance is not None:
-                    category = self.instance.category
-                saving_ingredient = self._category_is_ingredient(category)
-                ingredient_conflicts = [
-                    row for row in conflicts if self._category_is_ingredient(row.category)
-                ]
-                # Finished goods / menu items often share names with leftover
-                # Ingredients rows from bakery CSV imports. Prefer the sellable
-                # product and retire those ingredient duplicates on activate.
-                if (
-                    not saving_ingredient
-                    and ingredient_conflicts
-                    and len(ingredient_conflicts) == len(conflicts)
-                ):
-                    self._deactivate_conflict_ids = [row.id for row in ingredient_conflicts]
-                else:
-                    raise serializers.ValidationError(
-                        {"name": self._duplicate_name_error(conflicts)}
-                    )
+                raise serializers.ValidationError(
+                    {"name": self._duplicate_name_error(conflicts)}
+                )
         return attrs
 
     def get_unit_cost(self, obj):
@@ -342,13 +351,17 @@ class ProductSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
         branch_ids = validated_data.pop("branch_ids", None)
-        self._deactivate_name_conflicts(getattr(self, "_deactivate_conflict_ids", []))
         name = validated_data["name"]
-        inactive = (
-            Product.objects.filter(name__iexact=name, is_active=False)
-            .order_by("id")
-            .first()
-        )
+        category = validated_data.get("category")
+        group_category = validated_data.get("group_category")
+        inactive_qs = Product.objects.filter(name__iexact=name, is_active=False)
+        # Only revive an inactive row in the same category so creating
+        # Soft Drinks "Coke" does not overwrite Ingredients "Coke".
+        if category is not None:
+            inactive_qs = inactive_qs.filter(category=category)
+        if self._category_is_ingredient(category):
+            inactive_qs = inactive_qs.filter(group_category=group_category)
+        inactive = inactive_qs.order_by("id").first()
         if inactive:
             for attr, value in validated_data.items():
                 setattr(inactive, attr, value)
@@ -366,7 +379,6 @@ class ProductSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         group_ids = validated_data.pop("addon_group_ids", None)
         branch_ids = validated_data.pop("branch_ids", None)
-        self._deactivate_name_conflicts(getattr(self, "_deactivate_conflict_ids", []))
         product = super().update(instance, validated_data)
         if group_ids is not None:
             self._save_addon_groups(product, group_ids)

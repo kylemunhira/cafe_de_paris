@@ -73,6 +73,23 @@ class ProductCategoryViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         pos_catalog = self.request.query_params.get("pos_catalog")
         if pos_catalog and pos_catalog.lower() in ("1", "true", "yes"):
             queryset = pos_catalog_categories(queryset, branch=_branch_id_from_request(self.request))
+        for_ingredient_group = self.request.query_params.get("for_ingredient_group")
+        if for_ingredient_group and for_ingredient_group.lower() in ("1", "true", "yes"):
+            from django.db.models import Q
+
+            reserved = set(ALL_INGREDIENT_CATEGORIES) | {
+                ARCHIVED_CATEGORY,
+                "Components",
+                "Extras",
+            }
+            queryset = (
+                queryset.exclude(name__in=reserved)
+                .filter(
+                    Q(show_on_pos=False)
+                    | Q(grouped_products__category__name__in=ALL_INGREDIENT_CATEGORIES)
+                )
+                .distinct()
+            )
         return queryset
 
     def destroy(self, request, *args, **kwargs):
@@ -231,6 +248,7 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         category = self.request.query_params.get("category")
         exclude_category = self.request.query_params.get("exclude_category")
         exclude_ingredients = self.request.query_params.get("exclude_ingredients")
+        ingredients_only = self.request.query_params.get("ingredients_only")
         bakery_transfer = self.request.query_params.get("bakery_transfer")
         bakery_manufactured = self.request.query_params.get("bakery_manufactured")
         exclude_bakery = self.request.query_params.get("exclude_bakery")
@@ -257,6 +275,8 @@ class ProductViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             queryset = queryset.exclude(category__name=exclude_category)
         if exclude_ingredients and exclude_ingredients.lower() in ("1", "true", "yes"):
             queryset = queryset.exclude(category__name__in=ALL_INGREDIENT_CATEGORIES)
+        if ingredients_only and ingredients_only.lower() in ("1", "true", "yes"):
+            queryset = queryset.filter(category__name__in=ALL_INGREDIENT_CATEGORIES)
         if bakery_transfer and bakery_transfer.lower() in ("1", "true", "yes"):
             queryset = queryset.filter(
                 is_active=True,

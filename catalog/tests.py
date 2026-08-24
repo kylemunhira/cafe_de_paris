@@ -154,6 +154,24 @@ class BakeryTransferProductFilterTests(TestCase):
         names = {item["name"] for item in response.data["results"]}
         self.assertEqual(names, {"Croissant", "Pastry Cream", "Espresso"})
 
+    def test_ingredients_only_filter_returns_ingredient_categories(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        branch_ingredients = ProductCategory.objects.create(name=BRANCH_INGREDIENTS_CATEGORY)
+        Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price="1.00",
+        )
+        Product.objects.create(
+            name="12 CM SAUCERS",
+            category=branch_ingredients,
+            selling_price="10.74",
+        )
+        response = self.client.get("/api/products/?ingredients_only=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertEqual(names, {"Flour", "12 CM SAUCERS"})
+
     def test_pos_catalog_includes_bakery_finished_goods(self):
         response = self.client.get("/api/products/?pos_catalog=true")
         self.assertEqual(response.status_code, 200)
@@ -349,7 +367,7 @@ class ProductNameUniquenessTests(TestCase):
         self.product.refresh_from_db()
         self.assertFalse(self.product.is_active)
 
-    def test_activate_bakery_product_retires_ingredient_name_duplicate(self):
+    def test_activate_bakery_product_allows_ingredient_same_name(self):
         ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
         bakery = ProductCategory.objects.create(name="Cakes & desserts")
         ingredient = Product.objects.create(
@@ -374,7 +392,7 @@ class ProductNameUniquenessTests(TestCase):
         bakery_product.refresh_from_db()
         ingredient.refresh_from_db()
         self.assertTrue(bakery_product.is_active)
-        self.assertFalse(ingredient.is_active)
+        self.assertTrue(ingredient.is_active)
 
     def test_activate_rejects_duplicate_non_ingredient_with_category_detail(self):
         other = Product.objects.create(
@@ -398,6 +416,140 @@ class ProductNameUniquenessTests(TestCase):
         self.assertIn(str(other.id), message)
         self.product.refresh_from_db()
         self.assertFalse(self.product.is_active)
+
+    def test_pos_product_allows_same_name_as_ingredient(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        Product.objects.create(
+            name="Coke",
+            category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        soft_drinks = ProductCategory.objects.create(name="Soft Drinks")
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Coke",
+                "category": soft_drinks.id,
+                "selling_price": "2.50",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Product.objects.filter(name__iexact="coke", is_active=True).count(),
+            2,
+        )
+
+    def test_ingredient_allows_same_name_as_pos_product(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Espresso",
+                "category": ingredients.id,
+                "selling_price": "1.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Product.objects.filter(name__iexact="espresso", is_active=True).count(),
+            2,
+        )
+
+    def test_ingredient_rejects_duplicate_in_same_category(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        Product.objects.create(
+            name="Milk",
+            category=ingredients,
+            selling_price=Decimal("2.00"),
+        )
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "MILK",
+                "category": ingredients.id,
+                "selling_price": "2.50",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_ingredient_allows_same_name_in_other_group_category(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        barista = ProductCategory.objects.create(name="BARISTA", show_on_pos=False)
+        Product.objects.create(
+            name="Coke",
+            category=ingredients,
+            selling_price=Decimal("1.00"),
+        )
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Coke",
+                "category": ingredients.id,
+                "group_category": barista.id,
+                "selling_price": "1.50",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Product.objects.filter(
+                name__iexact="coke",
+                category=ingredients,
+                is_active=True,
+            ).count(),
+            2,
+        )
+
+    def test_ingredient_rejects_duplicate_in_same_group_category(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        barista = ProductCategory.objects.create(name="BARISTA", show_on_pos=False)
+        Product.objects.create(
+            name="Coke",
+            category=ingredients,
+            group_category=barista,
+            selling_price=Decimal("1.00"),
+        )
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "COKE",
+                "category": ingredients.id,
+                "group_category": barista.id,
+                "selling_price": "1.50",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_ingredient_allows_same_name_in_other_ingredient_category(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY)
+        branch_ingredients = ProductCategory.objects.create(
+            name=BRANCH_INGREDIENTS_CATEGORY
+        )
+        Product.objects.create(
+            name="Milk",
+            category=ingredients,
+            selling_price=Decimal("2.00"),
+        )
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Milk",
+                "category": branch_ingredients.id,
+                "selling_price": "2.50",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Product.objects.filter(name__iexact="milk", is_active=True).count(),
+            2,
+        )
 
 
 class IngredientCsvTests(TestCase):
@@ -747,6 +899,39 @@ class ProductCategoryPosStationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.category.refresh_from_db()
         self.assertFalse(self.category.show_on_pos)
+
+    def test_for_ingredient_group_excludes_pos_categories(self):
+        dairy = ProductCategory.objects.create(name="Dairy", show_on_pos=False)
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY, show_on_pos=False)
+        Product.objects.create(
+            name="Milk",
+            category=ingredients,
+            selling_price="2.00",
+            group_category=dairy,
+        )
+        # POS category wrongly marked as groupable by name only — still excluded
+        # unless used as an ingredient group_category.
+        response = self.client.get("/api/categories/?for_ingredient_group=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertIn("Dairy", names)
+        self.assertNotIn("Coffee", names)
+        self.assertNotIn(INGREDIENTS_CATEGORY, names)
+
+    def test_for_ingredient_group_keeps_pos_category_already_used_as_group(self):
+        ingredients = ProductCategory.objects.create(name=INGREDIENTS_CATEGORY, show_on_pos=False)
+        legacy_group = ProductCategory.objects.create(name="Dry Goods", show_on_pos=True)
+        Product.objects.create(
+            name="Flour",
+            category=ingredients,
+            selling_price="1.00",
+            group_category=legacy_group,
+        )
+        response = self.client.get("/api/categories/?for_ingredient_group=true")
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.data["results"]}
+        self.assertIn("Dry Goods", names)
+        self.assertNotIn("Coffee", names)
 
 
 class ProductCategoryDeleteTests(TestCase):

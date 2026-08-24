@@ -1164,6 +1164,74 @@ class StoresTransferTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["payment_status"], "unpaid")
 
+    def test_create_stores_delivery_note_as_draft(self):
+        self.client.force_authenticate(user=self.stores_clerk)
+        response = self.client.post(
+            "/api/delivery-notes/from-stores/",
+            {
+                "from_branch": self.stores.id,
+                "to_branch": self.branch.id,
+                "as_draft": True,
+                "lines": [{"product": self.branch_flour.id, "quantity": "3"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["status"], "draft")
+        self.assertFalse(response.data["invoice_number"])
+        stores_stock = BranchInventory.objects.get(
+            branch=self.stores,
+            product=self.branch_flour,
+        )
+        self.assertEqual(stores_stock.quantity, Decimal("30"))
+
+    def test_update_and_submit_stores_draft(self):
+        self.client.force_authenticate(user=self.stores_clerk)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-stores/",
+            {
+                "from_branch": self.stores.id,
+                "to_branch": self.branch.id,
+                "as_draft": True,
+                "lines": [{"product": self.branch_flour.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        note_id = create_response.data["id"]
+
+        patch_response = self.client.patch(
+            f"/api/delivery-notes/{note_id}/",
+            {
+                "lines": [{"product": self.branch_flour.id, "quantity": "5"}],
+            },
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.data["status"], "draft")
+        self.assertEqual(Decimal(patch_response.data["lines"][0]["quantity"]), Decimal("5"))
+
+        submit_response = self.client.post(f"/api/delivery-notes/{note_id}/submit/")
+        self.assertEqual(submit_response.status_code, 200)
+        self.assertEqual(submit_response.data["status"], "requested")
+        self.assertTrue(submit_response.data["invoice_number"])
+
+    def test_cancel_stores_draft(self):
+        self.client.force_authenticate(user=self.stores_clerk)
+        create_response = self.client.post(
+            "/api/delivery-notes/from-stores/",
+            {
+                "from_branch": self.stores.id,
+                "to_branch": self.branch.id,
+                "as_draft": True,
+                "lines": [{"product": self.branch_flour.id, "quantity": "2"}],
+            },
+            format="json",
+        )
+        note_id = create_response.data["id"]
+        cancel_response = self.client.post(f"/api/delivery-notes/{note_id}/cancel/")
+        self.assertEqual(cancel_response.status_code, 200)
+        self.assertEqual(cancel_response.data["status"], "cancelled")
+
 
 class BranchTransferTests(TestCase):
     def setUp(self):

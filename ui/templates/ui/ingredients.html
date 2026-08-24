@@ -50,6 +50,19 @@
         {% trans "Include in daily stock take" %}
       </label>
     </div>
+    <section class="product-settings-section product-settings-section--branches" id="branch-availability-section">
+      <span class="field-label">{% trans "Available at branches" %}</span>
+      <p class="field-hint">
+        {% trans "Choose where this ingredient is available. Use all branches for every bakery, store, and outlet." %}
+      </p>
+      <div class="branch-availability-panel">
+        <div class="branch-availability-mode" role="radiogroup" aria-label="{% trans "Branch availability mode" %}">
+          <button type="button" class="branch-mode-btn is-active" data-mode="all" aria-pressed="true">{% trans "All branches" %}</button>
+          <button type="button" class="branch-mode-btn" data-mode="selected" aria-pressed="false">{% trans "Selected only" %}</button>
+        </div>
+        <div id="branch-availability-options" class="branch-availability-grid" hidden></div>
+      </div>
+    </section>
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
       <button type="button" class="btn btn-ghost" id="cancel-btn" style="display: none;">{% trans "Cancel" %}</button>
       <button type="submit" class="btn btn-primary" id="submit-btn">{% trans "Add ingredient" %}</button>
@@ -73,9 +86,8 @@
       style="max-width: 280px;"
       autocomplete="off"
     >
-    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
-      {% trans "Raw materials by branch — bakery ingredients at bakery/central stores; branch ingredients at stores and outlets." %}
-      {% trans "Category is for grouping only; stock type stays Ingredients / Branch Ingredients." %}
+    <p id="ingredients-branch-hint" style="margin: 0; font-size: 0.85rem; color: var(--text-muted); flex: 1;">
+      {% trans "Select a branch to view stock quantities. Ingredients are listed below." %}
     </p>
   </div>
   <div class="table-wrap" id="ingredients-table">
@@ -99,12 +111,6 @@ const staffBranchId = "{{ staff_branch_id|default:'' }}";
 const INGREDIENT_BRANCH_TYPES = new Set(["bakery", "stores", "branch"]);
 const BAKERY_INGREDIENTS_CATEGORY = "Ingredients";
 const BRANCH_INGREDIENTS_CATEGORY = "Branch Ingredients";
-const ARCHIVED_CATEGORY = "Archived";
-const RESERVED_CATEGORIES = new Set([
-  BAKERY_INGREDIENTS_CATEGORY,
-  BRANCH_INGREDIENTS_CATEGORY,
-  ARCHIVED_CATEGORY,
-]);
 
 function ingredientCategoryForBranch(branch) {
   if (!branch) return BAKERY_INGREDIENTS_CATEGORY;
@@ -138,7 +144,12 @@ const csvUpload = document.getElementById("csv-upload");
 const csvDownload = document.getElementById("csv-download");
 const branchSelect = document.getElementById("branch-select");
 const searchInput = document.getElementById("ingredient-search");
+const ingredientsBranchHint = document.getElementById("ingredients-branch-hint");
+const branchAvailabilityOptions = document.getElementById("branch-availability-options");
+const branchModeButtons = document.querySelectorAll(".branch-mode-btn");
 const sortState = createSortState("name", "asc");
+
+let branchAvailabilityMode = "all";
 
 const INGREDIENT_SORT = {
   name: (item) => item.name || "",
@@ -162,8 +173,87 @@ function updateQtyLabel() {
   qtyLabel.textContent = branch ? `${t("Stock at")} ${branch.name}` : t("Branch stock");
 }
 
-function populateCategorySelect(selectedId = "") {
-  const options = categories
+function updateBranchHint() {
+  const branch = selectedBranch();
+  if (!branch) {
+    ingredientsBranchHint.textContent = canFilterAnyBranch
+      ? t("Select a branch to view stock quantities. Ingredients are listed below.")
+      : t("No branch assigned — stock quantities unavailable.");
+    return;
+  }
+  ingredientsBranchHint.textContent = `${t("Showing stock at")} ${branch.name}.`;
+}
+
+function stockColumnLabel() {
+  const branch = selectedBranch();
+  return branch ? `${t("Stock at")} ${branch.name}` : t("Stock");
+}
+
+function branchTypeLabel(branchType) {
+  if (branchType === "stores") return t("Central Stores");
+  if (branchType === "hq") return t("Headquarters");
+  if (branchType === "bakery") return t("Bakery");
+  return t("Branch");
+}
+
+function setBranchAvailabilityMode(mode) {
+  branchAvailabilityMode = mode === "selected" ? "selected" : "all";
+  branchModeButtons.forEach(btn => {
+    const active = btn.dataset.mode === branchAvailabilityMode;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  branchAvailabilityOptions.hidden = branchAvailabilityMode !== "selected";
+}
+
+function renderBranchAvailabilityOptions() {
+  if (!branches.length) {
+    branchAvailabilityOptions.innerHTML = `<p class="field-hint" style="margin:0;">${t("No branches available.")}</p>`;
+    return;
+  }
+  branchAvailabilityOptions.innerHTML = branches.map(branch => `
+    <label class="branch-availability-chip">
+      <input type="checkbox" value="${branch.id}" class="branch-availability-checkbox">
+      <span class="branch-availability-chip__text">
+        <strong>${branch.name}</strong>
+        <small>${branchTypeLabel(branch.branch_type)}</small>
+      </span>
+    </label>
+  `).join("");
+}
+
+function setBranchAvailabilityForIngredient(ingredient) {
+  const assigned = new Set((ingredient?.branches || []).map(branch => branch.id));
+  const allBranches = !assigned.size;
+  setBranchAvailabilityMode(allBranches ? "all" : "selected");
+  branchAvailabilityOptions.querySelectorAll(".branch-availability-checkbox").forEach(input => {
+    input.checked = assigned.has(Number(input.value));
+  });
+}
+
+function readSelectedBranchIds() {
+  if (branchAvailabilityMode === "all") return [];
+  return [...branchAvailabilityOptions.querySelectorAll(".branch-availability-checkbox:checked")]
+    .map(input => Number(input.value));
+}
+
+function branchAvailabilityLabel(ingredient) {
+  const assigned = ingredient?.branches || [];
+  if (!assigned.length) return t("All branches");
+  if (assigned.length <= 2) return assigned.map(branch => branch.name).join(", ");
+  return `${assigned.length} ${t("branches")}`;
+}
+
+function populateCategorySelect(selectedId = "", selectedName = "") {
+  const optionsSource = [...categories];
+  if (
+    selectedId
+    && !optionsSource.some(c => String(c.id) === String(selectedId))
+    && selectedName
+  ) {
+    optionsSource.push({ id: selectedId, name: selectedName });
+  }
+  const options = optionsSource
     .map(c => `<option value="${c.id}">${c.name}</option>`)
     .join("");
   categorySelect.innerHTML = `<option value="">${t("No category")}</option>${options}`;
@@ -185,6 +275,11 @@ function resetForm() {
   activeInput.checked = true;
   dailyStockInput.checked = false;
   populateCategorySelect("");
+  setBranchAvailabilityMode("all");
+  branchAvailabilityOptions.querySelectorAll(".branch-availability-checkbox").forEach(input => {
+    input.checked = false;
+  });
+  updateQtyLabel();
 }
 
 function startEdit(ingredient) {
@@ -195,11 +290,12 @@ function startEdit(ingredient) {
   activeField.style.display = "";
   dailyStockField.style.display = "";
   nameInput.value = ingredient.name;
-  populateCategorySelect(ingredient.group_category || "");
+  populateCategorySelect(ingredient.group_category || "", ingredient.group_category_name || "");
   costInput.value = ingredient.selling_price;
   qtyInput.value = ingredient.branch_qty;
   activeInput.checked = ingredient.is_active;
   dailyStockInput.checked = ingredient.daily_stock_take;
+  setBranchAvailabilityForIngredient(ingredient);
   updateQtyLabel();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -218,13 +314,6 @@ function matchesSearch(item) {
 }
 
 function render() {
-  const branch = selectedBranch();
-
-  if (!selectedBranchId) {
-    ingredientsTable.innerHTML = `<div class="empty-state"><p>${t("Select a branch to view ingredient stock")}</p></div>`;
-    return;
-  }
-
   if (!ingredients.length) {
     ingredientsTable.innerHTML = `<div class="empty-state"><p>${t("No ingredients yet — add one above or import from CSV")}</p></div>`;
     return;
@@ -245,9 +334,10 @@ function render() {
           ${sortTh(t("Name"), "name", sortState)}
           ${sortTh(t("Category"), "group_category_name", sortState)}
           ${sortTh(t("Unit cost"), "selling_price", sortState)}
-          ${sortTh(`${t("Stock at")} ${branch.name}`, "branch_qty", sortState)}
+          ${sortTh(stockColumnLabel(), "branch_qty", sortState)}
           ${sortTh(t("Status"), "is_active", sortState)}
           ${sortTh(t("Daily count"), "daily_stock_take", sortState)}
+          <th>${t("Branches")}</th>
           ${actionTh()}
         </tr>
       </thead>
@@ -260,7 +350,7 @@ function render() {
             <td>
               <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem;">
                 <strong data-branch-qty="${item.id}">${formatQty(item.branch_qty)}</strong>
-                ${stockAdjustInlineHtml({ productId: item.id })}
+                ${selectedBranchId ? stockAdjustInlineHtml({ productId: item.id }) : ""}
               </div>
             </td>
             <td><span class="badge ${item.is_active ? "badge-active" : "badge-inactive"}">${item.is_active ? t("Active") : t("Inactive")}</span></td>
@@ -282,8 +372,9 @@ function render() {
                 >${t("No")}</button>
               </div>
             </td>
+            <td style="font-size: 0.85rem; color: var(--color-muted);">${branchAvailabilityLabel(item)}</td>
             <td style="text-align: right;">
-              <button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}">${t("History")}</button>
+              ${selectedBranchId ? `<button type="button" class="btn btn-ghost btn-sm" data-history="${item.id}">${t("History")}</button>` : ""}
               <button type="button" class="btn btn-ghost btn-sm" data-edit="${item.id}">${t("Edit")}</button>
             </td>
           </tr>
@@ -308,14 +399,10 @@ async function loadBranchInventory() {
 }
 
 async function loadIngredients() {
-  if (!selectedBranchId) {
-    ingredients = [];
-    render();
-    return;
-  }
-  const products = await fetchAllPages("/products/", {
-    for_branch: String(selectedBranchId),
-  });
+  const listParams = selectedBranchId
+    ? { for_branch: String(selectedBranchId) }
+    : { ingredients_only: "true" };
+  const products = await fetchAllPages("/products/", listParams);
   ingredients = products.map(product => ({
     ...product,
     branch_qty: branchInventory.get(String(product.id)) ?? 0,
@@ -329,9 +416,8 @@ async function reload() {
 }
 
 async function loadCategories() {
-  const data = await apiGet("/categories/?page_size=500");
+  const data = await apiGet("/categories/?for_ingredient_group=true&page_size=500");
   categories = unwrapList(data)
-    .filter(c => !RESERVED_CATEGORIES.has(c.name))
     .sort((a, b) => a.name.localeCompare(b.name));
   populateCategorySelect(categorySelect.value);
 }
@@ -350,19 +436,24 @@ async function loadBranches() {
     canSelectAny: canFilterAnyBranch,
     emptyLabel: t("No branches available"),
   });
+  renderBranchAvailabilityOptions();
 
   selectedBranchId = branches.length === 1 ? branches[0].id : (branchSelect.value ? Number(branchSelect.value) : null);
   updateQtyLabel();
+  updateBranchHint();
   await reload();
 }
 
 async function syncBranchStock(productId, newQty) {
+  const qty = Number(newQty) || 0;
   if (!selectedBranchId) {
+    // Saving the ingredient itself does not require a branch; only stock needs one.
+    if (qty === 0) return;
     throw new Error(t("Select a branch before setting stock"));
   }
 
   const currentQty = branchInventory.get(String(productId)) ?? 0;
-  const delta = Number(newQty) - currentQty;
+  const delta = qty - currentQty;
   if (delta === 0) return;
 
   await apiPost("/inventory/adjust/", {
@@ -370,7 +461,7 @@ async function syncBranchStock(productId, newQty) {
     product: productId,
     delta,
   });
-  branchInventory.set(String(productId), Number(newQty));
+  branchInventory.set(String(productId), qty);
 }
 
 ingredientForm.addEventListener("submit", async (e) => {
@@ -378,12 +469,20 @@ ingredientForm.addEventListener("submit", async (e) => {
   submitBtn.disabled = true;
 
   const groupCategoryId = categorySelect.value ? Number(categorySelect.value) : null;
+  const branchIds = readSelectedBranchIds();
+  if (branchAvailabilityMode === "selected" && !branchIds.length) {
+    showToast(t("Select at least one branch, or choose All branches"), true);
+    submitBtn.disabled = false;
+    return;
+  }
+
   const payload = {
     name: nameInput.value.trim(),
     selling_price: costInput.value,
     is_active: activeInput.checked,
     daily_stock_take: dailyStockInput.checked,
     group_category: groupCategoryId,
+    branch_ids: branchIds,
   };
   const targetQty = qtyInput.value || "0";
 
@@ -424,9 +523,17 @@ ingredientForm.addEventListener("submit", async (e) => {
 
 cancelBtn.addEventListener("click", resetForm);
 
+branchModeButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.mode === branchAvailabilityMode) return;
+    setBranchAvailabilityMode(btn.dataset.mode);
+  });
+});
+
 branchSelect.addEventListener("change", async () => {
   selectedBranchId = branchSelect.value ? Number(branchSelect.value) : null;
   updateQtyLabel();
+  updateBranchHint();
   if (editingId) {
     const item = ingredients.find(i => i.id === editingId);
     if (item) qtyInput.value = item.branch_qty;
@@ -517,11 +624,8 @@ searchInput.addEventListener("input", () => {
 });
 
 csvDownload.addEventListener("click", () => {
-  if (!selectedBranchId) {
-    showToast(t("Select a branch before downloading CSV"), true);
-    return;
-  }
-  window.location.href = `/api/products/export-ingredients-csv/?branch=${selectedBranchId}`;
+  const params = selectedBranchId ? `?branch=${selectedBranchId}` : "";
+  window.location.href = `/api/products/export-ingredients-csv/${params}`;
 });
 
 csvUpload.addEventListener("change", async (e) => {

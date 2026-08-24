@@ -331,7 +331,8 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY, bran
                                 f"category {group_name!r} is reserved — pick a product category"
                             )
                         group_category, _ = ProductCategory.objects.get_or_create(
-                            name=group_name
+                            name=group_name,
+                            defaults={"show_on_pos": False},
                         )
 
                 id_header = normalized_headers.get("id")
@@ -346,13 +347,21 @@ def import_ingredients_csv(file_obj, *, category_name=INGREDIENTS_CATEGORY, bran
                         )
                     except (ValueError, Product.DoesNotExist):
                         product = (
-                            Product.objects.filter(category=category, name__iexact=name)
+                            Product.objects.filter(
+                                category=category,
+                                name__iexact=name,
+                                group_category=group_category,
+                            )
                             .order_by("id")
                             .first()
                         )
                 else:
                     product = (
-                        Product.objects.filter(category=category, name__iexact=name)
+                        Product.objects.filter(
+                            category=category,
+                            name__iexact=name,
+                            group_category=group_category,
+                        )
                         .order_by("id")
                         .first()
                     )

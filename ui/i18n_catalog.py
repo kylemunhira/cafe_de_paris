@@ -993,6 +993,13 @@ _add(
     "احفظ كمسودة لإكمالها لاحقاً، أو سجّل الشراء لإضافة المخزون الآن.",
     "可先存为草稿稍后再完成，或立即记录采购以增加库存。",
 )
+_add(
+    "Save as draft to finish later, or create the delivery note when ready.",
+    "Enregistrez comme brouillon pour terminer plus tard, ou créez le bon de livraison quand vous êtes prêt.",
+    "Guarde como borrador para terminar después, o cree la nota de entrega cuando esté listo.",
+    "احفظ كمسودة لإكمالها لاحقاً، أو أنشئ إذن التسليم عندما تكون جاهزاً.",
+    "可先存为草稿稍后再完成，或准备好后创建送货单。",
+)
 _add("Drafts", "Brouillons", "Borradores", "المسودات", "草稿")
 _add("Stock added to branches", "Stock ajouté aux succursales", "Stock agregado a las sucursales", "أُضيف المخزون إلى الفروع", "库存已加入各分店")
 _add("Saved, stock not added yet", "Enregistré, stock pas encore ajouté", "Guardado, stock aún no agregado", "محفوظ، لم يُضف المخزون بعد", "已保存，尚未增加库存")
@@ -1014,6 +1021,28 @@ _add(
     "Agregue o quite productos, luego guarde el borrador o registre la compra.",
     "أضف منتجات أو أزلها، ثم احفظ المسودة أو سجّل الشراء.",
     "添加或移除产品，然后保存草稿或记录采购。",
+)
+_add(
+    "Add or remove products, then save the draft or create the delivery note.",
+    "Ajoutez ou retirez des produits, puis enregistrez le brouillon ou créez le bon de livraison.",
+    "Agregue o quite productos, luego guarde el borrador o cree la nota de entrega.",
+    "أضف منتجات أو أزلها، ثم احفظ المسودة أو أنشئ إذن التسليم.",
+    "添加或移除产品，然后保存草稿或创建送货单。",
+)
+_add(
+    "Only draft delivery notes can be edited.",
+    "Seuls les bons de livraison en brouillon peuvent être modifiés.",
+    "Solo se pueden editar las notas de entrega en borrador.",
+    "يمكن تعديل إذون التسليم المسودة فقط.",
+    "只能编辑草稿送货单。",
+)
+_add("Cancel this draft?", "Annuler ce brouillon ?", "¿Cancelar este borrador?", "إلغاء هذه المسودة؟", "取消此草稿？")
+_add(
+    "Create this delivery note now?",
+    "Créer ce bon de livraison maintenant ?",
+    "¿Crear esta nota de entrega ahora?",
+    "إنشاء إذن التسليم الآن؟",
+    "现在创建此送货单？",
 )
 _add(
     "Open this draft instead? Unsaved changes will be lost.",

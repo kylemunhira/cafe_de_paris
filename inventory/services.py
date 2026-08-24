@@ -1035,18 +1035,44 @@ def cancel_stock_take(stock_take: StockTake) -> StockTake:
 
 def cancel_delivery_note(note: DeliveryNote) -> DeliveryNote:
     if note.status not in (
+        StockTransferStatus.DRAFT,
         StockTransferStatus.REQUESTED,
         StockTransferStatus.APPROVED,
     ):
         raise InvalidDeliveryNoteStateError(
             note,
-            f"{StockTransferStatus.REQUESTED} or {StockTransferStatus.APPROVED}",
+            (
+                f"{StockTransferStatus.DRAFT}, {StockTransferStatus.REQUESTED}, "
+                f"or {StockTransferStatus.APPROVED}"
+            ),
             "cancel",
         )
     # Bakery/stores outbound notes do not deduct stock until GRV approve,
-    # so cancelling a requested note is a status change only.
+    # so cancelling a draft/requested note is a status change only.
     note.status = StockTransferStatus.CANCELLED
     note.save(update_fields=["status"])
+    return note
+
+
+def submit_stores_delivery_note(note: DeliveryNote) -> DeliveryNote:
+    """Promote a central-stores draft delivery note to requested."""
+    from branches.models import BranchType
+
+    if note.status != StockTransferStatus.DRAFT:
+        raise InvalidDeliveryNoteStateError(
+            note, StockTransferStatus.DRAFT, "submit"
+        )
+    if note.from_branch.branch_type != BranchType.STORES:
+        raise InvalidDeliveryNoteStateError(
+            note, "central stores", "submit"
+        )
+    if not note.lines.exists():
+        raise InvalidDeliveryNoteStateError(
+            note, "at least one line", "submit"
+        )
+    note.status = StockTransferStatus.REQUESTED
+    note.save(update_fields=["status"])
+    assign_transfer_invoice_number(note)
     return note
 
 

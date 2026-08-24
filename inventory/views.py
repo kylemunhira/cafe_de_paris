@@ -57,6 +57,7 @@ from .serializers import (
     StockMovementSerializer,
     STORES_TRANSFER_DESTINATION_TYPES,
     StoresDeliveryNoteCreateSerializer,
+    StoresDeliveryNoteUpdateSerializer,
     StockTakeCreateSerializer,
     StockTakeLinesUpdateSerializer,
     StockTakeSerializer,
@@ -98,6 +99,7 @@ from .services import (
     mark_central_invoice_paid,
     mark_delivery_note_paid,
     process_wastage_entry,
+    submit_stores_delivery_note,
     sync_stock_take_lines,
 )
 
@@ -298,7 +300,7 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         "approved_by",
     ).prefetch_related("lines__product").all()
     serializer_class = DeliveryNoteSerializer
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post", "patch", "head", "options"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -354,6 +356,20 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         if payment_status:
             queryset = queryset.filter(payment_status=payment_status)
         return queryset
+
+    def partial_update(self, request, *args, **kwargs):
+        if not user_can_access_stores_transfers(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can edit draft delivery notes."
+            )
+        note = self.get_object()
+        serializer = StoresDeliveryNoteUpdateSerializer(
+            note, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save()
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(DeliveryNoteSerializer(note).data)
 
     @action(detail=False, methods=["post"], url_path="from-stores")
     def create_from_stores(self, request):
@@ -504,6 +520,20 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
         return self._run_transition(
             request, pk, cancel_delivery_note, outgoing=True
         )
+
+    @action(detail=True, methods=["post"])
+    def submit(self, request, pk=None):
+        if not user_can_access_stores_transfers(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can submit draft delivery notes."
+            )
+        note = self.get_object()
+        try:
+            note = submit_stores_delivery_note(note)
+        except InvalidDeliveryNoteStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(DeliveryNoteSerializer(note).data)
 
     @action(detail=True, methods=["post"], url_path="mark-paid")
     def mark_paid(self, request, pk=None):
