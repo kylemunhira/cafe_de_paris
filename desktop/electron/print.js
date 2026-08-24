@@ -232,6 +232,9 @@ function renderTotalsSection(tax, baseCurrency, { showTaxBreakdown = true } = {}
   const rows = showTaxBreakdown
     ? [
         [`Subtotal${baseLabel}`, money(tax?.subtotal)],
+        ...(Number(tax?.zta) > 0
+          ? [[`ZTA (${formatTaxRate(tax?.ztaRate)}%)`, money(tax?.zta)]]
+          : []),
         [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
         [`Total${baseLabel}`, money(tax?.total)],
       ]
@@ -703,6 +706,9 @@ function renderDayEndReportHtml(data) {
         orderCount
           ? renderSummaryBlock([
               [`Subtotal${baseLabel}`, money(tax?.subtotal)],
+              ...(Number(tax?.zta) > 0
+                ? [[`ZTA (${formatTaxRate(tax?.ztaRate)}%)`, money(tax?.zta)]]
+                : []),
               [`Tax (${formatTaxRate(tax?.taxRate)}%)`, money(tax?.tax)],
               [`Total${baseLabel}`, money(tax?.total)],
             ])

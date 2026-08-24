@@ -80,6 +80,12 @@
         <td class="col-label">{% trans "Subtotal" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</td>
         <td class="col-amt">{{ tax_breakdown.subtotal|floatformat:2 }}</td>
       </tr>
+      {% if tax_breakdown.zta %}
+      <tr>
+        <td class="col-label">{% trans "ZTA" %} ({{ tax_breakdown.zta_rate|floatformat:0 }}%)</td>
+        <td class="col-amt">{{ tax_breakdown.zta|floatformat:2 }}</td>
+      </tr>
+      {% endif %}
       <tr>
         <td class="col-label">{% trans "Tax" %} ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</td>
         <td class="col-amt">{{ tax_breakdown.tax|floatformat:2 }}</td>

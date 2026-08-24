@@ -129,6 +129,8 @@ data class LoginResponse(
     val can_access_kitchen: Boolean = false,
     val can_access_pos: Boolean = false,
     val can_access_bakery: Boolean = false,
+    val inclusive_tax_rate: Double = 15.5,
+    val zta_levy_rate: Double = 2.0,
 )
 
 data class ProductCategory(
@@ -406,6 +408,8 @@ data class CustomerStatement(
 
 data class OrderSlipPrintOptions(
     val taxRate: Double = 15.5,
+    val ztaRate: Double = 2.0,
+    val applyZta: Boolean = false,
     val baseCurrencyCode: String? = null,
     val paymentOptions: List<PaymentOptionLine> = emptyList(),
     /** Header label on the unpaid slip, e.g. "Order ticket" or "Bill". */

@@ -43,6 +43,9 @@ export async function pullCatalog(session) {
   if (data.inclusive_tax_rate != null) {
     await window.pos.setSetting("inclusive_tax_rate", data.inclusive_tax_rate);
   }
+  if (data.zta_levy_rate != null) {
+    await window.pos.setSetting("zta_levy_rate", data.zta_levy_rate);
+  }
   return data;
 }
 

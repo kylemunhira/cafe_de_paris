@@ -187,6 +187,8 @@ ZIMRA_CLOSE_DAY_ACTION = os.getenv("ZIMRA_CLOSE_DAY_ACTION", "close_day")
 
 # Prices are tax-inclusive; receipt subtotal = total / (1 + rate/100).
 INCLUSIVE_TAX_RATE = Decimal(os.getenv("INCLUSIVE_TAX_RATE", "15.5"))
+# ZTA levy on fiscal branches: 2% of the amount before VAT, already inside the selling price.
+ZTA_LEVY_RATE = Decimal(os.getenv("ZTA_LEVY_RATE", "2"))
 
 LOGGING = {
     "version": 1,

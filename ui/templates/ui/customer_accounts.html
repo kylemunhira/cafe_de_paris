@@ -214,11 +214,9 @@ function statementQueryParams() {
   const params = new URLSearchParams();
   const from = statementFrom?.value || "";
   const to = statementTo?.value || "";
-  if (from && to) {
-    params.set("from", from);
-    params.set("to", to);
-  } else {
-    // Full ledger by default — month filters were hiding older history.
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (!from && !to) {
     params.set("all", "1");
   }
   return params;
@@ -435,10 +433,10 @@ statementAllTime?.addEventListener("click", () => {
   loadTransactions();
 });
 statementFrom?.addEventListener("change", () => {
-  if (statementFrom.value && statementTo.value) loadTransactions();
+  if (statementFrom.value || statementTo.value) loadTransactions();
 });
 statementTo?.addEventListener("change", () => {
-  if (statementFrom.value && statementTo.value) loadTransactions();
+  if (statementFrom.value || statementTo.value) loadTransactions();
 });
 
 const preferredBranchId = "{{ staff_branch_id|default:'' }}";
@@ -548,9 +546,10 @@ adjustForm?.addEventListener("submit", async (e) => {
 adjustAmount?.addEventListener("input", updateAdjustPreview);
 
 async function init() {
-  // Leave dates empty so history loads all-time by default.
-  if (statementFrom) statementFrom.value = "";
-  if (statementTo) statementTo.value = "";
+  // Default to this month so Print statement uses a period unless All time is chosen.
+  const defaults = defaultStatementDates();
+  if (statementFrom) statementFrom.value = defaults.from;
+  if (statementTo) statementTo.value = defaults.to;
 
   try {
     const [customerData, currencyData] = await Promise.all([

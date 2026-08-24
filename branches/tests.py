@@ -149,3 +149,55 @@ class DiningTablePermissionTests(APITestCase):
         self.assertTrue(
             DiningTable.objects.filter(branch=self.branch, name="T99").exists()
         )
+
+
+class DiningTableDefaultsTests(APITestCase):
+    def test_highlands_defaults_are_t1_to_t20(self):
+        from branches.dining_tables import (
+            HIGHLANDS_DINING_TABLE_NAMES,
+            dining_table_names_for_branch,
+            ensure_default_dining_tables,
+        )
+
+        branch = Branch.objects.create(
+            name="Cafe de Paris Highlands",
+            code="HIG",
+            branch_type=BranchType.BRANCH,
+        )
+        self.assertEqual(
+            dining_table_names_for_branch(branch),
+            HIGHLANDS_DINING_TABLE_NAMES,
+        )
+        ensure_default_dining_tables(branch)
+        names = list(
+            DiningTable.objects.filter(branch=branch)
+            .order_by("sort_order")
+            .values_list("name", flat=True)
+        )
+        self.assertEqual(names, [f"T{i}" for i in range(1, 21)])
+
+    def test_churchill_keeps_garden_defaults(self):
+        from branches.dining_tables import (
+            CHURCHILL_DINING_TABLE_NAMES,
+            dining_table_names_for_branch,
+            ensure_default_dining_tables,
+        )
+
+        branch = Branch.objects.create(
+            name="Cafe de Paris Churchill",
+            code="CHU",
+            branch_type=BranchType.BRANCH,
+        )
+        self.assertEqual(
+            dining_table_names_for_branch(branch),
+            CHURCHILL_DINING_TABLE_NAMES,
+        )
+        ensure_default_dining_tables(branch)
+        names = list(
+            DiningTable.objects.filter(branch=branch)
+            .order_by("sort_order")
+            .values_list("name", flat=True)
+        )
+        self.assertEqual(names, CHURCHILL_DINING_TABLE_NAMES)
+        self.assertIn("G-DECK", names)
+        self.assertNotIn("T20", names)

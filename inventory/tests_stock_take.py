@@ -173,6 +173,63 @@ class StockTakeWorkflowTests(TestCase):
         )
         self.assertEqual(croissant_inventory.quantity, Decimal("10"))
 
+    def test_complete_stock_take_ignores_uncounted_products(self):
+        sugar = Product.objects.create(
+            name="Sugar",
+            category=self.flour.category,
+            selling_price=Decimal("3.00"),
+            daily_stock_take=True,
+        )
+        BranchInventory.objects.create(
+            branch=self.branch,
+            product=sugar,
+            quantity=Decimal("20"),
+        )
+
+        create_response = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-18",
+            },
+            format="json",
+        )
+        stock_take_id = create_response.data["id"]
+        flour_line = next(
+            line
+            for line in create_response.data["lines"]
+            if line["product"] == self.flour.id
+        )
+
+        self.client.patch(
+            f"/api/stock-takes/{stock_take_id}/lines/",
+            {
+                "lines": [
+                    {"id": flour_line["id"], "counted_quantity": "48"},
+                ]
+            },
+            format="json",
+        )
+
+        complete_response = self.client.post(
+            f"/api/stock-takes/{stock_take_id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(complete_response.status_code, 200)
+        self.assertEqual(complete_response.data["status"], StockTakeStatus.COMPLETED)
+
+        flour_inventory = BranchInventory.objects.get(
+            branch=self.branch, product=self.flour
+        )
+        self.assertEqual(flour_inventory.quantity, Decimal("48"))
+
+        sugar_inventory = BranchInventory.objects.get(
+            branch=self.branch, product=sugar
+        )
+        self.assertEqual(sugar_inventory.quantity, Decimal("20"))
+
     def test_complete_stock_take_overrides_inventory_when_sales_occurred_during_count(self):
         create_response = self.client.post(
             "/api/stock-takes/",
@@ -387,6 +444,43 @@ class StockTakeWorkflowTests(TestCase):
         )
         self.assertEqual(flour_imported["counted_quantity"], "48.000")
         self.assertEqual(flour_imported["wastage_quantity"], "2.000")
+
+    def test_import_stock_take_csv_skips_blank_product_rows(self):
+        create_response = self.client.post(
+            "/api/stock-takes/",
+            {
+                "branch": self.branch.id,
+                "stock_take_type": StockTakeType.DAILY,
+                "count_date": "2026-06-19",
+            },
+            format="json",
+        )
+        stock_take_id = create_response.data["id"]
+        flour_line = next(
+            line
+            for line in create_response.data["lines"]
+            if line["product"] == self.flour.id
+        )
+
+        csv_content = (
+            "line_id,station,product_name,counted_quantity,wastage_quantity\n"
+            ",,,,\n"
+            f"{flour_line['id']},Kitchen,Flour,48,0\n"
+            f"{flour_line['id']},Kitchen,Flour,,0\n"
+        )
+        import_response = self.client.post(
+            f"/api/stock-takes/{stock_take_id}/import-csv/",
+            {
+                "file": SimpleUploadedFile(
+                    "stock-take.csv",
+                    csv_content.encode("utf-8"),
+                    content_type="text/csv",
+                )
+            },
+            format="multipart",
+        )
+        self.assertEqual(import_response.status_code, 200)
+        self.assertEqual(import_response.data["updated"], 1)
 
     def test_save_lines_persists_wastage_quantity(self):
         create_response = self.client.post(

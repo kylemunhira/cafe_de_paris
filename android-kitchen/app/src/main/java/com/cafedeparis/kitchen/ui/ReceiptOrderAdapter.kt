@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.cafedeparis.kitchen.R
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.TaxMath
 import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.databinding.ItemReceiptOrderBinding
 
@@ -42,13 +43,19 @@ class ReceiptOrderAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(order: KitchenOrder) {
             val tableOrders = tableOrdersFor(order)
-            val displayTotal = if (tableOrders.size > 1) {
+            val goodsTotal = if (tableOrders.size > 1) {
                 tableOrders.sumOf { it.total_amount.toDoubleOrNull() ?: 0.0 }
             } else {
                 order.total_amount.toDoubleOrNull() ?: 0.0
             }
+            val applyZta = order.branch_fiscalization_enabled ||
+                tableOrders.any { it.branch_fiscalization_enabled }
+            val displayTotal = TaxMath.splitInclusiveTotal(
+                goodsTotal,
+                applyZta = applyZta,
+            ).total
             binding.orderId.text = order.receiptHeaderLabel()
-            binding.orderTotal.text = ProductAdapter.formatMoney(displayTotal.toString())
+            binding.orderTotal.text = ProductAdapter.formatMoney(displayTotal)
             val combined = if (tableOrders.size > 1) "${tableOrders.size} orders on table · " else ""
             binding.orderMeta.text = "$combined${order.items.size} items"
             binding.orderItemsPreview.text = formatOrderItemsPreview(order)

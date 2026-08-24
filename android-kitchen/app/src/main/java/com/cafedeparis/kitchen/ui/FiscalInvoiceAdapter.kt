@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.cafedeparis.kitchen.R
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.TaxMath
 import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.databinding.ItemFiscalInvoiceBinding
 
@@ -59,7 +60,12 @@ class FiscalInvoiceAdapter(
                 order.id,
                 location,
             )
-            binding.fiscalInvoiceTotal.text = ProductAdapter.formatMoney(order.total_amount)
+            binding.fiscalInvoiceTotal.text = ProductAdapter.formatMoney(
+                TaxMath.splitInclusiveTotal(
+                    order.total_amount.toDoubleOrNull() ?: 0.0,
+                    applyZta = order.branch_fiscalization_enabled,
+                ).total,
+            )
 
             val status = order.fiscal_approval_status.orEmpty()
             when (mode) {

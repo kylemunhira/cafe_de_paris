@@ -221,6 +221,10 @@
     <string name="customer_statement_print">Print statement</string>
     <string name="customer_statement_printing">Printing statement…</string>
     <string name="customer_statement_printed">Customer statement printed</string>
+    <string name="customer_statement_period_hint">Statement period (used when printing)</string>
+    <string name="customer_statement_from">From</string>
+    <string name="customer_statement_to">To</string>
+    <string name="split_fiscal_same_code">On fiscal branches, split payments must use the same currency code (%1$s). Do not mix USD and ZWG.</string>
     <string name="day_end">Day end</string>
     <string name="fiscal_day">Fiscal day</string>
     <string name="fiscal_day_title">Fiscal day</string>

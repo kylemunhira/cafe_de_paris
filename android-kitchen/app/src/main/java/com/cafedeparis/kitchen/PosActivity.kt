@@ -38,6 +38,7 @@ import com.cafedeparis.kitchen.data.ExpenseReport
 import com.cafedeparis.kitchen.data.KitchenOrder
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.PaymentOptionLine
+import com.cafedeparis.kitchen.data.TaxMath
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.data.Supplier
@@ -300,6 +301,33 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun todayIso(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun firstOfMonthIso(): String {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+    }
+
+    private fun bindIsoDatePicker(input: com.google.android.material.textfield.TextInputEditText, initial: String) {
+        input.setText(initial)
+        input.setOnClickListener {
+            val parts = (input.text?.toString()?.trim().orEmpty().ifBlank { todayIso() })
+                .split("-")
+            val year = parts.getOrNull(0)?.toIntOrNull()
+                ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            val month = (parts.getOrNull(1)?.toIntOrNull() ?: 1) - 1
+            val day = parts.getOrNull(2)?.toIntOrNull() ?: 1
+            android.app.DatePickerDialog(
+                this,
+                { _, y, m, d ->
+                    input.setText(String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d))
+                },
+                year,
+                month,
+                day,
+            ).show()
+        }
     }
 
     private fun nowIso(): String {
@@ -587,6 +615,8 @@ class PosActivity : KeepScreenOnActivity() {
                 parent.getItemAtPosition(position) as CustomerPaymentChoice<Currency>
         }
         updateBalance()
+        bindIsoDatePicker(dialogBinding.customerStatementFromInput, firstOfMonthIso())
+        bindIsoDatePicker(dialogBinding.customerStatementToInput, todayIso())
 
         customerPaymentDialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.customer_payment_title)
@@ -607,13 +637,21 @@ class PosActivity : KeepScreenOnActivity() {
                 }
             customerPaymentDialog?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
                 ?.setOnClickListener {
-                    printCustomerAccountStatement(selectedCustomer)
+                    printCustomerAccountStatement(
+                        selectedCustomer,
+                        fromDate = dialogBinding.customerStatementFromInput.text?.toString()?.trim(),
+                        toDate = dialogBinding.customerStatementToInput.text?.toString()?.trim(),
+                    )
                 }
         }
         customerPaymentDialog?.show()
     }
 
-    private fun printCustomerAccountStatement(customer: Customer?) {
+    private fun printCustomerAccountStatement(
+        customer: Customer?,
+        fromDate: String? = null,
+        toDate: String? = null,
+    ) {
         if (customer == null) {
             Toast.makeText(this, R.string.customer_payment_customer_required, Toast.LENGTH_SHORT).show()
             return
@@ -628,12 +666,21 @@ class PosActivity : KeepScreenOnActivity() {
             ?.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
         printButton?.isEnabled = false
 
+        val from = fromDate?.takeIf { it.isNotBlank() }
+        val to = toDate?.takeIf { it.isNotBlank() }
+        val allTime = from == null && to == null
+
         lifecycleScope.launch {
             binding.refreshProgress.visibility = View.VISIBLE
             Toast.makeText(this@PosActivity, R.string.customer_statement_printing, Toast.LENGTH_SHORT).show()
             try {
                 val statement = withContext(Dispatchers.IO) {
-                    api.fetchCustomerStatement(customer.id, allTime = true)
+                    api.fetchCustomerStatement(
+                        customer.id,
+                        allTime = allTime,
+                        fromDate = from,
+                        toDate = to,
+                    )
                 }
                 val baseCurrency = allCurrencies.firstOrNull { it.is_base }
                     ?: currencies.firstOrNull { it.is_base }
@@ -1158,65 +1205,8 @@ class PosActivity : KeepScreenOnActivity() {
         dialogBinding.dayEndCurrencyFields.removeAllViews()
 
         val activeCurrencies = currencies.filter { it.is_active }
-        val fiscal = session.fiscalizationEnabled
-        val codes = activeCurrencies
-            .map { it.code.trim().uppercase() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sorted()
-
         val countedInputs = linkedMapOf<Int, TextInputEditText>()
-        var selectedCode = codes.firstOrNull().orEmpty()
-        if (fiscal && codes.isNotEmpty()) {
-            val codeSpinner = android.widget.Spinner(this)
-            codeSpinner.adapter = android.widget.ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                codes,
-            )
-            dialogBinding.dayEndCurrencyFields.addView(
-                android.widget.TextView(this).apply {
-                    text = getString(R.string.day_end_currency_code)
-                    setTextColor(getColor(R.color.text_muted))
-                    textSize = 13f
-                    setPadding(0, 0, 0, 8)
-                },
-            )
-            dialogBinding.dayEndCurrencyFields.addView(
-                codeSpinner,
-                android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { bottomMargin = 12 },
-            )
-            codeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: android.widget.AdapterView<*>?,
-                    view: android.view.View?,
-                    position: Int,
-                    id: Long,
-                ) {
-                    selectedCode = codes[position]
-                    rebuildDayEndCurrencyInputs(
-                        dialogBinding,
-                        activeCurrencies,
-                        countedInputs,
-                        selectedCode = selectedCode,
-                        fiscal = true,
-                    )
-                }
-
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-            }
-        }
-
-        rebuildDayEndCurrencyInputs(
-            dialogBinding,
-            activeCurrencies,
-            countedInputs,
-            selectedCode = selectedCode,
-            fiscal = fiscal,
-        )
+        rebuildDayEndCurrencyInputs(dialogBinding, activeCurrencies, countedInputs)
 
         dayEndDialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.day_end_title)
@@ -1237,23 +1227,11 @@ class PosActivity : KeepScreenOnActivity() {
         dialogBinding: DialogDayEndBinding,
         activeCurrencies: List<Currency>,
         countedInputs: MutableMap<Int, TextInputEditText>,
-        selectedCode: String,
-        fiscal: Boolean,
     ) {
-        // Keep the code spinner (first two children when fiscal); clear currency inputs after.
-        val keepPrefix = if (fiscal && selectedCode.isNotBlank()) 2 else 0
-        while (dialogBinding.dayEndCurrencyFields.childCount > keepPrefix) {
-            dialogBinding.dayEndCurrencyFields.removeViewAt(dialogBinding.dayEndCurrencyFields.childCount - 1)
-        }
+        dialogBinding.dayEndCurrencyFields.removeAllViews()
         countedInputs.clear()
 
-        val visible = if (fiscal && selectedCode.isNotBlank()) {
-            activeCurrencies.filter { it.code.trim().uppercase() == selectedCode }
-        } else {
-            activeCurrencies
-        }
-
-        for (currency in visible) {
+        for (currency in activeCurrencies) {
             val label = currency.name.ifBlank { currency.code }
             val fieldLayout = TextInputLayout(this).apply {
                 hint = label
@@ -1280,7 +1258,6 @@ class PosActivity : KeepScreenOnActivity() {
         val reportDate = dialogBinding.dayEndDateInput.text?.toString()?.trim().orEmpty()
             .ifBlank { todayIso() }
         val counted = linkedMapOf<Int, String>()
-        val countedCodes = linkedSetOf<String>()
         for ((currencyId, input) in countedInputs) {
             val raw = input.text?.toString()?.trim().orEmpty()
             if (raw.isBlank()) continue
@@ -1294,13 +1271,7 @@ class PosActivity : KeepScreenOnActivity() {
                 ).show()
                 return
             }
-            val code = (input.tag as? String).orEmpty()
-            if (code.isNotBlank()) countedCodes.add(code)
             counted[currencyId] = String.format(Locale.US, "%.2f", amount)
-        }
-        if (session.fiscalizationEnabled && countedCodes.size > 1) {
-            Toast.makeText(this, R.string.day_end_mixed_codes, Toast.LENGTH_LONG).show()
-            return
         }
 
         lifecycleScope.launch {
@@ -1433,7 +1404,7 @@ class PosActivity : KeepScreenOnActivity() {
                 if (orders.size > 1 && order.table_number.isNotBlank()) {
                     append(" · Table ${order.table_number}")
                 }
-                append(" · ${ProductAdapter.formatMoney(order.total_amount, baseCurrencySymbol())}")
+                append(" · ${ProductAdapter.formatMoney(orderAmountDue(order), baseCurrencySymbol())}")
                 order.items.forEach { item ->
                     append('\n')
                     val qty = item.quantity.toDoubleOrNull() ?: 1.0
@@ -1479,6 +1450,25 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun receiptInclusiveTotal(): Double {
         return receiptOrders().sumOf { it.total_amount.toDoubleOrNull() ?: 0.0 }
+    }
+
+    private fun receiptAmountDue(): Double {
+        return TaxMath.splitInclusiveTotal(
+            receiptInclusiveTotal(),
+            taxRate = session.inclusiveTaxRate,
+            applyZta = session.fiscalizationEnabled,
+            ztaRate = session.ztaLevyRate,
+        ).total
+    }
+
+    private fun orderAmountDue(order: KitchenOrder): Double {
+        val goods = order.total_amount.toDoubleOrNull() ?: 0.0
+        return TaxMath.splitInclusiveTotal(
+            goods,
+            taxRate = session.inclusiveTaxRate,
+            applyZta = order.branch_fiscalization_enabled || session.fiscalizationEnabled,
+            ztaRate = session.ztaLevyRate,
+        ).total
     }
 
     private fun openTablePicker(purpose: TablePickerPurpose = TablePickerPurpose.SELECT) {
@@ -1677,7 +1667,7 @@ class PosActivity : KeepScreenOnActivity() {
         }
         binding.splitFillCashButton.setOnClickListener {
             if (!isSplitPaymentActive()) return@setOnClickListener
-            val orderTotal = receiptInclusiveTotal()
+            val orderTotal = receiptAmountDue()
             val target = currencies.firstOrNull { it.is_base && paymentRate(it) != null }
                 ?: usableCurrencies().firstOrNull { paymentRate(it) != null }
                 ?: return@setOnClickListener
@@ -1694,7 +1684,14 @@ class PosActivity : KeepScreenOnActivity() {
         }
     }
 
-    private fun allowsSplitPayment(): Boolean = !session.fiscalizationEnabled
+    private fun allowsSplitPayment(): Boolean = true
+
+    private fun fiscalSplitCurrencyCodes(lines: List<Triple<Int, Double, Double>>): List<String> {
+        return lines.mapNotNull { (currencyId, _, _) ->
+            usableCurrencies().firstOrNull { it.id == currencyId }
+                ?.code?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+        }.distinct().sorted()
+    }
 
     private fun isSplitPaymentActive(): Boolean {
         return allowsSplitPayment()
@@ -1760,7 +1757,7 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun splitPaymentRemainingBase(excludeCurrencyId: Int? = null): Double? {
         if (!isSplitPaymentActive()) return null
-        val orderTotal = receiptInclusiveTotal()
+        val orderTotal = receiptAmountDue()
         val othersBase = splitPaymentLines()
             .filter { it.first != excludeCurrencyId }
             .sumOf { it.third }
@@ -1785,7 +1782,7 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun updateSplitPaymentRemaining() {
         if (!isSplitPaymentActive()) return
-        val orderTotal = receiptInclusiveTotal()
+        val orderTotal = receiptAmountDue()
         val allocated = splitPaymentLines().sumOf { it.third }
         val remaining = roundMoney(orderTotal - allocated)
         binding.splitRemainingLabel.text = if (remaining < -0.005) {
@@ -1954,7 +1951,7 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun updateReceiptCheckoutState() {
         val order = selectedOrder ?: return
-        val total = receiptInclusiveTotal()
+        val total = receiptAmountDue()
         updatePaymentTotalDisplay(total)
         binding.checkoutButton.isEnabled = when (paymentMethod) {
             PaymentMethod.ACCOUNT -> {
@@ -2859,7 +2856,7 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun paySelectedOrder() {
         val order = selectedOrder ?: return
-        val total = receiptInclusiveTotal()
+        val total = receiptAmountDue()
         val combined = receiptOrders().size > 1
 
         if (paymentMethod == PaymentMethod.ACCOUNT) {
@@ -2895,6 +2892,17 @@ class PosActivity : KeepScreenOnActivity() {
                         Toast.LENGTH_LONG,
                     ).show()
                     return
+                }
+                if (session.fiscalizationEnabled) {
+                    val codes = fiscalSplitCurrencyCodes(lines)
+                    if (codes.size > 1) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.split_fiscal_same_code, codes.joinToString(" or ")),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        return
+                    }
                 }
             } else if (selectedCurrency() == null) {
                 Toast.makeText(this, R.string.select_currency, Toast.LENGTH_SHORT).show()
@@ -2943,7 +2951,7 @@ class PosActivity : KeepScreenOnActivity() {
                     getString(
                         R.string.order_paid_account,
                         paid.id,
-                        ProductAdapter.formatMoney(paid.total_amount, baseCurrencySymbol()),
+                        ProductAdapter.formatMoney(orderAmountDue(paid), baseCurrencySymbol()),
                     )
                 } else {
                     val paidSymbol = paid.payment_currency_symbol
@@ -3027,8 +3035,11 @@ class PosActivity : KeepScreenOnActivity() {
         }
 
         val baseCurrency = currencies.firstOrNull { it.is_base }
-        val total = order.total_amount.toDoubleOrNull() ?: 0.0
+        val total = orderAmountDue(order)
         val options = OrderSlipPrintOptions(
+            taxRate = session.inclusiveTaxRate,
+            ztaRate = session.ztaLevyRate,
+            applyZta = order.branch_fiscalization_enabled || session.fiscalizationEnabled,
             baseCurrencyCode = baseCurrency?.code?.takeIf { it.isNotBlank() }
                 ?: baseCurrency?.name,
             paymentOptions = paymentOptionsForAmount(total),
@@ -3064,12 +3075,18 @@ class PosActivity : KeepScreenOnActivity() {
             return
         }
 
-        val total = order.total_amount.toDoubleOrNull() ?: 0.0
+        val total = orderAmountDue(order)
         val paymentOptions = paymentOptionsForAmount(total)
 
         try {
             withContext(Dispatchers.IO) {
-                printer.printReceipt(printerAddress, order, paymentOptions)
+                printer.printReceipt(
+                    printerAddress,
+                    order,
+                    paymentOptions,
+                    taxRate = session.inclusiveTaxRate,
+                    ztaRate = session.ztaLevyRate,
+                )
             }
         } catch (err: PrinterException) {
             withContext(Dispatchers.Main) {

@@ -13,6 +13,7 @@ import com.cafedeparis.kitchen.data.receiptHeaderLabel
 import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.OrderSlipPrintOptions
 import com.cafedeparis.kitchen.data.PaymentOptionLine
+import com.cafedeparis.kitchen.data.TaxMath
 import org.json.JSONArray
 import java.io.OutputStream
 import java.nio.charset.Charset
@@ -71,9 +72,11 @@ class EscPosPrinter {
     deviceAddress: String,
     order: KitchenOrder,
     paymentOptions: List<PaymentOptionLine> = emptyList(),
+    taxRate: Double = 15.5,
+    ztaRate: Double = 2.0,
   ) {
     print(deviceAddress) { output ->
-      writeSalesReceipt(output, order, paymentOptions)
+      writeSalesReceipt(output, order, paymentOptions, taxRate, ztaRate)
     }
   }
 
@@ -318,7 +321,12 @@ class EscPosPrinter {
     order: KitchenOrder,
     options: OrderSlipPrintOptions,
   ) {
-    val tax = orderSlipTaxBreakdown(order, options.taxRate)
+    val tax = orderSlipTaxBreakdown(
+      order,
+      options.taxRate,
+      applyZta = options.applyZta || order.branch_fiscalization_enabled,
+      ztaRate = options.ztaRate,
+    )
     val baseLabel = options.baseCurrencyCode?.let { " ($it)" }.orEmpty()
 
     output.write(INIT)
@@ -383,6 +391,14 @@ class EscPosPrinter {
     output.write(textLine("--------------------------------"))
     if (order.branch_fiscalization_enabled) {
       output.write(textLine("Subtotal$baseLabel", suffix = formatPlainAmount(tax.subtotal.toString())))
+      if (tax.zta > 0.0) {
+        output.write(
+          textLine(
+            "ZTA (${formatTaxRate(tax.ztaRate)})",
+            suffix = formatPlainAmount(tax.zta.toString()),
+          ),
+        )
+      }
       output.write(
         textLine(
           "Tax (${formatTaxRate(options.taxRate)})",
@@ -411,8 +427,16 @@ class EscPosPrinter {
     output: OutputStream,
     order: KitchenOrder,
     paymentOptions: List<PaymentOptionLine> = emptyList(),
+    taxRate: Double = 15.5,
+    ztaRate: Double = 2.0,
   ) {
     val isProforma = order.fiscal_approval_status == "pending"
+    val tax = orderSlipTaxBreakdown(
+      order,
+      taxRate,
+      applyZta = order.branch_fiscalization_enabled,
+      ztaRate = ztaRate,
+    )
 
     output.write(INIT)
     output.write(ALIGN_CENTER)
@@ -484,11 +508,28 @@ class EscPosPrinter {
     }
 
     output.write(textLine("--------------------------------"))
+    if (order.branch_fiscalization_enabled) {
+      output.write(textLine("Subtotal", suffix = formatMoney(tax.subtotal)))
+      if (tax.zta > 0.0) {
+        output.write(
+          textLine(
+            "ZTA (${formatTaxRate(tax.ztaRate)})",
+            suffix = formatMoney(tax.zta),
+          ),
+        )
+      }
+      output.write(
+        textLine(
+          "Tax (${formatTaxRate(taxRate)})",
+          suffix = formatMoney(tax.tax),
+        ),
+      )
+    }
     output.write(
       textLine(
         "Total",
         bold = true,
-        suffix = formatMoney(order.total_amount),
+        suffix = formatMoney(tax.total),
       ),
     )
 
@@ -690,6 +731,17 @@ class EscPosPrinter {
           suffix = formatMoney(tax?.optString("subtotal", "0") ?: "0"),
         ),
       )
+      val ztaAmount = tax?.optString("zta", "0") ?: "0"
+      val ztaValue = ztaAmount.toDoubleOrNull() ?: 0.0
+      if (ztaValue > 0.0) {
+        val ztaRate = tax?.optString("zta_rate", "2") ?: "2"
+        output.write(
+          textLine(
+            "ZTA (${ztaRate.trimEnd('0').trimEnd('.')}%)",
+            suffix = formatMoney(ztaAmount),
+          ),
+        )
+      }
       output.write(
         textLine(
           "Tax (${tax?.optString("tax_rate", "0") ?: "0"}%)",
@@ -1191,25 +1243,46 @@ class EscPosPrinter {
   private data class OrderSlipTaxBreakdown(
     val subtotal: Double,
     val tax: Double,
+    val zta: Double,
+    val ztaRate: Double,
     val total: Double,
   )
 
-  private fun orderSlipTaxBreakdown(order: KitchenOrder, taxRate: Double): OrderSlipTaxBreakdown {
-    val total = receiptTotalFromOrder(order).let { computed ->
+  private fun orderSlipTaxBreakdown(
+    order: KitchenOrder,
+    taxRate: Double,
+    applyZta: Boolean = false,
+    ztaRate: Double = 2.0,
+  ): OrderSlipTaxBreakdown {
+    val goodsTotal = receiptTotalFromOrder(order).let { computed ->
       if (computed > 0.0) computed else order.total_amount.toDoubleOrNull() ?: 0.0
     }
-    val divisor = 1.0 + taxRate / 100.0
-    val subtotal = roundMoney(total / divisor)
-    val tax = roundMoney(total - subtotal)
-    return OrderSlipTaxBreakdown(subtotal, tax, roundMoney(total))
+    val breakdown = TaxMath.splitInclusiveTotal(
+      goodsTotal,
+      taxRate = taxRate,
+      applyZta = applyZta,
+      ztaRate = ztaRate,
+    )
+    return OrderSlipTaxBreakdown(
+      subtotal = breakdown.subtotal,
+      tax = breakdown.tax,
+      zta = breakdown.zta,
+      ztaRate = breakdown.ztaRate,
+      total = breakdown.total,
+    )
   }
 
   private fun roundMoney(amount: Double): Double {
-    return Math.round(amount * 100.0) / 100.0
+    return TaxMath.roundMoney(amount)
   }
 
   private fun formatTaxRate(rate: Double): String {
-    return String.format(Locale.US, "%.1f", rate)
+    val formatted = if (rate % 1.0 == 0.0) {
+      String.format(Locale.US, "%.0f", rate)
+    } else {
+      String.format(Locale.US, "%.1f", rate)
+    }
+    return "$formatted%"
   }
 
   private fun formatOrderType(order: KitchenOrder): String {

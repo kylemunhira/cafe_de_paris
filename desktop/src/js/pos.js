@@ -55,6 +55,7 @@ let receiptPaymentOrderKey = null;
 let customers = [];
 let suppliers = [];
 let inclusiveTaxRate = 15.5;
+let ztaLevyRate = 2;
 let stopAutoSync = null;
 let stopKitchenRefresh = null;
 let fiscalDayStatus = null;
@@ -94,8 +95,6 @@ const dayendCancelBtn = document.getElementById("dayend-cancel-btn");
 const dayendPrintBtn = document.getElementById("dayend-print-btn");
 const dayendDateInput = document.getElementById("dayend-date");
 const dayendCurrencyFields = document.getElementById("dayend-currency-fields");
-const dayendCodeGroup = document.getElementById("dayend-code-group");
-const dayendCurrencyCodeSelect = document.getElementById("dayend-currency-code");
 const fiscalDayModal = document.getElementById("fiscal-day-modal");
 const fiscalDayCloseBtn = document.getElementById("fiscal-day-close-btn");
 const fiscalDayRefreshBtn = document.getElementById("fiscal-day-refresh-btn");
@@ -1188,7 +1187,16 @@ tablePickerModal?.addEventListener("click", (event) => {
 });
 
 function allowsSplitPayment() {
-  return Boolean(session?.branch && !session.branch.fiscalization_enabled);
+  // Available on all branches. Fiscal branches may only split within the same currency code.
+  return Boolean(session?.branch);
+}
+
+function fiscalSplitCurrencyCodes(lines) {
+  return [...new Set(
+    lines
+      .map((line) => String(line.currency?.code || "").trim().toUpperCase())
+      .filter(Boolean)
+  )];
 }
 
 function isSplitPaymentActive() {
@@ -1679,11 +1687,21 @@ function getCartTotal() {
 }
 
 function computeTaxBreakdown(inclusiveTotal) {
-  const total = roundMoney(inclusiveTotal);
+  const goodsTotal = roundMoney(inclusiveTotal);
   const divisor = 1 + inclusiveTaxRate / 100;
-  const subtotal = roundMoney(total / divisor);
-  const tax = roundMoney(total - subtotal);
-  return { subtotal, tax, total };
+  const subtotal = roundMoney(goodsTotal / divisor);
+  const tax = roundMoney(goodsTotal - subtotal);
+  const applyZta = Boolean(session?.branch?.fiscalization_enabled);
+  const ztaRate = applyZta ? ztaLevyRate : 0;
+  const zta = applyZta ? roundMoney((subtotal * ztaRate) / 100) : 0;
+  return {
+    subtotal: applyZta ? roundMoney(subtotal - zta) : subtotal,
+    tax,
+    zta,
+    ztaRate,
+    goodsTotal,
+    total: goodsTotal,
+  };
 }
 
 function getOrderInclusiveTotal(order) {
@@ -1800,7 +1818,7 @@ function renderPaymentCurrencyToggle() {
 }
 
 function renderReceiptTotals(inclusiveTotal) {
-  const { subtotal, tax, total } = computeTaxBreakdown(inclusiveTotal);
+  const { subtotal, tax, zta, ztaRate, total } = computeTaxBreakdown(inclusiveTotal);
   const useFx = paymentMethod !== "account" && !isSplitPaymentActive();
   const { rate, amountDue, currency, hasRate } = useFx
     ? computePaymentAmounts(total)
@@ -1816,9 +1834,13 @@ function renderReceiptTotals(inclusiveTotal) {
   const dueRow = useFx
     ? `<div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? money(amountDue, currency) : "—"}</span></div>`
     : `<div class="receipt-total-row receipt-total-due"><span>Amount due${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>`;
+  const ztaRow = zta
+    ? `<div class="receipt-total-row"><span>ZTA (${ztaRate}%)</span><span>${money(zta)}</span></div>`
+    : "";
 
   receiptTotals.innerHTML = `
     <div class="receipt-total-row"><span>Subtotal${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(subtotal)}</span></div>
+    ${ztaRow}
     <div class="receipt-total-row"><span>Tax (${inclusiveTaxRate}%)</span><span>${money(tax)}</span></div>
     <div class="receipt-total-row"><span>Total${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>
     ${rateRow}
@@ -2437,20 +2459,10 @@ function isFiscalBranchSession() {
   return Boolean(session?.branch?.fiscalization_enabled);
 }
 
-function dayEndCurrencyCodes(activeCurrencies) {
-  return [...new Set(activeCurrencies.map(currencyCodeOf).filter(Boolean))].sort();
-}
-
 function renderDayEndCurrencyFields() {
   if (!dayendCurrencyFields) return;
   const activeCurrencies = currencies.filter((c) => c.is_active);
-  const fiscal = isFiscalBranchSession();
-  let visible = activeCurrencies;
-  if (fiscal && dayendCurrencyCodeSelect) {
-    const selectedCode = String(dayendCurrencyCodeSelect.value || "").trim().toUpperCase();
-    visible = activeCurrencies.filter((c) => currencyCodeOf(c) === selectedCode);
-  }
-  dayendCurrencyFields.innerHTML = visible
+  dayendCurrencyFields.innerHTML = activeCurrencies
     .map((currency) => {
       const label = currency.name || currency.code || `Currency ${currency.id}`;
       return `
@@ -2468,44 +2480,15 @@ function renderDayEndCurrencyFields() {
           >
         </div>`;
     })
-    .join("") || `<p class="settings-hint" style="margin:0;">No currencies for this code.</p>`;
-}
-
-function setupDayEndCurrencyCodePicker(activeCurrencies) {
-  const fiscal = isFiscalBranchSession();
-  if (!dayendCodeGroup || !dayendCurrencyCodeSelect) {
-    renderDayEndCurrencyFields();
-    return;
-  }
-  if (!fiscal) {
-    dayendCodeGroup.hidden = true;
-    dayendCurrencyCodeSelect.innerHTML = "";
-    renderDayEndCurrencyFields();
-    return;
-  }
-  const codes = dayEndCurrencyCodes(activeCurrencies);
-  dayendCodeGroup.hidden = false;
-  const previous = String(dayendCurrencyCodeSelect.value || "").trim().toUpperCase();
-  dayendCurrencyCodeSelect.innerHTML = codes
-    .map((code) => `<option value="${code}">${code}</option>`)
-    .join("");
-  if (previous && codes.includes(previous)) {
-    dayendCurrencyCodeSelect.value = previous;
-  } else if (baseCurrency && codes.includes(currencyCodeOf(baseCurrency))) {
-    dayendCurrencyCodeSelect.value = currencyCodeOf(baseCurrency);
-  } else if (codes.length) {
-    dayendCurrencyCodeSelect.value = codes[0];
-  }
-  renderDayEndCurrencyFields();
+    .join("") || `<p class="settings-hint" style="margin:0;">No currencies configured.</p>`;
 }
 
 async function openDayEndModal(date) {
   const allowed = await ensureDailyStockTakeForDayEnd(date);
   if (!allowed) return;
 
-  const activeCurrencies = currencies.filter((c) => c.is_active);
   dayendDateInput.value = date;
-  setupDayEndCurrencyCodePicker(activeCurrencies);
+  renderDayEndCurrencyFields();
   dayendModal.hidden = false;
   dayendDateInput.focus();
 }
@@ -2519,7 +2502,6 @@ async function printDayEndCashUp() {
   }
 
   const counted = {};
-  const countedCodes = new Set();
   const inputs = dayendCurrencyFields.querySelectorAll("input[data-currency-id]");
   for (const input of inputs) {
     const raw = (input.value || "").trim();
@@ -2530,23 +2512,17 @@ async function printDayEndCashUp() {
       showToast(`Invalid amount for currency ${currencyId}`, true);
       return;
     }
-    const code = String(input.dataset.currencyCode || "").trim().toUpperCase();
-    if (code) countedCodes.add(code);
     counted[currencyId] = String(parsed);
-  }
-  if (isFiscalBranchSession() && countedCodes.size > 1) {
-    showToast(
-      `On fiscal branches, count only one currency code (${[...countedCodes].sort().join(" or ")}). Do not mix USD and ZWG.`,
-      true,
-    );
-    return;
   }
 
   dayendPrintBtn.disabled = true;
   try {
     const response = await fetchDayEndReport(session, { date: reportDate, counted });
     const report = response.report || response;
-    await printDayEndReport(session, report, { taxRate: inclusiveTaxRate });
+    await printDayEndReport(session, report, {
+      taxRate: inclusiveTaxRate,
+      ztaRate: ztaLevyRate,
+    });
     const orderCount = Number(report.order_count || report.orderCount || 0);
     const label = orderCount === 1 ? "1 order" : `${orderCount} orders`;
     showToast(`Day end report printed · ${label}`);
@@ -2567,7 +2543,6 @@ expenseModal?.addEventListener("click", (event) => {
 dayendCloseBtn?.addEventListener("click", closeDayEndModal);
 dayendCancelBtn?.addEventListener("click", closeDayEndModal);
 dayendPrintBtn?.addEventListener("click", printDayEndCashUp);
-dayendCurrencyCodeSelect?.addEventListener("change", () => renderDayEndCurrencyFields());
 dayendDateInput?.addEventListener("change", async () => {
   if (dayendModal.hidden) return;
   const date = (dayendDateInput.value || "").trim() || getTodayISO();
@@ -2695,7 +2670,10 @@ async function placeOrder() {
     // Do not reprint the full POS order slip.
     if (!addedToExisting) {
       try {
-        await printOrderSlip(session, order, { taxRate: inclusiveTaxRate });
+        await printOrderSlip(session, order, {
+          taxRate: inclusiveTaxRate,
+          ztaRate: ztaLevyRate,
+        });
       } catch (printErr) {
         showToast(`Order saved but print failed: ${printErr.message}`, true);
       }
@@ -2787,6 +2765,16 @@ async function paySelectedOrder() {
       if (!splitLines.length) {
         showToast("Enter at least one currency amount, or turn off split payment", true);
         return;
+      }
+      if (isFiscalBranchSession()) {
+        const codes = fiscalSplitCurrencyCodes(splitLines);
+        if (codes.length > 1) {
+          showToast(
+            `On fiscal branches, split payments must use the same currency code (${codes.sort().join(" or ")}). Do not mix USD and ZWG.`,
+            true,
+          );
+          return;
+        }
       }
       const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
       if (allocated + 0.005 < orderTotal) {
@@ -2950,6 +2938,7 @@ async function paySelectedOrder() {
       await printSalesReceipt(session, order, {
         currency,
         taxRate: inclusiveTaxRate,
+        ztaRate: ztaLevyRate,
         payments,
       });
     } catch (printErr) {
@@ -3020,6 +3009,8 @@ async function loadCatalog() {
   baseCurrency = currencies.find((c) => c.is_base) || currencies[0] || null;
   const storedRate = await window.pos.getSetting("inclusive_tax_rate");
   if (storedRate) inclusiveTaxRate = Number(storedRate);
+  const storedZta = await window.pos.getSetting("zta_levy_rate");
+  if (storedZta) ztaLevyRate = Number(storedZta);
   renderCategories();
   renderProducts();
 }
@@ -3033,6 +3024,7 @@ async function init() {
 
   branchLabel.textContent = session.branch?.name || "Branch";
   inclusiveTaxRate = Number(session.inclusiveTaxRate || inclusiveTaxRate);
+  ztaLevyRate = Number(session.ztaLevyRate || ztaLevyRate);
   updateFiscalDayButtonVisibility();
   updateTableManageVisibility();
   updateReceiptModeVisibility();

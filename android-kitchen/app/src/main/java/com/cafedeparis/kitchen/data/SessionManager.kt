@@ -57,6 +57,14 @@ class SessionManager(context: Context) {
         get() = prefs.getBoolean(KEY_FISCALIZATION_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_FISCALIZATION_ENABLED, value).apply()
 
+    var inclusiveTaxRate: Double
+        get() = prefs.getString(KEY_INCLUSIVE_TAX_RATE, "15.5")?.toDoubleOrNull() ?: 15.5
+        set(value) = prefs.edit().putString(KEY_INCLUSIVE_TAX_RATE, value.toString()).apply()
+
+    var ztaLevyRate: Double
+        get() = prefs.getString(KEY_ZTA_LEVY_RATE, "2")?.toDoubleOrNull() ?: 2.0
+        set(value) = prefs.edit().putString(KEY_ZTA_LEVY_RATE, value.toString()).apply()
+
     var canManageFiscalDay: Boolean
         get() {
             if (prefs.contains(KEY_CAN_MANAGE_FISCAL_DAY)) {
@@ -118,6 +126,8 @@ class SessionManager(context: Context) {
         canManageFiscalDay = response.user.can_manage_fiscal_day
         canApproveFiscalReceipt = response.user.can_approve_fiscal_receipt
         canManageDiningTables = response.user.can_manage_dining_tables
+        inclusiveTaxRate = response.inclusive_tax_rate
+        ztaLevyRate = response.zta_levy_rate
     }
 
     fun clearLogin() {
@@ -138,6 +148,8 @@ class SessionManager(context: Context) {
             .remove(KEY_CAN_MANAGE_FISCAL_DAY)
             .remove(KEY_CAN_APPROVE_FISCAL_RECEIPT)
             .remove(KEY_CAN_MANAGE_DINING_TABLES)
+            .remove(KEY_INCLUSIVE_TAX_RATE)
+            .remove(KEY_ZTA_LEVY_RATE)
             .apply()
     }
 
@@ -333,6 +345,8 @@ class SessionManager(context: Context) {
         private const val KEY_CAN_MANAGE_FISCAL_DAY = "can_manage_fiscal_day"
         private const val KEY_CAN_APPROVE_FISCAL_RECEIPT = "can_approve_fiscal_receipt"
         private const val KEY_CAN_MANAGE_DINING_TABLES = "can_manage_dining_tables"
+        private const val KEY_INCLUSIVE_TAX_RATE = "inclusive_tax_rate"
+        private const val KEY_ZTA_LEVY_RATE = "zta_levy_rate"
         private const val KEY_PRINTER_ADDRESS = "printer_address"
         private const val KEY_PRINTED_IDS = "printed_order_ids"
         private const val KEY_PRINTED_FINGERPRINTS = "printed_order_fingerprints"
@@ -399,6 +413,8 @@ object JsonParsers {
             can_access_kitchen = json.optBoolean("can_access_kitchen", false),
             can_access_pos = json.optBoolean("can_access_pos", false),
             can_access_bakery = json.optBoolean("can_access_bakery", false),
+            inclusive_tax_rate = json.optString("inclusive_tax_rate", "15.5").toDoubleOrNull() ?: 15.5,
+            zta_levy_rate = json.optString("zta_levy_rate", "2").toDoubleOrNull() ?: 2.0,
         )
     }
 

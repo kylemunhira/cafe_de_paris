@@ -86,7 +86,9 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
     order = Order.objects.select_for_update().select_related("branch").get(pk=order.pk)
     if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
         raise CustomerAccountError("Only open or unpaid orders can be paid.")
-    charge_amount = _quantize(order.total_amount)
+    from orders.tax import order_amount_due
+
+    charge_amount = _quantize(order_amount_due(order))
     if charge_amount <= Decimal("0"):
         raise CustomerAccountError("Order total must be greater than zero.")
 

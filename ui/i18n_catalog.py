@@ -650,6 +650,7 @@ _add("Supplier added", "Fournisseur ajouté", "Proveedor agregado", "تمت إض
 _add("Supplier updated", "Fournisseur mis à jour", "Proveedor actualizado", "تم تحديث المورد", "供应商已更新")
 _add("Symbol", "Symbole", "Símbolo", "الرمز", "符号")
 _add("Tax", "Taxe", "Impuesto", "الضريبة", "税")
+_add("ZTA", "ZTA", "ZTA", "ZTA", "ZTA")
 _add("Tax rate (%)", "Taux de taxe (%)", "Tasa impositiva (%)", "معدل الضريبة (%)", "税率 (%)")
 _add("Tax:", "Taxe :", "Impuesto:", "الضريبة:", "税：")
 _add("The order will be marked unpaid so it can be paid again.", "La commande sera marquée impayée afin de pouvoir la payer à nouveau.", "El pedido se marcará como impago para poder pagarlo de nuevo.", "سيُعلَّم الطلب كغير مدفوع ليُدفع مجددًا.", "订单将标为未付，以便再次收款。")

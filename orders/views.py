@@ -315,10 +315,12 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 )
 
             if not payment_lines:
+                from .tax import order_amount_due
+
                 payment_lines = [
                     {
                         "currency": currency,
-                        "amount": currency.convert_from_base(order.total_amount),
+                        "amount": currency.convert_from_base(order_amount_due(order)),
                         "method": (
                             payment_method
                             if payment_method in TenderMethod.values

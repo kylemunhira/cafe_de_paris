@@ -19,12 +19,21 @@ function buildPaymentOptions(baseAmount, currencies) {
     .filter(Boolean);
 }
 
-export function computeTaxBreakdown(inclusiveTotal, taxRate) {
-  const total = roundMoney(inclusiveTotal);
+export function computeTaxBreakdown(inclusiveTotal, taxRate, { applyZta = false, ztaRate = 2 } = {}) {
+  const goodsTotal = roundMoney(inclusiveTotal);
   const divisor = 1 + Number(taxRate) / 100;
-  const subtotal = roundMoney(total / divisor);
-  const tax = roundMoney(total - subtotal);
-  return { subtotal, tax, total, taxRate };
+  const subtotal = roundMoney(goodsTotal / divisor);
+  const tax = roundMoney(goodsTotal - subtotal);
+  const zta = applyZta ? roundMoney((subtotal * Number(ztaRate)) / 100) : 0;
+  return {
+    subtotal: applyZta ? roundMoney(subtotal - zta) : subtotal,
+    tax,
+    zta,
+    ztaRate: applyZta ? Number(ztaRate) : 0,
+    goodsTotal,
+    total: goodsTotal,
+    taxRate,
+  };
 }
 
 export function orderSalespersonName(order, session) {
@@ -37,7 +46,7 @@ export function orderSalespersonName(order, session) {
   );
 }
 
-export async function printOrderSlip(session, order, { taxRate }) {
+export async function printOrderSlip(session, order, { taxRate, ztaRate = 2 }) {
   const inclusiveTotal = order.items?.length
     ? order.items.reduce(
         (sum, item) => sum + roundMoney(Number(item.price) * Number(item.quantity)),
@@ -45,7 +54,10 @@ export async function printOrderSlip(session, order, { taxRate }) {
       )
     : roundMoney(order.total_amount);
 
-  const tax = computeTaxBreakdown(inclusiveTotal, taxRate);
+  const tax = computeTaxBreakdown(inclusiveTotal, taxRate, {
+    applyZta: Boolean(session?.branch?.fiscalization_enabled),
+    ztaRate,
+  });
   const catalogCurrencies = (await window.pos.getCatalog()).currencies || [];
   const baseCurrency = catalogCurrencies.find((c) => c.is_base) || null;
 
@@ -62,16 +74,21 @@ export async function printOrderSlip(session, order, { taxRate }) {
   });
 }
 
-export async function printDayEndReport(session, report, { taxRate }) {
+export async function printDayEndReport(session, report, { taxRate, ztaRate = 2 }) {
   const grossTotal = roundMoney(report.gross_total || report.grossTotal || 0);
   const tax = report.tax_breakdown
     ? {
         subtotal: roundMoney(report.tax_breakdown.subtotal),
         tax: roundMoney(report.tax_breakdown.tax),
+        zta: roundMoney(report.tax_breakdown.zta || 0),
+        ztaRate: Number(report.tax_breakdown.zta_rate || 0),
         total: roundMoney(report.tax_breakdown.total),
         taxRate: Number(report.tax_breakdown.tax_rate || taxRate),
       }
-    : computeTaxBreakdown(grossTotal, taxRate);
+    : computeTaxBreakdown(grossTotal, taxRate, {
+        applyZta: Boolean(session?.branch?.fiscalization_enabled),
+        ztaRate,
+      });
   const baseCurrency =
     (await window.pos.getCatalog()).currencies.find((c) => c.is_base) || null;
 
@@ -87,7 +104,7 @@ export async function printDayEndReport(session, report, { taxRate }) {
   });
 }
 
-export async function printSalesReceipt(session, order, { currency, taxRate, payments = null }) {
+export async function printSalesReceipt(session, order, { currency, taxRate, ztaRate = 2, payments = null }) {
   const inclusiveTotal = order.items?.length
     ? order.items.reduce(
         (sum, item) => sum + roundMoney(Number(item.price) * Number(item.quantity)),
@@ -95,7 +112,10 @@ export async function printSalesReceipt(session, order, { currency, taxRate, pay
       )
     : roundMoney(order.total_amount);
 
-  const tax = computeTaxBreakdown(inclusiveTotal, taxRate);
+  const tax = computeTaxBreakdown(inclusiveTotal, taxRate, {
+    applyZta: Boolean(session?.branch?.fiscalization_enabled),
+    ztaRate,
+  });
   const catalogCurrencies = (await window.pos.getCatalog()).currencies || [];
   const baseCurrency = catalogCurrencies.find((c) => c.is_base) || null;
   const tenderLines = Array.isArray(payments)

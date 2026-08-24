@@ -122,12 +122,15 @@ function clearSession() {
   db.prepare("DELETE FROM settings WHERE key IN ('auth_token', 'user_json', 'branch_json')").run();
 }
 
-function saveSession({ token, user, branch, inclusiveTaxRate }) {
+function saveSession({ token, user, branch, inclusiveTaxRate, ztaLevyRate }) {
   setSetting("auth_token", token);
   setSetting("user_json", JSON.stringify(user));
   setSetting("branch_json", JSON.stringify(branch));
   if (inclusiveTaxRate != null) {
     setSetting("inclusive_tax_rate", String(inclusiveTaxRate));
+  }
+  if (ztaLevyRate != null) {
+    setSetting("zta_levy_rate", String(ztaLevyRate));
   }
 }
 
@@ -139,6 +142,7 @@ function getSession() {
     user: JSON.parse(getSetting("user_json", "{}")),
     branch: JSON.parse(getSetting("branch_json", "{}")),
     inclusiveTaxRate: Number(getSetting("inclusive_tax_rate", "15.5")),
+    ztaLevyRate: Number(getSetting("zta_levy_rate", "2")),
   };
 }
 

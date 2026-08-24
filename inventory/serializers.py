@@ -645,7 +645,11 @@ class StockTakeLineUpdateSerializer(serializers.Serializer):
         max_digits=12, decimal_places=3, required=False, allow_null=True
     )
     wastage_quantity = serializers.DecimalField(
-        max_digits=12, decimal_places=3, required=False, min_value=0
+        max_digits=12,
+        decimal_places=3,
+        required=False,
+        allow_null=True,
+        min_value=0,
     )
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
 

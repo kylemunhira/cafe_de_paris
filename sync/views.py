@@ -70,6 +70,7 @@ class SyncPullView(DesktopSyncPermissionMixin, APIView):
                 "dining_tables": catalog["dining_tables"],
                 "currencies": get_currencies_payload(),
                 "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
+                "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
                 "synced_at": timezone.now().isoformat(),
             }
         )

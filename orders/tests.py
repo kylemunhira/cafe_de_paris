@@ -166,7 +166,7 @@ class OrderPayTests(TestCase):
         self.assertEqual(response.data.get("change_given"), "3.00")
         self.assertEqual(response.data.get("change_given_base"), "3.00")
 
-    def test_split_payment_blocked_on_fiscal_branch(self):
+    def test_split_payment_mixed_codes_blocked_on_fiscal_branch(self):
         self.branch.fiscalization_enabled = True
         self.branch.save(update_fields=["fiscalization_enabled"])
         response = self.client.post(
@@ -180,9 +180,35 @@ class OrderPayTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("non-fiscal", response.data["detail"].lower())
+        self.assertIn("same currency code", response.data["detail"].lower())
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, OrderStatus.OPEN)
+
+    def test_split_payment_same_code_allowed_on_fiscal_branch(self):
+        self.branch.fiscalization_enabled = True
+        self.branch.save(update_fields=["fiscalization_enabled"])
+        bank_usd = Currency.objects.create(code="USD", name="BANKUSD", symbol="USD$")
+        CurrencyRate.objects.create(
+            currency=bank_usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "payment_method": "multi",
+                "payments": [
+                    {"currency_id": self.usd.id, "amount": "4.00"},
+                    {"currency_id": bank_usd.id, "amount": "3.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertEqual(self.order.payment_method, "multi")
+        self.assertEqual(self.order.payments.count(), 2)
 
 class KitchenOrderTests(TestCase):
     def setUp(self):
@@ -463,6 +489,28 @@ class InclusiveTaxBreakdownTests(TestCase):
         self.assertEqual(breakdown["subtotal"], Decimal("10.00"))
         self.assertEqual(breakdown["tax"], Decimal("1.55"))
         self.assertEqual(breakdown["total"], Decimal("11.55"))
+        self.assertEqual(breakdown["zta"], Decimal("0.00"))
+        self.assertEqual(breakdown["goods_total"], Decimal("11.55"))
+
+    def test_split_inclusive_total_adds_zta_before_tax(self):
+        breakdown = split_inclusive_total(Decimal("11.55"), apply_zta=True)
+        self.assertEqual(breakdown["subtotal"], Decimal("9.80"))
+        self.assertEqual(breakdown["tax"], Decimal("1.55"))
+        self.assertEqual(breakdown["zta"], Decimal("0.20"))
+        self.assertEqual(breakdown["zta_rate"], Decimal("2"))
+        self.assertEqual(breakdown["goods_total"], Decimal("11.55"))
+        self.assertEqual(breakdown["total"], Decimal("11.55"))
+
+    def test_six_dollar_price_stays_six_with_inclusive_zta(self):
+        breakdown = split_inclusive_total(Decimal("6.00"), apply_zta=True)
+        self.assertEqual(breakdown["tax"], Decimal("0.81"))
+        self.assertEqual(breakdown["zta"], Decimal("0.10"))
+        self.assertEqual(breakdown["subtotal"], Decimal("5.09"))
+        self.assertEqual(breakdown["total"], Decimal("6.00"))
+        self.assertEqual(
+            breakdown["subtotal"] + breakdown["zta"] + breakdown["tax"],
+            breakdown["total"],
+        )
 
     def test_order_receipt_tax_breakdown_sums_line_items(self):
         branch = Branch.objects.create(
@@ -485,6 +533,34 @@ class InclusiveTaxBreakdownTests(TestCase):
         self.assertEqual(breakdown["total"], Decimal("11.55"))
         self.assertEqual(breakdown["subtotal"], Decimal("10.00"))
         self.assertEqual(breakdown["tax"], Decimal("1.55"))
+        self.assertEqual(breakdown["zta"], Decimal("0.00"))
+
+    def test_fiscal_order_receipt_includes_zta(self):
+        branch = Branch.objects.create(
+            name="Fiscal",
+            code="FIS",
+            location="Harare",
+            branch_type=BranchType.BRANCH,
+            fiscalization_enabled=True,
+        )
+        category = ProductCategory.objects.create(name="Coffee")
+        product = Product.objects.create(
+            name="Latte",
+            category=category,
+            selling_price=Decimal("4.00"),
+        )
+        order = Order.objects.create(branch=branch, total_amount=Decimal("11.55"))
+        order.items.create(product=product, quantity=Decimal("2"), price=Decimal("4.00"))
+        order.items.create(product=product, quantity=Decimal("1"), price=Decimal("3.55"))
+
+        breakdown = order_receipt_tax_breakdown(order)
+        self.assertEqual(breakdown["subtotal"], Decimal("9.80"))
+        self.assertEqual(breakdown["tax"], Decimal("1.55"))
+        self.assertEqual(breakdown["zta"], Decimal("0.20"))
+        self.assertEqual(breakdown["total"], Decimal("11.55"))
+        from orders.tax import order_amount_due
+
+        self.assertEqual(order_amount_due(order), Decimal("11.55"))
 
 
 User = get_user_model()
@@ -558,6 +634,7 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "Café de Paris")
         self.assertContains(response, "Harare")
         self.assertContains(response, "Subtotal")
+        self.assertContains(response, "ZTA")
         self.assertContains(response, "Tax (")
 
     def test_order_slip_print_for_open_order(self):
@@ -623,6 +700,7 @@ class ReceiptPrintTests(TestCase):
         self.assertContains(response, "Café de Paris")
         self.assertContains(response, "Harare")
         self.assertContains(response, "Subtotal")
+        self.assertContains(response, "ZTA")
         self.assertContains(response, "Tax (")
 
     def test_order_slip_print_not_available_for_paid_order(self):
@@ -919,7 +997,7 @@ class DayEndReportTests(TestCase):
         self.assertEqual(response.data["report"]["order_count"], 1)
         self.assertTrue(response.data["report"]["has_counted_entries"])
 
-    def test_fiscal_day_end_rejects_mixed_currency_codes(self):
+    def test_fiscal_day_end_allows_mixed_currency_codes(self):
         self.branch.fiscalization_enabled = True
         self.branch.save(update_fields=["fiscalization_enabled"])
         zwg = Currency.objects.create(code="ZWG", name="ZiG Cash", symbol="ZWG")
@@ -944,8 +1022,8 @@ class DayEndReportTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("same currency code", response.data["detail"].lower())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("saved"))
 
     def test_fiscal_day_end_allows_same_currency_code(self):
         self.branch.fiscalization_enabled = True

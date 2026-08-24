@@ -168,6 +168,8 @@ def _pay_order(order, payment_data, user=None):
             for line in payment_lines
         ]
     else:
+        from orders.tax import order_amount_due
+
         currency = payment_data["payment_currency"]
         if currency.get_current_rate() is None:
             raise ValueError(
@@ -177,7 +179,7 @@ def _pay_order(order, payment_data, user=None):
         lines = [
             {
                 "currency": currency,
-                "amount": currency.convert_from_base(order.total_amount),
+                "amount": currency.convert_from_base(order_amount_due(order)),
                 "method": "cash",
             }
         ]

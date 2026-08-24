@@ -17,36 +17,12 @@ class DayEndValidationError(Exception):
 
 
 def validate_fiscal_counted_currencies(branch, counted_by_currency: dict | None) -> None:
-    """Fiscal branches may count only one currency code (e.g. all USD or all ZWG)."""
-    if not getattr(branch, "fiscalization_enabled", False):
-        return
-    if not counted_by_currency:
-        return
+    """No longer restricts day-end cash-up by currency code.
 
-    currency_ids = []
-    for currency_id, raw in counted_by_currency.items():
-        if _decimal_or_none(raw) is None:
-            continue
-        try:
-            currency_ids.append(int(currency_id))
-        except (TypeError, ValueError):
-            continue
-
-    if len(currency_ids) < 2:
-        return
-
-    codes = {
-        (code or "").strip().upper()
-        for code in Currency.objects.filter(pk__in=currency_ids).values_list(
-            "code", flat=True
-        )
-    }
-    codes.discard("")
-    if len(codes) > 1:
-        raise DayEndValidationError(
-            "On fiscal branches, counted amounts must use the same currency code "
-            f"({' or '.join(sorted(codes))}). Do not mix USD and ZWG."
-        )
+    Kept as a no-op so existing call sites remain valid. Fiscal and non-fiscal
+    branches may count every active currency (USD, ZWG, etc.) in one cash-up.
+    """
+    return
 
 
 def parse_counted_from_body(data) -> dict:

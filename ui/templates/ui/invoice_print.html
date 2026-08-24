@@ -335,6 +335,12 @@
           <span>{% trans "Subtotal" %}{% if base_currency %} ({{ base_currency.name }}){% endif %}</span>
           <span>{{ tax_breakdown.subtotal|floatformat:2 }}</span>
         </div>
+        {% if tax_breakdown.zta %}
+        <div class="summary-row">
+          <span>{% trans "ZTA" %} ({{ tax_breakdown.zta_rate|floatformat:0 }}%)</span>
+          <span>{{ tax_breakdown.zta|floatformat:2 }}</span>
+        </div>
+        {% endif %}
         <div class="summary-row">
           <span>{% trans "Tax" %} ({{ tax_breakdown.tax_rate|floatformat:1 }}%)</span>
           <span>{{ tax_breakdown.tax|floatformat:2 }}</span>

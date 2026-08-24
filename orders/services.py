@@ -659,7 +659,7 @@ def resolve_order_payment_method(payment_lines) -> str:
     return PaymentMethod.MULTI
 
 
-def save_order_tender_payments(order, payment_lines):
+def save_order_tender_payments(order, payment_lines, *, amount_due=None):
     """Replace tender lines on the order and set rollup payment fields."""
     OrderPayment.objects.filter(order=order).delete()
     for line in payment_lines:
@@ -683,7 +683,9 @@ def save_order_tender_payments(order, payment_lines):
         base = Currency.objects.filter(is_base=True).first()
         order.payment_currency = base or primary["currency"]
         order.exchange_rate = Decimal("1") if base else primary["rate"]
-        order.amount_paid = order.total_amount
+        order.amount_paid = (
+            amount_due if amount_due is not None else order.total_amount
+        )
     order.payment_method = resolve_order_payment_method(payment_lines)
 
 
@@ -699,16 +701,25 @@ def mark_order_paid_with_tenders(
 
     Returns (order, change_base) where change_base is tendered surplus in base currency.
     """
-    lines = normalize_tender_lines(payment_lines)
-    applied_lines, change_base = apply_tender_change(lines, order.total_amount)
+    from .tax import order_amount_due
 
-    if order.branch.fiscalization_enabled:
-        if len(lines) > 1:
+    lines = normalize_tender_lines(payment_lines)
+    if order.branch.fiscalization_enabled and len(lines) > 1:
+        codes = {
+            (getattr(line["currency"], "code", None) or "").strip().upper()
+            for line in lines
+        }
+        codes.discard("")
+        if len(codes) > 1:
             raise PaymentValidationError(
-                "Split payments are only available on non-fiscal branches."
+                "On fiscal branches, split payments must use the same currency code "
+                f"({' or '.join(sorted(codes))}). Do not mix USD and ZWG."
             )
 
-    save_order_tender_payments(order, applied_lines)
+    amount_due = order_amount_due(order)
+    applied_lines, change_base = apply_tender_change(lines, amount_due)
+
+    save_order_tender_payments(order, applied_lines, amount_due=amount_due)
     # Keep amount_paid as the full amount tendered for single-currency change display.
     if len(lines) == 1:
         order.amount_paid = lines[0]["amount"]

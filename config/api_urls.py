@@ -17,6 +17,7 @@ from inventory.views import (
     DeliveryNoteViewSet,
     StockTakeViewSet,
     StockTransferViewSet,
+    WastageEntryViewSet,
 )
 from bakery.views import ProductionOrderViewSet, ProductionSheetViewSet, RecipeViewSet
 from customers.views import CustomerViewSet
@@ -58,6 +59,7 @@ router.register("transfers", StockTransferViewSet, basename="transfer")
 router.register("delivery-notes", DeliveryNoteViewSet, basename="delivery-note")
 router.register("central-invoices", CentralInvoiceViewSet, basename="central-invoice")
 router.register("stock-takes", StockTakeViewSet, basename="stock-take")
+router.register("wastage", WastageEntryViewSet, basename="wastage")
 router.register("customers", CustomerViewSet, basename="customer")
 router.register("suppliers", SupplierViewSet, basename="supplier")
 router.register("purchase-orders", PurchaseOrderViewSet, basename="purchase-order")

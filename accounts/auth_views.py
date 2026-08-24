@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -138,6 +139,8 @@ class DesktopLoginView(APIView):
                 "user": _staff_user_payload(user, profile),
                 "branch": BranchSerializer(profile.branch).data,
                 "server_url": server_url or None,
+                "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
+                "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
             }
         )
 
@@ -184,6 +187,8 @@ class MobileAppLoginView(APIView):
                 "can_access_kitchen": can_kitchen,
                 "can_access_pos": can_pos,
                 "can_access_bakery": can_bakery,
+                "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
+                "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
             }
         )
 

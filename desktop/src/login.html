@@ -78,7 +78,8 @@
           token: result.token,
           user: result.user,
           branch: result.branch,
-          inclusiveTaxRate: null,
+          inclusiveTaxRate: result.inclusive_tax_rate ?? null,
+          ztaLevyRate: result.zta_levy_rate ?? null,
         });
 
         const session = await window.pos.getSession();

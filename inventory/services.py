@@ -989,9 +989,9 @@ def complete_stock_take(stock_take: StockTake) -> StockTake:
         )
 
     lines = list(stock_take.lines.select_related("product"))
-    missing = sum(1 for line in lines if line.counted_quantity is None)
-    if missing:
-        raise IncompleteStockTakeError(stock_take, missing)
+    counted_lines = [line for line in lines if line.counted_quantity is not None]
+    if not counted_lines:
+        raise IncompleteStockTakeError(stock_take, len(lines))
 
     count_date = _normalize_count_date(stock_take.stock_take_type, stock_take.count_date)
     if _completed_stock_take_exists(
@@ -1003,7 +1003,7 @@ def complete_stock_take(stock_take: StockTake) -> StockTake:
 
     with transaction.atomic():
         products_to_update = []
-        for line in lines:
+        for line in counted_lines:
             set_inventory_quantity(
                 stock_take.branch,
                 line.product,

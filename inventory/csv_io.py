@@ -125,6 +125,13 @@ def import_stock_take_csv(stock_take: StockTake, file_obj):
             product_id_raw = str(
                 row.get(normalized_headers.get("product_id", ""), "")
             ).strip()
+            product_name = str(
+                row.get(normalized_headers.get("product_name", ""), "")
+            ).strip()
+
+            # Skip rows with no product identity and no quantities.
+            if not line_id_raw and not product_id_raw and not product_name:
+                continue
 
             line = None
             if line_id_raw:
@@ -161,6 +168,9 @@ def import_stock_take_csv(stock_take: StockTake, file_obj):
                 )
             notes_header = normalized_headers.get("notes")
             notes = str(row.get(notes_header, "")).strip() if notes_header else ""
+
+            if counted_quantity is None:
+                continue
 
             entry = {"id": line.id}
             if counted_quantity is not None:

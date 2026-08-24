@@ -193,7 +193,10 @@ def build_day_end_report(
         key=lambda row: (-row["revenue"], row["product__name"]),
     )
 
-    tax_breakdown = split_inclusive_total(gross_total)
+    tax_breakdown = split_inclusive_total(
+        gross_total,
+        apply_zta=bool(getattr(branch, "fiscalization_enabled", False)),
+    )
 
     expense_rows = list(
         Expense.objects.filter(branch=branch, expense_date=report_date)

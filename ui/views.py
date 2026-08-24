@@ -39,7 +39,12 @@ from orders.day_end_close import DayEndValidationError, save_day_end_close
 from orders.day_end_serialization import parse_counted_by_currency
 from orders.models import FiscalApprovalStatus, Order, OrderStatus, PaymentMethod
 from orders.serializers import staff_display_name
-from orders.tax import get_inclusive_tax_rate, order_receipt_tax_breakdown
+from orders.tax import (
+    get_inclusive_tax_rate,
+    get_zta_levy_rate,
+    order_amount_due,
+    order_receipt_tax_breakdown,
+)
 from purchasing.models import Supplier
 from purchasing.statement import build_supplier_statement_report
 from payments.models import Currency
@@ -56,7 +61,7 @@ def order_change_given(order):
         return None
     currency = order.payment_currency
     try:
-        due = currency.convert_from_base(order.total_amount)
+        due = currency.convert_from_base(order_amount_due(order))
     except Exception:
         return None
     change = (order.amount_paid - due).quantize(Decimal("0.01"))
@@ -196,6 +201,7 @@ class POSView(BaseUIView):
 
         context = super().get_context_data(**kwargs)
         context["inclusive_tax_rate"] = get_inclusive_tax_rate()
+        context["zta_levy_rate"] = get_zta_levy_rate()
         context["staff_branch_id"] = get_staff_branch_id(self.request.user)
         context["can_manage_fiscal_day"] = user_can_manage_fiscal_day(
             self.request.user
