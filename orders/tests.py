@@ -2416,18 +2416,21 @@ class FamilyStaffCostPriceTests(TestCase):
             last_name="Ily",
             account_type=CustomerAccountType.FAMILY,
             account_balance=Decimal("-50.00"),
+            branch=self.branch,
         )
         self.staff = Customer.objects.create(
             first_name="Staff",
             last_name="Member",
             account_type=CustomerAccountType.STAFF,
             account_balance=Decimal("-50.00"),
+            branch=self.branch,
         )
         self.regular = Customer.objects.create(
             first_name="Reg",
             last_name="Ular",
             account_type=CustomerAccountType.REGULAR,
             account_balance=Decimal("-50.00"),
+            branch=self.branch,
         )
         self.usd = Currency.objects.create(
             code="USD",

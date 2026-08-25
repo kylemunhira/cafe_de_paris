@@ -15,6 +15,7 @@ class CustomerSerializer(serializers.ModelSerializer):
         source="get_account_type_display",
         read_only=True,
     )
+    branch_name = serializers.CharField(source="branch.name", read_only=True, default=None)
 
     class Meta:
         model = Customer
@@ -30,12 +31,25 @@ class CustomerSerializer(serializers.ModelSerializer):
             "loyalty_points",
             "account_balance",
             "credit_limit",
+            "branch",
+            "branch_name",
             "created_at",
         ]
         read_only_fields = ["created_at", "account_balance"]
 
     def get_full_name(self, obj):
         return str(obj)
+
+    def create(self, validated_data):
+        if not validated_data.get("branch"):
+            request = self.context.get("request")
+            if request and getattr(request, "user", None):
+                from accounts.branch_access import get_staff_branch_id
+
+                branch_id = get_staff_branch_id(request.user)
+                if branch_id is not None:
+                    validated_data["branch"] = Branch.objects.filter(pk=branch_id).first()
+        return super().create(validated_data)
 
 
 class CustomerAccountTransactionSerializer(serializers.ModelSerializer):

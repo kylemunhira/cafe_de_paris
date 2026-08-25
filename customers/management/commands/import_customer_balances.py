@@ -40,6 +40,7 @@ class Command(BaseCommand):
             file_path,
             branch_id=options["branch_id"],
             dry_run=options["dry_run"],
+            notes=f"Imported account balance from {file_path.name}",
         )
 
         if result["errors"]:
@@ -50,17 +51,19 @@ class Command(BaseCommand):
 
         label = "Dry run" if options["dry_run"] else "Import"
         self.stdout.write(self.style.SUCCESS(f"{label} complete."))
+        self.stdout.write(f"  Created:   {result['created']}")
         self.stdout.write(f"  Adjusted:  {result['adjusted']}")
         self.stdout.write(f"  Unchanged: {result['unchanged']}")
         self.stdout.write(f"  Missing:   {result['missing']}")
         self.stdout.write(f"  Skipped:   {result['skipped']}")
 
         for detail in result["details"]:
-            if detail["status"] != "adjusted":
+            if detail["status"] not in {"adjusted", "created"}:
                 continue
             self.stdout.write(
                 f"  - {detail['name']} ({detail.get('phone') or '-'}): "
                 f"{detail['before']} -> {detail['after']} (delta {detail['delta']})"
+                + (" [new]" if detail.get("matched_by") == "created" else "")
             )
 
         skipped = [d for d in result["details"] if d["status"] == "skipped"]

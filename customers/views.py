@@ -1,6 +1,14 @@
 from django.http import HttpResponse
 
-from accounts.branch_access import user_can_access_pos, user_can_adjust_customer_balance, user_can_collect_payment
+from accounts.branch_access import (
+    filter_by_branch_field,
+    get_staff_branch_id,
+    user_can_access_pos,
+    user_can_adjust_customer_balance,
+    user_can_collect_payment,
+    user_has_global_branch_access,
+)
+from branches.models import Branch
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -25,7 +33,7 @@ from .statement import build_customer_statement_report
 
 
 class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
-    queryset = Customer.objects.all()
+    queryset = Customer.objects.select_related("branch").all()
     serializer_class = CustomerSerializer
     audit_entity_type = "customer"
     audit_fields = (
@@ -36,8 +44,27 @@ class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         "account_type",
         "loyalty_points",
         "credit_limit",
+        "branch",
     )
     audit_label_field = ("first_name", "last_name")
+
+    def get_queryset(self):
+        return filter_by_branch_field(
+            super().get_queryset(),
+            self.request.user,
+            requested_branch_id=self.request.query_params.get("branch"),
+        )
+
+    def _import_default_branch(self):
+        requested = self.request.data.get("branch") or self.request.query_params.get("branch")
+        if user_has_global_branch_access(self.request.user):
+            branch_id = requested or get_staff_branch_id(self.request.user)
+        else:
+            branch_id = get_staff_branch_id(self.request.user)
+        if not branch_id:
+            return None
+        return Branch.objects.filter(pk=branch_id).first()
+
     def _require_customer_access(self):
         if not user_can_access_pos(self.request.user):
             raise PermissionDenied("Only POS staff can manage customers.")
@@ -61,7 +88,10 @@ class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="export-csv")
     def export_csv(self, request):
         self._require_customer_access()
-        response = HttpResponse(export_customers_csv(), content_type="text/csv; charset=utf-8")
+        response = HttpResponse(
+            export_customers_csv(queryset=self.get_queryset()),
+            content_type="text/csv; charset=utf-8",
+        )
         response["Content-Disposition"] = 'attachment; filename="customers.csv"'
         return response
 
@@ -80,7 +110,7 @@ class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        result = import_customers_csv(upload)
+        result = import_customers_csv(upload, default_branch=self._import_default_branch())
         if result["errors"]:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
         return Response(result, status=status.HTTP_200_OK)

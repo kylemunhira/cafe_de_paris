@@ -199,8 +199,8 @@ def adjust_account_balance_by_amount(
 ) -> CustomerAccountTransaction:
     """Apply a signed balance delta (e.g. -12.00) and record an adjustment.
 
-    Customers are company-wide; ``branch`` is only for audit history and is
-    auto-resolved when omitted.
+    ``branch`` is audit history for the adjustment and is auto-resolved
+    when omitted (staff branch, else first active branch).
     """
     from accounts.branch_access import get_staff_branch_id
     from branches.models import Branch

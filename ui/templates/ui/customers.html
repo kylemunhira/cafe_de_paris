@@ -123,6 +123,7 @@ const CUSTOMER_SORT = {
   phone: (c) => c.phone || "",
   email: (c) => c.email || "",
   account_type: (c) => c.account_type || "regular",
+  branch: (c) => c.branch_name || "",
   account_balance: (c) => Number(c.account_balance || 0),
   credit_limit: (c) => Number(c.credit_limit || 0),
   loyalty_points: (c) => Number(c.loyalty_points || 0),
@@ -177,6 +178,7 @@ function filteredCustomers() {
       displayName(c),
       c.phone,
       c.email,
+      c.branch_name,
       accountTypeLabel(c),
     ].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(q);
@@ -204,6 +206,7 @@ function render() {
           ${sortTh(t("Name"), "name", sortState)}
           ${sortTh(t("Phone"), "phone", sortState)}
           ${sortTh(t("Email"), "email", sortState)}
+          ${sortTh(t("Branch"), "branch", sortState)}
           ${sortTh(t("Type"), "account_type", sortState)}
           ${sortTh(t("Account"), "account_balance", sortState)}
           ${sortTh(t("Credit limit"), "credit_limit", sortState)}
@@ -218,6 +221,7 @@ function render() {
             <td><strong>${displayName(c)}</strong></td>
             <td>${c.phone || "—"}</td>
             <td>${c.email || "—"}</td>
+            <td>${c.branch_name || "—"}</td>
             <td>${accountTypeLabel(c)}</td>
             <td>${formatCurrency(c.account_balance || 0)}</td>
             <td>${formatCurrency(c.credit_limit || 0)}</td>

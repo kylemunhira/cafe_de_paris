@@ -207,11 +207,62 @@ class CustomerImportApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["created"], 1)
-        self.assertTrue(Customer.objects.filter(first_name="API").exists())
+        created = Customer.objects.get(first_name="API")
+        self.assertEqual(created.branch_id, self.branch.id)
 
     def test_export_csv_endpoint(self):
-        Customer.objects.create(first_name="Download", last_name="Test")
+        Customer.objects.create(
+            first_name="Download",
+            last_name="Test",
+            branch=self.branch,
+        )
         response = self.client.get("/api/customers/export-csv/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn("Download", response.content.decode())
+
+    def test_list_is_scoped_to_staff_branch(self):
+        other = Branch.objects.create(
+            name="Cafe de Paris Churchill",
+            code="CHU",
+            branch_type=BranchType.BRANCH,
+        )
+        Customer.objects.create(first_name="Local", branch=self.branch)
+        Customer.objects.create(first_name="ChurchillOnly", branch=other)
+
+        response = self.client.get("/api/customers/?page_size=500")
+        self.assertEqual(response.status_code, 200)
+        names = {item["first_name"] for item in response.data["results"]}
+        self.assertIn("Local", names)
+        self.assertNotIn("ChurchillOnly", names)
+
+    def test_import_does_not_update_other_branch_customer(self):
+        other = Branch.objects.create(
+            name="Cafe de Paris Churchill",
+            code="CHU",
+            branch_type=BranchType.BRANCH,
+        )
+        Customer.objects.create(
+            first_name="Jane",
+            last_name="Churchill",
+            phone="0771111111",
+            branch=other,
+        )
+        csv_file = io.BytesIO(
+            b"first_name,last_name,phone\n"
+            b"Jane,Highlands,0771111111\n"
+        )
+        csv_file.name = "customers.csv"
+        response = self.client.post(
+            "/api/customers/import-csv/",
+            {"file": csv_file},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["updated"], 0)
+        self.assertEqual(Customer.objects.filter(phone="0771111111").count(), 2)
+        highlands = Customer.objects.get(phone="0771111111", branch=self.branch)
+        self.assertEqual(highlands.last_name, "Highlands")
+        churchill = Customer.objects.get(phone="0771111111", branch=other)
+        self.assertEqual(churchill.last_name, "Churchill")

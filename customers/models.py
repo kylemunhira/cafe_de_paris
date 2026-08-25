@@ -14,7 +14,7 @@ class CustomerAccountType(models.TextChoices):
 
 
 class Customer(models.Model):
-    """Company-wide customer master data — shared across all branches."""
+    """Customer account belonging to one branch (Churchill, Highlands, etc.)."""
 
     first_name = models.CharField(max_length=80)
     last_name = models.CharField(max_length=80, blank=True)
@@ -41,6 +41,14 @@ class Customer(models.Model):
         decimal_places=2,
         default=Decimal("0"),
         help_text="Maximum allowed positive balance / amount owed (base currency).",
+    )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="customers",
+        null=True,
+        blank=True,
+        help_text="Home branch for this customer account.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

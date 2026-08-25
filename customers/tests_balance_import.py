@@ -90,12 +90,14 @@ class ImportCustomerBalancesWorkbookTests(TestCase):
             first_name="Claire",
             phone="783606275",
             account_balance=Decimal("-8.50"),
+            branch=self.branch,
         )
         self.owing = Customer.objects.create(
             first_name="Abbas",
             last_name="Kanthraria",
             phone="0712602509",
             account_balance=Decimal("0"),
+            branch=self.branch,
         )
         self._tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmpdir.cleanup)
@@ -121,8 +123,9 @@ class ImportCustomerBalancesWorkbookTests(TestCase):
         )
         result = import_customer_balances(path, branch=self.branch)
         self.assertEqual(result["unchanged"], 1)
-        self.assertEqual(result["adjusted"], 1)
-        self.assertEqual(result["missing"], 1)
+        self.assertEqual(result["adjusted"], 2)
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(result["missing"], 0)
 
         self.owing.refresh_from_db()
         self.assertEqual(self.owing.account_balance, Decimal("0.50"))
@@ -130,3 +133,33 @@ class ImportCustomerBalancesWorkbookTests(TestCase):
         self.assertEqual(txn.transaction_type, CustomerAccountTransactionType.ADJUSTMENT)
         self.assertEqual(txn.amount, Decimal("0.50"))
         self.assertTrue(txn.is_balance_adjustment)
+
+        ghost = Customer.objects.get(first_name="Ghost", last_name="Customer")
+        self.assertEqual(ghost.branch_id, self.branch.id)
+        self.assertEqual(ghost.account_balance, Decimal("5.00"))
+
+    def test_import_does_not_match_other_branch_customer(self):
+        other = Branch.objects.create(
+            name="Cafe de Paris Churchill",
+            code="CHU",
+            branch_type=BranchType.BRANCH,
+        )
+        churchill = Customer.objects.create(
+            first_name="Claire",
+            phone="783606275",
+            account_balance=Decimal("-99.00"),
+            branch=other,
+        )
+
+        path = self._write_workbook(
+            [
+                ["Claire", "0783606275", "-1.00"],
+            ]
+        )
+        result = import_customer_balances(path, branch=self.branch)
+        self.assertEqual(result["adjusted"], 1)
+        self.customer.refresh_from_db()
+        churchill.refresh_from_db()
+        self.assertEqual(self.customer.account_balance, Decimal("-1.00"))
+        self.assertEqual(churchill.account_balance, Decimal("-99.00"))
+        self.assertEqual(Customer.objects.filter(phone="783606275").count(), 2)

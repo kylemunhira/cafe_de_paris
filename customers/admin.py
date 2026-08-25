@@ -9,13 +9,14 @@ class CustomerAdmin(admin.ModelAdmin):
         "first_name",
         "last_name",
         "phone",
+        "branch",
         "account_type",
         "account_balance",
         "credit_limit",
         "loyalty_points",
         "created_at",
     )
-    list_filter = ("account_type",)
+    list_filter = ("account_type", "branch")
     search_fields = ("first_name", "last_name", "phone", "email")
 
 

@@ -113,13 +113,17 @@ def _payload_for_create(payload):
     return {**_create_defaults(), **payload}
 
 
-def _load_customer_indexes():
+def _load_customer_indexes(branch=None):
     customers_by_id = {}
     customers_by_phone = {}
     customers_by_email = {}
     customers_by_name = {}
 
-    for customer in Customer.objects.all():
+    queryset = Customer.objects.all()
+    if branch is not None:
+        queryset = queryset.filter(branch_id=branch.id)
+
+    for customer in queryset:
         customers_by_id[customer.id] = customer
         phone = _normalize_phone(customer.phone)
         if phone:
@@ -231,7 +235,7 @@ def _update_indexes(customer, *, customers_by_phone, customers_by_email, custome
         customers_by_name[name_key] = customer
 
 
-def import_customers_rows(rows, available_fields=None):
+def import_customers_rows(rows, available_fields=None, default_branch=None):
     if available_fields is None:
         available_fields = set()
         for row in rows:
@@ -247,11 +251,13 @@ def import_customers_rows(rows, available_fields=None):
             customers_by_phone,
             customers_by_email,
             customers_by_name,
-        ) = _load_customer_indexes()
+        ) = _load_customer_indexes(branch=default_branch)
 
         for row_number, row in enumerate(rows, start=2):
             try:
                 payload = _customer_payload_from_row(row, available_fields)
+                if default_branch is not None:
+                    payload["branch"] = default_branch
                 customer_id = None
                 if "id" in available_fields:
                     raw_id = row.get("id")
@@ -279,7 +285,7 @@ def import_customers_rows(rows, available_fields=None):
     return {"created": created, "updated": updated, "errors": errors}
 
 
-def import_customers_csv(file_obj):
+def import_customers_csv(file_obj, default_branch=None):
     try:
         text = io.TextIOWrapper(file_obj, encoding="utf-8-sig")
         reader = csv.DictReader(text)
@@ -317,14 +323,15 @@ def import_customers_csv(file_obj):
             continue
         rows.append(row)
 
-    return import_customers_rows(rows, available_fields)
+    return import_customers_rows(rows, available_fields, default_branch=default_branch)
 
 
-def export_customers_csv():
+def export_customers_csv(queryset=None):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_HEADERS)
     writer.writeheader()
-    for customer in Customer.objects.order_by("first_name", "last_name", "id"):
+    customers = queryset if queryset is not None else Customer.objects.all()
+    for customer in customers.order_by("first_name", "last_name", "id"):
         writer.writerow(
             {
                 "id": customer.id,

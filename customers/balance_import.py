@@ -79,34 +79,40 @@ def _header_map(row) -> dict[str, int]:
     return mapping
 
 
-def _load_customer_indexes():
+def _load_customer_indexes(branch=None):
     by_phone = {}
     by_name = {}
-    for customer in Customer.objects.all():
-        phone_key = phone_match_key(customer.phone)
-        if phone_key:
-            by_phone.setdefault(phone_key, customer)
-        name_key = customer_name_key(customer.first_name, customer.last_name)
-        if name_key:
-            by_name.setdefault(name_key, customer)
-        # Also index by first name alone when last name is blank in DB.
-        first_only = customer_name_key(customer.first_name, "")
-        if first_only and not customer.last_name:
-            by_name.setdefault(first_only, customer)
+    queryset = Customer.objects.all()
+    if branch is not None:
+        queryset = queryset.filter(branch_id=branch.id)
+    for customer in queryset:
+        _index_customer(customer, by_phone=by_phone, by_name=by_name)
     return by_phone, by_name
+
+
+def _index_customer(customer, *, by_phone, by_name):
+    phone_key = phone_match_key(customer.phone)
+    if phone_key:
+        by_phone.setdefault(phone_key, customer)
+    name_key = customer_name_key(customer.first_name, customer.last_name)
+    if name_key:
+        by_name.setdefault(name_key, customer)
+    first_only = customer_name_key(customer.first_name, "")
+    if first_only and not customer.last_name:
+        by_name.setdefault(first_only, customer)
 
 
 def _names_compatible(excel_name, customer) -> bool:
     first, last = _split_name(excel_name)
     excel_full = customer_name_key(first, last)
-    excel_first = customer_name_key(first, "")
     customer_full = customer_name_key(customer.first_name, customer.last_name)
-    customer_first = customer_name_key(customer.first_name, "")
     if excel_full and excel_full == customer_full:
         return True
-    if excel_first and excel_first == customer_first:
-        return True
-    return False
+    if last or customer.last_name:
+        return False
+    excel_first = customer_name_key(first, "")
+    customer_first = customer_name_key(customer.first_name, "")
+    return bool(excel_first and excel_first == customer_first)
 
 
 def _find_customer(name, phone, *, by_phone, by_name):
@@ -121,8 +127,10 @@ def _find_customer(name, phone, *, by_phone, by_name):
         return by_name[full_key], "name"
 
     first_key = customer_name_key(first, "")
-    if first_key and first_key in by_name:
-        return by_name[first_key], "name"
+    if first_key and not last and first_key in by_name:
+        hit = by_name[first_key]
+        if not hit.last_name:
+            return hit, "name"
 
     return None, None
 
@@ -177,9 +185,6 @@ def read_balance_rows(workbook_path) -> list[dict]:
             )
             continue
 
-        if balance is None:
-            continue
-
         parsed.append(
             {
                 "row": row_number,
@@ -192,6 +197,16 @@ def read_balance_rows(workbook_path) -> list[dict]:
     return parsed
 
 
+def _create_customer_from_row(name, phone, *, branch):
+    first, last = _split_name(name)
+    return Customer.objects.create(
+        first_name=first,
+        last_name=last,
+        phone=phone or "",
+        branch=branch,
+    )
+
+
 def import_customer_balances(
     workbook_path,
     *,
@@ -200,12 +215,14 @@ def import_customer_balances(
     dry_run=False,
     recorded_by=None,
     notes="Imported account balance from Customer_Accounts_final.xlsx",
+    create_missing=True,
 ):
     rows = read_balance_rows(workbook_path)
     branch_obj = _default_branch(branch=branch, branch_id=branch_id)
-    by_phone, by_name = _load_customer_indexes()
+    by_phone, by_name = _load_customer_indexes(branch=branch_obj)
 
     result = {
+        "created": 0,
         "adjusted": 0,
         "unchanged": 0,
         "missing": 0,
@@ -217,6 +234,8 @@ def import_customer_balances(
 
     def process():
         for row in rows:
+            excel_balance = row.get("balance")
+            excel_balance_text = None if excel_balance is None else str(excel_balance)
             if row.get("error"):
                 result["skipped"] += 1
                 result["details"].append(
@@ -237,7 +256,7 @@ def import_customer_balances(
                         "row": row["row"],
                         "name": "",
                         "phone": row.get("phone") or "",
-                        "excel_balance": str(row["balance"]),
+                        "excel_balance": excel_balance_text,
                         "status": "skipped",
                         "message": "name is required",
                     }
@@ -250,27 +269,67 @@ def import_customer_balances(
                 by_phone=by_phone,
                 by_name=by_name,
             )
+            created = False
             if customer is None:
-                result["missing"] += 1
-                result["details"].append(
-                    {
-                        "row": row["row"],
-                        "name": row["name"],
-                        "phone": row["phone"],
-                        "excel_balance": str(row["balance"]),
-                        "status": "missing",
-                    }
-                )
+                if not create_missing:
+                    result["missing"] += 1
+                    result["details"].append(
+                        {
+                            "row": row["row"],
+                            "name": row["name"],
+                            "phone": row["phone"],
+                            "excel_balance": excel_balance_text,
+                            "status": "missing",
+                        }
+                    )
+                    continue
+                if dry_run:
+                    first, last = _split_name(row["name"])
+                    customer = Customer(
+                        first_name=first,
+                        last_name=last,
+                        phone=row["phone"] or "",
+                        branch=branch_obj,
+                    )
+                    matched_by = "created"
+                    created = True
+                else:
+                    customer = _create_customer_from_row(
+                        row["name"],
+                        row["phone"],
+                        branch=branch_obj,
+                    )
+                    _index_customer(customer, by_phone=by_phone, by_name=by_name)
+                    matched_by = "created"
+                    created = True
+                result["created"] += 1
+
+            if excel_balance is None:
+                detail = {
+                    "row": row["row"],
+                    "customer_id": getattr(customer, "id", None),
+                    "name": str(customer) if customer.pk else row["name"],
+                    "phone": customer.phone,
+                    "matched_by": matched_by,
+                    "before": str(customer.account_balance),
+                    "excel_balance": None,
+                    "delta": "0.00",
+                    "after": str(customer.account_balance),
+                    "status": "created" if created else "unchanged",
+                }
+                if created:
+                    detail["message"] = "created with no opening balance"
+                result["details"].append(detail)
                 continue
 
             before = customer.account_balance
-            target = row["balance"]
+            target = excel_balance
             delta = (target - before).quantize(Decimal("0.01"))
-            prior_row = seen_customers.get(customer.id)
+            prior_row = seen_customers.get(customer.id) if customer.pk else None
             detail = {
                 "row": row["row"],
-                "customer_id": customer.id,
-                "name": str(customer),
+                "customer_id": getattr(customer, "id", None),
+                "name": str(customer) if customer.pk else row["name"],
                 "phone": customer.phone,
                 "matched_by": matched_by,
                 "before": str(before),
@@ -278,16 +337,20 @@ def import_customer_balances(
                 "delta": str(delta),
                 "after": str(target),
             }
+            if created:
+                detail["status"] = "created"
             if prior_row is not None:
                 detail["message"] = (
                     f"duplicate match — already updated from row {prior_row}; "
                     "later Excel row wins"
                 )
-            seen_customers[customer.id] = row["row"]
+            if customer.pk:
+                seen_customers[customer.id] = row["row"]
 
             if delta == Decimal("0"):
-                result["unchanged"] += 1
-                detail["status"] = "unchanged"
+                if not created:
+                    result["unchanged"] += 1
+                    detail["status"] = "unchanged"
                 result["details"].append(detail)
                 continue
 
@@ -300,17 +363,18 @@ def import_customer_balances(
                     recorded_by=recorded_by,
                 )
                 if txn is None:
-                    result["unchanged"] += 1
-                    detail["status"] = "unchanged"
+                    if not created:
+                        result["unchanged"] += 1
+                        detail["status"] = "unchanged"
                 else:
                     customer.account_balance = target
                     result["adjusted"] += 1
-                    detail["status"] = "adjusted"
+                    detail["status"] = "adjusted" if not created else "created"
                     detail["transaction_id"] = txn.id
             else:
                 customer.account_balance = target
                 result["adjusted"] += 1
-                detail["status"] = "adjusted"
+                detail["status"] = "adjusted" if not created else "created"
 
             result["details"].append(detail)
 

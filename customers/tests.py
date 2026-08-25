@@ -57,6 +57,7 @@ class CustomerAccountTests(TestCase):
             first_name="John",
             last_name="Doe",
             phone="0771234567",
+            branch=self.branch,
         )
         self.user = User.objects.create_user(username="cashier", password="pass")
         StaffProfile.objects.create(user=self.user, branch=self.branch, pos_access=True)
