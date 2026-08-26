@@ -2101,11 +2101,34 @@ table.data-table tbody tr:hover {
 
 .branch-card {
   padding: 1.5rem;
+  overflow: hidden;
+}
+
+.branch-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .branch-card h3 {
-  margin: 0 0 0.35rem;
+  margin: 0;
   font-size: 1.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.branch-card-edit {
+  flex-shrink: 0;
+}
+
+.branch-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
 }
 
 .branch-card .location {

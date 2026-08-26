@@ -185,6 +185,32 @@ ZIMRA_OPEN_DAY_ACTION = os.getenv("ZIMRA_OPEN_DAY_ACTION", "openday")
 ZIMRA_OPEN_DAY_FALLBACKS = os.getenv("ZIMRA_OPEN_DAY_FALLBACKS", "")
 ZIMRA_CLOSE_DAY_ACTION = os.getenv("ZIMRA_CLOSE_DAY_ACTION", "close_day")
 
+# ZIMRA tax profile: test → standard tax ID 517; production → 515.
+# Optional per-field overrides below take precedence over the profile.
+ZIMRA_ENV = os.getenv("ZIMRA_ENV", "test").strip().lower() or "test"
+_ZIMRA_TAX_EMPTY = object()
+
+
+def _zimra_tax_env(name, default=_ZIMRA_TAX_EMPTY):
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None if default is _ZIMRA_TAX_EMPTY else default
+    return raw.strip()
+
+
+ZIMRA_STANDARD_TAX_PERCENT = _zimra_tax_env("ZIMRA_STANDARD_TAX_PERCENT")
+ZIMRA_STANDARD_TAX_CODE = _zimra_tax_env("ZIMRA_STANDARD_TAX_CODE")
+_raw_standard_tax_id = _zimra_tax_env("ZIMRA_STANDARD_TAX_ID")
+ZIMRA_STANDARD_TAX_ID = (
+    int(_raw_standard_tax_id) if _raw_standard_tax_id is not None else None
+)
+ZIMRA_ZERO_RATED_TAX_PERCENT = _zimra_tax_env("ZIMRA_ZERO_RATED_TAX_PERCENT")
+ZIMRA_ZERO_RATED_TAX_CODE = _zimra_tax_env("ZIMRA_ZERO_RATED_TAX_CODE")
+_raw_zero_tax_id = _zimra_tax_env("ZIMRA_ZERO_RATED_TAX_ID")
+ZIMRA_ZERO_RATED_TAX_ID = (
+    int(_raw_zero_tax_id) if _raw_zero_tax_id is not None else None
+)
+
 # Prices are tax-inclusive; receipt subtotal = total / (1 + rate/100).
 INCLUSIVE_TAX_RATE = Decimal(os.getenv("INCLUSIVE_TAX_RATE", "15.5"))
 # ZTA levy on fiscal branches: 2% of the amount before VAT, already inside the selling price.

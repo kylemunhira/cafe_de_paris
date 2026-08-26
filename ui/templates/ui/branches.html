@@ -147,14 +147,14 @@ function renderBranches() {
 
   branchList.innerHTML = branches.map(b => `
     <div class="card branch-card">
-      <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+      <div class="branch-card-top">
         <h3>${b.name}</h3>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span class="badge ${b.is_active ? "badge-active" : "badge-inactive"}">${b.is_active ? t("Active") : t("Inactive")}</span>
-          ${b.allow_negative_stock ? `<span class="badge badge-active">${t("Negative stock allowed")}</span>` : ""}
-          ${b.fiscalization_enabled ? `<span class="badge badge-active">${t("Fiscal")}${b.zimra_device_id ? ` · ${b.zimra_device_id}` : ""}</span>` : ""}
-          ${canManageBranches ? `<button type="button" class="btn btn-ghost btn-sm" data-edit="${b.id}">${t("Edit")}</button>` : ""}
-        </div>
+        ${canManageBranches ? `<button type="button" class="btn btn-ghost btn-sm branch-card-edit" data-edit="${b.id}">${t("Edit")}</button>` : ""}
+      </div>
+      <div class="branch-card-badges">
+        <span class="badge ${b.is_active ? "badge-active" : "badge-inactive"}">${b.is_active ? t("Active") : t("Inactive")}</span>
+        ${b.allow_negative_stock ? `<span class="badge badge-active">${t("Negative stock allowed")}</span>` : ""}
+        ${b.fiscalization_enabled ? `<span class="badge badge-active">${t("Fiscal")}${b.zimra_device_id ? ` · ${b.zimra_device_id}` : ""}</span>` : ""}
       </div>
       <p class="location">${b.location || t("No location set")}${b.code ? ` · ${t("Receipt code:")} ${b.code}` : ""}</p>
       <span class="branch-type">${typeLabels[b.branch_type] || b.branch_type}</span>

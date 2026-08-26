@@ -614,3 +614,115 @@ class OrderPayFiscalizationTests(TestCase):
         self.assertEqual(yesterday_response.status_code, 200)
         yesterday_ids = [row["id"] for row in yesterday_response.data["results"]]
         self.assertNotIn(self.order.id, yesterday_ids)
+
+
+class ZimraTaxConfigTests(TestCase):
+    def test_test_profile_uses_tax_id_517(self):
+        from zimra_fiscal.tax_config import get_zimra_tax_config
+
+        with override_settings(
+            ZIMRA_ENV="test",
+            ZIMRA_STANDARD_TAX_ID=None,
+            ZIMRA_STANDARD_TAX_CODE=None,
+            ZIMRA_STANDARD_TAX_PERCENT=None,
+            ZIMRA_ZERO_RATED_TAX_ID=None,
+            ZIMRA_ZERO_RATED_TAX_CODE=None,
+            ZIMRA_ZERO_RATED_TAX_PERCENT=None,
+        ):
+            cfg = get_zimra_tax_config()
+
+        self.assertEqual(cfg["env"], "test")
+        self.assertEqual(cfg["standard_tax_percent"], Decimal("15.5"))
+        self.assertEqual(cfg["standard_tax_code"], "E")
+        self.assertEqual(cfg["standard_tax_id"], 517)
+        self.assertEqual(cfg["zero_rated_tax_percent"], Decimal("0"))
+        self.assertEqual(cfg["zero_rated_tax_code"], "B")
+        self.assertEqual(cfg["zero_rated_tax_id"], 2)
+
+    def test_production_profile_uses_tax_id_515(self):
+        from zimra_fiscal.tax_config import get_zimra_tax_config
+
+        with override_settings(
+            ZIMRA_ENV="production",
+            ZIMRA_STANDARD_TAX_ID=None,
+            ZIMRA_STANDARD_TAX_CODE=None,
+            ZIMRA_STANDARD_TAX_PERCENT=None,
+            ZIMRA_ZERO_RATED_TAX_ID=None,
+            ZIMRA_ZERO_RATED_TAX_CODE=None,
+            ZIMRA_ZERO_RATED_TAX_PERCENT=None,
+        ):
+            cfg = get_zimra_tax_config()
+
+        self.assertEqual(cfg["env"], "production")
+        self.assertEqual(cfg["standard_tax_percent"], Decimal("15.5"))
+        self.assertEqual(cfg["standard_tax_code"], "E")
+        self.assertEqual(cfg["standard_tax_id"], 515)
+        self.assertEqual(cfg["zero_rated_tax_code"], "B")
+        self.assertEqual(cfg["zero_rated_tax_id"], 2)
+
+    def test_payload_defaults_follow_zimra_env(self):
+        branch = Branch.objects.create(
+            name="Highlands",
+            code="HIG",
+            branch_type=BranchType.BRANCH,
+            fiscalization_enabled=True,
+        )
+        category = ProductCategory.objects.create(name="Food")
+        taxed = Product.objects.create(
+            name="Cake",
+            category=category,
+            selling_price=Decimal("11.55"),
+            tax_rate=Decimal("15.50"),
+        )
+        zero = Product.objects.create(
+            name="Plain Water",
+            category=category,
+            selling_price=Decimal("1.00"),
+            tax_rate=Decimal("0"),
+        )
+        usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        CurrencyRate.objects.create(
+            currency=usd,
+            rate=Decimal("1"),
+            effective_from="2026-01-01",
+        )
+        order = Order.objects.create(
+            branch=branch,
+            status=OrderStatus.PAID,
+            payment_currency=usd,
+            exchange_rate=Decimal("1"),
+            amount_paid=Decimal("12.55"),
+            total_amount=Decimal("12.55"),
+            receipt_number="HIG2508261",
+        )
+        order.items.create(product=taxed, quantity=Decimal("1"), price=Decimal("11.55"))
+        order.items.create(product=zero, quantity=Decimal("1"), price=Decimal("1.00"))
+
+        with override_settings(
+            ZIMRA_ENV="production",
+            ZIMRA_STANDARD_TAX_ID=None,
+            ZIMRA_STANDARD_TAX_CODE=None,
+            ZIMRA_STANDARD_TAX_PERCENT=None,
+            ZIMRA_ZERO_RATED_TAX_ID=None,
+            ZIMRA_ZERO_RATED_TAX_CODE=None,
+            ZIMRA_ZERO_RATED_TAX_PERCENT=None,
+        ):
+            payload = build_fiscal_receipt_payload(
+                order,
+                receipt_counter=1,
+                receipt_global_no=1,
+                invoice_no="FHIG2508261",
+            )
+
+        lines = payload["receipt"]["receiptLines"]
+        self.assertEqual(lines[0]["taxCode"], "E")
+        self.assertEqual(lines[0]["taxID"], 515)
+        self.assertEqual(lines[0]["taxPercent"], 15.5)
+        self.assertEqual(lines[1]["taxCode"], "B")
+        self.assertEqual(lines[1]["taxID"], 2)
+        self.assertEqual(lines[1]["taxPercent"], 0.0)

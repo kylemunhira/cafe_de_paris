@@ -4,14 +4,11 @@ from django.utils import timezone
 
 from .constants import (
     DEFAULT_MONEY_TYPE_CODE,
-    DEFAULT_STANDARD_TAX_ID,
     RECEIPT_LINE_TYPE,
     RECEIPT_PRINT_FORM,
     RECEIPT_TYPE,
-    STANDARD_TAX_CODE,
-    ZERO_RATED_TAX_CODE,
-    ZERO_RATED_TAX_ID,
 )
+from .tax_config import get_zimra_tax_config
 
 TWOPLACES = Decimal("0.01")
 QUANT = Decimal("0.01")
@@ -51,20 +48,24 @@ def _to_tax_exclusive(amount: Decimal, tax_percent: Decimal) -> Decimal:
 
 
 def _product_tax_meta(product):
+    cfg = get_zimra_tax_config()
+    standard_code = cfg["standard_tax_code"]
+    zero_code = cfg["zero_rated_tax_code"]
+
     tax_percent = product.tax_rate or Decimal("0")
     if product.fiscal_tax_code:
         tax_code = product.fiscal_tax_code
     elif tax_percent > 0:
-        tax_code = STANDARD_TAX_CODE
+        tax_code = standard_code
     else:
-        tax_code = ZERO_RATED_TAX_CODE
+        tax_code = zero_code
 
     if product.fiscal_tax_id is not None:
         tax_id = product.fiscal_tax_id
-    elif tax_code == ZERO_RATED_TAX_CODE:
-        tax_id = ZERO_RATED_TAX_ID
+    elif tax_code == zero_code:
+        tax_id = cfg["zero_rated_tax_id"]
     else:
-        tax_id = DEFAULT_STANDARD_TAX_ID
+        tax_id = cfg["standard_tax_id"]
 
     return tax_code, tax_percent, tax_id
 
