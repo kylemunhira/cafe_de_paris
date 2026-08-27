@@ -24,6 +24,7 @@
     <button class="category-tab" data-filter="unpaid">{% trans "Unpaid" %}</button>
     <button class="category-tab" data-filter="paid">{% trans "Paid" %}</button>
     <button class="category-tab" data-filter="cancelled">{% trans "Cancelled" %}</button>
+    <span style="font-size: 0.8rem; color: var(--color-muted); margin-left: auto;">{% trans "Last month" %}</span>
   </div>
   <div class="table-wrap" id="orders-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -38,6 +39,17 @@ import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% 
 
 const t = (msgid) => window.CDP.t(msgid);
 const canManagePosOrders = "{{ can_manage_pos_orders|yesno:'true,false' }}" === "true";
+
+function lastMonthFromDate() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const LIST_FROM_DATE = lastMonthFromDate();
 
 function promptManagerAccessCode(actionLabel) {
   const code = window.prompt(
@@ -292,7 +304,7 @@ document.querySelectorAll("[data-filter]").forEach(tab => {
 });
 
 Promise.all([
-  apiGet("/orders/"),
+  apiGet(`/orders/?from=${encodeURIComponent(LIST_FROM_DATE)}`),
   apiGet("/currencies/?page_size=500"),
 ]).then(([ordersData, currenciesData]) => {
   allOrders = unwrapList(ordersData);

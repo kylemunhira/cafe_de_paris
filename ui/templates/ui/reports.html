@@ -76,8 +76,16 @@ const REPORT_SORT = {
   full_name: (c) => c.full_name || "",
   phone: (c) => c.phone || "",
   email: (c) => c.email || "",
+  branch: (c) => c.branch_name || "",
   account_balance: (c) => Number(c.account_balance || 0),
 };
+
+function branchShortLabel(customer) {
+  const name = (customer.branch_name || "").toLowerCase();
+  if (name.includes("highland")) return t("Highlands");
+  if (name.includes("churchill")) return t("Churchill");
+  return customer.branch_name || "—";
+}
 
 function reportParams() {
   const params = new URLSearchParams();
@@ -108,6 +116,7 @@ function renderReport(data) {
       <thead>
         <tr>
           ${sortTh(t("Customer"), "full_name", sortState)}
+          ${sortTh(t("Branch"), "branch", sortState)}
           ${sortTh(t("Phone"), "phone", sortState)}
           ${sortTh(t("Email"), "email", sortState)}
           ${sortTh(t("Current balance"), "account_balance", sortState, { align: "right" })}
@@ -121,6 +130,7 @@ function renderReport(data) {
           return `
             <tr>
               <td><strong>${c.full_name}</strong></td>
+              <td>${branchShortLabel(c)}</td>
               <td>${c.phone || "—"}</td>
               <td>${c.email || "—"}</td>
               <td class="${balanceClass}" style="text-align: right; font-weight: 600;">${formatCurrency(balance)}</td>
@@ -131,7 +141,7 @@ function renderReport(data) {
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="3"><strong>${t("Total")}</strong></td>
+          <td colspan="4"><strong>${t("Total")}</strong></td>
           <td style="text-align: right; font-weight: 700;">${formatCurrency(summary.total_balance ?? 0)}</td>
           <td></td>
         </tr>

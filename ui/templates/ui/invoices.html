@@ -21,6 +21,7 @@
       placeholder="Search invoice #, branch…"
       style="max-width: 320px; margin-left: auto;"
     >
+    <span style="font-size: 0.8rem; color: var(--color-muted);">Last month</span>
   </div>
   <div class="table-wrap" id="invoices-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
@@ -30,11 +31,33 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, unwrapList, formatCurrency, formatDate, statusBadge, showToast, setBaseCurrency } from "{% static 'ui/js/api.js' %}?v=2";
+import {
+  apiGet,
+  apiPost,
+  fetchAllPages,
+  unwrapList,
+  formatCurrency,
+  formatDate,
+  statusBadge,
+  showToast,
+  setBaseCurrency,
+} from "{% static 'ui/js/api.js' %}?v=2";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const CAN_MARK_PAID = "{{ can_mark_transfer_invoice_paid|yesno:'true,false' }}" === "true";
 const CAN_APPROVE_FISCAL = "{{ can_approve_fiscal_receipt|yesno:'true,false' }}" === "true";
+const PAGE_SIZE = 50;
+
+function lastMonthFromDate() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const LIST_FROM_DATE = lastMonthFromDate();
 
 const invoicePrintUrlTemplate = "{% url 'ui:invoice-print' 0 %}".replace("/0/", "/{id}/");
 const receiptPrintUrlTemplate = "{% url 'ui:receipt-print' 0 %}".replace("/0/", "/{id}/");
@@ -45,6 +68,7 @@ let transferNotes = [];
 let activeTab = "pos";
 let transferPaymentFilter = "all";
 let searchQuery = "";
+let currentPage = 1;
 let baseCurrency = null;
 const container = document.getElementById("invoices-table");
 const searchInput = document.getElementById("invoice-search");
@@ -167,6 +191,36 @@ function posInvoiceActions(order) {
   return actions.join(" ");
 }
 
+function resetPage() {
+  currentPage = 1;
+}
+
+function paginate(items) {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = items.slice(start, start + PAGE_SIZE);
+  return { pageItems, total, totalPages, start };
+}
+
+function renderPager({ total, totalPages, start, pageItems }) {
+  if (total <= PAGE_SIZE) return "";
+  const from = start + 1;
+  const to = start + pageItems.length;
+  return `
+    <div class="table-pagination">
+      <span>Showing ${from}–${to} of ${total}</span>
+      <div class="table-pagination-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-action="prev" ${currentPage <= 1 ? "disabled" : ""}>Previous</button>
+        <span>Page ${currentPage} of ${totalPages}</span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-action="next" ${currentPage >= totalPages ? "disabled" : ""}>Next</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderPosInvoices() {
   const filtered = sortItems(paidOrders.filter(matchesPosSearch), posSortState, POS_SORT);
 
@@ -175,6 +229,7 @@ function renderPosInvoices() {
     return;
   }
 
+  const page = paginate(filtered);
   container.innerHTML = `
     <table class="data-table">
       <thead>
@@ -192,7 +247,7 @@ function renderPosInvoices() {
         </tr>
       </thead>
       <tbody>
-        ${filtered.map(o => `
+        ${page.pageItems.map(o => `
           <tr>
             <td><strong>${o.receipt_number || "—"}</strong></td>
             <td>#${o.id}</td>
@@ -208,6 +263,7 @@ function renderPosInvoices() {
         `).join("")}
       </tbody>
     </table>
+    ${renderPager(page)}
   `;
 }
 
@@ -239,6 +295,7 @@ function renderTransferInvoices() {
     return;
   }
 
+  const page = paginate(filtered);
   container.innerHTML = `
     <table class="data-table">
       <thead>
@@ -255,7 +312,7 @@ function renderTransferInvoices() {
         </tr>
       </thead>
       <tbody>
-        ${filtered.map(n => `
+        ${page.pageItems.map(n => `
           <tr>
             <td><strong>${n.invoice_number}</strong></td>
             <td>DN-${String(n.id).padStart(5, "0")}</td>
@@ -270,6 +327,7 @@ function renderTransferInvoices() {
         `).join("")}
       </tbody>
     </table>
+    ${renderPager(page)}
   `;
 }
 
@@ -283,6 +341,7 @@ function renderInvoices() {
 
 searchInput.addEventListener("input", () => {
   searchQuery = searchInput.value.trim().toLowerCase();
+  resetPage();
   renderInvoices();
 });
 
@@ -295,6 +354,7 @@ document.querySelectorAll("[data-tab]").forEach(tab => {
     searchInput.placeholder = activeTab === "transfers"
       ? "Search transfer invoice #, branch…"
       : "Search receipt #, order #, branch…";
+    resetPage();
     renderInvoices();
   });
 });
@@ -304,13 +364,25 @@ document.querySelectorAll("[data-payment-filter]").forEach(tab => {
     document.querySelectorAll("[data-payment-filter]").forEach(t => t.classList.remove("active"));
     tab.classList.add("active");
     transferPaymentFilter = tab.dataset.paymentFilter;
+    resetPage();
     renderInvoices();
   });
 });
 
-bindTableSort(container, () => (activeTab === "transfers" ? transferSortState : posSortState), renderInvoices);
+bindTableSort(container, () => (activeTab === "transfers" ? transferSortState : posSortState), () => {
+  resetPage();
+  renderInvoices();
+});
 
 container.addEventListener("click", async (e) => {
+  const pageBtn = e.target.closest("[data-page-action]");
+  if (pageBtn && !pageBtn.disabled) {
+    if (pageBtn.dataset.pageAction === "prev") currentPage -= 1;
+    if (pageBtn.dataset.pageAction === "next") currentPage += 1;
+    renderInvoices();
+    return;
+  }
+
   const btn = e.target.closest(".action-btn");
   if (!btn) return;
 
@@ -344,13 +416,17 @@ container.addEventListener("click", async (e) => {
 });
 
 Promise.all([
-  apiGet("/orders/?status=paid"),
-  apiGet("/delivery-notes/?stores_only=true&invoiced_only=true"),
+  fetchAllPages("/orders/", { status: "paid", from: LIST_FROM_DATE }),
+  fetchAllPages("/delivery-notes/", {
+    stores_only: "true",
+    invoiced_only: "true",
+    from: LIST_FROM_DATE,
+  }),
   apiGet("/currencies/?page_size=500"),
 ])
-  .then(([ordersData, notesData, currenciesData]) => {
-    paidOrders = unwrapList(ordersData);
-    transferNotes = unwrapList(notesData);
+  .then(([orders, notes, currenciesData]) => {
+    paidOrders = orders;
+    transferNotes = notes;
     const currencies = unwrapList(currenciesData);
     baseCurrency = currencies.find((c) => c.is_base) || null;
     setBaseCurrency(baseCurrency);

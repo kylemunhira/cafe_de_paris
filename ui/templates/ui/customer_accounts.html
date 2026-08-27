@@ -10,7 +10,12 @@
     <label for="customer-search">{% trans "Customer" %}</label>
     <input type="search" id="customer-search" placeholder="{% trans "Filter by name or phone…" %}" autocomplete="off">
   </div>
-  <div class="category-tabs" id="account-type-filter" style="margin-top: 0.75rem;">
+  <div class="category-tabs" id="branch-filter" style="margin-top: 0.75rem;">
+    <button type="button" class="category-tab active" data-branch="all">{% trans "All" %}</button>
+    <button type="button" class="category-tab" data-branch="highlands">{% trans "Highlands" %}</button>
+    <button type="button" class="category-tab" data-branch="churchill">{% trans "Churchill" %}</button>
+  </div>
+  <div class="category-tabs" id="account-type-filter" style="margin-top: 0.5rem;">
     <button type="button" class="category-tab active" data-type="all">{% trans "All" %}</button>
     <button type="button" class="category-tab" data-type="family">{% trans "Family" %}</button>
     <button type="button" class="category-tab" data-type="staff">{% trans "Staff" %}</button>
@@ -145,6 +150,7 @@ let currencies = [];
 let depositBranchId = null;
 let selectedCustomer = null;
 let searchQuery = "";
+let branchFilter = "all";
 let accountTypeFilter = "all";
 let cachedTransactions = [];
 const txnSortState = createSortState("created_at", "desc");
@@ -166,6 +172,7 @@ const TXN_SORT = {
 
 const customerSearch = document.getElementById("customer-search");
 const customerPicker = document.getElementById("customer-picker");
+const branchFilterEl = document.getElementById("branch-filter");
 const accountTypeFilterEl = document.getElementById("account-type-filter");
 const accountPanel = document.getElementById("account-panel");
 const emptyState = document.getElementById("empty-state");
@@ -249,12 +256,36 @@ function accountTypeLabel(customer) {
     || t("Regular");
 }
 
+function customerBranchKey(customer) {
+  const name = (customer.branch_name || "").toLowerCase();
+  if (name.includes("highland")) return "highlands";
+  if (name.includes("churchill")) return "churchill";
+  return "";
+}
+
+function branchShortLabel(customer) {
+  const key = customerBranchKey(customer);
+  if (key === "highlands") return t("Highlands");
+  if (key === "churchill") return t("Churchill");
+  return customer.branch_name || "";
+}
+
+function branchBadgeClass(customer) {
+  const key = customerBranchKey(customer);
+  if (key === "highlands") return "badge-branch-highlands";
+  if (key === "churchill") return "badge-branch-churchill";
+  return "badge-inactive";
+}
+
 function usesCostPrice(customer) {
   return customer?.account_type === "family" || customer?.account_type === "staff";
 }
 
 function filteredCustomers() {
   let list = customers;
+  if (branchFilter !== "all") {
+    list = list.filter(c => customerBranchKey(c) === branchFilter);
+  }
   if (accountTypeFilter !== "all") {
     list = list.filter(c => (c.account_type || "regular") === accountTypeFilter);
   }
@@ -265,6 +296,8 @@ function filteredCustomers() {
       displayName(c),
       c.phone,
       c.email,
+      branchShortLabel(c),
+      c.branch_name,
       accountTypeLabel(c),
     ].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(q);
@@ -274,19 +307,26 @@ function filteredCustomers() {
 function renderCustomerPicker() {
   const list = filteredCustomers();
   if (!list.length) {
-    const message = searchQuery || accountTypeFilter !== "all"
-      ? "No matching customers"
-      : "No customers yet";
+    const message = searchQuery || accountTypeFilter !== "all" || branchFilter !== "all"
+      ? t("No matching customers")
+      : t("No customers yet");
     customerPicker.innerHTML = `<p style="margin: 0; font-size: 0.85rem; color: var(--color-muted);">${message}</p>`;
     return;
   }
   customerPicker.innerHTML = list.map(c => {
     const typeLabel = accountTypeLabel(c);
-    const costNote = usesCostPrice(c) ? " · Cost price" : "";
+    const costNote = usesCostPrice(c) ? ` · ${t("Cost price")}` : "";
+    const branchLabel = branchShortLabel(c);
+    const branchBadge = branchLabel
+      ? `<span class="badge ${branchBadgeClass(c)}">${branchLabel}</span>`
+      : "";
     return `
     <button type="button" class="customer-picker-item${selectedCustomer?.id === c.id ? " selected" : ""}" data-id="${c.id}">
-      <strong>${displayName(c)}</strong>
-      <span>${typeLabel}${costNote} · ${c.phone || "—"} · Balance ${formatCurrency(c.account_balance)}</span>
+      <span class="customer-picker-main">
+        <strong>${displayName(c)}</strong>
+        ${branchBadge}
+      </span>
+      <span>${typeLabel}${costNote} · ${c.phone || "—"} · ${t("Balance")} ${formatCurrency(c.account_balance)}</span>
     </button>
   `;
   }).join("");
@@ -296,11 +336,15 @@ async function selectCustomer(customer) {
   selectedCustomer = customer;
   emptyState.style.display = "none";
   accountPanel.style.display = "";
-  selectedCustomerName.textContent = displayName(customer);
-  const contact = [customer.phone, customer.email].filter(Boolean).join(" · ") || "No contact details";
+  const branchLabel = branchShortLabel(customer);
+  selectedCustomerName.innerHTML = branchLabel
+    ? `${displayName(customer)} <span class="badge ${branchBadgeClass(customer)}" style="margin-left: 0.4rem; vertical-align: middle;">${branchLabel}</span>`
+    : displayName(customer);
+  const contact = [customer.phone, customer.email].filter(Boolean).join(" · ") || t("No contact details");
   const typePart = accountTypeLabel(customer);
-  const costPart = usesCostPrice(customer) ? " · Orders charged at recipe cost" : "";
-  selectedCustomerMeta.textContent = `${typePart}${costPart} · ${contact}`;
+  const costPart = usesCostPrice(customer) ? ` · ${t("Orders charged at recipe cost")}` : "";
+  const branchPart = branchLabel ? `${branchLabel} · ` : "";
+  selectedCustomerMeta.textContent = `${branchPart}${typePart}${costPart} · ${contact}`;
   accountBalance.textContent = formatCurrency(customer.account_balance);
   if (creditLimitEl) {
     creditLimitEl.textContent = `${t("Credit limit:")} ${formatCurrency(customer.credit_limit || 0)}`;
@@ -395,11 +439,20 @@ customerSearch.addEventListener("input", () => {
   renderCustomerPicker();
 });
 
+branchFilterEl?.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  branchFilter = tab.dataset.branch || "all";
+  branchFilterEl.querySelectorAll(".category-tab").forEach((el) => el.classList.remove("active"));
+  tab.classList.add("active");
+  renderCustomerPicker();
+});
+
 accountTypeFilterEl?.addEventListener("click", (e) => {
   const tab = e.target.closest(".category-tab");
   if (!tab) return;
   accountTypeFilter = tab.dataset.type || "all";
-  accountTypeFilterEl.querySelectorAll(".category-tab").forEach(t => t.classList.remove("active"));
+  accountTypeFilterEl.querySelectorAll(".category-tab").forEach((el) => el.classList.remove("active"));
   tab.classList.add("active");
   renderCustomerPicker();
 });

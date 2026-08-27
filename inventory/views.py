@@ -17,6 +17,7 @@ from decimal import Decimal, InvalidOperation
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -355,6 +356,12 @@ class DeliveryNoteViewSet(viewsets.ModelViewSet):
             )
         if payment_status:
             queryset = queryset.filter(payment_status=payment_status)
+        from_date = parse_date(self.request.query_params.get("from") or "")
+        to_date = parse_date(self.request.query_params.get("to") or "")
+        if from_date:
+            queryset = queryset.filter(created_at__date__gte=from_date)
+        if to_date:
+            queryset = queryset.filter(created_at__date__lte=to_date)
         return queryset
 
     def partial_update(self, request, *args, **kwargs):

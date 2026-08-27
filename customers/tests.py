@@ -400,6 +400,8 @@ class CustomerAccountTests(TestCase):
         response = self.ui_client.get("/customer-accounts/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Customer Accounts")
+        self.assertContains(response, "Highlands")
+        self.assertContains(response, "Churchill")
 
     def test_list_transactions(self):
         deposit_to_account(
@@ -507,6 +509,7 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(report["summary"]["total_balance"], Decimal("-15.00"))
         self.assertEqual(report["customers"][0]["full_name"], "John Doe")
         self.assertEqual(report["customers"][0]["account_balance"], Decimal("-15.00"))
+        self.assertEqual(report["customers"][0]["branch_name"], self.branch.name)
 
     def test_customer_balances_report_non_zero_filter(self):
         deposit_to_account(

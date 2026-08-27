@@ -624,8 +624,10 @@ class CustomerFullStatementPrintView(
 
         context = super().get_context_data(**kwargs)
         customer = self.object
-        branch_id = get_staff_branch_id(self.request.user)
-        branch = Branch.objects.filter(pk=branch_id).first() if branch_id else None
+        branch = customer.branch
+        if branch is None:
+            branch_id = get_staff_branch_id(self.request.user)
+            branch = Branch.objects.filter(pk=branch_id).first() if branch_id else None
         if branch is None:
             latest = customer.account_transactions.select_related("branch").first()
             branch = latest.branch if latest else Branch.objects.filter(is_active=True).first()

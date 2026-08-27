@@ -85,7 +85,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiPost, apiPatch, apiUpload, fetchAllPages, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const t = (msgid) => window.CDP.t(msgid);
@@ -123,7 +123,12 @@ const CUSTOMER_SORT = {
   phone: (c) => c.phone || "",
   email: (c) => c.email || "",
   account_type: (c) => c.account_type || "regular",
-  branch: (c) => c.branch_name || "",
+  branch: (c) => {
+    const name = (c.branch_name || "").toLowerCase();
+    if (name.includes("highland")) return "Highlands";
+    if (name.includes("churchill")) return "Churchill";
+    return c.branch_name || "";
+  },
   account_balance: (c) => Number(c.account_balance || 0),
   credit_limit: (c) => Number(c.credit_limit || 0),
   loyalty_points: (c) => Number(c.loyalty_points || 0),
@@ -168,6 +173,13 @@ function accountTypeLabel(customer) {
   return customer.account_type_display
     || ACCOUNT_TYPE_LABELS[customer.account_type]
     || t("Regular");
+}
+
+function branchShortLabel(customer) {
+  const name = (customer.branch_name || "").toLowerCase();
+  if (name.includes("highland")) return t("Highlands");
+  if (name.includes("churchill")) return t("Churchill");
+  return customer.branch_name || "—";
 }
 
 function filteredCustomers() {
@@ -221,7 +233,7 @@ function render() {
             <td><strong>${displayName(c)}</strong></td>
             <td>${c.phone || "—"}</td>
             <td>${c.email || "—"}</td>
-            <td>${c.branch_name || "—"}</td>
+            <td>${branchShortLabel(c)}</td>
             <td>${accountTypeLabel(c)}</td>
             <td>${formatCurrency(c.account_balance || 0)}</td>
             <td>${formatCurrency(c.credit_limit || 0)}</td>
@@ -236,8 +248,8 @@ function render() {
 }
 
 async function loadCustomers() {
-  const data = await apiGet("/customers/?page_size=500");
-  customers = unwrapList(data);
+  // Must page through — default/max single-page fetch can miss later names (e.g. Terry).
+  customers = await fetchAllPages("/customers/");
   render();
 }
 

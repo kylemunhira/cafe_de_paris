@@ -15,7 +15,7 @@ from audit.models import AuditAction
 from audit.services import diff_dicts, record_entity_change, snapshot_fields
 from django.db import transaction
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -150,6 +150,12 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(paid_at__gte=start, paid_at__lt=end)
+        from_date = parse_date(self.request.query_params.get("from") or "")
+        to_date = parse_date(self.request.query_params.get("to") or "")
+        if from_date:
+            qs = qs.filter(created_at__date__gte=from_date)
+        if to_date:
+            qs = qs.filter(created_at__date__lte=to_date)
         qs = filter_by_branch_field(qs, self.request.user, requested_branch_id=branch)
         if user_is_waiter(self.request.user):
             qs = qs.filter(created_by=self.request.user)

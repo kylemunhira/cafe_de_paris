@@ -10,7 +10,7 @@ def _quantize(amount: Decimal) -> Decimal:
 
 
 def build_customer_balances_report(*, search=None, non_zero_only=False):
-    qs = Customer.objects.all()
+    qs = Customer.objects.select_related("branch").all()
 
     if search:
         term = search.strip()
@@ -48,6 +48,7 @@ def build_customer_balances_report(*, search=None, non_zero_only=False):
                 "last_name": customer.last_name,
                 "phone": customer.phone,
                 "email": customer.email,
+                "branch_name": customer.branch.name if customer.branch_id else None,
                 "account_balance": customer.account_balance,
                 "loyalty_points": customer.loyalty_points,
             }

@@ -342,7 +342,7 @@ class ApiClient(
 
     fun fetchCustomers(): List<Customer> {
         val token = requireToken()
-        val url = "${config.serverUrl}/api/customers/?page_size=500"
+        val url = "${config.serverUrl}/api/customers/?page_size=1000"
         val body = getJson(url, token)
         return JsonParsers.parseCustomers(body)
     }

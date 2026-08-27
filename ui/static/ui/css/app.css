@@ -694,6 +694,8 @@ html[dir="rtl"] .login-language {
 .badge-dispatched { background: #fef3c7; color: #92400e; }
 .badge-delivered { background: #d1fae5; color: #065f46; }
 .badge-daily-stock { background: #dbeafe; color: #1e40af; }
+.badge-branch-highlands { background: #ecfdf5; color: #047857; }
+.badge-branch-churchill { background: #fff7ed; color: #c2410c; }
 
 .daily-count-toggle {
   display: inline-flex;
@@ -772,6 +774,29 @@ tr.variance-row td {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid rgba(44, 24, 16, 0.06);
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.table-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.table-pagination .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 table.data-table {
@@ -977,12 +1002,20 @@ table.data-table tbody tr:hover {
   font-family: inherit;
 }
 
+.customer-picker-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
 .customer-picker-item:hover,
 .customer-picker-item.selected {
   border-color: var(--color-espresso);
 }
 
-.customer-picker-item span {
+.customer-picker-item > span:last-child {
   font-size: 0.82rem;
   color: var(--color-muted);
 }

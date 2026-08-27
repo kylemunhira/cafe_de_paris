@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 from urllib.parse import quote
 
 from django.contrib.auth import get_user_model
@@ -1598,6 +1599,19 @@ class OrderCancelVoidTests(TestCase):
         self.assertIn(open_order.id, ids)
         self.assertIn(unpaid_order.id, ids)
         self.assertNotIn(paid_order.id, ids)
+
+    def test_list_orders_supports_from_date_filter(self):
+        recent = self._open_order()
+        old = self._open_order()
+        old.created_at = timezone.now() - timedelta(days=40)
+        old.save(update_fields=["created_at"])
+
+        from_date = (timezone.localdate() - timedelta(days=30)).isoformat()
+        response = self.client.get(f"/api/orders/?from={from_date}")
+        self.assertEqual(response.status_code, 200)
+        ids = {order["id"] for order in response.data["results"]}
+        self.assertIn(recent.id, ids)
+        self.assertNotIn(old.id, ids)
 
     def test_void_open_order_rejected(self):
         order = self._open_order()

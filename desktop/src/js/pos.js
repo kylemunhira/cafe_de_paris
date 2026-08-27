@@ -2987,12 +2987,20 @@ async function loadCustomers() {
 
   try {
     const base = session.serverUrl.replace(/\/$/, "");
-    const res = await fetch(`${base}/api/customers/?page_size=500`, {
-      headers: { Authorization: `Token ${session.token}` },
-    });
-    if (!res.ok) throw new Error("Could not load customers");
-    const data = await res.json();
-    customers = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+    const pageSize = 1000;
+    let nextUrl = `${base}/api/customers/?page_size=${pageSize}`;
+    const all = [];
+    while (nextUrl) {
+      const res = await fetch(nextUrl, {
+        headers: { Authorization: `Token ${session.token}` },
+      });
+      if (!res.ok) throw new Error("Could not load customers");
+      const data = await res.json();
+      const page = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+      all.push(...page);
+      nextUrl = data?.next || null;
+    }
+    customers = all;
     renderCustomerSelect();
   } catch {
     customers = [];
