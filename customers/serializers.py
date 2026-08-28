@@ -16,6 +16,11 @@ class CustomerSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     branch_name = serializers.CharField(source="branch.name", read_only=True, default=None)
+    branch_type = serializers.CharField(
+        source="branch.branch_type",
+        read_only=True,
+        default=None,
+    )
 
     class Meta:
         model = Customer
@@ -33,12 +38,35 @@ class CustomerSerializer(serializers.ModelSerializer):
             "credit_limit",
             "branch",
             "branch_name",
+            "branch_type",
             "created_at",
         ]
         read_only_fields = ["created_at", "account_balance"]
 
     def get_full_name(self, obj):
         return str(obj)
+
+    def validate_branch(self, branch):
+        """Allow staff branch or Central Stores as the customer home branch."""
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_has_global_branch_access,
+        )
+        from branches.models import BranchType
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        if not user or user_has_global_branch_access(user):
+            return branch
+
+        staff_branch_id = get_staff_branch_id(user)
+        if branch.id == staff_branch_id:
+            return branch
+        if branch.branch_type == BranchType.STORES and branch.is_active:
+            return branch
+        raise serializers.ValidationError(
+            "You can only assign customers to your branch or Central Stores."
+        )
 
     def create(self, validated_data):
         if not validated_data.get("branch"):

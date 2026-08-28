@@ -40,6 +40,15 @@
     </div>
     <div class="form-row">
       <div class="form-group">
+        <label for="customer-branch">{% trans "Home branch" %}</label>
+        <select id="customer-branch" required>
+          <option value="">{% trans "Select branch…" %}</option>
+        </select>
+        <p class="settings-hint" style="margin: 0.35rem 0 0; font-size: 0.8rem;">
+          {% trans "Branch customers appear on POS. Central Stores customers appear on central invoices." %}
+        </p>
+      </div>
+      <div class="form-group">
         <label for="customer-account-type">{% trans "Account type" %}</label>
         <select id="customer-account-type">
           <option value="regular">{% trans "Regular" %}</option>
@@ -47,6 +56,8 @@
           <option value="staff">{% trans "Staff (cost price)" %}</option>
         </select>
       </div>
+    </div>
+    <div class="form-row">
       <div class="form-group" id="loyalty-field" style="display: none;">
         <label for="customer-loyalty">{% trans "Loyalty points" %}</label>
         <input type="number" id="customer-loyalty" min="0" step="1" value="0">
@@ -84,11 +95,17 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ customer_home_branches|json_script:"customer-home-branches" }}
 <script type="module">
 import { apiPost, apiPatch, apiUpload, fetchAllPages, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const t = (msgid) => window.CDP.t(msgid);
+
+const HOME_BRANCHES = JSON.parse(
+  document.getElementById("customer-home-branches").textContent || "[]"
+);
+const DEFAULT_BRANCH_ID = {{ default_customer_branch_id|default:"null" }};
 
 let customers = [];
 let editingId = null;
@@ -100,6 +117,7 @@ const firstNameInput = document.getElementById("customer-first-name");
 const lastNameInput = document.getElementById("customer-last-name");
 const phoneInput = document.getElementById("customer-phone");
 const emailInput = document.getElementById("customer-email");
+const branchInput = document.getElementById("customer-branch");
 const accountTypeInput = document.getElementById("customer-account-type");
 const loyaltyField = document.getElementById("loyalty-field");
 const loyaltyInput = document.getElementById("customer-loyalty");
@@ -123,17 +141,35 @@ const CUSTOMER_SORT = {
   phone: (c) => c.phone || "",
   email: (c) => c.email || "",
   account_type: (c) => c.account_type || "regular",
-  branch: (c) => {
-    const name = (c.branch_name || "").toLowerCase();
-    if (name.includes("highland")) return "Highlands";
-    if (name.includes("churchill")) return "Churchill";
-    return c.branch_name || "";
-  },
+  branch: (c) => branchSortKey(c),
   account_balance: (c) => Number(c.account_balance || 0),
   credit_limit: (c) => Number(c.credit_limit || 0),
   loyalty_points: (c) => Number(c.loyalty_points || 0),
   created_at: (c) => c.created_at || "",
 };
+
+function homeBranchLabel(branch) {
+  if (!branch) return "";
+  if (branch.branch_type === "stores") return t("Central Stores");
+  const name = (branch.name || "").toLowerCase();
+  if (name.includes("highland")) return t("Highlands");
+  if (name.includes("churchill")) return t("Churchill");
+  return branch.name || "";
+}
+
+function populateBranchSelect(selectedId) {
+  const preferred = selectedId != null && selectedId !== ""
+    ? String(selectedId)
+    : (DEFAULT_BRANCH_ID != null ? String(DEFAULT_BRANCH_ID) : "");
+  branchInput.innerHTML = `
+    <option value="">${t("Select branch…")}</option>
+    ${HOME_BRANCHES.map((b) => `
+      <option value="${b.id}"${String(b.id) === preferred ? " selected" : ""}>
+        ${homeBranchLabel(b)}
+      </option>
+    `).join("")}
+  `;
+}
 
 function resetForm() {
   editingId = null;
@@ -146,6 +182,7 @@ function resetForm() {
   accountTypeInput.value = "regular";
   loyaltyInput.value = "0";
   creditLimitInput.value = "0";
+  populateBranchSelect(DEFAULT_BRANCH_ID);
 }
 
 function startEdit(customer) {
@@ -162,6 +199,15 @@ function startEdit(customer) {
   accountTypeInput.value = customer.account_type || "regular";
   loyaltyInput.value = customer.loyalty_points || 0;
   creditLimitInput.value = customer.credit_limit || 0;
+  populateBranchSelect(customer.branch);
+  // Keep current home branch visible even if not in the default create list.
+  if (customer.branch && !HOME_BRANCHES.some((b) => b.id === customer.branch)) {
+    const opt = document.createElement("option");
+    opt.value = String(customer.branch);
+    opt.selected = true;
+    opt.textContent = branchShortLabel(customer);
+    branchInput.appendChild(opt);
+  }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -175,7 +221,16 @@ function accountTypeLabel(customer) {
     || t("Regular");
 }
 
+function branchSortKey(customer) {
+  if (customer.branch_type === "stores") return "Central Stores";
+  const name = (customer.branch_name || "").toLowerCase();
+  if (name.includes("highland")) return "Highlands";
+  if (name.includes("churchill")) return "Churchill";
+  return customer.branch_name || "";
+}
+
 function branchShortLabel(customer) {
+  if (customer.branch_type === "stores") return t("Central Stores");
   const name = (customer.branch_name || "").toLowerCase();
   if (name.includes("highland")) return t("Highlands");
   if (name.includes("churchill")) return t("Churchill");
@@ -257,12 +312,20 @@ customerForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   submitBtn.disabled = true;
 
+  const branchId = Number(branchInput.value);
+  if (!branchId) {
+    showToast(t("Please select a branch"), true);
+    submitBtn.disabled = false;
+    return;
+  }
+
   const payload = {
     first_name: firstNameInput.value.trim(),
     last_name: lastNameInput.value.trim(),
     phone: phoneInput.value.trim(),
     email: emailInput.value.trim(),
     account_type: accountTypeInput.value || "regular",
+    branch: branchId,
   };
 
   try {
@@ -336,6 +399,8 @@ customerSearchInput.addEventListener("input", () => {
 });
 
 bindTableSort(customersTable, sortState, render);
+
+populateBranchSelect(DEFAULT_BRANCH_ID);
 
 loadCustomers().catch(err => {
   customersTable.innerHTML = `<div class="empty-state">${t("Failed to load customers:")} ${err.message}</div>`;

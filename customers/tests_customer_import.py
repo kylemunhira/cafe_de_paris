@@ -236,6 +236,47 @@ class CustomerImportApiTests(TestCase):
         self.assertIn("Local", names)
         self.assertNotIn("ChurchillOnly", names)
 
+    def test_create_can_assign_central_stores_home_branch(self):
+        stores = Branch.objects.create(
+            name="Central Stores",
+            code="STO",
+            location="Harare",
+            branch_type=BranchType.STORES,
+        )
+        response = self.client.post(
+            "/api/customers/",
+            {
+                "first_name": "Wholesale",
+                "last_name": "Buyer",
+                "phone": "0779999999",
+                "account_type": "regular",
+                "branch": stores.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["branch"], stores.id)
+        self.assertEqual(response.data["branch_type"], BranchType.STORES)
+        created = Customer.objects.get(pk=response.data["id"])
+        self.assertEqual(created.branch_id, stores.id)
+
+    def test_create_rejects_other_retail_branch(self):
+        other = Branch.objects.create(
+            name="Cafe de Paris Highlands",
+            code="HIG",
+            branch_type=BranchType.BRANCH,
+        )
+        response = self.client.post(
+            "/api/customers/",
+            {
+                "first_name": "Wrong",
+                "last_name": "Branch",
+                "branch": other.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_import_does_not_update_other_branch_customer(self):
         other = Branch.objects.create(
             name="Cafe de Paris Churchill",

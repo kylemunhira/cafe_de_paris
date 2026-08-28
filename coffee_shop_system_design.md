@@ -161,7 +161,7 @@ Recipe → Production → Finished Goods → Distribution
 
 ## 6. Key Design Principles
 
-- HQ is the single source of truth
+- HQ is the single source of all
 - Branches can operate offline
 - All sync operations must be transactional
 - Strong consistency for inventory accuracy

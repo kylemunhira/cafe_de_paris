@@ -43,6 +43,10 @@
         <label for="quantity">{% trans "Qty" %}</label>
         <input type="number" id="quantity" min="0.01" step="0.01" placeholder="0">
       </div>
+      <div class="form-group" style="flex: 0 0 140px;">
+        <label for="unit-price">{% trans "Unit price" %}</label>
+        <input type="number" id="unit-price" min="0" step="0.01" placeholder="0.00">
+      </div>
       <div class="form-group" style="flex: 0 0 auto;">
         <button type="button" id="add-line-btn" class="btn btn-ghost">{% trans "Add product" %}</button>
       </div>
@@ -123,6 +127,7 @@ const fromBranchSelect = document.getElementById("from-branch");
 const customerSelect = document.getElementById("customer");
 const productSelect = document.getElementById("product");
 const quantityInput = document.getElementById("quantity");
+const unitPriceInput = document.getElementById("unit-price");
 const notesInput = document.getElementById("notes");
 const stockHint = document.getElementById("stock-hint");
 const invoicesTable = document.getElementById("invoices-table");
@@ -163,9 +168,12 @@ function updateStockHint() {
   const productId = productSelect.value;
   if (!productId) {
     stockHint.textContent = "";
+    unitPriceInput.value = "";
     return;
   }
-  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))} · Price: ${formatCurrency(getProductPrice(productId))}`;
+  const price = getProductPrice(productId);
+  unitPriceInput.value = Number.isFinite(price) ? String(price) : "";
+  stockHint.textContent = `Available at stores: ${formatQty(getStoresStock(productId))} · List price: ${formatCurrency(price)}`;
 }
 
 function draftLineTotal(line) {
@@ -193,7 +201,10 @@ function renderDraftLines() {
         <input type="number" class="report-input line-qty-input" min="0.01" step="0.01"
           data-index="${index}" value="${line.quantity}" style="width: 6.5rem; text-align: right;">
       </td>
-      <td style="text-align: right;">${formatCurrency(line.unit_price)}</td>
+      <td style="text-align: right;">
+        <input type="number" class="report-input line-price-input" min="0" step="0.01"
+          data-index="${index}" value="${line.unit_price}" style="width: 7.5rem; text-align: right;">
+      </td>
       <td style="text-align: right;">${formatCurrency(draftLineTotal(line))}</td>
       <td style="text-align: right;">${formatQty(getStoresStock(line.product))}</td>
       <td style="text-align: right;">
@@ -331,7 +342,13 @@ async function loadData() {
 
   customerSelect.innerHTML = `
     <option value="">Select customer…</option>
-    ${customers.map(c => `<option value="${c.id}">${c.full_name || c.id}</option>`).join("")}
+    ${customers
+      .filter((c) => {
+        if (!storesBranches.length) return true;
+        const storesIds = new Set(storesBranches.map((b) => b.id));
+        return storesIds.has(c.branch) || c.branch_type === "stores";
+      })
+      .map(c => `<option value="${c.id}">${c.full_name || c.id}</option>`).join("")}
   `;
   syncSearchableSelect(customerSelect);
 
@@ -364,6 +381,7 @@ customerSelect.addEventListener("change", () => {
 addLineBtn.addEventListener("click", () => {
   const productId = productSelect.value;
   const quantity = Number(quantityInput.value);
+  const unitPrice = Number(unitPriceInput.value);
 
   if (!productId) {
     showToast(t("Select a product first"), true);
@@ -373,22 +391,27 @@ addLineBtn.addEventListener("click", () => {
     showToast(t("Enter a valid quantity"), true);
     return;
   }
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    showToast(t("Enter a valid unit price"), true);
+    return;
+  }
   const existing = draftLines.find(line => String(line.product) === String(productId));
   if (existing) {
     existing.quantity = String(quantity);
-    existing.unit_price = String(getProductPrice(productId));
-    showToast(t("Quantity updated."));
+    existing.unit_price = String(unitPrice);
+    showToast(t("Line updated."));
   } else {
     draftLines.push({
       product: Number(productId),
       product_name: getProductName(productId),
       quantity: String(quantity),
-      unit_price: String(getProductPrice(productId)),
+      unit_price: String(unitPrice),
     });
   }
 
   productSelect.value = "";
   quantityInput.value = "";
+  unitPriceInput.value = "";
   updateStockHint();
   renderDraftLines();
 });
@@ -401,24 +424,39 @@ linesBody.addEventListener("click", (e) => {
 });
 
 linesBody.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && e.target.closest(".line-qty-input")) {
+  if (e.key === "Enter" && e.target.closest(".line-qty-input, .line-price-input")) {
     e.preventDefault();
     e.target.blur();
   }
 });
 
 linesBody.addEventListener("change", (e) => {
-  const input = e.target.closest(".line-qty-input");
-  if (!input) return;
-  const line = draftLines[Number(input.dataset.index)];
-  if (!line) return;
-  const quantity = Number(input.value);
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    showToast(t("Enter a valid quantity"), true);
-    input.value = line.quantity;
+  const qtyInput = e.target.closest(".line-qty-input");
+  if (qtyInput) {
+    const line = draftLines[Number(qtyInput.dataset.index)];
+    if (!line) return;
+    const quantity = Number(qtyInput.value);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      showToast(t("Enter a valid quantity"), true);
+      qtyInput.value = line.quantity;
+      return;
+    }
+    line.quantity = String(quantity);
+    renderDraftLines();
     return;
   }
-  line.quantity = String(quantity);
+
+  const priceInput = e.target.closest(".line-price-input");
+  if (!priceInput) return;
+  const line = draftLines[Number(priceInput.dataset.index)];
+  if (!line) return;
+  const unitPrice = Number(priceInput.value);
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    showToast(t("Enter a valid unit price"), true);
+    priceInput.value = line.unit_price;
+    return;
+  }
+  line.unit_price = String(unitPrice);
   renderDraftLines();
 });
 

@@ -551,6 +551,36 @@ class CustomersView(BaseUIView):
     def access_allowed(self, user):
         return user_can_access_pos(user)
 
+    def get_context_data(self, **kwargs):
+        from django.db.models import Q
+
+        from accounts.branch_access import (
+            get_staff_branch_id,
+            user_has_global_branch_access,
+        )
+        from branches.models import BranchType
+
+        context = super().get_context_data(**kwargs)
+        staff_branch_id = get_staff_branch_id(self.request.user)
+        home_qs = Branch.objects.filter(
+            is_active=True,
+            branch_type__in=[BranchType.BRANCH, BranchType.STORES],
+        ).order_by("name")
+        if not user_has_global_branch_access(self.request.user):
+            home_qs = home_qs.filter(
+                Q(pk=staff_branch_id) | Q(branch_type=BranchType.STORES)
+            )
+        home_branches = list(
+            home_qs.values("id", "name", "code", "branch_type")
+        )
+        context["customer_home_branches"] = home_branches
+        context["default_customer_branch_id"] = (
+            staff_branch_id
+            if any(b["id"] == staff_branch_id for b in home_branches)
+            else (home_branches[0]["id"] if home_branches else None)
+        )
+        return context
+
 
 class CustomerAccountsView(BaseUIView):
     template_name = "ui/customer_accounts.html"
