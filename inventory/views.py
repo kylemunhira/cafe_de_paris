@@ -50,6 +50,7 @@ from .serializers import (
     BranchDeliveryNoteCreateSerializer,
     BranchInventorySerializer,
     CentralInvoiceCreateSerializer,
+    CentralInvoiceRecordPaymentSerializer,
     CentralInvoiceSerializer,
     DeliveryNoteReceiptSerializer,
     DeliveryNoteSerializer,
@@ -98,6 +99,7 @@ from .services import (
     day_end_stock_take_message,
     InvalidDeliveryNotePaymentError,
     mark_central_invoice_paid,
+    record_central_invoice_payment,
     mark_delivery_note_paid,
     process_wastage_entry,
     submit_stores_delivery_note,
@@ -769,7 +771,7 @@ class CentralInvoiceViewSet(viewsets.ModelViewSet):
         "from_branch",
         "customer",
         "paid_by",
-    ).prefetch_related("lines__product").all()
+    ).prefetch_related("lines__product", "payments__currency").all()
     serializer_class = CentralInvoiceSerializer
     http_method_names = ["get", "post", "head", "options"]
 
@@ -807,6 +809,43 @@ class CentralInvoiceViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=["post"], url_path="record-payment")
+    def record_payment(self, request, pk=None):
+        if not user_can_access_central_invoices(request.user):
+            raise PermissionDenied(
+                "Only central stores staff or HQ admins can record invoice payment."
+            )
+        invoice = self.get_object()
+        serializer = CentralInvoiceRecordPaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payment_lines = [
+            {
+                "currency": line["currency"],
+                "amount": line["amount"],
+                **({"method": line["method"]} if line.get("method") else {}),
+            }
+            for line in serializer.validated_data["payments"]
+        ]
+        try:
+            invoice, change_base = record_central_invoice_payment(
+                invoice,
+                request.user,
+                payment_lines,
+                payment_reference=serializer.validated_data.get(
+                    "payment_reference", ""
+                ),
+                paid_at=serializer.validated_data.get("paid_at"),
+            )
+        except (InvalidCentralInvoicePaymentError, InvalidCentralInvoiceStateError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        invoice = self.get_queryset().get(pk=invoice.pk)
+        return Response(
+            {
+                **CentralInvoiceSerializer(invoice).data,
+                "change_base": str(change_base),
+            }
+        )
+
     @action(detail=True, methods=["post"], url_path="mark-paid")
     def mark_paid(self, request, pk=None):
         if not user_can_access_central_invoices(request.user):
@@ -815,11 +854,13 @@ class CentralInvoiceViewSet(viewsets.ModelViewSet):
             )
         invoice = self.get_object()
         try:
-            invoice = mark_central_invoice_paid(invoice, request.user)
+            mark_central_invoice_paid(invoice, request.user)
         except (InvalidCentralInvoicePaymentError, InvalidCentralInvoiceStateError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        invoice = self.get_queryset().get(pk=invoice.pk)
-        return Response(CentralInvoiceSerializer(invoice).data)
+        return Response(
+            {"detail": "Use record-payment with payment lines."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

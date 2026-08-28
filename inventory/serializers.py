@@ -16,12 +16,15 @@ from catalog.constants import (
 )
 from catalog.models import Product
 from customers.models import Customer
+from orders.models import TenderMethod
 from orders.serializers import staff_display_name
+from payments.models import Currency
 
 from .models import (
     BranchInventory,
     CentralInvoice,
     CentralInvoiceLine,
+    CentralInvoicePayment,
     DeliveryNote,
     DeliveryNoteLine,
     StockMovement,
@@ -748,6 +751,51 @@ class StockTakeLinesUpdateSerializer(serializers.Serializer):
         return update_stock_take_lines(instance, validated_data["lines"])
 
 
+class CentralInvoicePaymentSerializer(serializers.ModelSerializer):
+    method_display = serializers.CharField(source="get_method_display", read_only=True)
+    currency_name = serializers.CharField(source="currency.name", read_only=True)
+    currency_symbol = serializers.CharField(source="currency.symbol", read_only=True)
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+
+    class Meta:
+        model = CentralInvoicePayment
+        fields = [
+            "id",
+            "method",
+            "method_display",
+            "currency",
+            "currency_code",
+            "currency_name",
+            "currency_symbol",
+            "amount",
+            "exchange_rate",
+        ]
+
+
+class CentralInvoicePaymentLineSerializer(serializers.Serializer):
+    currency_id = serializers.PrimaryKeyRelatedField(
+        queryset=Currency.objects.filter(is_active=True),
+        source="currency",
+    )
+    amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+    )
+    method = serializers.ChoiceField(
+        choices=TenderMethod.choices,
+        required=False,
+    )
+
+
+class CentralInvoiceRecordPaymentSerializer(serializers.Serializer):
+    payments = CentralInvoicePaymentLineSerializer(many=True)
+    payment_reference = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
+    paid_at = serializers.DateTimeField(required=False)
+
+
 class CentralInvoiceLineSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     line_total = serializers.DecimalField(
@@ -763,6 +811,7 @@ class CentralInvoiceSerializer(serializers.ModelSerializer):
     from_branch_name = serializers.CharField(source="from_branch.name", read_only=True)
     customer_name = serializers.CharField(source="customer.__str__", read_only=True)
     lines = CentralInvoiceLineSerializer(many=True, read_only=True)
+    payments = CentralInvoicePaymentSerializer(many=True, read_only=True)
     line_count = serializers.SerializerMethodField()
     total_quantity = serializers.SerializerMethodField()
     total_amount = serializers.DecimalField(
@@ -791,9 +840,11 @@ class CentralInvoiceSerializer(serializers.ModelSerializer):
             "paid_at",
             "paid_by",
             "paid_by_name",
+            "payment_reference",
             "notes",
             "created_at",
             "lines",
+            "payments",
             "line_count",
             "total_quantity",
             "total_amount",
@@ -804,6 +855,7 @@ class CentralInvoiceSerializer(serializers.ModelSerializer):
             "payment_status",
             "paid_at",
             "paid_by",
+            "payment_reference",
             "created_at",
         ]
 

@@ -3,6 +3,7 @@ from django.db import models
 
 from branches.models import Branch
 from catalog.models import Product
+from orders.models import TenderMethod
 
 
 class BranchInventory(models.Model):
@@ -377,6 +378,11 @@ class CentralInvoice(models.Model):
         blank=True,
         related_name="central_invoices_marked_paid",
     )
+    payment_reference = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Cheque, bank transfer, or other payment reference.",
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -423,6 +429,45 @@ class CentralInvoiceLine(models.Model):
     @property
     def line_total(self):
         return self.unit_price * self.quantity
+
+
+class CentralInvoicePayment(models.Model):
+    """One currency tender line recorded against a paid central invoice."""
+
+    central_invoice = models.ForeignKey(
+        CentralInvoice,
+        on_delete=models.CASCADE,
+        related_name="payments",
+    )
+    method = models.CharField(
+        max_length=20,
+        choices=TenderMethod.choices,
+        default=TenderMethod.CASH,
+    )
+    currency = models.ForeignKey(
+        "payments.Currency",
+        on_delete=models.PROTECT,
+        related_name="central_invoice_payments",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    exchange_rate = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["central_invoice", "currency"],
+                name="inventory_centralinvoicepayment_unique_invoice_currency",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.currency} {self.amount} on central invoice #{self.central_invoice_id}"
 
 
 class StockMovementReason(models.TextChoices):

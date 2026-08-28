@@ -96,6 +96,7 @@
 
 {% block extra_js %}
 {{ customer_home_branches|json_script:"customer-home-branches" }}
+{{ default_customer_branch_id|json_script:"default-customer-branch-id" }}
 <script type="module">
 import { apiPost, apiPatch, apiUpload, fetchAllPages, formatDate, formatCurrency, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
@@ -105,7 +106,9 @@ const t = (msgid) => window.CDP.t(msgid);
 const HOME_BRANCHES = JSON.parse(
   document.getElementById("customer-home-branches").textContent || "[]"
 );
-const DEFAULT_BRANCH_ID = {{ default_customer_branch_id|default:"null" }};
+const DEFAULT_BRANCH_ID = JSON.parse(
+  document.getElementById("default-customer-branch-id").textContent || "null"
+);
 
 let customers = [];
 let editingId = null;

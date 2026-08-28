@@ -7,7 +7,11 @@ from rest_framework.test import APIClient
 from branches.models import Branch, BranchType
 from bakery.models import Recipe
 from catalog.models import Product, ProductCategory
+from customers.models import Customer
+from inventory.models import BranchInventory, CentralInvoice, CentralInvoiceLine
+from inventory.services import finalize_central_invoice_creation, record_central_invoice_payment
 from orders.models import Expense, Order, OrderItem, OrderPayment, OrderStatus, OrderType, PaymentMethod
+from payments.models import Currency
 from orders.tax import split_inclusive_total
 from reports.services import (
     build_profit_report,
@@ -337,3 +341,110 @@ class ReportApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("gross_profit", response.data["summary"])
         self.assertIn("by_product", response.data)
+
+
+class CentralInvoiceReportTests(TestCase):
+    def setUp(self):
+        self.stores = Branch.objects.create(
+            name="Central Stores",
+            branch_type=BranchType.STORES,
+            code="STR",
+        )
+        self.branch = Branch.objects.create(
+            name="Avondale",
+            branch_type=BranchType.BRANCH,
+        )
+        self.customer = Customer.objects.create(
+            first_name="Wholesale",
+            last_name="Buyer",
+            phone="0777000001",
+        )
+        self.usd = Currency.objects.create(
+            code="USD",
+            name="US Dollar",
+            symbol="$",
+            is_base=True,
+        )
+        category = ProductCategory.objects.create(name="Breads & pastries")
+        self.croissant = Product.objects.create(
+            name="Croissant",
+            category=category,
+            selling_price=Decimal("3.00"),
+        )
+        BranchInventory.objects.create(
+            branch=self.stores,
+            product=self.croissant,
+            quantity=Decimal("20"),
+        )
+        invoice = CentralInvoice.objects.create(
+            from_branch=self.stores,
+            customer=self.customer,
+        )
+        CentralInvoiceLine.objects.create(
+            central_invoice=invoice,
+            product=self.croissant,
+            quantity=Decimal("4"),
+            unit_price=Decimal("3.00"),
+        )
+        finalize_central_invoice_creation(invoice)
+        record_central_invoice_payment(
+            invoice,
+            user=None,
+            payment_lines=[{"currency": self.usd, "amount": Decimal("12.00")}],
+        )
+        self.invoice_total = Decimal("12.00")
+
+    def test_stores_filter_includes_paid_central_invoice_sales(self):
+        today = timezone.localdate()
+        report = build_report_summary(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            branch_id=self.stores.id,
+        )
+        self.assertEqual(report["summary"]["total_revenue"], self.invoice_total)
+        self.assertEqual(report["summary"]["order_count"], 1)
+        self.assertEqual(len(report["by_branch"]), 1)
+        self.assertEqual(report["by_branch"][0]["branch_name"], "Central Stores")
+
+        by_product = build_sales_by_product_report(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            branch_id=self.stores.id,
+        )
+        self.assertEqual(by_product["summary"]["total_sales"], self.invoice_total)
+        self.assertEqual(by_product["rows"][0]["product_name"], "Croissant")
+        self.assertEqual(by_product["rows"][0]["quantity"], Decimal("4"))
+
+        profit = build_profit_report(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            branch_id=self.stores.id,
+        )
+        self.assertEqual(profit["summary"]["total_revenue"], self.invoice_total)
+
+        csv_text = export_sales_csv(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            branch_id=self.stores.id,
+        )
+        self.assertIn("CISTR", csv_text)
+        self.assertIn("Croissant", csv_text)
+
+    def test_branch_filter_excludes_central_invoice_sales(self):
+        today = timezone.localdate()
+        report = build_report_summary(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+            branch_id=self.branch.id,
+        )
+        self.assertEqual(report["summary"]["total_revenue"], Decimal("0"))
+        self.assertEqual(report["summary"]["order_count"], 0)
+
+    def test_all_branches_includes_central_invoice_sales(self):
+        today = timezone.localdate()
+        report = build_report_summary(
+            from_date=today.isoformat(),
+            to_date=today.isoformat(),
+        )
+        self.assertEqual(report["summary"]["total_revenue"], self.invoice_total)
+        self.assertEqual(report["summary"]["order_count"], 1)

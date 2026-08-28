@@ -4,6 +4,7 @@ from .models import (
     BranchInventory,
     CentralInvoice,
     CentralInvoiceLine,
+    CentralInvoicePayment,
     DeliveryNote,
     DeliveryNoteLine,
     StockMovement,
@@ -19,6 +20,12 @@ class CentralInvoiceLineInline(admin.TabularInline):
     extra = 0
 
 
+class CentralInvoicePaymentInline(admin.TabularInline):
+    model = CentralInvoicePayment
+    extra = 0
+    readonly_fields = ("method", "currency", "amount", "exchange_rate")
+
+
 @admin.register(CentralInvoice)
 class CentralInvoiceAdmin(admin.ModelAdmin):
     list_display = (
@@ -30,7 +37,7 @@ class CentralInvoiceAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "payment_status", "from_branch")
-    inlines = [CentralInvoiceLineInline]
+    inlines = [CentralInvoiceLineInline, CentralInvoicePaymentInline]
 
 
 class DeliveryNoteLineInline(admin.TabularInline):

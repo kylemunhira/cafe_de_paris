@@ -8,6 +8,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from bakery.costing import product_unit_costs
+from branches.models import Branch, BranchType
 from catalog.models import Product
 from orders.models import (
     Expense,
@@ -87,40 +88,122 @@ def _paid_order_items(from_date, to_date, branch_id):
     return items
 
 
+def _branch_includes_central_sales(branch_id):
+    """Wholesale central invoices count as sales for central stores (or all branches)."""
+    if branch_id is None:
+        return True
+    branch = Branch.objects.filter(pk=branch_id).only("branch_type").first()
+    return branch is not None and branch.branch_type == BranchType.STORES
+
+
+def _paid_central_invoices(from_date, to_date, branch_id):
+    from inventory.models import (
+        CentralInvoice,
+        CentralInvoiceStatus,
+        TransferInvoicePaymentStatus,
+    )
+
+    if not _branch_includes_central_sales(branch_id):
+        return CentralInvoice.objects.none()
+
+    invoices = CentralInvoice.objects.filter(
+        status=CentralInvoiceStatus.DISPATCHED,
+        payment_status=TransferInvoicePaymentStatus.PAID,
+        paid_at__isnull=False,
+    ).select_related("from_branch")
+    if from_date:
+        invoices = invoices.filter(paid_at__date__gte=from_date)
+    if to_date:
+        invoices = invoices.filter(paid_at__date__lte=to_date)
+    if branch_id:
+        invoices = invoices.filter(from_branch_id=branch_id)
+    else:
+        invoices = invoices.filter(from_branch__branch_type=BranchType.STORES)
+    return invoices
+
+
+def _paid_central_invoice_lines(from_date, to_date, branch_id):
+    from inventory.models import (
+        CentralInvoiceLine,
+        CentralInvoiceStatus,
+        TransferInvoicePaymentStatus,
+    )
+
+    if not _branch_includes_central_sales(branch_id):
+        return CentralInvoiceLine.objects.none()
+
+    lines = CentralInvoiceLine.objects.filter(
+        central_invoice__status=CentralInvoiceStatus.DISPATCHED,
+        central_invoice__payment_status=TransferInvoicePaymentStatus.PAID,
+        central_invoice__paid_at__isnull=False,
+    ).select_related(
+        "product__category",
+        "central_invoice__from_branch",
+    )
+    if from_date:
+        lines = lines.filter(central_invoice__paid_at__date__gte=from_date)
+    if to_date:
+        lines = lines.filter(central_invoice__paid_at__date__lte=to_date)
+    if branch_id:
+        lines = lines.filter(central_invoice__from_branch_id=branch_id)
+    else:
+        lines = lines.filter(
+            central_invoice__from_branch__branch_type=BranchType.STORES
+        )
+    return lines
+
+
 def _decimal(value):
     if value is None:
         return Decimal("0")
     return Decimal(str(value))
 
 
-def _aggregate_item_sales(items):
+def _aggregate_item_sales(items, central_lines=()):
     category_buckets = {}
     product_buckets = {}
     tax_collected = Decimal("0")
 
-    for item in items:
-        line_total = item.quantity * item.price
+    def add_line(product_id, product_name, category_name, quantity, unit_price):
+        nonlocal tax_collected
+        line_total = quantity * unit_price
         tax_collected += split_inclusive_total(line_total)["tax"]
 
-        category_name = item.product.category.name
         category_row = category_buckets.setdefault(
             category_name,
             {"quantity": Decimal("0"), "revenue": Decimal("0")},
         )
-        category_row["quantity"] += item.quantity
+        category_row["quantity"] += quantity
         category_row["revenue"] += line_total
 
         product_row = product_buckets.setdefault(
-            item.product_id,
+            product_id,
             {
-                "product_id": item.product_id,
-                "product_name": item.product.name,
+                "product_id": product_id,
+                "product_name": product_name,
                 "quantity": Decimal("0"),
                 "revenue": Decimal("0"),
             },
         )
-        product_row["quantity"] += item.quantity
+        product_row["quantity"] += quantity
         product_row["revenue"] += line_total
+
+    for item in items:
+        add_line(
+            item.product_id,
+            item.product.name,
+            item.product.category.name,
+            item.quantity,
+            item.price,
+        )
+    for line in central_lines:
+        add_line(
+            line.product_id,
+            line.product.name,
+            line.product.category.name,
+            line.quantity,
+            line.unit_price,
+        )
 
     by_category = sorted(
         [
@@ -231,6 +314,131 @@ def _aggregate_payment_methods(paid_orders):
     return by_payment_method
 
 
+def _aggregate_central_invoice_payment_methods(from_date, to_date, branch_id):
+    from inventory.models import CentralInvoicePayment
+
+    buckets = {}
+
+    def add_bucket(key, label, amount, invoice_id, payment_count=1):
+        row = buckets.setdefault(
+            key,
+            {
+                "method": key,
+                "method_label": label,
+                "revenue": Decimal("0"),
+                "order_ids": set(),
+                "payment_count": 0,
+            },
+        )
+        row["revenue"] += _decimal(amount)
+        row["order_ids"].add(invoice_id)
+        row["payment_count"] += payment_count
+
+    paid_invoice_ids = _paid_central_invoices(from_date, to_date, branch_id).values_list(
+        "id", flat=True
+    )
+    payments = CentralInvoicePayment.objects.filter(
+        central_invoice_id__in=paid_invoice_ids
+    ).select_related("currency")
+    for payment in payments:
+        base_amount = _payment_line_base_amount(payment.amount, payment.exchange_rate)
+        currency_name = (payment.currency.name or "").strip() if payment.currency_id else ""
+        if currency_name:
+            add_bucket(
+                currency_name,
+                currency_name,
+                base_amount,
+                payment.central_invoice_id,
+            )
+        else:
+            method = payment.method or TenderMethod.CASH
+            add_bucket(
+                method,
+                PAYMENT_METHOD_LABELS.get(method, method),
+                base_amount,
+                payment.central_invoice_id,
+            )
+
+    return [
+        {
+            "method": row["method"],
+            "method_label": row["method_label"],
+            "revenue": row["revenue"],
+            "order_count": len(row["order_ids"]),
+            "payment_count": row["payment_count"],
+        }
+        for row in buckets.values()
+    ]
+
+
+def _merge_payment_method_rows(*rows_lists):
+    merged = {}
+    for rows in rows_lists:
+        for row in rows:
+            key = row["method_label"]
+            bucket = merged.setdefault(
+                key,
+                {
+                    "method": row["method"],
+                    "method_label": row["method_label"],
+                    "revenue": Decimal("0"),
+                    "order_count": 0,
+                    "payment_count": 0,
+                },
+            )
+            bucket["revenue"] += _decimal(row["revenue"])
+            bucket["order_count"] += row["order_count"]
+            bucket["payment_count"] += row["payment_count"]
+    return sorted(
+        merged.values(),
+        key=lambda row: (-row["revenue"], row["method_label"]),
+    )
+
+
+def _merge_branch_rows(pos_rows, central_rows):
+    merged = {
+        row["branch_id"]: {
+            "branch_id": row["branch_id"],
+            "branch_name": row["branch_name"],
+            "revenue": _decimal(row["revenue"]),
+            "orders": row["orders"],
+        }
+        for row in pos_rows
+    }
+    for row in central_rows:
+        bucket = merged.setdefault(
+            row["branch_id"],
+            {
+                "branch_id": row["branch_id"],
+                "branch_name": row["branch_name"],
+                "revenue": Decimal("0"),
+                "orders": 0,
+            },
+        )
+        bucket["revenue"] += _decimal(row["revenue"])
+        bucket["orders"] += row["orders"]
+    return sorted(merged.values(), key=lambda row: (-row["revenue"], row["branch_name"]))
+
+
+def _central_branch_rows(paid_central_invoices):
+    buckets = {}
+    for invoice in paid_central_invoices.select_related("from_branch").prefetch_related(
+        "lines"
+    ):
+        row = buckets.setdefault(
+            invoice.from_branch_id,
+            {
+                "branch_id": invoice.from_branch_id,
+                "branch_name": invoice.from_branch.name,
+                "revenue": Decimal("0"),
+                "orders": 0,
+            },
+        )
+        row["revenue"] += invoice.total_amount
+        row["orders"] += 1
+    return list(buckets.values())
+
+
 def _low_stock_products():
     return [
         {
@@ -252,16 +460,27 @@ def build_report_summary(from_date=None, to_date=None, branch_id=None):
     from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
     paid_orders = _paid_orders(from_date, to_date, branch_id)
     paid_items = _paid_order_items(from_date, to_date, branch_id)
+    central_lines = list(_paid_central_invoice_lines(from_date, to_date, branch_id))
+    paid_central_invoices = _paid_central_invoices(from_date, to_date, branch_id)
 
     revenue = _decimal(paid_orders.aggregate(total=Sum("total_amount"))["total"])
-    order_count = paid_orders.count()
+    central_revenue = sum(
+        (line.quantity * line.unit_price for line in central_lines),
+        Decimal("0"),
+    )
+    revenue += _decimal(central_revenue)
 
-    by_category, top_products, tax_collected = _aggregate_item_sales(list(paid_items))
+    order_count = paid_orders.count() + paid_central_invoices.count()
+
+    by_category, top_products, tax_collected = _aggregate_item_sales(
+        list(paid_items),
+        central_lines,
+    )
     tax_collected = _decimal(tax_collected)
 
     avg_order_value = revenue / order_count if order_count else Decimal("0")
 
-    by_branch = [
+    pos_by_branch = [
         {
             "branch_id": row["branch_id"],
             "branch_name": row["branch__name"],
@@ -275,9 +494,14 @@ def build_report_summary(from_date=None, to_date=None, branch_id=None):
         )
         .order_by("-revenue")
     ]
+    central_by_branch = _central_branch_rows(paid_central_invoices)
+    by_branch = _merge_branch_rows(pos_by_branch, central_by_branch)
 
     low_stock = _low_stock_products()
-    by_payment_method = _aggregate_payment_methods(paid_orders)
+    by_payment_method = _merge_payment_method_rows(
+        _aggregate_payment_methods(paid_orders),
+        _aggregate_central_invoice_payment_methods(from_date, to_date, branch_id),
+    )
 
     return {
         "period": {
@@ -304,6 +528,10 @@ def export_sales_csv(from_date=None, to_date=None, branch_id=None):
     from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
     paid_items = _paid_order_items(from_date, to_date, branch_id).order_by(
         "-order__created_at",
+        "id",
+    )
+    central_lines = _paid_central_invoice_lines(from_date, to_date, branch_id).order_by(
+        "-central_invoice__paid_at",
         "id",
     )
 
@@ -346,6 +574,26 @@ def export_sales_csv(from_date=None, to_date=None, branch_id=None):
             }
         )
 
+    for line in central_lines:
+        invoice = line.central_invoice
+        line_total = line.quantity * line.unit_price
+        tax_rate = inclusive_tax_rate
+        tax_amount = split_inclusive_total(line_total, tax_rate)["tax"]
+        writer.writerow(
+            {
+                "order_id": invoice.invoice_number,
+                "date": timezone.localtime(invoice.paid_at).strftime("%Y-%m-%d %H:%M"),
+                "branch": invoice.from_branch.name,
+                "product": line.product.name,
+                "category": line.product.category.name,
+                "quantity": line.quantity,
+                "unit_price": line.unit_price,
+                "line_total": line_total,
+                "tax_rate": tax_rate,
+                "tax_amount": tax_amount,
+            }
+        )
+
     return output.getvalue()
 
 
@@ -372,31 +620,49 @@ def build_sales_by_product_report(
     """Paid sales aggregated by product: name, qty, unit price, total."""
     from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
     paid_items = _paid_order_items(from_date, to_date, branch_id)
+    central_lines = _paid_central_invoice_lines(from_date, to_date, branch_id)
 
     search_term = (search or "").strip()
     if search_term:
         paid_items = paid_items.filter(product__name__icontains=search_term)
+        central_lines = central_lines.filter(product__name__icontains=search_term)
 
     product_buckets = {}
     total_qty = Decimal("0")
     total_amount = Decimal("0")
 
-    for item in paid_items.select_related("product"):
-        line_total = item.quantity * item.price
-        total_qty += item.quantity
+    def add_product_line(product_id, product_name, quantity, unit_price):
+        nonlocal total_qty, total_amount
+        line_total = quantity * unit_price
+        total_qty += quantity
         total_amount += line_total
 
         product_row = product_buckets.setdefault(
-            item.product_id,
+            product_id,
             {
-                "product_id": item.product_id,
-                "product_name": item.product.name,
+                "product_id": product_id,
+                "product_name": product_name,
                 "quantity": Decimal("0"),
                 "total": Decimal("0"),
             },
         )
-        product_row["quantity"] += item.quantity
+        product_row["quantity"] += quantity
         product_row["total"] += line_total
+
+    for item in paid_items.select_related("product"):
+        add_product_line(
+            item.product_id,
+            item.product.name,
+            item.quantity,
+            item.price,
+        )
+    for line in central_lines.select_related("product"):
+        add_product_line(
+            line.product_id,
+            line.product.name,
+            line.quantity,
+            line.unit_price,
+        )
 
     rows = []
     for row in product_buckets.values():
@@ -446,6 +712,7 @@ def build_sales_by_product_report(
 def build_profit_report(from_date=None, to_date=None, branch_id=None):
     from_date, to_date, branch_id = parse_report_filters(from_date, to_date, branch_id)
     paid_items = list(_paid_order_items(from_date, to_date, branch_id))
+    central_lines = list(_paid_central_invoice_lines(from_date, to_date, branch_id))
     unit_costs = product_unit_costs()
 
     product_buckets = {}
@@ -454,8 +721,9 @@ def build_profit_report(from_date=None, to_date=None, branch_id=None):
     revenue_without_recipe = Decimal("0")
     products_without_recipe = 0
 
-    for item in paid_items:
-        line_revenue = item.quantity * item.price
+    def add_profit_line(item, *, price):
+        nonlocal total_revenue, total_cogs, revenue_without_recipe
+        line_revenue = item.quantity * price
         total_revenue += line_revenue
 
         unit_cost = unit_costs.get(item.product_id)
@@ -481,6 +749,11 @@ def build_profit_report(from_date=None, to_date=None, branch_id=None):
         product_row["quantity"] += item.quantity
         product_row["revenue"] += line_revenue
         product_row["cogs"] += line_cogs
+
+    for item in paid_items:
+        add_profit_line(item, price=item.price)
+    for line in central_lines:
+        add_profit_line(line, price=line.unit_price)
 
     by_product = []
     for row in product_buckets.values():

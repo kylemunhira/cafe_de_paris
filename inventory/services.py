@@ -1220,24 +1220,97 @@ def cancel_central_invoice(invoice) -> object:
 
 
 def mark_central_invoice_paid(invoice, user) -> object:
+    """Deprecated: use record_central_invoice_payment with tender lines."""
+    raise InvalidCentralInvoicePaymentError(
+        invoice,
+        "Payment details are required. Use record-payment with currency and amount.",
+    )
+
+
+def record_central_invoice_payment(
+    invoice,
+    user,
+    payment_lines,
+    *,
+    payment_reference="",
+    paid_at=None,
+) -> tuple:
+    from decimal import Decimal
+
     from django.utils import timezone
 
-    from .models import CentralInvoiceStatus, TransferInvoicePaymentStatus
+    from orders.services import (
+        PaymentValidationError,
+        apply_tender_change,
+        normalize_tender_lines,
+    )
+
+    from .models import (
+        CentralInvoicePayment,
+        CentralInvoiceStatus,
+        TransferInvoicePaymentStatus,
+    )
 
     if invoice.status != CentralInvoiceStatus.DISPATCHED:
         raise InvalidCentralInvoiceStateError(
-            invoice, CentralInvoiceStatus.DISPATCHED, "mark as paid"
+            invoice, CentralInvoiceStatus.DISPATCHED, "record payment"
         )
     if invoice.payment_status == TransferInvoicePaymentStatus.PAID:
         raise InvalidCentralInvoicePaymentError(
             invoice,
             f"Central invoice {invoice.invoice_number} is already paid.",
         )
-    invoice.payment_status = TransferInvoicePaymentStatus.PAID
-    invoice.paid_at = timezone.now()
-    invoice.paid_by = user
-    invoice.save(update_fields=["payment_status", "paid_at", "paid_by"])
-    return invoice
+
+    invoice_total = invoice.total_amount.quantize(Decimal("0.01"))
+
+    with transaction.atomic():
+        invoice = (
+            type(invoice)
+            .objects.select_for_update()
+            .select_related("from_branch", "customer")
+            .get(pk=invoice.pk)
+        )
+        if invoice.status != CentralInvoiceStatus.DISPATCHED:
+            raise InvalidCentralInvoiceStateError(
+                invoice, CentralInvoiceStatus.DISPATCHED, "record payment"
+            )
+        if invoice.payment_status == TransferInvoicePaymentStatus.PAID:
+            raise InvalidCentralInvoicePaymentError(
+                invoice,
+                f"Central invoice {invoice.invoice_number} is already paid.",
+            )
+
+        try:
+            normalized = normalize_tender_lines(payment_lines)
+            applied_lines, change_base = apply_tender_change(normalized, invoice_total)
+        except PaymentValidationError as exc:
+            raise InvalidCentralInvoicePaymentError(invoice, str(exc)) from exc
+
+        CentralInvoicePayment.objects.filter(central_invoice=invoice).delete()
+        for line in applied_lines:
+            CentralInvoicePayment.objects.create(
+                central_invoice=invoice,
+                method=line["method"],
+                currency=line["currency"],
+                amount=line["amount"],
+                exchange_rate=line["rate"],
+            )
+
+        invoice.payment_status = TransferInvoicePaymentStatus.PAID
+        invoice.paid_at = paid_at or timezone.now()
+        invoice.paid_by = user
+        if payment_reference:
+            invoice.payment_reference = payment_reference.strip()
+        invoice.save(
+            update_fields=[
+                "payment_status",
+                "paid_at",
+                "paid_by",
+                "payment_reference",
+            ]
+        )
+
+    return invoice, change_base
 
 
 class InvalidWastageStateError(Exception):

@@ -92,6 +92,39 @@
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
   </div>
 </div>
+
+<div id="payment-modal" class="pos-operation-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
+  <div class="card" style="width: min(100%, 32rem); max-height: 90vh; overflow: auto; padding: 1.25rem;">
+    <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem; margin-bottom: 1rem;">
+      <div>
+        <h3 style="margin: 0; font-size: 1.05rem;">{% trans "Record payment" %}</h3>
+        <p id="payment-modal-subtitle" style="margin: 0.35rem 0 0; color: var(--color-muted); font-size: 0.9rem;"></p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-close-payment-modal aria-label="{% trans "Close" %}">×</button>
+    </div>
+
+    <div class="card stat-card" style="margin-bottom: 1rem;">
+      <div class="label">{% trans "Amount due" %}</div>
+      <div class="value" id="payment-amount-due">—</div>
+    </div>
+
+    <div id="payment-lines"></div>
+
+    <button type="button" class="btn btn-ghost btn-sm" id="add-payment-line-btn" style="margin: 0.75rem 0;">{% trans "Add payment line" %}</button>
+
+    <div class="form-group" style="margin-top: 0.75rem;">
+      <label for="payment-reference">{% trans "Payment reference (optional)" %}</label>
+      <input type="text" id="payment-reference" class="report-input" maxlength="200" placeholder="{% trans "Bank transfer ref, cheque no., etc." %}">
+    </div>
+
+    <p id="payment-total-note" style="margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--color-muted);"></p>
+
+    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+      <button type="button" class="btn btn-ghost" data-close-payment-modal>{% trans "Cancel" %}</button>
+      <button type="button" class="btn btn-primary" id="submit-payment-btn">{% trans "Record payment" %}</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -110,8 +143,11 @@ let storesInventory = [];
 let storesBranches = [];
 let customers = [];
 let products = [];
+let currencies = [];
 let draftLines = [];
 let activeFilter = "all";
+let paymentInvoice = null;
+let paymentDraftLines = [];
 const sortState = createSortState("created_at", "desc");
 
 const INVOICE_SORT = {
@@ -131,6 +167,14 @@ const unitPriceInput = document.getElementById("unit-price");
 const notesInput = document.getElementById("notes");
 const stockHint = document.getElementById("stock-hint");
 const invoicesTable = document.getElementById("invoices-table");
+const paymentModal = document.getElementById("payment-modal");
+const paymentModalSubtitle = document.getElementById("payment-modal-subtitle");
+const paymentAmountDue = document.getElementById("payment-amount-due");
+const paymentLines = document.getElementById("payment-lines");
+const paymentReference = document.getElementById("payment-reference");
+const paymentTotalNote = document.getElementById("payment-total-note");
+const addPaymentLineBtn = document.getElementById("add-payment-line-btn");
+const submitPaymentBtn = document.getElementById("submit-payment-btn");
 const invoiceStats = document.getElementById("invoice-stats");
 const invoiceForm = document.getElementById("invoice-form");
 const linesWrap = document.getElementById("lines-wrap");
@@ -234,10 +278,149 @@ function invoiceActions(invoice) {
     `<a href="${printUrlTemplate.replace("{id}", id)}" target="_blank" class="btn btn-ghost btn-sm">Print</a>`,
   ];
   if (invoice.status === "dispatched" && invoice.payment_status !== "paid" && CAN_MARK_PAID) {
-    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="mark-paid" data-id="${id}">Mark paid</button>`);
+    actions.push(`<button class="btn btn-accent btn-sm action-btn" data-action="record-payment" data-id="${id}">${t("Record payment")}</button>`);
     actions.push(`<button class="btn btn-ghost btn-sm action-btn" data-action="cancel" data-id="${id}">Cancel</button>`);
   }
   return actions.join(" ");
+}
+
+function baseCurrency() {
+  return currencies.find(c => c.is_base) || currencies[0] || null;
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function currencyRate(currency) {
+  if (!currency) return null;
+  if (currency.is_base) return 1;
+  const rate = Number(currency.current_rate);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+function amountFromBase(baseAmount, currency) {
+  const rate = currencyRate(currency);
+  if (rate == null) return null;
+  return roundMoney(Number(baseAmount) * rate);
+}
+
+function amountToBase(amount, currency) {
+  const rate = currencyRate(currency);
+  if (rate == null || amount === "" || amount == null) return null;
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed)) return null;
+  return roundMoney(parsed / rate);
+}
+
+function invoiceDueBase() {
+  return Number(paymentInvoice?.total_amount || 0);
+}
+
+function paymentRemainingBase(excludeIndex = null) {
+  const due = invoiceDueBase();
+  const covered = paymentDraftLines.reduce((sum, line, index) => {
+    if (excludeIndex != null && index === excludeIndex) return sum;
+    const currency = currencies.find(c => String(c.id) === String(line.currency_id));
+    const base = amountToBase(line.amount, currency);
+    return base == null ? sum : sum + base;
+  }, 0);
+  return roundMoney(Math.max(due - covered, 0));
+}
+
+function expectedAmountForCurrency(currency, excludeIndex = null) {
+  if (!currency) return null;
+  return amountFromBase(paymentRemainingBase(excludeIndex), currency);
+}
+
+function applyExpectedAmount(index) {
+  const line = paymentDraftLines[index];
+  if (!line) return;
+  const currency = currencies.find(c => String(c.id) === String(line.currency_id));
+  const expected = expectedAmountForCurrency(currency, index);
+  if (expected != null) {
+    line.amount = expected.toFixed(2);
+  }
+}
+
+function defaultPaymentLine() {
+  const currency = baseCurrency();
+  return {
+    currency_id: currency ? String(currency.id) : "",
+    amount: "",
+  };
+}
+
+function paymentDraftTotalBase() {
+  return paymentDraftLines.reduce((sum, line) => {
+    const currency = currencies.find(c => String(c.id) === String(line.currency_id));
+    const base = amountToBase(line.amount, currency);
+    return base == null ? sum : sum + base;
+  }, 0);
+}
+
+function updatePaymentTotalNote() {
+  const due = invoiceDueBase();
+  const tendered = paymentDraftTotalBase();
+  paymentTotalNote.textContent =
+    `${t("Tendered")}: ${formatCurrency(tendered)} · ${t("Due")}: ${formatCurrency(due)}`;
+}
+
+function renderPaymentLines() {
+  if (!paymentDraftLines.length) {
+    paymentDraftLines.push(defaultPaymentLine());
+  }
+
+  paymentLines.innerHTML = paymentDraftLines.map((line, index) => {
+    const currency = currencies.find(c => String(c.id) === String(line.currency_id));
+    const placeholder = currency
+      ? (expectedAmountForCurrency(currency, index)?.toFixed(2) ?? "")
+      : "";
+    return `
+    <div class="form-row" style="align-items: end; margin-bottom: 0.5rem;" data-payment-index="${index}">
+      <div class="form-group" style="flex: 2;">
+        <label>${t("Currency")}</label>
+        <select class="report-input payment-currency-select" data-index="${index}">
+          <option value="">${t("Select currency…")}</option>
+          ${currencies.map(c => `
+            <option value="${c.id}" ${String(line.currency_id) === String(c.id) ? "selected" : ""}>
+              ${c.name}${c.code ? ` (${c.code})` : ""}
+            </option>
+          `).join("")}
+        </select>
+      </div>
+      <div class="form-group" style="flex: 1;">
+        <label>${t("Amount")}</label>
+        <input type="number" class="report-input payment-amount-input" data-index="${index}"
+          min="0.01" step="0.01" value="${line.amount}" placeholder="${placeholder}">
+      </div>
+      ${paymentDraftLines.length > 1 ? `
+        <div class="form-group" style="flex: 0 0 auto;">
+          <button type="button" class="btn btn-ghost btn-sm remove-payment-line-btn" data-index="${index}">${t("Remove")}</button>
+        </div>
+      ` : ""}
+    </div>
+  `;
+  }).join("");
+
+  updatePaymentTotalNote();
+}
+
+function openPaymentModal(invoice) {
+  paymentInvoice = invoice;
+  paymentDraftLines = [defaultPaymentLine()];
+  applyExpectedAmount(0);
+  paymentModalSubtitle.textContent = `${invoice.invoice_number} · ${invoice.customer_name}`;
+  paymentAmountDue.textContent = formatCurrency(invoice.total_amount);
+  paymentReference.value = "";
+  renderPaymentLines();
+  paymentModal.style.display = "flex";
+}
+
+function closePaymentModal() {
+  paymentModal.style.display = "none";
+  paymentInvoice = null;
+  paymentDraftLines = [];
 }
 
 function formatLineSummary(invoice) {
@@ -304,7 +487,15 @@ function renderInvoices() {
             <td>${i.customer_name}</td>
             <td style="max-width: 260px;">${formatLineSummary(i)}</td>
             <td style="text-align: right;">${formatCurrency(i.total_amount)}</td>
-            <td>${i.status === "cancelled" ? '<span class="badge">Cancelled</span>' : paymentBadge(i.payment_status)}</td>
+            <td>${i.status === "cancelled" ? '<span class="badge">Cancelled</span>' : paymentBadge(i.payment_status)}${
+              i.payment_status === "paid" && i.paid_at
+                ? `<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">${formatDate(i.paid_at)}</div>`
+                : ""
+            }${
+              i.payment_status === "paid" && i.payments?.length
+                ? `<div style="font-size: 0.8rem; color: var(--text-muted);">${i.payments.map(p => `${p.currency_name || p.currency_code}: ${formatCurrency(p.amount)}`).join(" · ")}</div>`
+                : ""
+            }</td>
             <td>${formatDate(i.created_at)}</td>
             <td style="display: flex; gap: 0.35rem; flex-wrap: wrap;">${invoiceActions(i)}</td>
           </tr>
@@ -315,17 +506,19 @@ function renderInvoices() {
 }
 
 async function loadData() {
-  const [branchesData, customersData, productsData, invoicesData] = await Promise.all([
+  const [branchesData, customersData, productsData, invoicesData, currenciesData] = await Promise.all([
     apiGet("/branches/"),
     apiGet("/customers/?page_size=1000"),
     apiGet("/products/?bakery_transfer=true&page_size=1000"),
     apiGet("/central-invoices/"),
+    apiGet("/currencies/?page_size=500"),
   ]);
 
   const branches = unwrapList(branchesData);
   customers = unwrapList(customersData).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
   products = unwrapList(productsData);
   allInvoices = unwrapList(invoicesData);
+  currencies = unwrapList(currenciesData).filter(c => c.is_active !== false);
 
   storesBranches = branches.filter(b => b.branch_type === "stores" && b.is_active);
 
@@ -522,6 +715,13 @@ invoicesTable.addEventListener("click", async (e) => {
   if (!btn) return;
 
   const { action, id } = btn.dataset;
+
+  if (action === "record-payment") {
+    const invoice = allInvoices.find(i => String(i.id) === id);
+    if (invoice) openPaymentModal(invoice);
+    return;
+  }
+
   btn.disabled = true;
   btn.innerHTML = `<span class="loading-spinner"></span>`;
 
@@ -539,11 +739,94 @@ invoicesTable.addEventListener("click", async (e) => {
 
     renderStats();
     renderInvoices();
-    showToast(action === "mark-paid" ? `Invoice ${updated.invoice_number} marked paid` : `Invoice ${updated.invoice_number} cancelled`);
+    showToast(`Invoice ${updated.invoice_number} cancelled`);
   } catch (err) {
     showToast(err.message, true);
-    btn.textContent = action === "mark-paid" ? t("Mark paid") : t("Cancel");
+    btn.textContent = t("Cancel");
     btn.disabled = false;
+  }
+});
+
+paymentModal.querySelectorAll("[data-close-payment-modal]").forEach(button => {
+  button.addEventListener("click", closePaymentModal);
+});
+paymentModal.addEventListener("click", (event) => {
+  if (event.target === paymentModal) closePaymentModal();
+});
+
+addPaymentLineBtn.addEventListener("click", () => {
+  paymentDraftLines.push(defaultPaymentLine());
+  renderPaymentLines();
+});
+
+paymentLines.addEventListener("change", (event) => {
+  const select = event.target.closest(".payment-currency-select");
+  if (select) {
+    const index = Number(select.dataset.index);
+    paymentDraftLines[index].currency_id = select.value;
+    applyExpectedAmount(index);
+    renderPaymentLines();
+    return;
+  }
+});
+
+paymentLines.addEventListener("input", (event) => {
+  const input = event.target.closest(".payment-amount-input");
+  if (input) {
+    const index = Number(input.dataset.index);
+    paymentDraftLines[index].amount = input.value;
+    updatePaymentTotalNote();
+  }
+});
+
+paymentLines.addEventListener("click", (event) => {
+  const btn = event.target.closest(".remove-payment-line-btn");
+  if (!btn) return;
+  const index = Number(btn.dataset.index);
+  paymentDraftLines.splice(index, 1);
+  renderPaymentLines();
+});
+
+submitPaymentBtn.addEventListener("click", async () => {
+  if (!paymentInvoice) return;
+
+  const payments = paymentDraftLines
+    .map(line => ({
+      currency_id: Number(line.currency_id),
+      amount: line.amount,
+    }))
+    .filter(line => line.currency_id && line.amount);
+
+  if (!payments.length) {
+    showToast(t("Add at least one payment line"), true);
+    return;
+  }
+
+  submitPaymentBtn.disabled = true;
+  submitPaymentBtn.innerHTML = `<span class="loading-spinner"></span>`;
+
+  try {
+    const updated = await apiPost(
+      `/central-invoices/${paymentInvoice.id}/record-payment/`,
+      {
+        payments,
+        payment_reference: paymentReference.value.trim(),
+      },
+    );
+    const index = allInvoices.findIndex(i => i.id === paymentInvoice.id);
+    if (index >= 0) allInvoices[index] = updated;
+    closePaymentModal();
+    renderStats();
+    renderInvoices();
+    const changeMsg = Number(updated.change_base) > 0
+      ? ` · ${t("Change")}: ${formatCurrency(updated.change_base)}`
+      : "";
+    showToast(`${t("Invoice")} ${updated.invoice_number} ${t("paid")}${changeMsg}`);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    submitPaymentBtn.disabled = false;
+    submitPaymentBtn.textContent = t("Record payment");
   }
 });
 
