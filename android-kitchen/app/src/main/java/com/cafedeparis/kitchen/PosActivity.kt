@@ -177,75 +177,100 @@ class PosActivity : KeepScreenOnActivity() {
         onReceiptOrderSelected(order)
         lifecycleScope.launch {
             try {
-                withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     api.authorizeBillPrint(order.id)
                 }
-                Toast.makeText(this@PosActivity, R.string.printing_bill, Toast.LENGTH_SHORT).show()
-                printOrderTicket(order, documentTitle = getString(R.string.bill_document_title))
-            } catch (err: ApiException) {
-                if (err.statusCode == 403) {
-                    promptBillReprintAccessCode(order)
+                if (result.immediate) {
+                    Toast.makeText(this@PosActivity, R.string.printing_bill, Toast.LENGTH_SHORT).show()
+                    printOrderTicket(order, documentTitle = getString(R.string.bill_document_title))
                 } else {
-                    handleApiError(err)
+                    waitForBillReprintApproval(order, result.requestId ?: return@launch)
                 }
+            } catch (err: ApiException) {
+                handleApiError(err)
             } catch (err: Exception) {
                 showError(getString(R.string.connection_failed, err.message ?: ""))
             }
         }
     }
 
-    private fun promptBillReprintAccessCode(order: KitchenOrder) {
-        val input = TextInputEditText(this).apply {
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            hint = getString(R.string.access_code_hint)
-            filters = arrayOf(android.text.InputFilter.LengthFilter(4))
-        }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = (16 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad / 2, pad, 0)
-            addView(input)
-        }
-        fun submitCode(code: String) {
-            if (!code.matches(Regex("^\\d{4}$"))) {
-                Toast.makeText(this, R.string.access_code_invalid, Toast.LENGTH_SHORT).show()
-                return
-            }
-            lifecycleScope.launch {
-                try {
+    private fun waitForBillReprintApproval(order: KitchenOrder, requestId: Int) {
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.bill_reprint_pending_title)
+            .setMessage(R.string.bill_reprint_pending_message)
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
-                        api.authorizeBillPrint(order.id, code)
+                        try {
+                            api.cancelBillReprintRequest(requestId)
+                        } catch (_: Exception) {
+                        }
                     }
-                    Toast.makeText(this@PosActivity, R.string.printing_bill, Toast.LENGTH_SHORT).show()
-                    printOrderTicket(
-                        order,
-                        documentTitle = getString(R.string.bill_document_title),
-                    )
-                } catch (err: ApiException) {
-                    handleApiError(err)
-                } catch (err: Exception) {
-                    showError(getString(R.string.connection_failed, err.message ?: ""))
                 }
             }
-        }
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.bill_reprint_title)
-            .setMessage(R.string.bill_reprint_message)
-            .setView(container)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                submitCode(input.text?.toString()?.trim().orEmpty())
-            }
+            .setCancelable(false)
             .create()
-        input.doAfterTextChanged { editable ->
-            val code = editable?.toString()?.trim().orEmpty()
-            if (code.matches(Regex("^\\d{4}$")) && dialog.isShowing) {
-                dialog.dismiss()
-                submitCode(code)
+        dialog.show()
+
+        lifecycleScope.launch {
+            var failures = 0
+            suspend fun pollOnce(): String? {
+                return withContext(Dispatchers.IO) {
+                    api.getOrderBillReprintStatus(order.id, requestId)
+                        ?: api.getBillReprintRequestStatus(requestId)
+                }
+            }
+
+            while (dialog.isShowing) {
+                try {
+                    val status = pollOnce()
+                    when (status) {
+                        "approved" -> {
+                            dialog.dismiss()
+                            Toast.makeText(
+                                this@PosActivity,
+                                R.string.printing_bill,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            printOrderTicket(
+                                order,
+                                documentTitle = getString(R.string.bill_document_title),
+                            )
+                            return@launch
+                        }
+                        "rejected", "cancelled" -> {
+                            dialog.dismiss()
+                            Toast.makeText(
+                                this@PosActivity,
+                                R.string.bill_reprint_rejected,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            return@launch
+                        }
+                    }
+                    failures = 0
+                } catch (err: ApiException) {
+                    failures += 1
+                    if (err.statusCode == 404) {
+                        dialog.dismiss()
+                        return@launch
+                    }
+                    if (failures >= 5) {
+                        dialog.dismiss()
+                        showError(err.message ?: getString(R.string.connection_failed, ""))
+                        return@launch
+                    }
+                } catch (_: Exception) {
+                    failures += 1
+                    if (failures >= 5) {
+                        dialog.dismiss()
+                        showError(getString(R.string.connection_failed, ""))
+                        return@launch
+                    }
+                }
+                delay(2000)
             }
         }
-        dialog.show()
-        input.requestFocus()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

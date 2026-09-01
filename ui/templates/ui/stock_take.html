@@ -74,7 +74,7 @@
 
 {% block extra_js %}
 <script type="module">
-import { apiGet, apiPost, apiPatch, apiUpload, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+import { apiGet, apiPost, apiPatch, apiUpload, fetchAllPages, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
 import { createSortState, sortItems, sortTh, actionTh, bindTableSort } from "{% static 'ui/js/table-sort.js' %}";
 
 const t = (msgid) => window.CDP.t(msgid);
@@ -158,6 +158,19 @@ function branchesForStockTake(allBranches) {
   return allBranches.filter(b => String(b.id) === staffBranchId);
 }
 
+function formatCountDate(stockTake) {
+  if (stockTake.stock_take_type === "monthly" && stockTake.count_date) {
+    const [year, month] = stockTake.count_date.split("-").map(Number);
+    if (year && month) {
+      return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+        month: "long",
+        year: "numeric",
+      });
+    }
+  }
+  return stockTake.count_date;
+}
+
 function filterStockTakes() {
   if (activeFilter === "all") return allStockTakes;
   if (activeFilter === "daily") return allStockTakes.filter(s => s.stock_take_type === "daily");
@@ -222,7 +235,7 @@ function renderStockTakes() {
             <td>#${st.id}</td>
             <td>${st.stock_take_type_display}</td>
             <td>${st.branch_name}</td>
-            <td>${st.count_date}</td>
+            <td>${formatCountDate(st)}</td>
             <td>${st.line_count ?? st.lines?.length ?? 0}</td>
             <td>${st.status === "completed" ? (st.variance_count ?? 0) : "—"}</td>
             <td>${statusBadge(st.status, st.status_display)}</td>
@@ -310,7 +323,7 @@ function renderActiveCount() {
 
   const metaParts = [
     activeStockTake.branch_name,
-    activeStockTake.count_date,
+    formatCountDate(activeStockTake),
     `${lines.length} ingredients`,
   ];
   if (isCompleted) {
@@ -517,8 +530,8 @@ function syncVisibleLineDrafts() {
 
 async function loadStockTakes() {
   const branchId = selectedBranchId();
-  const query = branchId ? `?branch=${branchId}` : "";
-  allStockTakes = unwrapList(await apiGet(`/stock-takes/${query}`));
+  const params = branchId ? { branch: String(branchId) } : {};
+  allStockTakes = await fetchAllPages("/stock-takes/", params);
   renderStats();
   renderStockTakes();
 }
@@ -566,6 +579,10 @@ async function startStockTake(stockTakeType) {
     await openStockTake(created.id);
   } catch (err) {
     showToast(err.message, "error");
+    if (err.data?.existing_stock_take_id) {
+      await loadStockTakes();
+      await openStockTake(err.data.existing_stock_take_id);
+    }
   }
 }
 

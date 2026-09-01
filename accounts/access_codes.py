@@ -6,7 +6,6 @@ from accounts.branch_access import (
     user_can_access_pos,
     user_has_global_branch_access,
     user_is_cashier,
-    user_is_hq_admin,
     user_is_branch_manager,
     user_is_waiter,
 )
@@ -71,17 +70,29 @@ def resolve_pos_override_authorizer(code):
     return user
 
 
+def user_can_authorize_bill_reprint(user):
+    """Branch managers, HQ admins, and global users may authorize bill reprints."""
+    return user_can_authorize_pos_override(user)
+
+
 def resolve_bill_reprint_authorizer(code):
-    """Return an HQ admin or superuser who may authorize another bill print."""
+    """
+    Return a manager/HQ user for a valid bill-reprint access code.
+
+    Raises ValueError with a user-facing message when the code is present but invalid.
+    Returns None when no code was provided.
+    """
     code = normalize_access_code(code)
     if not code:
-        raise ValueError("Admin access code is required to reprint a bill.")
+        return None
     if not is_valid_access_code_format(code):
         raise ValueError("Access code must be exactly 4 digits.")
 
     user = get_user_by_access_code(code)
-    if user is None or not (user.is_superuser or user_is_hq_admin(user)):
-        raise ValueError("An admin or superuser access code is required to reprint a bill.")
+    if user is None or not user_can_authorize_bill_reprint(user):
+        raise ValueError(
+            "A manager or admin access code is required to reprint a bill."
+        )
     return user
 
 

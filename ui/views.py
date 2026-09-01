@@ -939,14 +939,20 @@ class OrderSlipPrintView(CashierRestrictedAccessMixin, LoginRequiredMixin, Detai
 
     def get_object(self, queryset=None):
         order = super().get_object(queryset)
-        if order.status != OrderStatus.OPEN:
-            raise Http404("Order ticket is only available for open orders.")
+        if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+            raise Http404(
+                "Order ticket is only available for open or unpaid orders."
+            )
         return order
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["base_currency"] = Currency.objects.filter(is_base=True).first()
         context["auto_print"] = self.request.GET.get("auto") == "1"
+        context["is_bill"] = self.request.GET.get("bill") == "1"
+        context["document_title"] = (
+            "Bill" if context["is_bill"] else "Order ticket"
+        )
         context["tax_breakdown"] = order_receipt_tax_breakdown(self.object)
         context["payment_options"] = payment_options_for_amount(
             context["tax_breakdown"]["total"]

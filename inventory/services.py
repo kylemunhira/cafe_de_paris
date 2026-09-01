@@ -700,14 +700,30 @@ def deliver_delivery_note(note: DeliveryNote, receipt=None, user=None) -> Delive
         return _apply_receipt_fields(note, receipt_lines, receipt, user=user)
 
 
+def _stock_take_period_label(stock_take_type: str, count_date: date) -> str:
+    if stock_take_type == StockTakeType.MONTHLY:
+        return count_date.strftime("%B %Y")
+    return count_date.isoformat()
+
+
 class DuplicateStockTakeError(Exception):
-    def __init__(self, branch, stock_take_type, count_date):
+    def __init__(self, branch, stock_take_type, count_date, existing_stock_take=None):
         self.branch = branch
         self.stock_take_type = stock_take_type
         self.count_date = count_date
+        self.existing_stock_take = existing_stock_take
+        self.existing_stock_take_id = (
+            existing_stock_take.pk if existing_stock_take is not None else None
+        )
+        period = _stock_take_period_label(stock_take_type, count_date)
+        id_hint = (
+            f" Open stock take #{existing_stock_take.pk} from the list."
+            if existing_stock_take is not None
+            else ""
+        )
         super().__init__(
             f"A completed {stock_take_type} stock take already exists for "
-            f"{branch} on {count_date}."
+            f"{branch} for {period}.{id_hint}"
         )
 
 
@@ -772,14 +788,18 @@ def _normalize_count_date(stock_take_type: str, count_date: date) -> date:
     return count_date
 
 
-def _completed_stock_take_exists(branch, stock_take_type: str, count_date: date) -> bool:
+def get_completed_stock_take(branch, stock_take_type: str, count_date: date):
     count_date = _normalize_count_date(stock_take_type, count_date)
     return StockTake.objects.filter(
         branch=branch,
         stock_take_type=stock_take_type,
         count_date=count_date,
         status=StockTakeStatus.COMPLETED,
-    ).exists()
+    ).first()
+
+
+def _completed_stock_take_exists(branch, stock_take_type: str, count_date: date) -> bool:
+    return get_completed_stock_take(branch, stock_take_type, count_date) is not None
 
 
 def daily_stock_take_completed(branch, count_date: date | str | None = None) -> bool:
@@ -854,8 +874,11 @@ def create_stock_take(
     in-progress draft for the same branch / type / date was reused.
     """
     count_date = _normalize_count_date(stock_take_type, count_date)
-    if _completed_stock_take_exists(branch, stock_take_type, count_date):
-        raise DuplicateStockTakeError(branch, stock_take_type, count_date)
+    existing_completed = get_completed_stock_take(branch, stock_take_type, count_date)
+    if existing_completed is not None:
+        raise DuplicateStockTakeError(
+            branch, stock_take_type, count_date, existing_completed
+        )
 
     existing = _draft_stock_take(branch, stock_take_type, count_date)
     if existing:
@@ -994,11 +1017,15 @@ def complete_stock_take(stock_take: StockTake) -> StockTake:
         raise IncompleteStockTakeError(stock_take, len(lines))
 
     count_date = _normalize_count_date(stock_take.stock_take_type, stock_take.count_date)
-    if _completed_stock_take_exists(
+    existing_completed = get_completed_stock_take(
         stock_take.branch, stock_take.stock_take_type, count_date
-    ):
+    )
+    if existing_completed is not None and existing_completed.pk != stock_take.pk:
         raise DuplicateStockTakeError(
-            stock_take.branch, stock_take.stock_take_type, count_date
+            stock_take.branch,
+            stock_take.stock_take_type,
+            count_date,
+            existing_completed,
         )
 
     with transaction.atomic():
@@ -1019,7 +1046,11 @@ def complete_stock_take(stock_take: StockTake) -> StockTake:
             Product.objects.bulk_update(products_to_update, ["remaining_qty"])
         stock_take.status = StockTakeStatus.COMPLETED
         stock_take.completed_at = timezone.now()
-        stock_take.save(update_fields=["status", "completed_at"])
+        update_fields = ["status", "completed_at"]
+        if stock_take.count_date != count_date:
+            stock_take.count_date = count_date
+            update_fields.append("count_date")
+        stock_take.save(update_fields=update_fields)
     return stock_take
 
 

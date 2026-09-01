@@ -99,3 +99,13 @@ python manage.py migrate
 python manage.py collectstatic --noinput
 C:\nssm\nssm.exe restart CafeDeParis
 ```
+
+### Android kitchen app updates
+
+After building a new APK in `android-kitchen/`:
+
+```powershell
+copy android-kitchen\app\build\outputs\apk\debug\app-debug.apk releases\kitchen.apk
+```
+
+Update `.env` (`KITCHEN_APP_VERSION_CODE`, `KITCHEN_APP_VERSION_NAME`) to match `app/build.gradle.kts`, then restart the service. Tablets will prompt users on next launch.

@@ -114,3 +114,43 @@ cd android-kitchen
 ```
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
+
+## App updates (OTA)
+
+The app checks the server on startup for a newer version. When one is available, it shows a dialog to download and install the APK from your server.
+
+### Publish an update
+
+1. Bump `versionCode` and `versionName` in `app/build.gradle.kts`.
+2. Build the APK (Android Studio **Build → Build APK** or `./gradlew assembleDebug`).
+3. On the **server**, copy the APK to the `releases/` folder as `kitchen.apk`.
+4. In the server `.env`, set:
+   - `KITCHEN_APP_VERSION_CODE` — must match `versionCode` in Gradle
+   - `KITCHEN_APP_VERSION_NAME` — must match `versionName` in Gradle
+   - Optional: `KITCHEN_APP_RELEASE_NOTES` — shown in the update dialog
+5. Restart the server (or Windows service).
+
+Tablets on the same network will be prompted on next launch. Staff can also tap **Check for updates** in Settings.
+
+See `releases/README.md` in the project root for server-side details.
+
+## Troubleshooting builds (Windows)
+
+If Android Studio fails with `compileDebugKotlin` and **Access is denied** on
+`lookups.tab_i.len`, OneDrive is usually locking files under `Documents\GitHub`.
+
+**Build output is redirected** to `%LOCALAPPDATA%\cafe-de-paris\android-kitchen\`
+so new builds should not hit the locked path. After pulling this change:
+
+1. **Close Android Studio** completely.
+2. Run `scripts\clean-build-cache.ps1` (or delete the folders listed below).
+3. Reopen the project → **File → Sync Project with Gradle Files**.
+4. **Build → Rebuild Project**.
+
+Folders to clean:
+
+- `android-kitchen\app\build\` (legacy; may be locked — ignore if delete fails)
+- `%LOCALAPPDATA%\cafe-de-paris\android-kitchen\`
+- `android-kitchen\.gradle\` (optional)
+
+Long-term: pause OneDrive while building, or move the repo to e.g. `C:\dev\cafe_de_paris`.

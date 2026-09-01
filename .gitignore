@@ -23,6 +23,9 @@ wheels/
 venv/
 ENV/
 
+# Android APK releases (hosted on server, not in git)
+releases/*.apk
+
 # Django
 db.sqlite3
 *.sqlite3

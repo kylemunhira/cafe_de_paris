@@ -60,7 +60,13 @@ async function parseResponse(res) {
     };
   }
   if (!res.ok) {
-    throw new Error(firstApiErrorMessage(data, res.statusText) || res.statusText);
+    const message = firstApiErrorMessage(data, res.statusText) || res.statusText;
+    const err = new Error(message);
+    if (data && typeof data === "object") {
+      err.data = data;
+      err.status = res.status;
+    }
+    throw err;
   }
   return data;
 }

@@ -396,6 +396,12 @@
       });
     })();
   </script>
+  {% if can_manage_pos_orders %}
+  <script type="module">
+    import { startManagerBillReprintPolling } from "{% static 'ui/js/bill-reprint-approvals.js' %}?v=1";
+    startManagerBillReprintPolling();
+  </script>
+  {% endif %}
   {% block extra_js %}{% endblock %}
 </body>
 </html>

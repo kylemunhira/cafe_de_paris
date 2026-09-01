@@ -9,6 +9,16 @@ data class Branch(
     val is_active: Boolean = true,
 )
 
+data class AppUpdateInfo(
+    val latestVersionCode: Int,
+    val latestVersionName: String,
+    val minVersionCode: Int,
+    val updateAvailable: Boolean,
+    val apkUrl: String?,
+    val releaseNotes: String,
+    val forceUpdate: Boolean,
+)
+
 data class UserInfo(
     val id: Int,
     val username: String,
@@ -303,6 +313,13 @@ data class CartLine(
 data class OrderItemTransferResult(
     val sourceOrder: KitchenOrder,
     val destinationOrder: KitchenOrder,
+)
+
+data class BillPrintResult(
+    val immediate: Boolean,
+    val billPrintCount: Int?,
+    val requestId: Int?,
+    val requestStatus: String?,
 )
 
 fun cartLineKey(productId: Int, addonIds: List<Int>, notes: String): String {

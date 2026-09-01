@@ -5,15 +5,15 @@
     "kind": "Directory"
   },
   "applicationId": "com.cafedeparis.kitchen",
-  "variantName": "debug",
+  "variantName": "release",
   "elements": [
     {
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 2,
-      "versionName": "1.2.0",
-      "outputFile": "app-debug.apk"
+      "versionCode": 3,
+      "versionName": "1.2.2",
+      "outputFile": "app-release.apk"
     }
   ],
   "elementType": "File"

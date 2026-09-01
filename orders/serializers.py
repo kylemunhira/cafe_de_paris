@@ -236,6 +236,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "cancelled_at",
             "cancelled_by",
             "cancelled_by_name",
+            "bill_print_count",
             "items",
             "created_at",
         ]

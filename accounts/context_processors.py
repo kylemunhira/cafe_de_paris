@@ -13,6 +13,7 @@ from .branch_access import (
     user_can_approve_fiscal_receipt,
     user_can_collect_payment,
     user_can_create_purchase_orders,
+    user_can_manage_pos_orders,
     user_can_manage_branches,
     user_can_manage_currencies,
     user_can_manage_suppliers,
@@ -67,4 +68,5 @@ def nav_access(request):
         "show_supplier_statement_nav": management and user_can_create_purchase_orders(user),
         "show_stock_take_nav": management or user_is_cashier(user) or bakery,
         "show_audit_log_nav": management,
+        "can_manage_pos_orders": user_can_manage_pos_orders(user),
     }

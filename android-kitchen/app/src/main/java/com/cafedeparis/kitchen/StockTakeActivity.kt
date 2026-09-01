@@ -161,6 +161,10 @@ class StockTakeActivity : KeepScreenOnActivity() {
                 openStockTake(created.id)
             } catch (err: ApiException) {
                 handleApiError(err)
+                err.existingStockTakeId?.let { existingId ->
+                    loadStockTakes(openDraft = false)
+                    openStockTake(existingId)
+                }
             } catch (err: Exception) {
                 showError(getString(R.string.connection_failed, err.message.orEmpty()))
             } finally {
@@ -213,7 +217,7 @@ class StockTakeActivity : KeepScreenOnActivity() {
                     R.string.stock_take_history_meta,
                     stockTake.id,
                     stockTake.stockTakeTypeDisplay,
-                    stockTake.countDate,
+                    formatCountDate(stockTake),
                     stockTake.lineCount.takeIf { it > 0 } ?: stockTake.lines.size,
                     stockTake.statusDisplay.ifBlank { stockTake.status },
                 )
@@ -277,7 +281,7 @@ class StockTakeActivity : KeepScreenOnActivity() {
             getString(
                 R.string.stock_take_active_meta_variances,
                 branch,
-                stockTake.countDate,
+                formatCountDate(stockTake),
                 lines.size,
                 varianceLines.size,
             )
@@ -285,7 +289,7 @@ class StockTakeActivity : KeepScreenOnActivity() {
             getString(
                 R.string.stock_take_active_meta,
                 branch,
-                stockTake.countDate,
+                formatCountDate(stockTake),
                 lines.size,
             )
         }
@@ -658,6 +662,25 @@ class StockTakeActivity : KeepScreenOnActivity() {
     }
 
     private fun formatDate(value: String): String = value.replace('T', ' ').take(16)
+
+    private fun formatCountDate(stockTake: StockTake): String {
+        if (stockTake.stockTakeType != "monthly") return stockTake.countDate
+        return try {
+            val parts = stockTake.countDate.split("-")
+            if (parts.size < 2) return stockTake.countDate
+            val year = parts[0].toInt()
+            val month = parts[1].toInt()
+            SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(
+                java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.YEAR, year)
+                    set(java.util.Calendar.MONTH, month - 1)
+                    set(java.util.Calendar.DAY_OF_MONTH, 1)
+                }.time,
+            )
+        } catch (_: Exception) {
+            stockTake.countDate
+        }
+    }
 
     private fun headerCell(label: String, weight: Float): TextView {
         return TextView(this).apply {

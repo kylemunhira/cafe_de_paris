@@ -4,12 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if order.branch.fiscalization_enabled %}{% trans "Order" %} #{{ order.id }} — Café de Paris{% else %}{% trans "Order" %} #{{ order.id }}{% endif %}</title>
+  <title>{% if is_bill %}{% trans "Bill" %} #{{ order.id }}{% elif order.branch.fiscalization_enabled %}{% trans "Order" %} #{{ order.id }} — Café de Paris{% else %}{% trans "Order" %} #{{ order.id }}{% endif %}</title>
   <link rel="stylesheet" href="{% static 'ui/css/receipt-print.css' %}">
 </head>
 <body>
   <div class="toolbar">
-    <button type="button" onclick="window.print()">{% trans "Print order ticket" %}</button>
+    <button type="button" onclick="window.print()">{% if is_bill %}{% trans "Print bill" %}{% else %}{% trans "Print order ticket" %}{% endif %}</button>
   </div>
 
   <div class="receipt">
@@ -21,7 +21,7 @@
     {% endif %}
 
     <div class="center meta">
-      <p><strong>{% trans "Order ticket" %}</strong></p>
+      <p><strong>{% if document_title %}{{ document_title }}{% else %}{% trans "Order ticket" %}{% endif %}</strong></p>
       <p>{% trans "Order" %} #{{ order.id }}</p>
       <p>{{ order.created_at|date:"d M Y, H:i" }}</p>
       <p>{{ order.get_order_type_display }}{% if order.table_number %} · {% trans "Table" %} {{ order.table_number }}{% endif %}</p>
@@ -89,7 +89,11 @@
     {% include "ui/includes/payment_options_block.html" %}
 
     <div class="center footer">
+      {% if is_bill %}
+      <p>{% trans "Present this bill when paying." %}</p>
+      {% else %}
       <p>{% trans "Present this ticket when paying." %}</p>
+      {% endif %}
       <p>{% trans "UNPAID" %}</p>
     </div>
   </div>

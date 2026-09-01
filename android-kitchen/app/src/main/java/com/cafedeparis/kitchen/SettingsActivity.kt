@@ -7,17 +7,23 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import com.cafedeparis.kitchen.BuildConfig
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.cafedeparis.kitchen.data.ApiClient
 import com.cafedeparis.kitchen.data.AppConfig
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.databinding.ActivitySettingsBinding
+import com.cafedeparis.kitchen.update.AppUpdateManager
+import kotlinx.coroutines.launch
 
 class SettingsActivity : KeepScreenOnActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var session: SessionManager
     private lateinit var config: AppConfig
+    private lateinit var api: ApiClient
 
     private val bluetoothPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -36,9 +42,15 @@ class SettingsActivity : KeepScreenOnActivity() {
 
         session = SessionManager(this)
         config = AppConfig(this)
+        api = ApiClient(session, config)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         title = getString(R.string.settings_title)
 
+        binding.appVersionLabel.text = getString(
+            R.string.app_version_label,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+        )
         binding.configServerLabel.text = getString(R.string.config_server_label, config.serverUrl)
         binding.configPathLabel.text = getString(R.string.config_path_label, config.configFile.absolutePath)
         binding.printerAddressInput.setText(session.printerAddress.orEmpty())
@@ -51,6 +63,20 @@ class SettingsActivity : KeepScreenOnActivity() {
 
         binding.refreshPrintersButton.setOnClickListener {
             ensureBluetoothPermission { loadPairedPrinters() }
+        }
+
+        binding.checkUpdatesButton.setOnClickListener {
+            lifecycleScope.launch {
+                try {
+                    AppUpdateManager(this@SettingsActivity, api).checkAndPrompt(forceCheck = true)
+                } catch (error: Exception) {
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        getString(R.string.update_check_failed, error.message ?: "Unknown error"),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         }
 
         ensureBluetoothPermission { loadPairedPrinters() }

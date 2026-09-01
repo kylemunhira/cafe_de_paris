@@ -35,6 +35,7 @@ from inventory.services import InsufficientOrderMaterialsError, consume_order_re
 from .day_end import local_day_range
 from .kitchen_station import filter_orders_for_kitchen_station, resolve_kitchen_station_filter
 from .models import (
+    BillReprintRequest,
     Expense,
     FiscalApprovalStatus,
     Order,
@@ -62,6 +63,7 @@ from .services import (
     allocate_receipt_number,
     cancel_order,
     consolidate_table_orders,
+    get_or_create_pending_bill_reprint_request,
     mark_order_paid_with_tenders,
     mark_order_ready,
     remove_one_order_item,
@@ -490,8 +492,10 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="print-bill")
     def print_bill(self, request, pk=None):
         """Authorize and record a guest-bill print before it reaches the printer."""
-        if not user_can_access_pos(request.user):
-            raise PermissionDenied("POS access is required to print bills.")
+        if not user_can_access_pos(request.user) and not user_can_manage_pos_orders(
+            request.user
+        ):
+            raise PermissionDenied("POS or manager access is required to print bills.")
 
         order = self.get_object()
         if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
@@ -501,12 +505,36 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             )
 
         try:
+            authorizer = resolve_bill_reprint_authorizer(
+                request.data.get("access_code")
+            )
+        except ValueError as exc:
+            raise PermissionDenied(str(exc)) from exc
+
+        try:
             with transaction.atomic():
                 order = Order.objects.select_for_update().get(pk=order.pk)
                 printed_by = request.user
                 if order.bill_print_count:
-                    printed_by = resolve_bill_reprint_authorizer(
-                        request.data.get("access_code")
+                    printed_by = authorizer or request.user
+                    if not user_can_manage_pos_orders(printed_by):
+                        req = get_or_create_pending_bill_reprint_request(
+                            order, request.user
+                        )
+                        from orders.bill_reprint_serializers import (
+                            BillReprintRequestSerializer,
+                        )
+
+                        data = BillReprintRequestSerializer(req).data
+                        return Response(data, status=status.HTTP_202_ACCEPTED)
+                    from orders.models import BillReprintRequestStatus
+
+                    BillReprintRequest.objects.filter(
+                        order=order,
+                        status=BillReprintRequestStatus.PENDING,
+                    ).update(
+                        status=BillReprintRequestStatus.CANCELLED,
+                        decided_at=timezone.now(),
                     )
                 order.bill_print_count += 1
                 order.bill_last_printed_at = timezone.now()
@@ -518,8 +546,8 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                         "bill_last_printed_by",
                     ]
                 )
-        except ValueError as exc:
-            raise PermissionDenied(str(exc)) from exc
+        except PermissionDenied:
+            raise
 
         return Response(
             {
@@ -529,6 +557,26 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                 ),
             }
         )
+
+    @action(detail=True, methods=["get"], url_path="bill-reprint-status")
+    def bill_reprint_status(self, request, pk=None):
+        """Poll the latest bill reprint request for an order (POS tablets)."""
+        if not user_can_access_pos(request.user):
+            raise PermissionDenied("POS access is required.")
+        order = self.get_object()
+        req = (
+            BillReprintRequest.objects.filter(order=order)
+            .select_related("order__branch", "requested_by", "approved_by")
+            .order_by("-created_at")
+            .first()
+        )
+        if req is None:
+            return Response({"has_request": False})
+        from orders.bill_reprint_serializers import BillReprintRequestSerializer
+
+        data = BillReprintRequestSerializer(req).data
+        data["has_request"] = True
+        return Response(data)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

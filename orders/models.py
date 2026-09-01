@@ -450,3 +450,52 @@ class DayEndCashLine(models.Model):
 
     def __str__(self):
         return f"{self.day_end} — {self.currency}"
+
+
+class BillReprintRequestStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class BillReprintRequest(models.Model):
+    """Async manager approval when a cashier reprints a guest bill."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="bill_reprint_requests",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="bill_reprint_requests_requested",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=BillReprintRequestStatus.choices,
+        default=BillReprintRequestStatus.PENDING,
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bill_reprint_requests_decided",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order"],
+                condition=models.Q(status=BillReprintRequestStatus.PENDING),
+                name="orders_unique_pending_bill_reprint",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Bill reprint #{self.pk} — order #{self.order_id} ({self.status})"

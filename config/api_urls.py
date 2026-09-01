@@ -22,6 +22,7 @@ from inventory.views import (
 from bakery.views import ProductionOrderViewSet, ProductionSheetViewSet, RecipeViewSet
 from customers.views import CustomerViewSet
 from orders.views import ExpenseViewSet, OrderViewSet
+from orders.bill_reprint_views import BillReprintRequestViewSet
 from purchasing.views import PurchaseOrderViewSet, SupplierViewSet
 from payments.views import CurrencyRateViewSet, CurrencyViewSet
 from reports.views import (
@@ -39,6 +40,7 @@ from reports.views import (
     ReportVATView,
     ReportVoidedCancelledView,
 )
+from sync.app_version_views import AppVersionDownloadView, AppVersionView
 from sync.views import SyncPingView, SyncPullView, SyncPushView
 
 router = DefaultRouter()
@@ -51,6 +53,11 @@ router.register("menu-addon-groups", MenuAddonGroupViewSet, basename="menu-addon
 router.register("menu-addons", MenuAddonViewSet, basename="menu-addon")
 router.register("products", ProductViewSet)
 router.register("orders", OrderViewSet)
+router.register(
+    "bill-reprint-requests",
+    BillReprintRequestViewSet,
+    basename="bill-reprint-request",
+)
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("currencies", CurrencyViewSet)
 router.register("currency-rates", CurrencyRateViewSet, basename="currency-rate")
@@ -72,6 +79,8 @@ urlpatterns = [
     path("auth/kitchen-login/", KitchenLoginView.as_view(), name="kitchen-login"),
     path("auth/mobile-login/", MobileAppLoginView.as_view(), name="mobile-login"),
     path("auth/verify-access-code/", VerifyAccessCodeView.as_view(), name="verify-access-code"),
+    path("app-version/", AppVersionView.as_view(), name="app-version"),
+    path("app-version/download/", AppVersionDownloadView.as_view(), name="app-version-download"),
     path("sync/ping/", SyncPingView.as_view(), name="sync-ping"),
     path("sync/pull/", SyncPullView.as_view(), name="sync-pull"),
     path("sync/push/", SyncPushView.as_view(), name="sync-push"),

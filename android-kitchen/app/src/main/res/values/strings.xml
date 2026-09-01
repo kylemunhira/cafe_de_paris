@@ -9,8 +9,11 @@
     <string name="access_code_menu_title">Open Menu</string>
     <string name="access_code_menu_message">Enter your 4-digit access code. Waiter, cashier, or admin codes are accepted.</string>
     <string name="access_code_invalid">Access code must be exactly 4 digits</string>
-    <string name="bill_reprint_title">Admin approval required</string>
-    <string name="bill_reprint_message">This bill has already been printed. Enter an admin or superuser 4-digit access code to print it again.</string>
+    <string name="bill_reprint_title">Manager approval required</string>
+    <string name="bill_reprint_message">This bill has already been printed. A manager must approve the reprint from the portal.</string>
+    <string name="bill_reprint_pending_title">Approval pending</string>
+    <string name="bill_reprint_pending_message">Waiting for a manager to approve this bill reprint from the portal.</string>
+    <string name="bill_reprint_rejected">Bill reprint was rejected or cancelled.</string>
     <string name="config_server_label">Server: %1$s</string>
     <string name="config_path_label">Edit config.json on device:\n%1$s</string>
     <string name="username">Username</string>
@@ -419,4 +422,18 @@
     <string name="grv_line_notes">Line notes</string>
     <string name="grv_invalid_qty">Received + damaged cannot exceed sent quantity.</string>
     <string name="grv_flagged_badge"> · Flagged</string>
+    <string name="app_version_label">App version %1$s (%2$d)</string>
+    <string name="check_for_updates">Check for updates</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_message">Version %1$s is available (you have %2$s).</string>
+    <string name="update_download">Download &amp; install</string>
+    <string name="update_later">Later</string>
+    <string name="update_none">You already have the latest version.</string>
+    <string name="update_downloading">Downloading update…</string>
+    <string name="update_download_failed">Update download failed: %1$s</string>
+    <string name="update_check_failed">Could not check for updates: %1$s</string>
+    <string name="update_required">Please install the app update before signing in.</string>
+    <string name="update_install_permission_title">Allow installs</string>
+    <string name="update_install_permission_message">Allow this app to install updates, then tap Download &amp; install again.</string>
+    <string name="update_open_settings">Open settings</string>
 </resources>

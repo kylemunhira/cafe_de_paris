@@ -3,6 +3,13 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Keep Gradle/Kotlin caches out of Documents (OneDrive often locks files there).
+val localBuildRoot = File(
+    System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"),
+    "cafe-de-paris/android-kitchen",
+)
+layout.buildDirectory.set(File(localBuildRoot, "app/build"))
+
 android {
     namespace = "com.cafedeparis.kitchen"
     compileSdk = 34
@@ -11,8 +18,8 @@ android {
         applicationId = "com.cafedeparis.kitchen"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.2.0"
+        versionCode = 3
+        versionName = "1.2.2"
     }
 
     buildTypes {
@@ -36,6 +43,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 

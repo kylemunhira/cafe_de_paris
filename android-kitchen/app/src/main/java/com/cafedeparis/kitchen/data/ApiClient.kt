@@ -7,7 +7,11 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-class ApiException(val statusCode: Int, message: String) : Exception(message)
+class ApiException(
+    val statusCode: Int,
+    message: String,
+    val existingStockTakeId: Int? = null,
+) : Exception(message)
 
 class ApiClient(
     private val session: SessionManager,
@@ -35,6 +39,31 @@ class ApiClient(
             .put("purpose", purpose)
         val body = postJson("${config.serverUrl}/api/auth/verify-access-code/", payload, token)
         return JSONObject(body)
+    }
+
+    fun checkAppVersion(currentVersionCode: Int): AppUpdateInfo {
+        val url =
+            "${config.serverUrl}/api/app-version/?version_code=$currentVersionCode"
+        val body = getJson(url, token = null)
+        return JsonParsers.parseAppUpdateInfo(body)
+    }
+
+    fun downloadFile(url: String, destination: java.io.File) {
+        val connection = openConnection(url, "GET", token = null)
+        connection.instanceFollowRedirects = true
+        connection.connect()
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val errorBody = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            connection.disconnect()
+            throw ApiException(code, extractErrorMessage(errorBody, code))
+        }
+        connection.inputStream.use { input ->
+            destination.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        connection.disconnect()
     }
 
     fun fetchOpenOrders(): List<KitchenOrder> {
@@ -434,13 +463,22 @@ class ApiClient(
     ): List<StockTake> {
         val token = requireToken()
         val branchId = session.branchId
-        val query = buildString {
-            append("branch=$branchId&page_size=100")
-            if (!type.isNullOrBlank()) append("&stock_take_type=$type")
-            if (!status.isNullOrBlank()) append("&status=$status")
+        val all = mutableListOf<StockTake>()
+        var page = 1
+        while (true) {
+            val query = buildString {
+                append("branch=$branchId&page_size=500&page=$page")
+                if (!type.isNullOrBlank()) append("&stock_take_type=$type")
+                if (!status.isNullOrBlank()) append("&status=$status")
+            }
+            val body = getJson("${config.serverUrl}/api/stock-takes/?$query", token)
+            val pageItems = JsonParsers.parseStockTakes(body)
+            all.addAll(pageItems)
+            val json = org.json.JSONObject(body)
+            if (json.isNull("next") || pageItems.isEmpty()) break
+            page += 1
         }
-        val body = getJson("${config.serverUrl}/api/stock-takes/?$query", token)
-        return JsonParsers.parseStockTakes(body)
+        return all
     }
 
     fun fetchStockTake(stockTakeId: Int): StockTake {
@@ -639,13 +677,59 @@ class ApiClient(
         return JsonParsers.parseOrder(body)
     }
 
-    fun authorizeBillPrint(orderId: Int, accessCode: String? = null) {
+    fun authorizeBillPrint(orderId: Int, accessCode: String? = null): BillPrintResult {
         val token = requireToken()
         val payload = JSONObject()
         if (!accessCode.isNullOrBlank()) {
             payload.put("access_code", accessCode.trim())
         }
-        postJson("${config.serverUrl}/api/orders/$orderId/print-bill/", payload, token)
+        val body = postJson("${config.serverUrl}/api/orders/$orderId/print-bill/", payload, token)
+        val json = JSONObject(body)
+        if (json.optBoolean("approval_required")) {
+            return BillPrintResult(
+                immediate = false,
+                billPrintCount = null,
+                requestId = json.getInt("id"),
+                requestStatus = json.optString("status"),
+            )
+        }
+        return BillPrintResult(
+            immediate = true,
+            billPrintCount = json.optInt("bill_print_count"),
+            requestId = null,
+            requestStatus = null,
+        )
+    }
+
+    fun getBillReprintRequestStatus(requestId: Int): String {
+        val token = requireToken()
+        val body = getJson("${config.serverUrl}/api/bill-reprint-requests/$requestId/", token)
+        return JSONObject(body).optString("status")
+    }
+
+    fun getOrderBillReprintStatus(orderId: Int, requestId: Int? = null): String? {
+        val token = requireToken()
+        val body = getJson(
+            "${config.serverUrl}/api/orders/$orderId/bill-reprint-status/",
+            token,
+        )
+        val json = JSONObject(body)
+        if (!json.optBoolean("has_request")) {
+            return null
+        }
+        if (requestId != null && json.optInt("id") != requestId) {
+            return null
+        }
+        return json.optString("status").ifBlank { null }
+    }
+
+    fun cancelBillReprintRequest(requestId: Int) {
+        val token = requireToken()
+        postJson(
+            "${config.serverUrl}/api/bill-reprint-requests/$requestId/cancel/",
+            JSONObject(),
+            token,
+        )
     }
 
     fun removeOneOrderItem(orderId: Int, itemId: Int): KitchenOrder {
@@ -786,7 +870,7 @@ class ApiClient(
         }
     }
 
-    private fun getJson(urlString: String, token: String): String {
+    private fun getJson(urlString: String, token: String?): String {
         val connection = openConnection(urlString, "GET", token)
         connection.instanceFollowRedirects = true
         return try {
@@ -820,16 +904,29 @@ class ApiClient(
         val body = BufferedReader(InputStreamReader(stream, Charsets.UTF_8))
             .use { it.readText() }
         if (code !in 200..299) {
-            throw ApiException(code, extractErrorMessage(body, code))
+            val details = extractErrorDetails(body, code)
+            throw ApiException(code, details.message, details.existingStockTakeId)
         }
         return body
     }
 
-    private fun extractErrorMessage(body: String, code: Int): String {
-        if (body.isBlank()) return "Request failed ($code)"
+    private data class ApiErrorDetails(
+        val message: String,
+        val existingStockTakeId: Int? = null,
+    )
+
+    private fun extractErrorDetails(body: String, code: Int): ApiErrorDetails {
+        if (body.isBlank()) return ApiErrorDetails("Request failed ($code)")
         return try {
             val json = JSONObject(body)
-            when {
+            val existingStockTakeId = if (
+                json.has("existing_stock_take_id") && !json.isNull("existing_stock_take_id")
+            ) {
+                json.getInt("existing_stock_take_id")
+            } else {
+                null
+            }
+            val message = when {
                 json.has("detail") -> {
                     when (val detail = json.get("detail")) {
                         is String -> detail
@@ -845,20 +942,25 @@ class ApiClient(
                     while (keys.hasNext()) {
                         val key = keys.next()
                         val value = json.get(key)
-                        val message = when (value) {
+                        val part = when (value) {
                             is JSONArray -> (0 until value.length()).joinToString(", ") {
                                 value.optString(it)
                             }
                             else -> value.toString()
                         }
-                        parts.add("$key: $message")
+                        parts.add("$key: $part")
                     }
                     parts.joinToString("\n").ifBlank { "Request failed ($code)" }
                 }
             }
+            ApiErrorDetails(message, existingStockTakeId)
         } catch (_: Exception) {
-            body
+            ApiErrorDetails(body.ifBlank { "Request failed ($code)" })
         }
+    }
+
+    private fun extractErrorMessage(body: String, code: Int): String {
+        return extractErrorDetails(body, code).message
     }
 
     companion object {

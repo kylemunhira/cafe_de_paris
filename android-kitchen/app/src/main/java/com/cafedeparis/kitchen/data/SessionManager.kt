@@ -383,6 +383,19 @@ class SessionManager(context: Context) {
 }
 
 object JsonParsers {
+    fun parseAppUpdateInfo(body: String): AppUpdateInfo {
+        val json = org.json.JSONObject(body)
+        return AppUpdateInfo(
+            latestVersionCode = json.getInt("latest_version_code"),
+            latestVersionName = json.optString("latest_version_name", ""),
+            minVersionCode = json.optInt("min_version_code", 1),
+            updateAvailable = json.optBoolean("update_available", false),
+            apkUrl = json.optString("apk_url", null)?.takeIf { it.isNotBlank() && it != "null" },
+            releaseNotes = json.optString("release_notes", ""),
+            forceUpdate = json.optBoolean("force_update", false),
+        )
+    }
+
     fun parseLoginResponse(body: String): LoginResponse {
         val json = org.json.JSONObject(body)
         val user = json.getJSONObject("user")

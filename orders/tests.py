@@ -2660,8 +2660,16 @@ class WaiterOrderAccessCodeTests(TestCase):
         denied = self.client.get(f"/api/orders/{other.id}/")
         self.assertEqual(denied.status_code, 404)
 
-    def test_second_bill_print_requires_hq_admin_access_code(self):
+    def test_second_bill_print_requires_manager_approval(self):
         User = get_user_model()
+        manager = User.objects.create_user(username="manager", password="pass")
+        StaffProfile.objects.create(
+            user=manager,
+            branch=self.branch,
+            role=StaffRole.BRANCH_MANAGER,
+            access_code="8000",
+            pos_access=False,
+        )
         hq_admin = User.objects.create_user(username="hqadmin", password="pass")
         StaffProfile.objects.create(
             user=hq_admin,
@@ -2680,14 +2688,48 @@ class WaiterOrderAccessCodeTests(TestCase):
         self.assertEqual(first.data["bill_print_count"], 1)
 
         denied = self.client.post(f"/api/orders/{order.id}/print-bill/", {}, format="json")
-        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(denied.status_code, 202, denied.data)
+        self.assertTrue(denied.data.get("approval_required"))
+        request_id = denied.data["id"]
 
+        self.client.force_authenticate(user=manager)
         approved = self.client.post(
-            f"/api/orders/{order.id}/print-bill/",
-            {"access_code": "9000"},
+            f"/api/bill-reprint-requests/{request_id}/approve/",
+            {},
             format="json",
         )
         self.assertEqual(approved.status_code, 200, approved.data)
-        self.assertEqual(approved.data["bill_print_count"], 2)
+        self.assertEqual(approved.data["status"], "approved")
         order.refresh_from_db()
-        self.assertEqual(order.bill_last_printed_by_id, hq_admin.id)
+        self.assertEqual(order.bill_print_count, 2)
+        self.assertEqual(order.bill_last_printed_by_id, manager.id)
+
+        self.client.force_authenticate(user=self.waiter)
+        denied_again = self.client.post(
+            f"/api/orders/{order.id}/print-bill/",
+            {},
+            format="json",
+        )
+        self.assertEqual(denied_again.status_code, 202, denied_again.data)
+        request_id_2 = denied_again.data["id"]
+
+        approved_via_code = self.client.post(
+            f"/api/orders/{order.id}/print-bill/",
+            {"access_code": "8000"},
+            format="json",
+        )
+        self.assertEqual(approved_via_code.status_code, 200, approved_via_code.data)
+        self.assertEqual(approved_via_code.data["bill_print_count"], 3)
+
+        self.client.post(
+            f"/api/bill-reprint-requests/{request_id_2}/cancel/",
+            {},
+            format="json",
+        )
+
+        self.client.force_authenticate(user=manager)
+        portal = self.client.post(f"/api/orders/{order.id}/print-bill/", {}, format="json")
+        self.assertEqual(portal.status_code, 200, portal.data)
+        self.assertEqual(portal.data["bill_print_count"], 4)
+        order.refresh_from_db()
+        self.assertEqual(order.bill_last_printed_by_id, manager.id)

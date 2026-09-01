@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -743,3 +744,109 @@ def mark_order_paid_with_tenders(
         ]
     )
     return order, change_base
+
+
+class BillReprintRequestError(Exception):
+    pass
+
+
+def get_or_create_pending_bill_reprint_request(order, requested_by):
+    from django.db import IntegrityError
+
+    from .models import BillReprintRequest, BillReprintRequestStatus
+
+    existing = BillReprintRequest.objects.filter(
+        order=order,
+        status=BillReprintRequestStatus.PENDING,
+    ).first()
+    if existing:
+        if existing.requested_by_id != requested_by.id:
+            existing.requested_by = requested_by
+            existing.save(update_fields=["requested_by"])
+        return existing
+    try:
+        return BillReprintRequest.objects.create(
+            order=order,
+            requested_by=requested_by,
+        )
+    except IntegrityError:
+        return BillReprintRequest.objects.get(
+            order=order,
+            status=BillReprintRequestStatus.PENDING,
+        )
+
+
+def approve_bill_reprint_request(request_obj, approved_by):
+    from django.utils import timezone
+
+    from .models import BillReprintRequest, BillReprintRequestStatus, OrderStatus
+
+    with transaction.atomic():
+        locked = BillReprintRequest.objects.select_for_update().get(pk=request_obj.pk)
+        if locked.status != BillReprintRequestStatus.PENDING:
+            raise BillReprintRequestError(
+                "This bill reprint request is no longer pending."
+            )
+        order = Order.objects.select_for_update().get(pk=locked.order_id)
+        if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
+            raise BillReprintRequestError(
+                "Bills are only available for open or unpaid orders."
+            )
+        order.bill_print_count += 1
+        order.bill_last_printed_at = timezone.now()
+        order.bill_last_printed_by = approved_by
+        order.save(
+            update_fields=[
+                "bill_print_count",
+                "bill_last_printed_at",
+                "bill_last_printed_by",
+            ]
+        )
+        locked.status = BillReprintRequestStatus.APPROVED
+        locked.approved_by = approved_by
+        locked.decided_at = timezone.now()
+        locked.save(update_fields=["status", "approved_by", "decided_at"])
+    locked.refresh_from_db()
+    order.refresh_from_db()
+    return locked, order
+
+
+def reject_bill_reprint_request(request_obj, rejected_by):
+    from django.utils import timezone
+
+    from .models import BillReprintRequest, BillReprintRequestStatus
+
+    with transaction.atomic():
+        locked = BillReprintRequest.objects.select_for_update().get(pk=request_obj.pk)
+        if locked.status != BillReprintRequestStatus.PENDING:
+            raise BillReprintRequestError(
+                "This bill reprint request is no longer pending."
+            )
+        locked.status = BillReprintRequestStatus.REJECTED
+        locked.approved_by = rejected_by
+        locked.decided_at = timezone.now()
+        locked.save(update_fields=["status", "approved_by", "decided_at"])
+    locked.refresh_from_db()
+    return locked
+
+
+def cancel_bill_reprint_request(request_obj, cancelled_by):
+    from django.utils import timezone
+
+    from .models import BillReprintRequest, BillReprintRequestStatus
+
+    with transaction.atomic():
+        locked = BillReprintRequest.objects.select_for_update().get(pk=request_obj.pk)
+        if locked.status != BillReprintRequestStatus.PENDING:
+            raise BillReprintRequestError(
+                "This bill reprint request is no longer pending."
+            )
+        if locked.requested_by_id != cancelled_by.id:
+            raise BillReprintRequestError(
+                "Only the staff member who requested the reprint may cancel it."
+            )
+        locked.status = BillReprintRequestStatus.CANCELLED
+        locked.decided_at = timezone.now()
+        locked.save(update_fields=["status", "decided_at"])
+    locked.refresh_from_db()
+    return locked

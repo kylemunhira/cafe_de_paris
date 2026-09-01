@@ -293,6 +293,39 @@ class StockTakeWorkflowTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("already exists", response.data["detail"])
+        self.assertEqual(response.data["existing_stock_take_id"], stock_take.id)
+
+    def test_completed_monthly_stock_take_visible_beyond_first_page(self):
+        monthly = StockTake.objects.create(
+            branch=self.branch,
+            stock_take_type=StockTakeType.MONTHLY,
+            count_date=date(2026, 8, 1),
+            status=StockTakeStatus.COMPLETED,
+        )
+        from datetime import timedelta
+
+        start = date(2026, 10, 1)
+        for offset in range(55):
+            StockTake.objects.create(
+                branch=self.branch,
+                stock_take_type=StockTakeType.DAILY,
+                count_date=start + timedelta(days=offset),
+                status=StockTakeStatus.COMPLETED,
+            )
+
+        first_page = self.client.get(
+            f"/api/stock-takes/?branch={self.branch.id}&page_size=50"
+        )
+        self.assertEqual(first_page.status_code, 200)
+        first_page_ids = {item["id"] for item in first_page.data["results"]}
+        self.assertNotIn(monthly.id, first_page_ids)
+
+        all_pages = self.client.get(
+            f"/api/stock-takes/?branch={self.branch.id}&page_size=50&page=2"
+        )
+        self.assertEqual(all_pages.status_code, 200)
+        second_page_ids = {item["id"] for item in all_pages.data["results"]}
+        self.assertIn(monthly.id, second_page_ids)
 
     def test_create_reuses_existing_draft_for_same_period(self):
         first = self.client.post(

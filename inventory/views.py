@@ -605,7 +605,10 @@ class StockTakeViewSet(viewsets.ModelViewSet):
         try:
             stock_take = serializer.save()
         except DuplicateStockTakeError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = {"detail": str(exc)}
+            if exc.existing_stock_take_id is not None:
+                payload["existing_stock_take_id"] = exc.existing_stock_take_id
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
         stock_take = self.get_queryset().get(pk=stock_take.pk)
         created = getattr(serializer, "stock_take_created", True)
         return Response(
@@ -622,7 +625,10 @@ class StockTakeViewSet(viewsets.ModelViewSet):
         except IncompleteStockTakeError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except DuplicateStockTakeError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = {"detail": str(exc)}
+            if exc.existing_stock_take_id is not None:
+                payload["existing_stock_take_id"] = exc.existing_stock_take_id
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
         except InsufficientStockError as exc:
             return Response(
                 {

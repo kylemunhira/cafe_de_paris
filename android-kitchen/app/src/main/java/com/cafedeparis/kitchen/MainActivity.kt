@@ -23,6 +23,7 @@ import com.cafedeparis.kitchen.databinding.ActivityMainBinding
 import com.cafedeparis.kitchen.print.EscPosPrinter
 import com.cafedeparis.kitchen.print.PrinterException
 import com.cafedeparis.kitchen.ui.OrderAdapter
+import com.cafedeparis.kitchen.update.AppUpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -44,6 +45,7 @@ class MainActivity : KeepScreenOnActivity() {
     private var pollJob: Job? = null
     private var errorHideJob: Job? = null
     private var loginInProgress = false
+    private var loginBlockedForUpdate = false
     private var lastOpenOrderIds: Set<Int> = emptySet()
     private val printer = EscPosPrinter()
 
@@ -87,6 +89,19 @@ class MainActivity : KeepScreenOnActivity() {
         }
         binding.retryButton.setOnClickListener { refreshOrders(manual = true) }
 
+        lifecycleScope.launch {
+            try {
+                val canProceed = AppUpdateManager(this@MainActivity, api).checkAndPrompt()
+                loginBlockedForUpdate = !canProceed
+                if (loginBlockedForUpdate && !session.isLoggedIn) {
+                    binding.accessCodeInput.isEnabled = false
+                    Toast.makeText(this@MainActivity, R.string.update_required, Toast.LENGTH_LONG).show()
+                }
+            } catch (_: Exception) {
+                // Server unreachable — continue without blocking.
+            }
+        }
+
         if (session.isLoggedIn) {
             routeAfterLogin()
         } else {
@@ -117,7 +132,7 @@ class MainActivity : KeepScreenOnActivity() {
     }
 
     private fun attemptLogin() {
-        if (loginInProgress) return
+        if (loginInProgress || loginBlockedForUpdate) return
         val accessCode = binding.accessCodeInput.text?.toString()?.trim().orEmpty()
         if (!accessCode.matches(Regex("^\\d{4}$"))) {
             return
