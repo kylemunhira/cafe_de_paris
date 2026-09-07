@@ -691,6 +691,57 @@ def build():
         )
     )
 
+    story.append(Paragraph("11.3 Understanding variance", s["h2"]))
+    story.append(
+        Paragraph(
+            "When you count the till at day end, the system compares what you <b>counted</b> with what it "
+            "<b>expected</b> to be in the drawer. The difference is called <b>variance</b>.",
+            s["body"],
+        )
+    )
+    story.append(
+        Paragraph(
+            "<b>Variance = Counted − Net expected</b><br/>"
+            "Net expected = sales collected + customer deposits − expenses paid from the till (per currency).",
+            s["body"],
+        )
+    )
+    story.append(
+        simple_table(
+            ["Variance", "Meaning", "Typical causes"],
+            [
+                [
+                    "Positive (+)",
+                    "You counted <b>more</b> cash than expected (surplus / overage).",
+                    "Unrecorded cash, counting error, float not accounted for.",
+                ],
+                [
+                    "Negative (−)",
+                    "You counted <b>less</b> cash than expected (shortage).",
+                    "Unlogged expense, wrong change, missing sale, counting mistake.",
+                ],
+                [
+                    "Zero",
+                    "Counted matches expected — till balances.",
+                    "—",
+                ],
+                [
+                    "— (dash)",
+                    "No counted amount was entered when day end was saved.",
+                    "Re-run day end and enter till counts.",
+                ],
+            ],
+            col_widths=[28 * mm, 62 * mm, 80 * mm],
+        )
+    )
+    story.append(
+        tip(
+            "Aim for variance as close to zero as possible. Repeated or large variances usually mean "
+            "counting errors, unrecorded expenses, or payment/recording issues worth investigating.",
+            s,
+        )
+    )
+
     # 12 Products
     story.append(Paragraph("12. Products & catalogue", s["h1"]))
     story.append(section_rule())
@@ -756,7 +807,7 @@ def build():
             [
                 ["Ingredient Stock", "See on-hand ingredients by branch"],
                 ["Ingredient Usage", "Track consumption over a date range"],
-                ["Day End", "Review past cash-up closes"],
+                ["Day End", "Review past cash-up closes, variance by branch, and period totals (orders, gross, expenses)"],
                 ["Sales by Product", "Best sellers and product performance"],
                 ["Voided & Cancelled", "Monitor voids and cancellations"],
                 ["Customer Balances", "Account balances across customers"],
@@ -789,6 +840,7 @@ def build():
                 ["Menu item missing", "Check role permissions and branch type; ask HQ to review Users"],
                 ["Cannot pay / no Receipt mode", "Waiter accounts cannot collect payment — use a cashier or manager"],
                 ["Day end blocked", "Complete today’s daily stock take, then reopen Day end"],
+                ["Large day-end variance", "Check unlogged expenses, change given, and recount the till; see section 11.3"],
                 ["Product missing on POS", "Check category, branch availability, and active status"],
                 ["Cannot void a sale", "Fiscalised approved receipts cannot be voided; ask manager"],
                 ["Transfer not in stock", "Confirm GRV / receive was completed at the destination"],

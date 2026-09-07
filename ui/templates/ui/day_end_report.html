@@ -12,6 +12,16 @@
 <div class="card report-filters">
   <div class="report-filters-grid">
     <label>
+      <span>{% trans "Period" %}</span>
+      <select id="filter-period" class="report-input">
+        <option value="7">{% trans "Last 7 days" %}</option>
+        <option value="14">{% trans "Last 14 days" %}</option>
+        <option value="30">{% trans "Last 30 days" %}</option>
+        <option value="mtd">{% trans "Month to date" %}</option>
+        <option value="custom">{% trans "Custom range" %}</option>
+      </select>
+    </label>
+    <label>
       <span>{% trans "From" %}</span>
       <input type="date" id="filter-from" class="report-input">
     </label>
@@ -27,6 +37,14 @@
       </select>
     </label>
     {% endif %}
+    <label>
+      <span>{% trans "View" %}</span>
+      <select id="filter-view" class="report-input">
+        <option value="both">{% trans "Daily detail and totals" %}</option>
+        <option value="daily">{% trans "Daily detail only" %}</option>
+        <option value="totals">{% trans "Branch totals only" %}</option>
+      </select>
+    </label>
     <div class="report-filters-actions">
       <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
@@ -39,8 +57,16 @@
     <div class="stat-value" id="summary-count">—</div>
   </div>
   <div class="card stat-card">
-    <div class="stat-label">{% trans "With cash count" %}</div>
-    <div class="stat-value" id="summary-counted">—</div>
+    <div class="stat-label">{% trans "Total orders" %}</div>
+    <div class="stat-value" id="summary-orders">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">{% trans "Total gross" %}</div>
+    <div class="stat-value" id="summary-gross">—</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">{% trans "Total expenses" %}</div>
+    <div class="stat-value" id="summary-expenses">—</div>
   </div>
   <div class="card stat-card">
     <div class="stat-label">{% trans "Total variance" %}</div>
@@ -57,6 +83,16 @@
   </div>
   <div class="table-wrap" id="report-table">
     <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+
+<div class="card report-panel" id="totals-panel" hidden style="padding: 0; margin-top: 1rem;">
+  <div class="report-panel-header" style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(44,24,16,0.06);">
+    <h3 style="margin: 0; font-size: 1rem;">{% trans "Totals by branch" %}</h3>
+    <p class="report-panel-note" id="totals-period-note" style="margin: 0.35rem 0 0;"></p>
+  </div>
+  <div class="table-wrap" id="totals-table">
+    <div style="padding: 2rem; text-align: center; color: var(--muted, #6b5b4f);">—</div>
   </div>
 </div>
 
@@ -82,14 +118,22 @@ const t = (msgid) => window.CDP.t(msgid);
 const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
 const staffBranchId = {{ staff_branch_id|default:"null" }};
 
+const filterPeriod = document.getElementById("filter-period");
 const filterFrom = document.getElementById("filter-from");
 const filterTo = document.getElementById("filter-to");
 const filterBranch = document.getElementById("filter-branch");
+const filterView = document.getElementById("filter-view");
 const applyFilters = document.getElementById("apply-filters");
 const printReportBtn = document.getElementById("print-report-btn");
 const summaryCount = document.getElementById("summary-count");
-const summaryCounted = document.getElementById("summary-counted");
+const summaryOrders = document.getElementById("summary-orders");
+const summaryGross = document.getElementById("summary-gross");
+const summaryExpenses = document.getElementById("summary-expenses");
 const summaryVariance = document.getElementById("summary-variance");
+const totalsPanel = document.getElementById("totals-panel");
+const totalsTable = document.getElementById("totals-table");
+const totalsPeriodNote = document.getElementById("totals-period-note");
+const reportTableCard = document.getElementById("report-table-card");
 const reportTable = document.getElementById("report-table");
 const detailPanel = document.getElementById("detail-panel");
 const detailTitle = document.getElementById("detail-title");
@@ -108,11 +152,98 @@ function toLocalDateInput(date) {
 
 function defaultDates() {
   const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  const start = new Date(today);
+  start.setDate(start.getDate() - 6);
   return {
     from: toLocalDateInput(start),
     to: toLocalDateInput(today),
   };
+}
+
+function applyPeriodPreset(preset, { reload = false } = {}) {
+  if (preset === "custom") {
+    if (reload) loadReport();
+    return;
+  }
+  const today = new Date();
+  const to = toLocalDateInput(today);
+  let from;
+  if (preset === "mtd") {
+    from = toLocalDateInput(new Date(today.getFullYear(), today.getMonth(), 1));
+  } else {
+    const days = Number.parseInt(preset, 10);
+    const start = new Date(today);
+    start.setDate(start.getDate() - (days - 1));
+    from = toLocalDateInput(start);
+  }
+  filterFrom.value = from;
+  filterTo.value = to;
+  if (reload) loadReport();
+}
+
+function markCustomPeriod() {
+  if (filterPeriod.value !== "custom") {
+    filterPeriod.value = "custom";
+  }
+}
+
+function currentViewMode() {
+  return filterView?.value || "both";
+}
+
+function aggregateTotals(rows) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.closeCount += 1;
+      acc.orderCount += Number(row.order_count || 0);
+      acc.grossTotal += Number(row.gross_total || 0);
+      acc.expensesTotal += Number(row.expenses_total || 0);
+      if (row.has_counted_entries) {
+        acc.varianceTotal += Number(row.variance_total || 0);
+        acc.countedCloseCount += 1;
+      }
+      return acc;
+    },
+    {
+      closeCount: 0,
+      orderCount: 0,
+      grossTotal: 0,
+      expensesTotal: 0,
+      varianceTotal: 0,
+      countedCloseCount: 0,
+    }
+  );
+}
+
+function computeBranchTotals(rows) {
+  const byBranch = new Map();
+  for (const row of rows) {
+    const key = row.branch?.id ?? row.branch?.name ?? "unknown";
+    const branchName = row.branch?.name || "—";
+    let agg = byBranch.get(key);
+    if (!agg) {
+      agg = {
+        branchId: key,
+        branchName,
+        closeCount: 0,
+        orderCount: 0,
+        grossTotal: 0,
+        expensesTotal: 0,
+        varianceTotal: 0,
+        countedCloseCount: 0,
+      };
+      byBranch.set(key, agg);
+    }
+    agg.closeCount += 1;
+    agg.orderCount += Number(row.order_count || 0);
+    agg.grossTotal += Number(row.gross_total || 0);
+    agg.expensesTotal += Number(row.expenses_total || 0);
+    if (row.has_counted_entries) {
+      agg.varianceTotal += Number(row.variance_total || 0);
+      agg.countedCloseCount += 1;
+    }
+  }
+  return [...byBranch.values()].sort((a, b) => a.branchName.localeCompare(b.branchName));
 }
 
 function queryString() {
@@ -139,6 +270,7 @@ function varianceClass(value) {
 function renderTable() {
   if (!closes.length) {
     reportTable.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--muted, #6b5b4f);">${t("No saved day-end closes for this period.")}</div>`;
+    renderTotalsTable();
     return;
   }
 
@@ -178,16 +310,87 @@ function renderTable() {
   reportTable.querySelectorAll("tbody tr").forEach((tr) => {
     tr.addEventListener("click", () => openDetail(Number(tr.dataset.id)));
   });
+  renderTotalsTable();
 }
 
 function updateSummary() {
-  summaryCount.textContent = String(closes.length);
-  summaryCounted.textContent = String(closes.filter((c) => c.has_counted_entries).length);
-  const totalVariance = closes
-    .filter((c) => c.has_counted_entries)
-    .reduce((sum, c) => sum + Number(c.variance_total || 0), 0);
-  summaryVariance.textContent = money(totalVariance);
-  summaryVariance.className = `stat-value ${varianceClass(totalVariance)}`;
+  const totals = aggregateTotals(closes);
+  summaryCount.textContent = String(totals.closeCount);
+  summaryOrders.textContent = String(totals.orderCount);
+  summaryGross.textContent = money(totals.grossTotal);
+  summaryExpenses.textContent = money(totals.expensesTotal);
+  summaryVariance.textContent = totals.countedCloseCount ? money(totals.varianceTotal) : "—";
+  summaryVariance.className = `stat-value ${totals.countedCloseCount ? varianceClass(totals.varianceTotal) : ""}`;
+}
+
+function renderTotalsTable() {
+  const viewMode = currentViewMode();
+  const showTotals = viewMode !== "daily";
+  totalsPanel.hidden = !showTotals;
+  reportTableCard.hidden = viewMode === "totals";
+
+  if (!showTotals) return;
+
+  const periodLabel = filterFrom.value && filterTo.value
+    ? `${filterFrom.value} — ${filterTo.value}`
+    : t("Selected period");
+  totalsPeriodNote.textContent = periodLabel;
+
+  if (!closes.length) {
+    totalsTable.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--muted, #6b5b4f);">${t("No saved day-end closes for this period.")}</div>`;
+    return;
+  }
+
+  const branchTotals = computeBranchTotals(closes);
+  const grand = aggregateTotals(closes);
+  const showGrandTotalRow = branchTotals.length > 1;
+
+  const rows = branchTotals.map((row) => {
+    const variance = row.countedCloseCount ? money(row.varianceTotal) : "—";
+    const vClass = row.countedCloseCount ? varianceClass(row.varianceTotal) : "";
+    return `
+      <tr>
+        <td><strong>${row.branchName}</strong></td>
+        <td style="text-align:right">${row.closeCount}</td>
+        <td style="text-align:right">${row.orderCount}</td>
+        <td style="text-align:right">${money(row.grossTotal)}</td>
+        <td style="text-align:right">${money(row.expensesTotal)}</td>
+        <td style="text-align:right" class="${vClass}">${variance}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const grandVariance = grand.countedCloseCount ? money(grand.varianceTotal) : "—";
+  const grandVarianceClass = grand.countedCloseCount ? varianceClass(grand.varianceTotal) : "";
+  const grandTotalRow = showGrandTotalRow ? `
+      <tfoot>
+        <tr>
+          <td><strong>${t("Grand total")}</strong></td>
+          <td style="text-align:right; font-weight:700;">${grand.closeCount}</td>
+          <td style="text-align:right; font-weight:700;">${grand.orderCount}</td>
+          <td style="text-align:right; font-weight:700;">${money(grand.grossTotal)}</td>
+          <td style="text-align:right; font-weight:700;">${money(grand.expensesTotal)}</td>
+          <td style="text-align:right; font-weight:700;" class="${grandVarianceClass}">${grandVariance}</td>
+        </tr>
+      </tfoot>
+  ` : "";
+
+  totalsTable.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>${t("Branch")}</th>
+          <th style="text-align:right">${t("Closes")}</th>
+          <th style="text-align:right">${t("Orders")}</th>
+          <th style="text-align:right">${t("Gross")}</th>
+          <th style="text-align:right">${t("Expenses")}</th>
+          <th style="text-align:right">${t("Variance")}</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      ${grandTotalRow}
+    </table>
+  `;
 }
 
 function cashLinesHtml(lines) {
@@ -306,17 +509,33 @@ async function openDetail(id) {
 }
 
 async function loadReport() {
-  reportTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  const viewMode = currentViewMode();
+  if (viewMode !== "totals") {
+    reportTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  } else {
+    totalsTable.innerHTML = `<div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>`;
+  }
   detailPanel.hidden = true;
   try {
     const data = await apiGet(`/reports/day-end-closes/${queryString()}`);
     closes = data.results || [];
     updateSummary();
-    renderTable();
+    if (viewMode === "totals") {
+      renderTotalsTable();
+    } else {
+      renderTable();
+    }
   } catch (err) {
     closes = [];
     updateSummary();
-    reportTable.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--danger, #a33);">${err.message}</div>`;
+    const errorHtml = `<div style="padding: 2rem; text-align: center; color: var(--danger, #a33);">${err.message}</div>`;
+    if (viewMode === "totals") {
+      totalsTable.innerHTML = errorHtml;
+      totalsPanel.hidden = false;
+      reportTableCard.hidden = true;
+    } else {
+      reportTable.innerHTML = errorHtml;
+    }
   }
 }
 
@@ -334,7 +553,17 @@ async function init() {
   const dates = defaultDates();
   filterFrom.value = dates.from;
   filterTo.value = dates.to;
+  filterPeriod.value = "7";
   await loadBranches();
+  filterPeriod.addEventListener("change", () => applyPeriodPreset(filterPeriod.value, { reload: true }));
+  filterFrom.addEventListener("change", markCustomPeriod);
+  filterTo.addEventListener("change", markCustomPeriod);
+  filterView.addEventListener("change", () => {
+    renderTotalsTable();
+    if (currentViewMode() !== "totals" && !reportTable.querySelector("table")) {
+      renderTable();
+    }
+  });
   applyFilters.addEventListener("click", loadReport);
   detailCloseBtn.addEventListener("click", () => {
     detailPanel.hidden = true;
