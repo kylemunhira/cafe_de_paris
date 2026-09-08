@@ -428,6 +428,7 @@ class ReportVATView(APIView):
                 from_date=request.query_params.get("from"),
                 to_date=request.query_params.get("to"),
                 branch_id=branch_id,
+                currency=request.query_params.get("currency"),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)

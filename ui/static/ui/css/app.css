@@ -2302,6 +2302,10 @@ table.data-table tbody tr:hover {
   max-width: 52rem;
 }
 
+.vat-report-card.vat-report-dual {
+  max-width: 60rem;
+}
+
 .vat-report-header {
   text-align: center;
   margin-bottom: 2rem;
@@ -2340,6 +2344,26 @@ table.data-table tbody tr:hover {
   border-collapse: collapse;
 }
 
+.vat-report-table th {
+  padding: 0.25rem 0 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted, #6b5c52);
+  border-bottom: 1px solid rgba(44, 24, 16, 0.08);
+}
+
+.vat-report-table th.vat-amount-primary-head,
+.vat-report-table th.vat-amount-secondary-head,
+.vat-report-table td.vat-amount-primary,
+.vat-report-table td.vat-amount-secondary {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 7.5rem;
+}
+
 .vat-report-table td {
   padding: 0.45rem 0;
   border-bottom: 1px solid rgba(44, 24, 16, 0.06);
@@ -2351,20 +2375,33 @@ table.data-table tbody tr:hover {
   color: var(--color-muted, #6b5c52);
 }
 
-.vat-report-table td:last-child {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.vat-report-table td.vat-amount-primary,
+.vat-report-table td.vat-amount-secondary {
   font-weight: 600;
-  white-space: nowrap;
+  padding-left: 1rem;
 }
 
 .vat-report-net {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
   padding-top: 1rem;
   border-top: 2px solid rgba(44, 24, 16, 0.12);
   font-size: 1.1rem;
+}
+
+.vat-report-net-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vat-net-secondary {
+  color: var(--color-muted, #6b5c52);
+  font-weight: 600;
 }
 
 .vat-report-note {

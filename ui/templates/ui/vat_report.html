@@ -27,6 +27,14 @@
       </select>
     </label>
     {% endif %}
+    <label>
+      <span>{% trans "Currency" %}</span>
+      <select id="filter-currency" class="report-input">
+        <option value="usd">USD</option>
+        <option value="zwg">ZWG</option>
+        <option value="both">{% trans "Both" %}</option>
+      </select>
+    </label>
     <div class="report-filters-actions">
       <button type="button" id="apply-filters" class="btn btn-primary btn-sm">{% trans "Apply" %}</button>
     </div>
@@ -42,42 +50,61 @@
 
   <div class="vat-report-section">
     <h3>{% trans "Output TAX Amount" %}</h3>
-    <table class="vat-report-table">
+    <table class="vat-report-table" id="vat-output-table">
+      <thead>
+        <tr class="vat-amount-head">
+          <th scope="col"></th>
+          <th scope="col"></th>
+          <th scope="col" class="vat-amount-primary-head"></th>
+          <th scope="col" class="vat-amount-secondary-head" hidden></th>
+        </tr>
+      </thead>
       <tbody>
-        <tr><td>1</td><td>{% trans "Total Sales Including VAT" %}</td><td id="out-total-incl">—</td></tr>
-        <tr><td>2</td><td>{% trans "Total Sales Excluding VAT" %}</td><td id="out-total-excl">—</td></tr>
-        <tr><td>3</td><td>{% trans "Total Taxable Sales (Excluding VAT)" %}</td><td id="out-taxable-excl">—</td></tr>
-        <tr><td>4</td><td>{% trans "Total Non-taxable Sales" %}</td><td id="out-non-taxable">—</td></tr>
-        <tr><td>5</td><td>{% trans "VAT on Taxables Sales" %}</td><td id="out-vat">—</td></tr>
-        <tr><td>6</td><td>{% trans "Sales Returns" %}</td><td id="out-returns">—</td></tr>
-        <tr><td>7</td><td>{% trans "Discounts Given" %}</td><td id="out-discounts">—</td></tr>
+        <tr data-out="total_sales_including_vat"><td>1</td><td>{% trans "Total Sales Including VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-out="total_sales_excluding_vat"><td>2</td><td>{% trans "Total Sales Excluding VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-out="total_taxable_sales_excluding_vat"><td>3</td><td>{% trans "Total Taxable Sales (Excluding VAT)" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-out="total_non_taxable_sales"><td>4</td><td>{% trans "Total Non-taxable Sales" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-out="vat_on_taxable_sales"><td>5</td><td>{% trans "VAT on Taxables Sales" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-out="sales_returns"><td>6</td><td>{% trans "Sales Returns" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-out="discounts_given"><td>7</td><td>{% trans "Discounts Given" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="vat-report-section">
     <h3>{% trans "Input TAX" %}</h3>
-    <table class="vat-report-table">
+    <table class="vat-report-table" id="vat-input-table">
+      <thead>
+        <tr class="vat-amount-head">
+          <th scope="col"></th>
+          <th scope="col"></th>
+          <th scope="col" class="vat-amount-primary-head"></th>
+          <th scope="col" class="vat-amount-secondary-head" hidden></th>
+        </tr>
+      </thead>
       <tbody>
-        <tr><td>1</td><td>{% trans "Total Purchases Including VAT" %}</td><td id="in-total-incl">—</td></tr>
-        <tr><td>2</td><td>{% trans "Total Purchases Excluding VAT" %}</td><td id="in-total-excl">—</td></tr>
-        <tr><td>3</td><td>{% trans "Total Raw Materials Purchases Including VAT" %}</td><td id="in-raw-incl">—</td></tr>
-        <tr><td>4</td><td>{% trans "Total Raw Materials Purchases Excluding VAT" %}</td><td id="in-raw-excl">—</td></tr>
-        <tr><td>5</td><td>{% trans "Credit Notes Excluding VAT" %}</td><td id="in-credit-excl">—</td></tr>
-        <tr><td>6</td><td>{% trans "Credit Notes VAT" %}</td><td id="in-credit-vat">—</td></tr>
-        <tr><td>7</td><td>{% trans "Credit Notes Including VAT" %}</td><td id="in-credit-incl">—</td></tr>
-        <tr><td>8</td><td>{% trans "Total Taxable Purchases (Excluding VAT)" %}</td><td id="in-taxable-excl">—</td></tr>
-        <tr><td>9</td><td>{% trans "Total Non-taxable Purchases" %}</td><td id="in-non-taxable">—</td></tr>
-        <tr><td>10</td><td>{% trans "VAT on Taxable Purchases" %}</td><td id="in-vat">—</td></tr>
-        <tr><td>11</td><td>{% trans "Purchases Returns" %}</td><td id="in-returns">—</td></tr>
-        <tr><td>12</td><td>{% trans "Discount Given" %}</td><td id="in-discounts">—</td></tr>
+        <tr data-in="total_purchases_including_vat"><td>1</td><td>{% trans "Total Purchases Including VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="total_purchases_excluding_vat"><td>2</td><td>{% trans "Total Purchases Excluding VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="total_raw_materials_including_vat"><td>3</td><td>{% trans "Total Raw Materials Purchases Including VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="total_raw_materials_excluding_vat"><td>4</td><td>{% trans "Total Raw Materials Purchases Excluding VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="credit_notes_excluding_vat"><td>5</td><td>{% trans "Credit Notes Excluding VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="credit_notes_vat"><td>6</td><td>{% trans "Credit Notes VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="credit_notes_including_vat"><td>7</td><td>{% trans "Credit Notes Including VAT" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="total_taxable_purchases_excluding_vat"><td>8</td><td>{% trans "Total Taxable Purchases (Excluding VAT)" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="total_non_taxable_purchases"><td>9</td><td>{% trans "Total Non-taxable Purchases" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="vat_on_taxable_purchases"><td>10</td><td>{% trans "VAT on Taxable Purchases" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="purchases_returns"><td>11</td><td>{% trans "Purchases Returns" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
+        <tr data-in="discount_given"><td>12</td><td>{% trans "Discount Given" %}</td><td class="vat-amount-primary">—</td><td class="vat-amount-secondary" hidden>—</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="vat-report-net">
     <span>{% trans "NET VAT" %}</span>
-    <strong id="net-vat">—</strong>
+    <div class="vat-report-net-amounts">
+      <strong id="net-vat-primary">—</strong>
+      <strong id="net-vat-secondary" class="vat-net-secondary" hidden>—</strong>
+    </div>
   </div>
 
   <p class="vat-report-note" id="report-note"></p>
@@ -97,6 +124,7 @@ const staffBranchId = {{ staff_branch_id|default:"null" }};
 const filterFrom = document.getElementById("filter-from");
 const filterTo = document.getElementById("filter-to");
 const filterBranch = document.getElementById("filter-branch");
+const filterCurrency = document.getElementById("filter-currency");
 const applyFilters = document.getElementById("apply-filters");
 const printReportBtn = document.getElementById("print-report-btn");
 
@@ -124,6 +152,7 @@ function queryString() {
   if (filterTo.value) params.set("to", filterTo.value);
   const branch = effectiveBranchParam(canFilterAnyBranch, staffBranchId, filterBranch?.value);
   if (branch) params.set("branch", branch);
+  if (filterCurrency?.value) params.set("currency", filterCurrency.value);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -135,9 +164,82 @@ function formatPeriod(from, to) {
   return `${start.toLocaleString()} ${t("to")} ${end.toLocaleString()}`;
 }
 
-function setAmount(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = formatCurrency(value ?? 0);
+function currencyLabel(info, fallback) {
+  return (info?.code || fallback || "").toUpperCase() || fallback;
+}
+
+function resolveDisplayColumns(data) {
+  const mode = data.currency?.mode || filterCurrency?.value || "usd";
+  const usd = data.currency?.usd || data.currency?.base || null;
+  const zwg = data.currency?.zwg || null;
+  const usdCode = currencyLabel(usd, "USD");
+  const zwgCode = currencyLabel(zwg, "ZWG");
+  const amounts = data.amounts_by_currency || {};
+
+  if (mode === "zwg") {
+    return {
+      mode,
+      dual: false,
+      primary: { code: zwgCode, currency: zwg, amounts: amounts[zwgCode] },
+      secondary: null,
+    };
+  }
+  if (mode === "both") {
+    return {
+      mode,
+      dual: true,
+      primary: { code: usdCode, currency: usd, amounts: amounts[usdCode] },
+      secondary: { code: zwgCode, currency: zwg, amounts: amounts[zwgCode] },
+    };
+  }
+  return {
+    mode: "usd",
+    dual: false,
+    primary: { code: usdCode, currency: usd, amounts: amounts[usdCode] },
+    secondary: null,
+  };
+}
+
+function setDualVisibility(dual) {
+  document.querySelectorAll(".vat-amount-secondary, .vat-amount-secondary-head").forEach((el) => {
+    el.hidden = !dual;
+  });
+  const netSecondary = document.getElementById("net-vat-secondary");
+  if (netSecondary) netSecondary.hidden = !dual;
+  document.getElementById("vat-report")?.classList.toggle("vat-report-dual", dual);
+}
+
+function setColumnHeads(columns) {
+  document.querySelectorAll(".vat-amount-primary-head").forEach((el) => {
+    el.textContent = columns.primary?.code || "";
+  });
+  document.querySelectorAll(".vat-amount-secondary-head").forEach((el) => {
+    el.textContent = columns.secondary?.code || "";
+  });
+}
+
+function formatAmount(value, currency) {
+  return formatCurrency(value ?? 0, currency);
+}
+
+function fillSection(attr, sectionKey, columns) {
+  document.querySelectorAll(`tr[${attr}]`).forEach((row) => {
+    const key = row.getAttribute(attr);
+    const primaryEl = row.querySelector(".vat-amount-primary");
+    const secondaryEl = row.querySelector(".vat-amount-secondary");
+    const primaryValue = columns.primary?.amounts?.[sectionKey]?.[key];
+    if (primaryEl) {
+      primaryEl.textContent = formatAmount(primaryValue, columns.primary?.currency);
+    }
+    if (secondaryEl) {
+      if (columns.dual && columns.secondary) {
+        const secondaryValue = columns.secondary.amounts?.[sectionKey]?.[key];
+        secondaryEl.textContent = formatAmount(secondaryValue, columns.secondary.currency);
+      } else {
+        secondaryEl.textContent = "—";
+      }
+    }
+  });
 }
 
 function renderReport(data) {
@@ -146,35 +248,39 @@ function renderReport(data) {
   const periodTo = data.period?.to || filterTo.value;
   document.getElementById("report-period").textContent = formatPeriod(periodFrom, periodTo);
 
-  const out = data.output_tax || {};
-  setAmount("out-total-incl", out.total_sales_including_vat);
-  setAmount("out-total-excl", out.total_sales_excluding_vat);
-  setAmount("out-taxable-excl", out.total_taxable_sales_excluding_vat);
-  setAmount("out-non-taxable", out.total_non_taxable_sales);
-  setAmount("out-vat", out.vat_on_taxable_sales);
-  setAmount("out-returns", out.sales_returns);
-  setAmount("out-discounts", out.discounts_given);
+  const columns = resolveDisplayColumns(data);
+  setDualVisibility(columns.dual);
+  setColumnHeads(columns);
+  fillSection("data-out", "output_tax", columns);
+  fillSection("data-in", "input_tax", columns);
 
-  const inp = data.input_tax || {};
-  setAmount("in-total-incl", inp.total_purchases_including_vat);
-  setAmount("in-total-excl", inp.total_purchases_excluding_vat);
-  setAmount("in-raw-incl", inp.total_raw_materials_including_vat);
-  setAmount("in-raw-excl", inp.total_raw_materials_excluding_vat);
-  setAmount("in-credit-excl", inp.credit_notes_excluding_vat);
-  setAmount("in-credit-vat", inp.credit_notes_vat);
-  setAmount("in-credit-incl", inp.credit_notes_including_vat);
-  setAmount("in-taxable-excl", inp.total_taxable_purchases_excluding_vat);
-  setAmount("in-non-taxable", inp.total_non_taxable_purchases);
-  setAmount("in-vat", inp.vat_on_taxable_purchases);
-  setAmount("in-returns", inp.purchases_returns);
-  setAmount("in-discounts", inp.discount_given);
+  const netPrimary = document.getElementById("net-vat-primary");
+  const netSecondary = document.getElementById("net-vat-secondary");
+  if (netPrimary) {
+    netPrimary.textContent = formatAmount(columns.primary?.amounts?.net_vat, columns.primary?.currency);
+  }
+  if (netSecondary) {
+    netSecondary.textContent = columns.dual
+      ? formatAmount(columns.secondary?.amounts?.net_vat, columns.secondary?.currency)
+      : "—";
+  }
 
-  setAmount("net-vat", data.net_vat);
+  if (data.currency?.usd?.code && filterCurrency) {
+    const usdOpt = filterCurrency.querySelector('option[value="usd"]');
+    if (usdOpt) usdOpt.textContent = currencyLabel(data.currency.usd, "USD");
+  }
 
   const meta = data.meta || {};
-  document.getElementById("report-note").textContent =
+  const usdCount = meta.usd_paid_fiscalized_sales_count ?? columns.primary?.amounts?.sales_count ?? 0;
+  const zwgCount = meta.zwg_paid_fiscalized_sales_count ?? 0;
+  let note =
     `${meta.fiscalized_sales_count ?? 0} ${t("fiscal invoices (proforma excluded)")} · ` +
     `${meta.vat_purchase_order_count ?? 0} ${t("purchases from VAT-registered suppliers")}`;
+  note += ` · ${usdCount} ${t("USD-paid")} · ${zwgCount} ${t("ZWG-paid")}`;
+  if (columns.mode === "zwg" || columns.mode === "both") {
+    note += ` · ${t("Purchases shown in USD only")}`;
+  }
+  document.getElementById("report-note").textContent = note;
 }
 
 async function loadBranches() {
@@ -212,6 +318,7 @@ applyFilters.addEventListener("click", loadReport);
 filterFrom.addEventListener("change", loadReport);
 filterTo.addEventListener("change", loadReport);
 filterBranch?.addEventListener("change", loadReport);
+filterCurrency?.addEventListener("change", loadReport);
 printReportBtn?.addEventListener("click", () => window.print());
 
 const defaults = defaultDates();
