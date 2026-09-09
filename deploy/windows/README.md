@@ -102,10 +102,30 @@ C:\nssm\nssm.exe restart CafeDeParis
 
 ### Android kitchen app updates
 
-After building a new APK in `android-kitchen/`:
+On the **build PC**, build the APK then copy `releases\kitchen.apk` onto the production server (RDP/USB).
+
+On the **production server** (app root, e.g. `C:\Apps\cafe_de_paris`):
 
 ```powershell
-copy android-kitchen\app\build\outputs\apk\debug\app-debug.apk releases\kitchen.apk
+.\deploy\windows\publish-kitchen-apk.ps1 -ApkPath ".\releases\kitchen.apk" -VersionCode 4 -VersionName "1.2.3"
 ```
 
-Update `.env` (`KITCHEN_APP_VERSION_CODE`, `KITCHEN_APP_VERSION_NAME`) to match `app/build.gradle.kts`, then restart the service. Tablets will prompt users on next launch.
+Or manually:
+
+```powershell
+copy path\to\kitchen.apk releases\kitchen.apk
+```
+
+Update `.env` (`KITCHEN_APP_VERSION_CODE`, `KITCHEN_APP_VERSION_NAME`) to match `app/build.gradle.kts`, then restart the service:
+
+```powershell
+C:\nssm\nssm.exe restart CafeDeParis
+```
+
+Verify before checking the tablet:
+
+```powershell
+curl http://127.0.0.1:8000/api/app-version/?version_code=3
+```
+
+Expect `"latest_version_code":4` and `"update_available":true`. Tablets prompt on next launch or **Settings → Check for updates**.

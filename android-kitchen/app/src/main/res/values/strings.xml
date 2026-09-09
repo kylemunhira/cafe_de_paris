@@ -4,6 +4,10 @@
     <string name="login_subtitle">Enter your 4-digit access code</string>
     <string name="login_fields_required">Enter your 4-digit access code</string>
     <string name="access_code_hint">4-digit access code</string>
+    <string name="select_branch_prompt">Choose which branch to operate</string>
+    <string name="continue_with_branch">Continue</string>
+    <string name="branch_required">Select a branch to continue</string>
+    <string name="select_branch_placeholder">Select branch…</string>
     <string name="access_code_place_order_title">Who is placing this order?</string>
     <string name="access_code_place_order_message">Enter your 4-digit access code so this order is attributed to you.</string>
     <string name="access_code_menu_title">Open Menu</string>

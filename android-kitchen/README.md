@@ -3,7 +3,7 @@
 Android app for branch staff:
 
 - **Kitchen display** — shows open POS orders, auto-prints new order tickets on a Bluetooth thermal printer, and removes orders once they are paid at the till.
-- **Cashier POS** — cashiers and branch managers can take orders and collect payment directly from the same app.
+- **Cashier POS** — cashiers, branch managers, and HQ admins can take orders and collect payment directly from the same app. HQ admins choose which branch to operate as at login.
 
 ## Requirements
 
@@ -16,15 +16,16 @@ Android app for branch staff:
 |------|----------|
 | Cashier | Point of Sale (orders + payments) |
 | Branch manager | Point of Sale |
+| HQ admin | Point of Sale (pick operating branch at login) |
 | Kitchen / branch staff | Kitchen display |
 
 ## Setup
 
 1. Set the server URL in `config.json` (see below).
 2. Open `android-kitchen/` in **Android Studio** and run the app on the tablet.
-3. Sign in with staff credentials (username + password only).
+3. Sign in with a 4-digit access code. HQ admins then select the branch to operate.
 4. Open **Settings** and choose the paired Bluetooth printer address (kitchen display and POS).
-5. **Cashiers:** use **Order** to place orders and **Receipt** to collect payment on open orders.
+5. **Cashiers / HQ:** use **Order** to place orders and **Receipt** to collect payment on open orders.
 
 ## Server URL (`config.json`)
 
@@ -77,7 +78,7 @@ Use **☰ → Fiscalise** to list **today's** paid fiscal invoices. Cashiers and
 
 ## API used
 
-- `POST /api/auth/mobile-login/` — token login (kitchen and/or POS access flags)
+- `POST /api/auth/mobile-login/` — token login (kitchen and/or POS access flags; HQ admins pass `branch_id` after choosing a branch)
 - `GET /api/orders/?status=open&branch={id}` — open orders
 - `GET /api/products/?pos_catalog=true` — POS product catalog
 - `GET /api/categories/` — product categories

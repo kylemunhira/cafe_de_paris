@@ -50,6 +50,7 @@
                 android:textColor="@color/text_muted" />
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/accessCodeLayout"
                 android:layout_width="200dp"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
@@ -65,6 +66,37 @@
                     android:maxLength="4"
                     android:textAlignment="center" />
             </com.google.android.material.textfield.TextInputLayout>
+
+            <LinearLayout
+                android:id="@+id/branchSelectPanel"
+                android:layout_width="260dp"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center"
+                    android:text="@string/select_branch_prompt"
+                    android:textColor="@color/text_muted" />
+
+                <Spinner
+                    android:id="@+id/branchSpinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/continueBranchButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/continue_with_branch" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/loginError"

@@ -20,7 +20,11 @@ export async function checkServerReachable(session) {
   const timer = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${base}/api/sync/ping/`, {
+    const branchQs =
+      session.branch?.id != null
+        ? `?branch=${encodeURIComponent(session.branch.id)}`
+        : "";
+    const res = await fetch(`${base}/api/sync/ping/${branchQs}`, {
       headers: { Authorization: `Token ${session.token}` },
       signal: controller.signal,
     });
@@ -33,7 +37,11 @@ export async function checkServerReachable(session) {
 }
 
 export async function pullCatalog(session) {
-  const data = await syncPull(session.serverUrl, session.token);
+  const data = await syncPull(
+    session.serverUrl,
+    session.token,
+    session.branch?.id ?? null
+  );
   await window.pos.replaceCatalog({
     categories: data.categories,
     products: data.products,
@@ -96,7 +104,12 @@ export async function pushPendingOrders(session) {
   if (!pending.length) return { pushed: 0 };
 
   const payload = pending.map(buildPushPayload);
-  const response = await syncPush(session.serverUrl, session.token, payload);
+  const response = await syncPush(
+    session.serverUrl,
+    session.token,
+    payload,
+    session.branch?.id ?? null
+  );
 
   for (const result of response.results) {
     await window.pos.markOrderSynced(result.client_id, {

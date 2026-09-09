@@ -1,6 +1,6 @@
 # Café de Paris — Desktop POS
 
-Standalone Electron app for **cashiers only**. Works offline with a local SQLite database and syncs orders to the central web app when online.
+Standalone Electron app for **cashiers, waiters, branch managers, and HQ admins**. Works offline with a local SQLite database and syncs orders to the central web app when online.
 
 ## Features
 
@@ -8,7 +8,7 @@ Standalone Electron app for **cashiers only**. Works offline with a local SQLite
 - Local product catalog and currencies (pulled from server)
 - **Thermal-style printing** — auto-prints order tickets and sales receipts (printer selectable in **Settings**)
 - **Automatic sync** when internet and server are available (on connect, every 30s, after orders)
-- Cashier / branch manager accounts only
+- HQ admins choose which branch to operate as at sign-in; other roles stay on their assigned branch
 
 ## Printing
 
@@ -26,7 +26,7 @@ Sync runs automatically when the network is up and the server responds (`GET /ap
 ## Setup
 
 1. Start the Django web app (`python manage.py runserver`).
-2. Create a cashier user with a staff profile assigned to a branch.
+2. Create a cashier (or HQ admin) user with a staff profile. Cashiers need a branch assignment; HQ admins pick the operating branch at login.
 3. Install desktop dependencies:
 
 ```bash
@@ -41,7 +41,7 @@ npm run rebuild
 npm start
 ```
 
-Set the server URL in `config.json` (see below), then sign in with cashier username and password.
+Set the server URL in `config.json` (see below), then sign in with username/password or access code.
 
 ## Server URL (`config.json`)
 
@@ -67,8 +67,8 @@ Output is in `desktop/dist/`.
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /api/auth/desktop-login/` | Get auth token (cashiers only) |
-| `GET /api/sync/pull/` | Download catalog + currencies |
-| `POST /api/sync/push/` | Upload pending offline orders |
+| `POST /api/auth/desktop-login/` | Get auth token (`branch_id` required for HQ admins to finish login) |
+| `GET /api/sync/pull/?branch=` | Download catalog + currencies for the operating branch |
+| `POST /api/sync/push/` | Upload pending offline orders (`branch` required for HQ admins) |
 
 Orders use a client UUID for idempotent sync — uploading the same order twice will not create duplicates on the server.

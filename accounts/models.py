@@ -22,6 +22,7 @@ class StaffRole(models.TextChoices):
 
 DESKTOP_POS_ROLES = frozenset(
     {
+        StaffRole.HQ_ADMIN,
         StaffRole.CASHIER,
         StaffRole.BRANCH_MANAGER,
         StaffRole.WAITER,

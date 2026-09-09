@@ -18,18 +18,33 @@ class ApiClient(
     private val config: AppConfig,
 ) {
 
-    fun login(username: String, password: String): LoginResponse {
+    fun login(username: String, password: String, branchId: Int? = null): LoginResponse {
         val payload = JSONObject()
             .put("username", username)
             .put("password", password)
+        if (branchId != null && branchId > 0) {
+            payload.put("branch_id", branchId)
+        }
         val body = postJson("${config.serverUrl}/api/auth/mobile-login/", payload, authToken = null)
         return JsonParsers.parseLoginResponse(body)
     }
 
-    fun loginWithAccessCode(accessCode: String): LoginResponse {
+    fun loginWithAccessCode(accessCode: String, branchId: Int? = null): LoginResponse {
         val payload = JSONObject().put("access_code", accessCode)
+        if (branchId != null && branchId > 0) {
+            payload.put("branch_id", branchId)
+        }
         val body = postJson("${config.serverUrl}/api/auth/mobile-login/", payload, authToken = null)
         return JsonParsers.parseLoginResponse(body)
+    }
+
+    fun fetchPosBranches(authToken: String): List<Branch> {
+        val body = getJson("${config.serverUrl}/api/branches/?page_size=500", authToken)
+        return JsonParsers.parseBranches(body).filter { branch ->
+            branch.is_active &&
+                branch.branch_type != "bakery" &&
+                branch.branch_type != "stores"
+        }
     }
 
     fun verifyAccessCode(accessCode: String, purpose: String): JSONObject {

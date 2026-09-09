@@ -163,7 +163,7 @@ class DesktopSyncTests(TestCase):
         self.assertEqual(Order.objects.count(), 1)
         self.assertEqual(SyncedClientOrder.objects.count(), 1)
 
-    def test_hq_admin_cannot_use_desktop_sync(self):
+    def test_hq_admin_requires_branch_for_desktop_sync(self):
         hq_branch = Branch.objects.create(
             name="HQ",
             branch_type=BranchType.HQ,
@@ -181,8 +181,78 @@ class DesktopSyncTests(TestCase):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
 
-        response = client.get("/api/sync/pull/")
-        self.assertEqual(response.status_code, 403)
+        missing = client.get("/api/sync/pull/")
+        self.assertEqual(missing.status_code, 400)
+
+        response = client.get(f"/api/sync/pull/?branch={self.branch.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["branch"]["id"], self.branch.id)
+        self.assertEqual(len(response.data["products"]), 1)
+
+    def test_hq_admin_desktop_login_lists_branches_then_selects(self):
+        hq_branch = Branch.objects.create(
+            name="HQ",
+            branch_type=BranchType.HQ,
+            is_active=True,
+        )
+        bakery = Branch.objects.create(
+            name="Bakery",
+            branch_type=BranchType.BAKERY,
+            is_active=True,
+        )
+        admin = User.objects.create_user(username="hqadmin", password="pass1234")
+        from accounts.models import StaffProfile, StaffRole
+
+        StaffProfile.objects.create(
+            user=admin,
+            branch=hq_branch,
+            role=StaffRole.HQ_ADMIN,
+        )
+        client = APIClient()
+
+        first = client.post(
+            "/api/auth/desktop-login/",
+            {"username": "hqadmin", "password": "pass1234"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(first.data["can_select_branch"])
+        self.assertIsNone(first.data["branch"])
+        branch_ids = {b["id"] for b in first.data["branches"]}
+        self.assertIn(self.branch.id, branch_ids)
+        self.assertIn(hq_branch.id, branch_ids)
+        self.assertNotIn(bakery.id, branch_ids)
+
+        second = client.post(
+            "/api/auth/desktop-login/",
+            {
+                "username": "hqadmin",
+                "password": "pass1234",
+                "branch_id": self.branch.id,
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data["branch"]["id"], self.branch.id)
+
+        push = client.post(
+            "/api/sync/push/",
+            {
+                "branch": self.branch.id,
+                "orders": [
+                    {
+                        "client_id": "550e8400-e29b-41d4-a716-446655440099",
+                        "order_type": "takeaway",
+                        "items": [{"product_id": self.product.id, "quantity": "1"}],
+                        "payment": {"currency_id": self.base_currency.id},
+                    }
+                ],
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Token {second.data['token']}",
+        )
+        self.assertEqual(push.status_code, 200)
+        self.assertEqual(Order.objects.get().branch_id, self.branch.id)
 
     def test_push_paid_order_allows_negative_stock_when_branch_setting_enabled(self):
         bakery_category = ProductCategory.objects.create(name="Breads & pastries")

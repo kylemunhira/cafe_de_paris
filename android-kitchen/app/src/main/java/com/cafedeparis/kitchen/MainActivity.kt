@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -16,7 +17,9 @@ import androidx.recyclerview.widget.GridLayoutManager
 import com.cafedeparis.kitchen.data.ApiClient
 import com.cafedeparis.kitchen.data.ApiException
 import com.cafedeparis.kitchen.data.AppConfig
+import com.cafedeparis.kitchen.data.Branch
 import com.cafedeparis.kitchen.data.KitchenOrder
+import com.cafedeparis.kitchen.data.LoginResponse
 import com.cafedeparis.kitchen.data.OrderItem
 import com.cafedeparis.kitchen.data.SessionManager
 import com.cafedeparis.kitchen.databinding.ActivityMainBinding
@@ -48,6 +51,9 @@ class MainActivity : KeepScreenOnActivity() {
     private var loginBlockedForUpdate = false
     private var lastOpenOrderIds: Set<Int> = emptySet()
     private val printer = EscPosPrinter()
+    private var pendingAccessCode: String? = null
+    private var pendingLoginResponse: LoginResponse? = null
+    private var selectableBranches: List<Branch> = emptyList()
 
     private val bluetoothPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -73,6 +79,7 @@ class MainActivity : KeepScreenOnActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
             override fun afterTextChanged(s: Editable?) {
+                if (pendingAccessCode != null) return
                 val code = s?.toString()?.trim().orEmpty()
                 if (code.matches(Regex("^\\d{4}$"))) {
                     attemptLogin()
@@ -83,6 +90,7 @@ class MainActivity : KeepScreenOnActivity() {
             attemptLogin()
             true
         }
+        binding.continueBranchButton.setOnClickListener { completeBranchSelection() }
         binding.logoutButton.setOnClickListener { logout() }
         binding.settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -120,7 +128,7 @@ class MainActivity : KeepScreenOnActivity() {
             } else {
                 refreshOrders(manual = true)
             }
-        } else {
+        } else if (pendingAccessCode == null) {
             showLogin()
         }
     }
@@ -132,7 +140,7 @@ class MainActivity : KeepScreenOnActivity() {
     }
 
     private fun attemptLogin() {
-        if (loginInProgress || loginBlockedForUpdate) return
+        if (loginInProgress || loginBlockedForUpdate || pendingAccessCode != null) return
         val accessCode = binding.accessCodeInput.text?.toString()?.trim().orEmpty()
         if (!accessCode.matches(Regex("^\\d{4}$"))) {
             return
@@ -147,26 +155,197 @@ class MainActivity : KeepScreenOnActivity() {
                 val response = withContext(Dispatchers.IO) {
                     api.loginWithAccessCode(accessCode)
                 }
-                session.saveLogin(response)
-                binding.accessCodeInput.text?.clear()
-                routeAfterLogin()
-                requestBluetoothIfNeeded()
+                handleLoginResponse(response, accessCode)
             } catch (err: ApiException) {
                 binding.loginError.text = err.message
                 binding.loginError.visibility = View.VISIBLE
                 binding.accessCodeInput.text?.clear()
+                resetLoginInputs()
             } catch (err: Exception) {
                 binding.loginError.text = getString(R.string.connection_failed, err.message ?: "")
                 binding.loginError.visibility = View.VISIBLE
                 binding.accessCodeInput.text?.clear()
+                resetLoginInputs()
             } finally {
                 loginInProgress = false
-                binding.accessCodeInput.isEnabled = true
                 binding.loginProgress.visibility = View.GONE
-                if (!session.isLoggedIn) {
-                    binding.accessCodeInput.requestFocus()
-                }
             }
+        }
+    }
+
+    private fun completeBranchSelection() {
+        if (loginInProgress || loginBlockedForUpdate) return
+        val accessCode = pendingAccessCode
+        val pending = pendingLoginResponse
+        if (accessCode.isNullOrBlank() || pending == null) {
+            resetBranchSelectionUi()
+            return
+        }
+        val selectedIndex = binding.branchSpinner.selectedItemPosition
+        // Position 0 is the placeholder.
+        val branch = selectableBranches.getOrNull(selectedIndex - 1)
+        if (branch == null) {
+            binding.loginError.text = getString(R.string.branch_required)
+            binding.loginError.visibility = View.VISIBLE
+            return
+        }
+
+        loginInProgress = true
+        binding.continueBranchButton.isEnabled = false
+        binding.branchSpinner.isEnabled = false
+        binding.loginProgress.visibility = View.VISIBLE
+        binding.loginError.visibility = View.GONE
+
+        lifecycleScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    api.loginWithAccessCode(accessCode, branch.id)
+                }
+                val chosen = if (response.branch?.id == branch.id) {
+                    response
+                } else {
+                    // Server did not honor branch_id — keep the operator's choice.
+                    pending.copy(
+                        branch = branch,
+                        branches = selectableBranches,
+                        can_select_branch = false,
+                    )
+                }
+                finishLogin(chosen)
+            } catch (err: Exception) {
+                finishLogin(
+                    pending.copy(
+                        branch = branch,
+                        branches = selectableBranches,
+                        can_select_branch = false,
+                    )
+                )
+            } finally {
+                loginInProgress = false
+                binding.loginProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun handleLoginResponse(response: LoginResponse, accessCode: String) {
+        val isGlobalOperator =
+            response.can_select_branch ||
+                response.user.is_superuser ||
+                response.user.role == "hq_admin"
+
+        if (!isGlobalOperator) {
+            if (response.branch == null) {
+                binding.loginError.text = getString(R.string.branch_required)
+                binding.loginError.visibility = View.VISIBLE
+                resetLoginInputs()
+                return
+            }
+            finishLogin(response)
+            return
+        }
+
+        loginInProgress = true
+        binding.loginProgress.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            try {
+                var branches = response.branches.filter {
+                    it.is_active && it.branch_type != "bakery" && it.branch_type != "stores"
+                }
+                if (branches.size <= 1) {
+                    try {
+                        branches = withContext(Dispatchers.IO) {
+                            api.fetchPosBranches(response.token)
+                        }
+                    } catch (_: Exception) {
+                        // Keep whatever the login payload provided.
+                    }
+                }
+                if (branches.isEmpty() && response.branch != null) {
+                    branches = listOf(response.branch)
+                }
+                if (branches.isEmpty()) {
+                    binding.loginError.text = getString(R.string.branch_required)
+                    binding.loginError.visibility = View.VISIBLE
+                    resetLoginInputs()
+                    return@launch
+                }
+                if (branches.size == 1) {
+                    finishLogin(
+                        response.copy(
+                            branch = response.branch ?: branches.first(),
+                            branches = branches,
+                            can_select_branch = false,
+                        )
+                    )
+                    return@launch
+                }
+                showBranchSelection(branches, accessCode, response)
+            } finally {
+                loginInProgress = false
+                binding.loginProgress.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun finishLogin(response: LoginResponse) {
+        if (response.branch == null) {
+            binding.loginError.text = getString(R.string.branch_required)
+            binding.loginError.visibility = View.VISIBLE
+            resetLoginInputs()
+            return
+        }
+        session.saveLogin(response)
+        resetBranchSelectionUi()
+        binding.accessCodeInput.text?.clear()
+        routeAfterLogin()
+        requestBluetoothIfNeeded()
+    }
+
+    private fun showBranchSelection(
+        branches: List<Branch>,
+        accessCode: String,
+        response: LoginResponse,
+    ) {
+        pendingAccessCode = accessCode
+        pendingLoginResponse = response
+        selectableBranches = branches
+        binding.accessCodeInput.isEnabled = false
+        binding.accessCodeLayout.visibility = View.GONE
+        binding.branchSelectPanel.visibility = View.VISIBLE
+        binding.continueBranchButton.isEnabled = true
+        binding.branchSpinner.isEnabled = true
+
+        val labels = mutableListOf(getString(R.string.select_branch_placeholder))
+        labels.addAll(
+            branches.map { branch ->
+                if (branch.location.isNullOrBlank()) branch.name else "${branch.name} · ${branch.location}"
+            }
+        )
+        binding.branchSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            labels,
+        )
+        binding.branchSpinner.setSelection(0)
+        Toast.makeText(this, R.string.select_branch_prompt, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun resetBranchSelectionUi() {
+        pendingAccessCode = null
+        pendingLoginResponse = null
+        selectableBranches = emptyList()
+        binding.branchSelectPanel.visibility = View.GONE
+        binding.continueBranchButton.isEnabled = true
+        binding.branchSpinner.isEnabled = true
+        binding.branchSpinner.adapter = null
+        binding.accessCodeLayout.visibility = View.VISIBLE
+        resetLoginInputs()
+    }
+
+    private fun resetLoginInputs() {
+        binding.accessCodeInput.isEnabled = !loginBlockedForUpdate
+        if (!session.isLoggedIn) {
+            binding.accessCodeInput.requestFocus()
         }
     }
 
@@ -212,6 +391,10 @@ class MainActivity : KeepScreenOnActivity() {
     private fun showLogin() {
         binding.loginPanel.visibility = View.VISIBLE
         binding.kitchenPanel.visibility = View.GONE
+        if (pendingAccessCode == null) {
+            binding.branchSelectPanel.visibility = View.GONE
+            resetLoginInputs()
+        }
     }
 
     private fun showKitchen() {

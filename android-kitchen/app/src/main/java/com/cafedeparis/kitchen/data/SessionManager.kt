@@ -99,20 +99,23 @@ class SessionManager(context: Context) {
 
     fun shouldOpenPos(): Boolean {
         if (!canAccessPos) return false
+        if (isSuperuser) return true
         return when (userRole) {
-            "cashier", "branch_manager", "waiter" -> true
+            "cashier", "branch_manager", "waiter", "hq_admin" -> true
             else -> canAccessPos && !canAccessKitchen
         }
     }
 
-    /** Mobile GRV receiving is cashier-only (web GRV remains staff/management). */
+    /** Mobile GRV receiving is for cashiers, HQ admins, and Django superusers. */
     val canAccessGrv: Boolean
-        get() = userRole == "cashier"
+        get() = isSuperuser || userRole == "cashier" || userRole == "hq_admin"
 
     fun saveLogin(response: LoginResponse) {
+        val branch = response.branch
+            ?: throw IllegalArgumentException("Branch is required to finish login")
         token = response.token
-        branchId = response.branch.id
-        branchName = response.branch.name
+        branchId = branch.id
+        branchName = branch.name
         displayName = response.user.display_name
         userRole = response.user.role
         canAccessKitchen = response.can_access_kitchen
@@ -122,7 +125,7 @@ class SessionManager(context: Context) {
         isSuperuser = response.user.is_superuser
         kitchenStation = response.user.kitchen_station
         kitchenStationDisplay = response.user.kitchen_station_display
-        fiscalizationEnabled = response.branch.fiscalization_enabled
+        fiscalizationEnabled = branch.fiscalization_enabled
         canManageFiscalDay = response.user.can_manage_fiscal_day
         canApproveFiscalReceipt = response.user.can_approve_fiscal_receipt
         canManageDiningTables = response.user.can_manage_dining_tables
@@ -399,7 +402,18 @@ object JsonParsers {
     fun parseLoginResponse(body: String): LoginResponse {
         val json = org.json.JSONObject(body)
         val user = json.getJSONObject("user")
-        val branch = json.getJSONObject("branch")
+        val branches = mutableListOf<Branch>()
+        val branchesJson = json.optJSONArray("branches")
+        if (branchesJson != null) {
+            for (i in 0 until branchesJson.length()) {
+                branches.add(parseBranch(branchesJson.getJSONObject(i)))
+            }
+        }
+        val branch = if (json.isNull("branch") || !json.has("branch")) {
+            null
+        } else {
+            parseBranch(json.getJSONObject("branch"))
+        }
         return LoginResponse(
             token = json.getString("token"),
             user = UserInfo(
@@ -415,19 +429,25 @@ object JsonParsers {
                 kitchen_station = user.optString("kitchen_station", null)?.takeIf { it.isNotBlank() },
                 kitchen_station_display = user.optString("kitchen_station_display", null)?.takeIf { it.isNotBlank() },
             ),
-            branch = Branch(
-                id = branch.getInt("id"),
-                name = branch.getString("name"),
-                location = branch.optString("location", null),
-                fiscalization_enabled = branch.optBoolean("fiscalization_enabled", false),
-                branch_type = branch.optString("branch_type", null),
-                is_active = branch.optBoolean("is_active", true),
-            ),
+            branch = branch,
+            branches = branches,
+            can_select_branch = json.optBoolean("can_select_branch", false),
             can_access_kitchen = json.optBoolean("can_access_kitchen", false),
             can_access_pos = json.optBoolean("can_access_pos", false),
             can_access_bakery = json.optBoolean("can_access_bakery", false),
             inclusive_tax_rate = json.optString("inclusive_tax_rate", "15.5").toDoubleOrNull() ?: 15.5,
             zta_levy_rate = json.optString("zta_levy_rate", "2").toDoubleOrNull() ?: 2.0,
+        )
+    }
+
+    private fun parseBranch(branch: org.json.JSONObject): Branch {
+        return Branch(
+            id = branch.getInt("id"),
+            name = branch.getString("name"),
+            location = branch.optString("location", null)?.takeIf { it.isNotBlank() && it != "null" },
+            fiscalization_enabled = branch.optBoolean("fiscalization_enabled", false),
+            branch_type = branch.optString("branch_type", null)?.takeIf { it.isNotBlank() && it != "null" },
+            is_active = branch.optBoolean("is_active", true),
         )
     }
 

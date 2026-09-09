@@ -16,6 +16,8 @@ from accounts.access_codes import (
 from accounts.branch_access import (
     get_staff_branch_type,
     get_staff_kitchen_station,
+    pos_operating_branches_queryset,
+    resolve_pos_operating_branch,
     user_can_access_bakery_transfers,
     user_can_access_kitchen,
     user_can_access_pos,
@@ -25,6 +27,7 @@ from accounts.branch_access import (
     user_can_manage_fiscal_day,
     user_can_manage_pos_orders,
     user_can_use_desktop_pos,
+    user_has_global_branch_access,
 )
 from accounts.models import StaffProfile
 from branches.models import BranchType
@@ -100,7 +103,7 @@ def _staff_user_payload(user, profile):
 
 
 class DesktopLoginView(APIView):
-    """Token login for the offline desktop POS (cashiers, waiters, and branch managers)."""
+    """Token login for the offline desktop POS (HQ, cashiers, waiters, branch managers)."""
 
     permission_classes = [AllowAny]
 
@@ -126,23 +129,43 @@ class DesktopLoginView(APIView):
 
         if not user_can_use_desktop_pos(user):
             return Response(
-                {"detail": "Desktop POS is for cashiers and waiters only."},
+                {"detail": "Desktop POS is not available for this account."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         server_url = (request.data.get("server_url") or "").strip().rstrip("/")
         token, _ = Token.objects.get_or_create(user=user)
+        can_select_branch = user_has_global_branch_access(user)
+        requested_branch = request.data.get("branch_id") or request.data.get("branch")
 
-        return Response(
-            {
-                "token": token.key,
-                "user": _staff_user_payload(user, profile),
-                "branch": BranchSerializer(profile.branch).data,
-                "server_url": server_url or None,
-                "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
-                "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
-            }
-        )
+        payload = {
+            "token": token.key,
+            "user": _staff_user_payload(user, profile),
+            "server_url": server_url or None,
+            "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
+            "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
+            "can_select_branch": can_select_branch,
+        }
+
+        if can_select_branch:
+            branches = list(pos_operating_branches_queryset())
+            payload["branches"] = BranchSerializer(branches, many=True).data
+            if requested_branch in (None, ""):
+                payload["branch"] = None
+                return Response(payload)
+            try:
+                branch = resolve_pos_operating_branch(user, requested_branch)
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            payload["branch"] = BranchSerializer(branch).data
+            return Response(payload)
+
+        payload["branch"] = BranchSerializer(profile.branch).data
+        payload["branches"] = [payload["branch"]]
+        return Response(payload)
 
 
 class MobileAppLoginView(APIView):
@@ -178,19 +201,40 @@ class MobileAppLoginView(APIView):
             )
 
         token, _ = Token.objects.get_or_create(user=user)
+        # Django superusers, HQ admins, and other global accounts pick an operating branch.
+        can_select_branch = user_has_global_branch_access(user)
+        requested_branch = request.data.get("branch_id") or request.data.get("branch")
 
-        return Response(
-            {
-                "token": token.key,
-                "user": _staff_user_payload(user, profile),
-                "branch": BranchSerializer(profile.branch).data,
-                "can_access_kitchen": can_kitchen,
-                "can_access_pos": can_pos,
-                "can_access_bakery": can_bakery,
-                "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
-                "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
-            }
-        )
+        payload = {
+            "token": token.key,
+            "user": _staff_user_payload(user, profile),
+            "can_access_kitchen": can_kitchen,
+            "can_access_pos": can_pos,
+            "can_access_bakery": can_bakery,
+            "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
+            "zta_levy_rate": str(settings.ZTA_LEVY_RATE),
+            "can_select_branch": can_select_branch,
+        }
+
+        if can_select_branch:
+            branches = list(pos_operating_branches_queryset())
+            payload["branches"] = BranchSerializer(branches, many=True).data
+            if requested_branch in (None, ""):
+                payload["branch"] = None
+                return Response(payload)
+            try:
+                branch = resolve_pos_operating_branch(user, requested_branch)
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            payload["branch"] = BranchSerializer(branch).data
+            return Response(payload)
+
+        payload["branch"] = BranchSerializer(profile.branch).data
+        payload["branches"] = [payload["branch"]]
+        return Response(payload)
 
 
 class KitchenLoginView(APIView):

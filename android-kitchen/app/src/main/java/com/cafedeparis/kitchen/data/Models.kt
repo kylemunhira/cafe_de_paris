@@ -135,13 +135,25 @@ data class Supplier(
 data class LoginResponse(
     val token: String,
     val user: UserInfo,
-    val branch: Branch,
+    val branch: Branch? = null,
+    val branches: List<Branch> = emptyList(),
+    val can_select_branch: Boolean = false,
     val can_access_kitchen: Boolean = false,
     val can_access_pos: Boolean = false,
     val can_access_bakery: Boolean = false,
     val inclusive_tax_rate: Double = 15.5,
     val zta_levy_rate: Double = 2.0,
-)
+) {
+    val needsBranchSelection: Boolean
+        get() {
+            if (!can_select_branch && !user.is_superuser && user.role != "hq_admin") {
+                return false
+            }
+            // Global / HQ / superuser must pick when no branch yet, or when several are available.
+            if (branch == null) return true
+            return can_select_branch && branches.size > 1
+        }
+}
 
 data class ProductCategory(
     val id: Int,

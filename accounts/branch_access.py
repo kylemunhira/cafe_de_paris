@@ -213,7 +213,7 @@ def user_can_manage_pos_orders(user):
 
 
 def user_can_use_desktop_pos(user):
-    """Offline desktop POS — cashiers, waiters, and branch managers."""
+    """Offline desktop POS — HQ admins, cashiers, waiters, and branch managers."""
     if not user_can_access_pos(user):
         return False
     try:
@@ -221,6 +221,52 @@ def user_can_use_desktop_pos(user):
     except StaffProfile.DoesNotExist:
         return False
     return profile.role in DESKTOP_POS_ROLES
+
+
+def pos_operating_branches_queryset():
+    """Branches HQ admins may operate as on POS apps (matches web POS filters)."""
+    from branches.models import Branch
+
+    return Branch.objects.filter(is_active=True).exclude(
+        branch_type__in=(BranchType.BAKERY, BranchType.STORES)
+    )
+
+
+# Backwards-compatible alias used by desktop sync/login.
+desktop_pos_branches_queryset = pos_operating_branches_queryset
+
+
+def resolve_pos_operating_branch(user, requested_branch_id=None):
+    """
+    Branch a POS session operates as.
+
+    Cashiers / waiters / branch managers are locked to their profile branch.
+    HQ admins (and other global users) must pick a retail/HQ branch.
+    """
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        raise ValueError("Staff profile required.")
+
+    if not user_has_global_branch_access(user):
+        return profile.branch
+
+    if requested_branch_id in (None, ""):
+        raise ValueError("Select a branch to operate as.")
+
+    try:
+        branch_id = int(requested_branch_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid branch.") from exc
+
+    branch = pos_operating_branches_queryset().filter(pk=branch_id).first()
+    if branch is None:
+        raise ValueError("Branch not found or not available for POS.")
+    return branch
+
+
+# Backwards-compatible alias used by desktop sync/login.
+resolve_desktop_operating_branch = resolve_pos_operating_branch
 
 
 def user_can_access_kitchen(user):

@@ -12,7 +12,7 @@
   <div class="card login-card">
     <div class="login-brand">
       <h1>Café de Paris</h1>
-      <p>Cashier &amp; waiter POS — sign in to take orders offline</p>
+      <p>POS — sign in to take orders offline</p>
     </div>
     <div id="login-error" class="login-error" hidden></div>
     <form id="login-form" class="login-form">
@@ -28,9 +28,15 @@
         <label for="access_code">Or 4-digit access code</label>
         <input type="text" id="access_code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" placeholder="••••">
       </div>
+      <div id="branch-group" class="form-group" hidden>
+        <label for="branch-select">Branch</label>
+        <select id="branch-select">
+          <option value="">Select branch…</option>
+        </select>
+      </div>
       <button type="submit" class="btn btn-primary" style="width: 100%;">Sign in</button>
     </form>
-    <p class="login-hint">Cashier and waiter accounts. Orders sync to the web app when online.</p>
+    <p class="login-hint">Cashier, waiter, and HQ admin accounts. HQ admins choose which branch to operate. Orders sync when online.</p>
   </div>
   <script type="module">
     import { desktopLogin, showToast } from "./js/api.js";
@@ -38,17 +44,52 @@
 
     const form = document.getElementById("login-form");
     const errorBox = document.getElementById("login-error");
+    const branchGroup = document.getElementById("branch-group");
+    const branchSelect = document.getElementById("branch-select");
     let loginInFlight = false;
+    /** @type {null | { token: string, user: object, branches: object[], inclusive_tax_rate?: string, zta_levy_rate?: string }} */
+    let pendingHqSession = null;
 
     (async () => {
       const session = await window.pos.getSession();
       if (session?.token) window.location.href = "index.html";
     })();
 
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+      showToast(message, true);
+    }
+
+    function fillBranchOptions(branches) {
+      branchSelect.innerHTML =
+        `<option value="">Select branch…</option>` +
+        (branches || [])
+          .map((b) => `<option value="${b.id}">${b.name}${b.code ? ` (${b.code})` : ""}</option>`)
+          .join("");
+      branchGroup.hidden = false;
+    }
+
+    async function enterPos(result) {
+      if (!result.branch?.id) {
+        throw new Error("Select a branch to operate as.");
+      }
+      await window.pos.saveSession({
+        token: result.token,
+        user: result.user,
+        branch: result.branch,
+        inclusiveTaxRate: result.inclusive_tax_rate ?? null,
+        ztaLevyRate: result.zta_levy_rate ?? null,
+      });
+      const session = await window.pos.getSession();
+      await pullCatalog(session);
+      window.location.href = "index.html";
+    }
+
     const accessCodeInput = document.getElementById("access_code");
     accessCodeInput.addEventListener("input", () => {
       accessCodeInput.value = accessCodeInput.value.replace(/\D/g, "").slice(0, 4);
-      if (accessCodeInput.value.length === 4 && !loginInFlight) {
+      if (accessCodeInput.value.length === 4 && !loginInFlight && !pendingHqSession) {
         form.requestSubmit();
       }
     });
@@ -62,6 +103,24 @@
       submitBtn.disabled = true;
 
       try {
+        if (pendingHqSession) {
+          const branchId = branchSelect.value;
+          if (!branchId) {
+            throw new Error("Select a branch to operate as.");
+          }
+          const branch = (pendingHqSession.branches || []).find(
+            (b) => String(b.id) === String(branchId)
+          );
+          if (!branch) {
+            throw new Error("Selected branch is not available.");
+          }
+          await enterPos({
+            ...pendingHqSession,
+            branch,
+          });
+          return;
+        }
+
         const { serverUrl } = await window.pos.getConfig();
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value;
@@ -74,21 +133,20 @@
         }
         const result = await desktopLogin(serverUrl, username, password, accessCode);
 
-        await window.pos.saveSession({
-          token: result.token,
-          user: result.user,
-          branch: result.branch,
-          inclusiveTaxRate: result.inclusive_tax_rate ?? null,
-          ztaLevyRate: result.zta_levy_rate ?? null,
-        });
+        if (result.can_select_branch && !result.branch?.id) {
+          pendingHqSession = result;
+          fillBranchOptions(result.branches);
+          submitBtn.textContent = "Continue";
+          document.getElementById("username").disabled = true;
+          document.getElementById("password").disabled = true;
+          accessCodeInput.disabled = true;
+          showToast("Choose which branch to use");
+          return;
+        }
 
-        const session = await window.pos.getSession();
-        await pullCatalog(session);
-        window.location.href = "index.html";
+        await enterPos(result);
       } catch (err) {
-        errorBox.textContent = err.message;
-        errorBox.hidden = false;
-        showToast(err.message, true);
+        showError(err.message);
       } finally {
         loginInFlight = false;
         submitBtn.disabled = false;

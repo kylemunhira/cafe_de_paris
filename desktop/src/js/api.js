@@ -1,4 +1,10 @@
-export async function desktopLogin(serverUrl, username, password, accessCode = "") {
+export async function desktopLogin(
+  serverUrl,
+  username,
+  password,
+  accessCode = "",
+  branchId = null
+) {
   const base = serverUrl.replace(/\/$/, "");
   const body = { server_url: base };
   if (accessCode) {
@@ -6,6 +12,9 @@ export async function desktopLogin(serverUrl, username, password, accessCode = "
   } else {
     body.username = username;
     body.password = password;
+  }
+  if (branchId != null && branchId !== "") {
+    body.branch_id = branchId;
   }
   const res = await fetch(`${base}/api/auth/desktop-login/`, {
     method: "POST",
@@ -22,23 +31,32 @@ export async function verifyAccessCode(session, accessCode, purpose = "override"
   });
 }
 
-export async function syncPull(serverUrl, token) {
+function syncBranchQuery(branchId) {
+  if (branchId == null || branchId === "") return "";
+  return `?branch=${encodeURIComponent(branchId)}`;
+}
+
+export async function syncPull(serverUrl, token, branchId = null) {
   const base = serverUrl.replace(/\/$/, "");
-  const res = await fetch(`${base}/api/sync/pull/`, {
+  const res = await fetch(`${base}/api/sync/pull/${syncBranchQuery(branchId)}`, {
     headers: { Authorization: `Token ${token}` },
   });
   return parseResponse(res);
 }
 
-export async function syncPush(serverUrl, token, orders) {
+export async function syncPush(serverUrl, token, orders, branchId = null) {
   const base = serverUrl.replace(/\/$/, "");
+  const body = { orders };
+  if (branchId != null && branchId !== "") {
+    body.branch = branchId;
+  }
   const res = await fetch(`${base}/api/sync/push/`, {
     method: "POST",
     headers: {
       Authorization: `Token ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ orders }),
+    body: JSON.stringify(body),
   });
   return parseResponse(res);
 }

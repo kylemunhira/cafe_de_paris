@@ -507,6 +507,7 @@ class TransferNavAccessTests(APITestCase):
         self.assertTrue(user_can_access_bakery_transfers(self.zimhope))
         self.assertFalse(user_can_access_grv(self.zimhope))
         self.assertTrue(user_can_access_pos(self.hq_admin))
+        self.assertTrue(user_can_use_desktop_pos(self.hq_admin))
         self.assertTrue(user_can_access_pos(self.zimhope))
 
     def test_hq_admin_can_access_grv_page(self):
@@ -998,6 +999,76 @@ class MobileAppLoginTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["user"]["username"], "cashier")
         self.assertTrue(response.data["can_access_pos"])
+        self.assertFalse(response.data["can_select_branch"])
+        self.assertEqual(response.data["branch"]["id"], self.branch.id)
+
+    def test_hq_admin_must_select_operating_branch(self):
+        hq = Branch.objects.create(name="HQ", branch_type=BranchType.HQ)
+        stores = Branch.objects.create(name="Stores", branch_type=BranchType.STORES)
+        admin = User.objects.create_user(username="hqadmin", password="secret")
+        StaffProfile.objects.create(
+            user=admin,
+            branch=hq,
+            role=StaffRole.HQ_ADMIN,
+            access_code="7777",
+        )
+
+        first = self.client.post(
+            self.login_url,
+            {"access_code": "7777"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertTrue(first.data["can_access_pos"])
+        self.assertTrue(first.data["can_select_branch"])
+        self.assertIsNone(first.data["branch"])
+        branch_ids = {b["id"] for b in first.data["branches"]}
+        self.assertIn(self.branch.id, branch_ids)
+        self.assertIn(hq.id, branch_ids)
+        self.assertNotIn(self.bakery.id, branch_ids)
+        self.assertNotIn(stores.id, branch_ids)
+
+        second = self.client.post(
+            self.login_url,
+            {"access_code": "7777", "branch_id": self.branch.id},
+            format="json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.data["branch"]["id"], self.branch.id)
+        self.assertEqual(second.data["user"]["role"], StaffRole.HQ_ADMIN)
+
+    def test_django_superuser_must_select_operating_branch(self):
+        hq = Branch.objects.create(name="HQ", branch_type=BranchType.HQ)
+        admin = User.objects.create_superuser(
+            username="rootadmin",
+            password="secret",
+            email="root@example.com",
+        )
+        StaffProfile.objects.create(
+            user=admin,
+            branch=hq,
+            role=StaffRole.STAFF,
+            access_code="8888",
+        )
+
+        first = self.client.post(
+            self.login_url,
+            {"access_code": "8888"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertTrue(first.data["user"]["is_superuser"])
+        self.assertTrue(first.data["can_select_branch"])
+        self.assertIsNone(first.data["branch"])
+        self.assertGreaterEqual(len(first.data["branches"]), 1)
+
+        second = self.client.post(
+            self.login_url,
+            {"access_code": "8888", "branch_id": self.branch.id},
+            format="json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.data["branch"]["id"], self.branch.id)
 
     def test_verify_manager_access_code(self):
         manager = User.objects.create_user(username="mgr", password="secret")

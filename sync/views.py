@@ -8,7 +8,12 @@ from rest_framework.views import APIView
 from zimra_fiscal.exceptions import ZimraConfigurationError, ZimraSubmissionError
 from zimra_fiscal.response import fiscal_receipt_summary
 
-from accounts.branch_access import user_can_access_pos, user_can_collect_payment, user_can_use_desktop_pos
+from accounts.branch_access import (
+    resolve_desktop_operating_branch,
+    user_can_access_pos,
+    user_can_collect_payment,
+    user_can_use_desktop_pos,
+)
 from accounts.models import StaffProfile
 from branches.serializers import BranchSerializer
 from orders.serializers import OrderSerializer
@@ -29,7 +34,7 @@ class DesktopSyncPermissionMixin:
                 status=status.HTTP_403_FORBIDDEN,
             )
         try:
-            profile = user.staff_profile
+            user.staff_profile
         except StaffProfile.DoesNotExist:
             return None, Response(
                 {"detail": "Staff profile required."},
@@ -37,10 +42,24 @@ class DesktopSyncPermissionMixin:
             )
         if not user_can_use_desktop_pos(user):
             return None, Response(
-                {"detail": "Desktop POS is for cashiers and waiters only."},
+                {"detail": "Desktop POS is not available for this account."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        return profile.branch, None
+
+        requested = None
+        if hasattr(request, "query_params"):
+            requested = request.query_params.get("branch")
+        if requested in (None, "") and hasattr(request, "data"):
+            requested = request.data.get("branch") or request.data.get("branch_id")
+
+        try:
+            branch = resolve_desktop_operating_branch(user, requested)
+        except ValueError as exc:
+            return None, Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return branch, None
 
 
 class SyncPingView(DesktopSyncPermissionMixin, APIView):

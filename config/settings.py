@@ -218,8 +218,8 @@ ZTA_LEVY_RATE = Decimal(os.getenv("ZTA_LEVY_RATE", "2"))
 
 # Android kitchen app OTA updates — copy APK to releases/ and bump version here.
 RELEASES_DIR = BASE_DIR / "releases"
-KITCHEN_APP_VERSION_CODE = int(os.getenv("KITCHEN_APP_VERSION_CODE", "2"))
-KITCHEN_APP_VERSION_NAME = os.getenv("KITCHEN_APP_VERSION_NAME", "1.2.0")
+KITCHEN_APP_VERSION_CODE = int(os.getenv("KITCHEN_APP_VERSION_CODE", "4"))
+KITCHEN_APP_VERSION_NAME = os.getenv("KITCHEN_APP_VERSION_NAME", "1.2.3")
 KITCHEN_APP_MIN_VERSION_CODE = int(os.getenv("KITCHEN_APP_MIN_VERSION_CODE", "1"))
 KITCHEN_APP_APK_FILENAME = os.getenv("KITCHEN_APP_APK_FILENAME", "kitchen.apk")
 KITCHEN_APP_RELEASE_NOTES = os.getenv("KITCHEN_APP_RELEASE_NOTES", "")
