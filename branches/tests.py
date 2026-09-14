@@ -150,6 +150,35 @@ class DiningTablePermissionTests(APITestCase):
             DiningTable.objects.filter(branch=self.branch, name="T99").exists()
         )
 
+    def test_dining_tables_include_occupancy_for_open_orders(self):
+        from django.contrib.auth import get_user_model
+        from orders.models import Order, OrderType
+
+        User = get_user_model()
+        holder = User.objects.create_user(username="holder", password="pass")
+        StaffProfile.objects.create(
+            user=holder,
+            branch=self.branch,
+            role=StaffRole.CASHIER,
+            pos_access=True,
+        )
+        Order.objects.create(
+            branch=self.branch,
+            order_type=OrderType.DINE_IN,
+            table_number="T1",
+            created_by=holder,
+        )
+
+        list_url = reverse("dining-table-list")
+        self.client.force_login(self.cashier)
+        response = self.client.get(list_url, {"branch": self.branch.id, "active_only": "true"})
+        self.assertEqual(response.status_code, 200)
+        rows = response.data["results"] if isinstance(response.data, dict) else response.data
+        table = next(row for row in rows if row["name"] == "T1")
+        self.assertTrue(table["is_occupied"])
+        self.assertEqual(table["occupied_by"], holder.id)
+        self.assertEqual(table["occupied_by_name"], "holder")
+
 
 class DiningTableDefaultsTests(APITestCase):
     def test_highlands_defaults_are_t1_to_t20(self):

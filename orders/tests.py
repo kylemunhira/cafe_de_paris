@@ -1316,6 +1316,49 @@ class TableOrderCombineTests(TestCase):
         self.assertEqual(existing.total_amount, Decimal("11.50"))
         self.assertEqual(existing.kitchen_status, KitchenStatus.PENDING)
 
+    def test_other_user_cannot_add_to_held_table(self):
+        User = get_user_model()
+        other = User.objects.create_user(username="other_cashier", password="pass")
+        StaffProfile.objects.create(user=other, branch=self.branch, pos_access=True)
+        existing = self._create_table_order("T3")
+        existing.created_by = self.user
+        existing.save(update_fields=["created_by"])
+
+        self.client.force_authenticate(user=other)
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.DINE_IN,
+                "table_number": "T3",
+                "items": [{"product_id": self.latte.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("table_number", response.data)
+        self.assertEqual(existing.items.count(), 1)
+
+    def test_same_user_can_add_to_own_held_table(self):
+        existing = self._create_table_order("T4")
+        existing.created_by = self.user
+        existing.save(update_fields=["created_by"])
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.DINE_IN,
+                "table_number": "T4",
+                "items": [{"product_id": self.latte.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["id"], existing.id)
+        existing.refresh_from_db()
+        self.assertEqual(existing.items.count(), 2)
+
     def test_paying_table_order_consolidates_siblings(self):
         first = self._create_table_order("T2")
         second = Order.objects.create(

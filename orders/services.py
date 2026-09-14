@@ -77,6 +77,54 @@ def find_open_table_order(*, branch, table_number):
     )
 
 
+TABLE_HELD_BY_OTHER_MESSAGE = (
+    "This table is in use by another staff member until payment."
+)
+
+
+def user_can_use_open_table_order(order, user):
+    """True when `user` may add items or merge into this open dine-in order.
+
+    Tables are held by `created_by` until the order is paid or cancelled.
+    Orders with no `created_by` stay shared (legacy).
+    """
+    if order is None:
+        return True
+    if not order.created_by_id:
+        return True
+    if user is None:
+        return False
+    return order.created_by_id == getattr(user, "pk", None)
+
+
+def assert_user_can_use_open_table_order(order, user, *, field="table_number"):
+    if user_can_use_open_table_order(order, user):
+        return order
+    raise ValidationError({field: TABLE_HELD_BY_OTHER_MESSAGE})
+
+
+def open_table_occupancy_for_branch(branch_id):
+    """Map table_number → latest open/unpaid dine-in order for a branch."""
+    if not branch_id:
+        return {}
+    orders = (
+        Order.objects.filter(
+            branch_id=branch_id,
+            order_type=OrderType.DINE_IN,
+            status__in=POS_EDITABLE_ORDER_STATUSES,
+        )
+        .exclude(table_number="")
+        .select_related("created_by")
+        .order_by("-created_at")
+    )
+    occupancy = {}
+    for order in orders:
+        table = (order.table_number or "").strip()
+        if table and table not in occupancy:
+            occupancy[table] = order
+    return occupancy
+
+
 def find_open_order_for_append(*, branch, order_id, order_type):
     """Return an open order that can receive more catalog items, or None."""
     if order_id is None:
@@ -409,6 +457,10 @@ def _transfer_to_dine_in(
     if destination and destination.pk == order.pk:
         raise OrderItemTransferError("Choose a different destination table.")
 
+    holder = created_by or order.created_by
+    if destination and not user_can_use_open_table_order(destination, holder):
+        raise OrderItemTransferError(TABLE_HELD_BY_OTHER_MESSAGE)
+
     if transferring_all and destination is None:
         update_fields = ["table_number"]
         order.table_number = table_number
@@ -435,6 +487,8 @@ def _transfer_to_dine_in(
             raise OrderItemTransferError(
                 "Destination table order is no longer available."
             )
+        if not user_can_use_open_table_order(destination, holder):
+            raise OrderItemTransferError(TABLE_HELD_BY_OTHER_MESSAGE)
 
     return _finalize_transfer(order, destination, unique_ids, created_by=created_by)
 

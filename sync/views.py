@@ -19,6 +19,8 @@ from branches.serializers import BranchSerializer
 from orders.serializers import OrderSerializer
 
 from .serializers import SyncOrderPushSerializer
+from rest_framework.exceptions import ValidationError
+
 from .services import get_branch_catalog_payload, get_currencies_payload, import_client_order
 
 
@@ -139,9 +141,10 @@ class SyncPushView(DesktopSyncPermissionMixin, APIView):
                     {"detail": str(exc)},
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
-            except ValueError as exc:
+            except (ValueError, ValidationError) as exc:
+                detail = getattr(exc, "detail", None) or str(exc)
                 return Response(
-                    {"detail": str(exc)},
+                    {"detail": detail},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

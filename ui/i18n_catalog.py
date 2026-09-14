@@ -1165,6 +1165,7 @@ _add("Table removed", "Table supprimée", "Mesa eliminada", "تمت إزالة �
 _add("Table updated", "Table mise à jour", "Mesa actualizada", "تم تحديث الطاولة", "桌台已更新")
 _add("Takeaway", "À emporter", "Para llevar", "سفري", "外卖")
 _add("Tap a table to select it. Highlighted tables have open dine-in orders.", "Touchez une table pour la sélectionner. Les tables surlignées ont des commandes sur place ouvertes.", "Toque una mesa para seleccionarla. Las resaltadas tienen pedidos abiertos para comer aquí.", "انقر طاولة لاختيارها. الطاولات المميزة لديها طلبات تناول مفتوحة.", "点按桌台以选择。高亮桌台有未结堂食订单。")
+_add("Available tables only. Tables held by other staff stay hidden until payment.", "Tables disponibles uniquement. Les tables tenues par d'autres restent masquées jusqu'au paiement.", "Solo mesas disponibles. Las de otro personal se ocultan hasta el pago.", "الطاولات المتاحة فقط. طاولات الموظفين الآخرين تبقى مخفية حتى الدفع.", "仅显示可用桌台。其他员工占用的桌台在付款前保持隐藏。")
 _add("Tap products to add items", "Touchez les produits pour ajouter des articles", "Toque productos para agregar artículos", "انقر المنتجات لإضافة عناصر", "点按产品以添加")
 _add("Tax Invoice", "Facture fiscale", "Factura fiscal", "فاتورة ضريبية", "税务发票")
 _add("Thank you for your business.", "Merci pour votre confiance.", "Gracias por su preferencia.", "شكراً لتعاملكم معنا.", "感谢惠顾。")
@@ -1251,6 +1252,7 @@ _add("Failed to load rates:", "Échec du chargement des taux :", "Error al carga
 # --- Gap fill (remaining untranslated UI) ---
 _add("Remaining: —", "Restant : —", "Restante: —", "المتبقي: —", "剩余：—")
 _add("Choose any table, including ones already in use. The current table is disabled.", "Choisissez n'importe quelle table, y compris celles déjà utilisées. La table actuelle est désactivée.", "Elija cualquier mesa, incluidas las que ya están en uso. La mesa actual está deshabilitada.", "اختر أي طاولة، بما في ذلك المستخدمة. الطاولة الحالية معطّلة.", "可选择任意桌台（含使用中）。当前桌台已禁用。")
+_add("Choose a free table or one of yours. Tables held by other staff are hidden until payment.", "Choisissez une table libre ou une des vôtres. Les tables tenues par d'autres restent masquées jusqu'au paiement.", "Elija una mesa libre o una suya. Las de otro personal se ocultan hasta el pago.", "اختر طاولة فارغة أو طاولتك. طاولات الموظفين الآخرين مخفية حتى الدفع.", "请选择空闲桌台或您自己的桌台。其他员工占用的桌台在付款前隐藏。")
 _add("Select for transfer", "Sélectionner pour transfert", "Seleccionar para transferir", "تحديد للتحويل", "选择以调拨")
 _add("Remove one unit", "Retirer une unité", "Quitar una unidad", "إزالة وحدة", "移除一单位")
 _add("Remove 1", "Retirer 1", "Quitar 1", "إزالة 1", "移除 1")

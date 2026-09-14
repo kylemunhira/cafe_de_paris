@@ -301,7 +301,7 @@
     </div>
     <div id="table-picker-view">
       <p id="table-picker-hint" style="margin:0 0 0.75rem; font-size:0.82rem; color:var(--color-muted);">
-        {% trans "Tap a table to select it. Highlighted tables have open dine-in orders." %}
+        {% trans "Available tables only. Tables held by other staff stay hidden until payment." %}
       </p>
       <div id="table-picker-grid" class="dining-table-grid"></div>
     </div>
@@ -537,6 +537,7 @@ const stockTakeRequiredGoBtn = document.getElementById("stock-take-required-go-b
 
 const canManageFiscalDay = "{{ can_manage_fiscal_day|yesno:'true,false' }}" === "true";
 const canManageDiningTables = "{{ can_manage_dining_tables|yesno:'true,false' }}" === "true";
+const currentUserId = Number("{{ request.user.id|default:'0' }}") || null;
 const canCollectPayment = "{{ can_collect_payment|yesno:'true,false' }}" === "true";
 const fiscalDayBtn = document.getElementById("fiscal-day-btn");
 const fiscalDayModal = document.getElementById("fiscal-day-modal");
@@ -831,11 +832,26 @@ async function loadDiningTables() {
   }
 }
 
+function tableHeldByOtherUser(table) {
+  const holderId = table?.occupied_by;
+  if (holderId == null || holderId === "") return false;
+  if (currentUserId == null) return true;
+  return Number(holderId) !== Number(currentUserId);
+}
+
+function visibleDiningTablesForPicker() {
+  return diningTables.filter((table) => !tableHeldByOtherUser(table));
+}
+
 function renderTablePickerGrid() {
-  if (!diningTables.length) {
-    const hint = canManageDiningTables
-      ? "No tables configured. Use Manage tables to add one."
-      : "No tables configured. Ask a branch manager to set up tables.";
+  const tables = visibleDiningTablesForPicker();
+  if (!tables.length) {
+    const allHidden = diningTables.length > 0;
+    const hint = allHidden
+      ? "All configured tables are held by other staff until payment."
+      : canManageDiningTables
+        ? "No tables configured. Use Manage tables to add one."
+        : "No tables configured. Ask a branch manager to set up tables.";
     tablePickerGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><p style="margin:0;">${hint}</p></div>`;
     return;
   }
@@ -845,13 +861,14 @@ function renderTablePickerGrid() {
   const sourceTable = tablePickerPurpose === "transfer"
     ? (selectedOrder?.table_number || "").trim()
     : "";
-  tablePickerGrid.innerHTML = diningTables.map(table => {
+  tablePickerGrid.innerHTML = tables.map(table => {
     const classes = ["card", "category-tab", "category-card"];
-    if (occupied.has(table.name)) classes.push("occupied");
+    const heldByMe = Boolean(table.is_occupied) && !tableHeldByOtherUser(table);
+    if (occupied.has(table.name) || heldByMe || table.is_occupied) classes.push("occupied");
     if (tablePickerPurpose === "select" && table.name === selected) classes.push("active");
     const isSource = Boolean(sourceTable) && table.name === sourceTable;
     if (isSource) classes.push("disabled");
-    let statusLabel = occupied.has(table.name) ? "In use" : "Available";
+    let statusLabel = (occupied.has(table.name) || table.is_occupied) ? "In use" : "Available";
     if (isSource) statusLabel = "Current table";
     const tableOrders = occupied.has(table.name) ? openOrdersForTable(table.name) : [];
     const itemsPreview = tableOrders.length
@@ -890,12 +907,12 @@ function setTablePickerManageMode(enabled) {
   if (tablePickerPurpose === "transfer") {
     tablePickerTitle.textContent = t("Transfer to table");
     if (tablePickerHint) {
-      tablePickerHint.textContent = t("Choose any table, including ones already in use. The current table is disabled.");
+      tablePickerHint.textContent = t("Choose a free table or one of yours. Tables held by other staff are hidden until payment.");
     }
   } else {
     tablePickerTitle.textContent = enabled ? t("Manage tables") : t("Select table");
     if (tablePickerHint) {
-      tablePickerHint.textContent = "{% trans "Tap a table to select it. Highlighted tables have open dine-in orders." %}";
+      tablePickerHint.textContent = t("Available tables only. Tables held by other staff stay hidden until payment.");
     }
   }
   if (tableManageToggleBtn) {

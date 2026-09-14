@@ -26,6 +26,7 @@ from .models import (
 )
 from .services import (
     add_items_to_order,
+    assert_user_can_use_open_table_order,
     find_open_order_for_append,
     find_open_table_order,
     reprice_order_items,
@@ -442,10 +443,25 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             existing = find_open_table_order(branch=branch, table_number=table_number)
 
         if existing:
+            if (
+                existing.order_type == OrderType.DINE_IN
+                and (existing.table_number or "").strip()
+            ):
+                assert_user_can_use_open_table_order(existing, created_by)
             with transaction.atomic():
                 order = Order.objects.select_for_update().get(pk=existing.pk)
                 add_items_to_order(order, items_data)
             return order
+
+        if order_type == OrderType.DINE_IN and table_number:
+            # Re-check under race: another user may have claimed the table.
+            raced = find_open_table_order(branch=branch, table_number=table_number)
+            if raced:
+                assert_user_can_use_open_table_order(raced, created_by)
+                with transaction.atomic():
+                    order = Order.objects.select_for_update().get(pk=raced.pk)
+                    add_items_to_order(order, items_data)
+                return order
 
         order = Order.objects.create(created_by=created_by, **validated_data)
         add_items_to_order(order, items_data)

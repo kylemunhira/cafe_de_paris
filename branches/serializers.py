@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from orders.serializers import staff_display_name
+
 from .models import Branch, DiningTable
 
 
@@ -32,10 +34,40 @@ class BranchSerializer(serializers.ModelSerializer):
 
 
 class DiningTableSerializer(serializers.ModelSerializer):
+    is_occupied = serializers.SerializerMethodField()
+    occupied_by = serializers.SerializerMethodField()
+    occupied_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = DiningTable
-        fields = ["id", "branch", "name", "sort_order", "is_active"]
-        read_only_fields = ["id"]
+        fields = [
+            "id",
+            "branch",
+            "name",
+            "sort_order",
+            "is_active",
+            "is_occupied",
+            "occupied_by",
+            "occupied_by_name",
+        ]
+        read_only_fields = ["id", "is_occupied", "occupied_by", "occupied_by_name"]
+
+    def _occupancy_order(self, obj):
+        occupancy = self.context.get("table_occupancy") or {}
+        return occupancy.get(obj.name)
+
+    def get_is_occupied(self, obj):
+        return self._occupancy_order(obj) is not None
+
+    def get_occupied_by(self, obj):
+        order = self._occupancy_order(obj)
+        return order.created_by_id if order else None
+
+    def get_occupied_by_name(self, obj):
+        order = self._occupancy_order(obj)
+        if not order:
+            return None
+        return staff_display_name(order.created_by)
 
     def validate_name(self, value):
         name = (value or "").strip()

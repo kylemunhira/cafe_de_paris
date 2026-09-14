@@ -1006,24 +1006,41 @@ async function loadDiningTables() {
   }
 }
 
+function tableHeldByOtherUser(table) {
+  const holderId = table?.occupied_by;
+  if (holderId == null || holderId === "") return false;
+  const currentId = session?.user?.id;
+  if (currentId == null) return true;
+  return Number(holderId) !== Number(currentId);
+}
+
+function visibleDiningTablesForPicker() {
+  return diningTables.filter((table) => !tableHeldByOtherUser(table));
+}
+
 function renderTablePickerGrid() {
-  if (!diningTables.length) {
-    const hint = canManageDiningTables()
-      ? "No tables configured. Sync online or use Manage tables."
-      : "No tables configured. Ask a branch manager to set up tables.";
+  const tables = visibleDiningTablesForPicker();
+  if (!tables.length) {
+    const allHidden = diningTables.length > 0;
+    const hint = allHidden
+      ? "All configured tables are held by other staff until payment."
+      : canManageDiningTables()
+        ? "No tables configured. Sync online or use Manage tables."
+        : "No tables configured. Ask a branch manager to set up tables.";
     tablePickerGrid.innerHTML = `<div class="empty-state wide"><p>${hint}</p></div>`;
     return;
   }
 
   const occupied = occupiedTableNames();
   const selected = tableNumber.value;
-  tablePickerGrid.innerHTML = diningTables
+  tablePickerGrid.innerHTML = tables
     .map((table) => {
       const classes = ["card", "category-tab", "category-card"];
       const occupancy = ordersOnTable(table.name);
-      if (occupied.has(table.name)) classes.push("occupied");
+      const held = Boolean(table.is_occupied) || occupied.has(table.name);
+      if (held) classes.push("occupied");
       if (table.name === selected) classes.push("active");
-      const statusLabel = occupancy.total
+      const statusLabel = held
         ? occupancy.total > 1
           ? `In use · ${occupancy.total} orders`
           : "In use"

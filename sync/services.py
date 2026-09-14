@@ -17,9 +17,11 @@ from orders.services import (
     ReceiptNumberError,
     add_items_to_order,
     allocate_receipt_number,
+    assert_user_can_use_open_table_order,
     consolidate_table_orders,
     find_open_table_order,
     mark_order_paid_with_tenders,
+    open_table_occupancy_for_branch,
 )
 from payments.serializers import CurrencySerializer
 
@@ -32,12 +34,14 @@ def get_branch_catalog_payload(branch):
     products = pos_catalog_products()
     categories = pos_catalog_categories()
 
+    dining_qs = DiningTable.objects.filter(branch=branch, is_active=True)
     return {
         "categories": ProductCategorySerializer(categories, many=True).data,
         "products": ProductSerializer(products, many=True).data,
         "dining_tables": DiningTableSerializer(
-            DiningTable.objects.filter(branch=branch, is_active=True),
+            dining_qs,
             many=True,
+            context={"table_occupancy": open_table_occupancy_for_branch(branch.pk)},
         ).data,
     }
 
@@ -136,6 +140,7 @@ def _create_order(branch, validated_data, user=None):
         existing = find_open_table_order(branch=branch, table_number=table_number)
 
     if existing:
+        assert_user_can_use_open_table_order(existing, user)
         add_items_to_order(existing, items_data)
         return existing
 

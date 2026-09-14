@@ -9,6 +9,7 @@ from accounts.branch_access import (
     user_can_manage_fiscal_day,
 )
 from audit.mixins import AuditedModelMixin
+from orders.services import open_table_occupancy_for_branch
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -133,6 +134,24 @@ class DiningTableViewSet(AuditedModelMixin, viewsets.ModelViewSet):
     audit_entity_type = "dining_table"
     audit_fields = ("branch", "name", "sort_order", "is_active")
     audit_label_field = "name"
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        branch = self.request.query_params.get("branch")
+        branch_id = None
+        if branch is not None:
+            try:
+                branch_id = int(branch)
+            except (TypeError, ValueError):
+                branch_id = None
+        elif self.action in ("retrieve", "update", "partial_update", "destroy"):
+            try:
+                branch_id = self.get_object().branch_id
+            except Exception:
+                branch_id = None
+        context["table_occupancy"] = open_table_occupancy_for_branch(branch_id)
+        return context
+
     def get_queryset(self):
         qs = super().get_queryset()
         branch = self.request.query_params.get("branch")
