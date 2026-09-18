@@ -5,6 +5,7 @@
 {% block page_title %}{% trans "Bakery Production" %}{% endblock %}
 
 {% block topbar_actions %}
+<a href="{% url 'ui:order-papers' %}" class="btn btn-ghost btn-sm">{% trans "Order Paper" %}</a>
 <a href="{% url 'ui:transfers' %}" class="btn btn-ghost btn-sm">{% trans "Bakery transfers" %}</a>
 {% endblock %}
 
@@ -429,6 +430,13 @@ async function loadSheets() {
   allSheets = unwrapList(await apiGet(`/production-sheets/${query}`));
   renderStats();
   renderSheets();
+
+  const params = new URLSearchParams(window.location.search);
+  const sheetParam = params.get("sheet");
+  if (sheetParam) {
+    await openSheet(sheetParam);
+    return;
+  }
 
   const draft = allSheets.find(s => s.status === "draft");
   if (draft && !activeSheet) {

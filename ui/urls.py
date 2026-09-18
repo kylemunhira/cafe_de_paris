@@ -48,6 +48,7 @@ urlpatterns = [
     path("branches/", views.BranchesView.as_view(), name="branches"),
     path("transfers/", views.TransfersView.as_view(), name="transfers"),
     path("bakery-production/", views.BakeryProductionView.as_view(), name="bakery-production"),
+    path("order-papers/", views.OrderPapersView.as_view(), name="order-papers"),
     path("stores-transfers/", views.StoresTransfersView.as_view(), name="stores-transfers"),
     path("branch-transfers/", views.BranchTransfersView.as_view(), name="branch-transfers"),
     path("central-invoices/", views.CentralInvoicesView.as_view(), name="central-invoices"),

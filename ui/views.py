@@ -10,9 +10,12 @@ from accounts.branch_access import (
     user_can_access_grv,
     user_can_access_kitchen,
     user_can_access_management_console,
+    user_can_access_order_papers,
     user_can_access_pos,
     user_can_access_stores_transfers,
+    user_can_create_order_papers,
     user_can_create_purchase_orders,
+    user_can_manage_bakery_order_papers,
     user_can_manage_users,
     user_is_baker,
     user_is_branch_manager,
@@ -424,6 +427,36 @@ class BakeryProductionView(BaseUIView):
 
     def access_allowed(self, user):
         return user_can_access_bakery_transfers(user)
+
+
+class OrderPapersView(BaseUIView):
+    template_name = "ui/order_papers.html"
+    active_nav = "order_papers"
+    allow_cashier = True
+    allow_baker = True
+    allow_grv_staff = True
+
+    def access_allowed(self, user):
+        return user_can_access_order_papers(user)
+
+    def cashier_access_allowed(self, user):
+        return user_can_create_order_papers(user)
+
+    def baker_access_allowed(self, user):
+        return user_can_manage_bakery_order_papers(user)
+
+    def grv_staff_access_allowed(self, user):
+        return user_can_create_order_papers(user)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["can_create_order_papers"] = user_can_create_order_papers(
+            self.request.user
+        )
+        context["can_manage_bakery_order_papers"] = user_can_manage_bakery_order_papers(
+            self.request.user
+        )
+        return context
 
 
 class StoresTransfersView(BaseUIView):

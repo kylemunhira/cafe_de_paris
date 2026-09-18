@@ -316,6 +316,40 @@ def user_can_access_branch_transfers(user):
     return profile.role in (StaffRole.CASHIER, StaffRole.BRANCH_MANAGER)
 
 
+def user_can_create_order_papers(user):
+    """Branches and central stores raise bakery order papers (same as requesters)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user_has_global_branch_access(user):
+        return True
+    try:
+        profile = user.staff_profile
+    except StaffProfile.DoesNotExist:
+        return False
+    branch_type = profile.branch.branch_type
+    if branch_type == BranchType.BRANCH:
+        return profile.role in (StaffRole.CASHIER, StaffRole.BRANCH_MANAGER)
+    if branch_type == BranchType.STORES:
+        return profile.role in (
+            StaffRole.BRANCH_MANAGER,
+            StaffRole.STAFF,
+            StaffRole.CASHIER,
+        )
+    return False
+
+
+def user_can_manage_bakery_order_papers(user):
+    """Bakery staff review submitted order papers and apply them to production."""
+    return user_can_access_bakery_transfers(user)
+
+
+def user_can_access_order_papers(user):
+    """Anyone who creates papers or bakery staff who fulfil them."""
+    return user_can_create_order_papers(user) or user_can_manage_bakery_order_papers(
+        user
+    )
+
+
 def user_can_access_central_invoices(user):
     """Central stores staff selling bakery products to external customers."""
     return user_can_access_stores_transfers(user)

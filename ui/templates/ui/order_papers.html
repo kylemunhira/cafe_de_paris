@@ -1,0 +1,554 @@
+{% extends "ui/base.html" %}
+{% load static i18n %}
+
+{% block title %}{% trans "Order Paper" %} — Café de Paris{% endblock %}
+{% block page_title %}{% trans "Order Paper" %}{% endblock %}
+
+{% block topbar_actions %}
+{% if can_manage_bakery_order_papers %}
+<a href="{% url 'ui:bakery-production' %}" class="btn btn-ghost btn-sm">{% trans "Bakery Production" %}</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if can_create_order_papers %}
+<div class="card" id="paper-form-card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+  <h3 id="paper-form-title" style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New order paper" %}</h3>
+  <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
+    {% trans "Branches and central stores request bakery products for a needed date. Submit so the bakery can bake and deliver." %}
+  </p>
+  <form id="paper-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="requesting-branch">{% trans "Requesting branch" %}</label>
+        <select id="requesting-branch" required>
+          <option value="">{% trans "Loading…" %}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="bakery-branch">{% trans "Central bakery" %}</label>
+        <select id="bakery-branch" required>
+          <option value="">{% trans "Loading…" %}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="needed-date">{% trans "Needed date" %}</label>
+        <input type="date" id="needed-date" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="paper-notes">{% trans "Notes" %}</label>
+      <input type="text" id="paper-notes" placeholder="{% trans "Optional notes for bakery" %}">
+    </div>
+    <div class="form-row" style="align-items: end;">
+      <div class="form-group" style="flex: 2;">
+        <label for="product-select">{% trans "Bakery product" %}</label>
+        <select id="product-select" class="searchable-select">
+          <option value="">{% trans "Select product…" %}</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 0 0 110px;">
+        <label for="line-qty">{% trans "Qty" %}</label>
+        <input type="number" id="line-qty" min="0.01" step="0.01" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 0 0 auto;">
+        <button type="button" id="add-line-btn" class="btn btn-ghost">{% trans "Add line" %}</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="lines-wrap" style="display: none; margin-bottom: 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{% trans "Product" %}</th>
+            <th style="text-align: right;">{% trans "Qty" %}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body"></tbody>
+      </table>
+    </div>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Submit to bakery" %}</button>
+      <button type="button" class="btn btn-ghost" id="draft-btn" disabled>{% trans "Save as draft" %}</button>
+      <button type="button" class="btn btn-ghost" id="cancel-edit-btn" style="display: none;">{% trans "Cancel editing" %}</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if can_manage_bakery_order_papers %}
+<div class="card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;">
+  <div class="form-row" style="align-items: end;">
+    <div class="form-group">
+      <label for="demand-date">{% trans "Needed date" %}</label>
+      <input type="date" id="demand-date">
+    </div>
+    <div class="form-group" style="flex: 0 0 auto;">
+      <button type="button" class="btn btn-ghost" id="refresh-demand-btn">{% trans "Refresh demand" %}</button>
+    </div>
+    <div class="form-group" style="flex: 0 0 auto;">
+      <button type="button" class="btn btn-primary" id="apply-production-btn">{% trans "Create production from selected" %}</button>
+    </div>
+  </div>
+  <p style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
+    {% trans "Select submitted order papers below, then create a production sheet prefilled for each requesting branch (including central stores)." %}
+  </p>
+  <div class="table-wrap" id="demand-table" style="margin-top: 1rem;"></div>
+</div>
+{% endif %}
+
+<div class="card" style="padding: 0;">
+  <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(44,24,16,0.06); display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+    <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
+    <button class="category-tab" data-filter="draft">{% trans "Draft" %}</button>
+    <button class="category-tab" data-filter="submitted">{% trans "Submitted" %}</button>
+    <button class="category-tab" data-filter="accepted">{% trans "Accepted" %}</button>
+    <button class="category-tab" data-filter="fulfilled">{% trans "Fulfilled" %}</button>
+    <div class="form-group" style="margin: 0 0 0 auto; min-width: 160px;">
+      <input type="date" id="list-needed-date" title="{% trans 'Filter by needed date' %}">
+    </div>
+  </div>
+  <div class="table-wrap" id="papers-table">
+    <div style="padding: 2rem; text-align: center;"><span class="loading-spinner"></span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiGet, apiPost, apiPatch, unwrapList, formatDate, statusBadge, showToast } from "{% static 'ui/js/api.js' %}";
+
+const t = (msgid) => window.CDP.t(msgid);
+const CAN_CREATE = {{ can_create_order_papers|yesno:"true,false" }};
+const CAN_MANAGE = {{ can_manage_bakery_order_papers|yesno:"true,false" }};
+const STAFF_BRANCH_ID = "{{ staff_branch_id|default_if_none:'' }}";
+const CAN_FILTER_ANY = {{ can_filter_any_branch|yesno:"true,false" }};
+
+let requesterBranches = [];
+let bakeryBranches = [];
+let bakeryProducts = [];
+let draftLines = [];
+let editingId = null;
+let allPapers = [];
+let activeFilter = "all";
+let selectedPaperIds = new Set();
+
+function tomorrowISO() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatQty(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function renderLines() {
+  const wrap = document.getElementById("lines-wrap");
+  const body = document.getElementById("lines-body");
+  if (!wrap || !body) return;
+  if (!draftLines.length) {
+    wrap.style.display = "none";
+    body.innerHTML = "";
+    updateFormButtons();
+    return;
+  }
+  wrap.style.display = "";
+  body.innerHTML = draftLines.map((line, idx) => `
+    <tr>
+      <td>${line.product_name}</td>
+      <td style="text-align:right;">${formatQty(line.quantity_requested)}</td>
+      <td style="text-align:right;">
+        <button type="button" class="btn btn-ghost btn-sm" data-remove="${idx}">${t("Remove")}</button>
+      </td>
+    </tr>
+  `).join("");
+  body.querySelectorAll("[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      draftLines.splice(Number(btn.dataset.remove), 1);
+      renderLines();
+    });
+  });
+  updateFormButtons();
+}
+
+function updateFormButtons() {
+  const hasLines = draftLines.length > 0;
+  const submitBtn = document.getElementById("submit-btn");
+  const draftBtn = document.getElementById("draft-btn");
+  if (submitBtn) submitBtn.disabled = !hasLines;
+  if (draftBtn) draftBtn.disabled = !hasLines;
+}
+
+function resetForm() {
+  editingId = null;
+  draftLines = [];
+  const title = document.getElementById("paper-form-title");
+  if (title) title.textContent = t("New order paper");
+  const notes = document.getElementById("paper-notes");
+  if (notes) notes.value = "";
+  const needed = document.getElementById("needed-date");
+  if (needed) needed.value = tomorrowISO();
+  const cancelEdit = document.getElementById("cancel-edit-btn");
+  if (cancelEdit) cancelEdit.style.display = "none";
+  renderLines();
+}
+
+function populateSelects() {
+  const req = document.getElementById("requesting-branch");
+  const bak = document.getElementById("bakery-branch");
+  const prod = document.getElementById("product-select");
+  if (req) {
+    req.innerHTML = requesterBranches.map(b =>
+      `<option value="${b.id}">${b.name}${b.branch_type === "stores" ? ` (${t("Central stores")})` : ""}</option>`
+    ).join("");
+    if (!CAN_FILTER_ANY && STAFF_BRANCH_ID) {
+      req.value = STAFF_BRANCH_ID;
+      req.disabled = true;
+    }
+  }
+  if (bak) {
+    bak.innerHTML = bakeryBranches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+  }
+  if (prod) {
+    prod.innerHTML = `<option value="">${t("Select product…")}</option>` +
+      bakeryProducts.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+  }
+}
+
+function paperPayload(submit) {
+  return {
+    requesting_branch: Number(document.getElementById("requesting-branch").value),
+    bakery: Number(document.getElementById("bakery-branch").value),
+    needed_date: document.getElementById("needed-date").value,
+    notes: document.getElementById("paper-notes").value || "",
+    submit: !!submit,
+    lines: draftLines.map(l => ({
+      product: l.product,
+      quantity_requested: l.quantity_requested,
+    })),
+  };
+}
+
+async function savePaper(submit) {
+  if (!draftLines.length) return;
+  try {
+    if (editingId) {
+      await apiPatch(`/order-papers/${editingId}/`, {
+        needed_date: document.getElementById("needed-date").value,
+        notes: document.getElementById("paper-notes").value || "",
+        lines: draftLines.map(l => ({
+          product: l.product,
+          quantity_requested: l.quantity_requested,
+        })),
+      });
+      if (submit) {
+        await apiPost(`/order-papers/${editingId}/submit/`, {});
+      }
+      showToast(submit ? t("Order paper submitted.") : t("Draft saved."));
+    } else {
+      await apiPost("/order-papers/", paperPayload(submit));
+      showToast(submit ? t("Order paper submitted.") : t("Draft saved."));
+    }
+    resetForm();
+    await loadPapers();
+    if (CAN_MANAGE) await loadDemand();
+  } catch (err) {
+    showToast(err.message || t("Could not save order paper."), true);
+  }
+}
+
+async function editDraft(paper) {
+  editingId = paper.id;
+  document.getElementById("paper-form-title").textContent = `${t("Edit draft")} #${paper.id}`;
+  document.getElementById("requesting-branch").value = String(paper.requesting_branch);
+  document.getElementById("bakery-branch").value = String(paper.bakery);
+  document.getElementById("needed-date").value = paper.needed_date;
+  document.getElementById("paper-notes").value = paper.notes || "";
+  draftLines = (paper.lines || []).map(l => ({
+    product: l.product,
+    product_name: l.product_name,
+    quantity_requested: Number(l.quantity_requested),
+  }));
+  document.getElementById("cancel-edit-btn").style.display = "";
+  renderLines();
+  document.getElementById("paper-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderPapers() {
+  const table = document.getElementById("papers-table");
+  const dateFilter = document.getElementById("list-needed-date")?.value || "";
+  let rows = allPapers;
+  if (activeFilter !== "all") {
+    rows = rows.filter(p => p.status === activeFilter);
+  }
+  if (dateFilter) {
+    rows = rows.filter(p => p.needed_date === dateFilter);
+  }
+  if (!rows.length) {
+    table.innerHTML = `<div class="empty-state"><p>${t("No order papers found.")}</p></div>`;
+    return;
+  }
+  const showSelect = CAN_MANAGE;
+  table.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          ${showSelect ? "<th></th>" : ""}
+          <th>#</th>
+          <th>${t("Branch")}</th>
+          <th>${t("Needed date")}</th>
+          <th>${t("Status")}</th>
+          <th style="text-align:right;">${t("Lines")}</th>
+          <th style="text-align:right;">${t("Qty")}</th>
+          <th>${t("Actions")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(p => {
+          const selectable = p.status === "submitted" || (p.status === "accepted" && !p.production_sheet);
+          const checked = selectedPaperIds.has(p.id) ? "checked" : "";
+          const linesPreview = (p.lines || []).slice(0, 4).map(l =>
+            `${formatQty(l.effective_quantity || l.quantity_requested)} × ${l.product_name}`
+          ).join("<br>");
+          const more = (p.lines || []).length > 4 ? `<div style="color:var(--color-muted);font-size:0.8rem;">+${(p.lines || []).length - 4} more</div>` : "";
+          let actions = [];
+          if (CAN_CREATE && p.status === "draft") {
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-edit="${p.id}">${t("Edit")}</button>`);
+            actions.push(`<button type="button" class="btn btn-primary btn-sm" data-submit="${p.id}">${t("Submit")}</button>`);
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
+          }
+          if (CAN_CREATE && p.status === "submitted" && !CAN_MANAGE) {
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
+          }
+          if (CAN_MANAGE && p.status === "submitted") {
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-accept="${p.id}">${t("Accept")}</button>`);
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
+          }
+          return `
+            <tr>
+              ${showSelect ? `<td>${selectable ? `<input type="checkbox" data-select="${p.id}" ${checked}>` : ""}</td>` : ""}
+              <td>${p.id}</td>
+              <td>
+                <div>${p.requesting_branch_name}</div>
+                <div style="font-size:0.8rem;color:var(--color-muted);">${linesPreview}${more}</div>
+              </td>
+              <td>${formatDate(p.needed_date)}</td>
+              <td>${statusBadge(p.status_display || p.status)}</td>
+              <td style="text-align:right;">${p.line_count ?? (p.lines || []).length}</td>
+              <td style="text-align:right;">${formatQty(p.total_units)}</td>
+              <td style="display:flex;gap:0.35rem;flex-wrap:wrap;">${actions.join("") || "—"}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+  table.querySelectorAll("[data-select]").forEach(el => {
+    el.addEventListener("change", () => {
+      const id = Number(el.dataset.select);
+      if (el.checked) selectedPaperIds.add(id);
+      else selectedPaperIds.delete(id);
+    });
+  });
+  table.querySelectorAll("[data-edit]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const paper = allPapers.find(p => String(p.id) === btn.dataset.edit);
+      if (paper) await editDraft(paper);
+    });
+  });
+  table.querySelectorAll("[data-submit]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost(`/order-papers/${btn.dataset.submit}/submit/`, {});
+        showToast(t("Order paper submitted."));
+        await loadPapers();
+        if (CAN_MANAGE) await loadDemand();
+      } catch (err) {
+        showToast(err.message || t("Could not submit."), true);
+      }
+    });
+  });
+  table.querySelectorAll("[data-cancel]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm(t("Cancel this order paper?"))) return;
+      try {
+        await apiPost(`/order-papers/${btn.dataset.cancel}/cancel/`, {});
+        showToast(t("Order paper cancelled."));
+        selectedPaperIds.delete(Number(btn.dataset.cancel));
+        await loadPapers();
+        if (CAN_MANAGE) await loadDemand();
+      } catch (err) {
+        showToast(err.message || t("Could not cancel."), true);
+      }
+    });
+  });
+  table.querySelectorAll("[data-accept]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost(`/order-papers/${btn.dataset.accept}/accept/`, {});
+        showToast(t("Order paper accepted."));
+        await loadPapers();
+        await loadDemand();
+      } catch (err) {
+        showToast(err.message || t("Could not accept."), true);
+      }
+    });
+  });
+}
+
+function renderDemand(data) {
+  const el = document.getElementById("demand-table");
+  if (!el) return;
+  const totals = data.product_totals || [];
+  if (!totals.length) {
+    el.innerHTML = `<div class="empty-state"><p>${t("No open demand for this date.")}</p></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>${t("Product")}</th>
+          <th style="text-align:right;">${t("Total qty")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${totals.map(row => `
+          <tr>
+            <td>${row.product_name}</td>
+            <td style="text-align:right;">${formatQty(row.quantity)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <p style="margin:0.75rem 0 0;font-size:0.85rem;color:var(--color-muted);">
+      ${data.paper_count || 0} ${t("order paper(s) not yet on a production sheet")}
+    </p>
+  `;
+}
+
+async function loadPapers() {
+  const params = new URLSearchParams();
+  const dateFilter = document.getElementById("list-needed-date")?.value;
+  if (dateFilter) params.set("needed_date", dateFilter);
+  const qs = params.toString() ? `?${params}` : "";
+  allPapers = unwrapList(await apiGet(`/order-papers/${qs}`));
+  renderPapers();
+}
+
+async function loadDemand() {
+  if (!CAN_MANAGE) return;
+  const date = document.getElementById("demand-date")?.value || "";
+  const params = new URLSearchParams();
+  if (date) params.set("needed_date", date);
+  if (bakeryBranches[0]) params.set("bakery", String(bakeryBranches[0].id));
+  const qs = params.toString() ? `?${params}` : "";
+  const data = await apiGet(`/order-papers/demand/${qs}`);
+  renderDemand(data);
+}
+
+async function applyToProduction() {
+  if (!selectedPaperIds.size) {
+    showToast(t("Select at least one submitted order paper."), true);
+    return;
+  }
+  const bakeryId = bakeryBranches[0]?.id;
+  if (!bakeryId) {
+    showToast(t("No bakery configured."), true);
+    return;
+  }
+  const productionDate = document.getElementById("demand-date")?.value || tomorrowISO();
+  try {
+    const sheet = await apiPost("/production-sheets/from-order-papers/", {
+      branch: bakeryId,
+      production_date: productionDate,
+      order_paper_ids: Array.from(selectedPaperIds),
+    });
+    showToast(t("Production sheet created from order papers."));
+    selectedPaperIds.clear();
+    window.location.href = `{% url 'ui:bakery-production' %}?sheet=${sheet.id}`;
+  } catch (err) {
+    showToast(err.message || t("Could not create production sheet."), true);
+  }
+}
+
+async function init() {
+  const [branches, bakeries] = await Promise.all([
+    apiGet("/branches/?active_only=1").then(unwrapList),
+    apiGet("/branches/bakeries/").then(unwrapList).catch(() => []),
+  ]);
+  requesterBranches = branches.filter(b =>
+    b.is_active && (b.branch_type === "branch" || b.branch_type === "stores")
+  );
+  bakeryBranches = (bakeries.length ? bakeries : branches).filter(b =>
+    b.is_active && b.branch_type === "bakery"
+  );
+
+  if (CAN_CREATE) {
+    // Same filter as Android / Bakery Transfers: finished sellable bakery goods only.
+    bakeryProducts = unwrapList(
+      await apiGet("/products/?bakery_transfer=true&page_size=1000")
+    );
+    populateSelects();
+    resetForm();
+
+    document.getElementById("add-line-btn")?.addEventListener("click", () => {
+      const select = document.getElementById("product-select");
+      const qtyInput = document.getElementById("line-qty");
+      const productId = Number(select.value);
+      const qty = Number(qtyInput.value);
+      if (!productId || !(qty > 0)) {
+        showToast(t("Choose a product and quantity."), true);
+        return;
+      }
+      const product = bakeryProducts.find(p => p.id === productId);
+      const existing = draftLines.find(l => l.product === productId);
+      if (existing) {
+        existing.quantity_requested += qty;
+      } else {
+        draftLines.push({
+          product: productId,
+          product_name: product?.name || `#${productId}`,
+          quantity_requested: qty,
+        });
+      }
+      qtyInput.value = "";
+      select.value = "";
+      renderLines();
+    });
+    document.getElementById("paper-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      savePaper(true);
+    });
+    document.getElementById("draft-btn")?.addEventListener("click", () => savePaper(false));
+    document.getElementById("cancel-edit-btn")?.addEventListener("click", resetForm);
+  }
+
+  document.querySelectorAll("[data-filter]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-filter]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeFilter = btn.dataset.filter;
+      renderPapers();
+    });
+  });
+  document.getElementById("list-needed-date")?.addEventListener("change", loadPapers);
+
+  if (CAN_MANAGE) {
+    const demandDate = document.getElementById("demand-date");
+    if (demandDate) demandDate.value = tomorrowISO();
+    document.getElementById("refresh-demand-btn")?.addEventListener("click", loadDemand);
+    document.getElementById("apply-production-btn")?.addEventListener("click", applyToProduction);
+    document.getElementById("demand-date")?.addEventListener("change", loadDemand);
+    await loadDemand();
+  }
+
+  await loadPapers();
+}
+
+init().catch(err => showToast(err.message || t("Failed to load."), true));
+</script>
+{% endblock %}

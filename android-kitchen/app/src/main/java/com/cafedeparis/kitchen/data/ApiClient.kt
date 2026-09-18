@@ -266,6 +266,115 @@ class ApiClient(
         return JsonParsers.parseProductionSheet(body)
     }
 
+    fun fetchOrderPapers(
+        status: String? = null,
+        neededDate: String? = null,
+    ): List<OrderPaper> {
+        val token = requireToken()
+        val url = buildString {
+            append("${config.serverUrl}/api/order-papers/?page_size=200")
+            if (!status.isNullOrBlank()) append("&status=$status")
+            if (!neededDate.isNullOrBlank()) append("&needed_date=$neededDate")
+        }
+        return JsonParsers.parseOrderPapers(getJson(url, token))
+    }
+
+    fun fetchOrderPaperDemand(neededDate: String?): OrderPaperDemand {
+        val token = requireToken()
+        val url = buildString {
+            append("${config.serverUrl}/api/order-papers/demand/")
+            if (!neededDate.isNullOrBlank()) {
+                append("?needed_date=$neededDate")
+            }
+        }
+        return JsonParsers.parseOrderPaperDemand(getJson(url, token))
+    }
+
+    fun createOrderPaper(
+        requestingBranchId: Int,
+        bakeryId: Int,
+        neededDate: String,
+        notes: String,
+        submit: Boolean,
+        lines: List<Pair<Int, String>>,
+    ): OrderPaper {
+        val token = requireToken()
+        val linesJson = JSONArray()
+        for ((productId, quantity) in lines) {
+            linesJson.put(
+                JSONObject()
+                    .put("product", productId)
+                    .put("quantity_requested", quantity),
+            )
+        }
+        val payload = JSONObject()
+            .put("requesting_branch", requestingBranchId)
+            .put("bakery", bakeryId)
+            .put("needed_date", neededDate)
+            .put("notes", notes)
+            .put("submit", submit)
+            .put("lines", linesJson)
+        val body = postJson("${config.serverUrl}/api/order-papers/", payload, token)
+        return JsonParsers.parseOrderPaper(body)
+    }
+
+    fun submitOrderPaper(paperId: Int): OrderPaper {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/order-papers/$paperId/submit/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseOrderPaper(body)
+    }
+
+    fun cancelOrderPaper(paperId: Int): OrderPaper {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/order-papers/$paperId/cancel/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseOrderPaper(body)
+    }
+
+    fun acceptOrderPaper(paperId: Int): OrderPaper {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/order-papers/$paperId/accept/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseOrderPaper(body)
+    }
+
+    fun createProductionSheetFromOrderPapers(
+        bakeryId: Int,
+        productionDate: String,
+        orderPaperIds: List<Int>,
+    ): ProductionSheet {
+        val token = requireToken()
+        val ids = JSONArray()
+        orderPaperIds.forEach { ids.put(it) }
+        val payload = JSONObject()
+            .put("branch", bakeryId)
+            .put("production_date", productionDate)
+            .put("order_paper_ids", ids)
+        val body = postJson(
+            "${config.serverUrl}/api/production-sheets/from-order-papers/",
+            payload,
+            token,
+        )
+        return JsonParsers.parseProductionSheet(body)
+    }
+
+    fun fetchBakeryBranches(): List<Branch> {
+        val token = requireToken()
+        val url = "${config.serverUrl}/api/branches/bakeries/"
+        return JsonParsers.parseBranches(getJson(url, token))
+            .filter { it.is_active && (it.branch_type == null || it.branch_type == "bakery") }
+    }
+
     fun fetchBakeryInventory(): List<InventoryItem> {
         val token = requireToken()
         val url = "${config.serverUrl}/api/inventory/?branch=${session.branchId}&page_size=2000"

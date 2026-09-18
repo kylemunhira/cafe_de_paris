@@ -3,6 +3,7 @@ from accounts.branch_access import (
     filter_by_branch_field,
     resolve_branch_filter,
     user_can_access_bakery_transfers,
+    user_can_access_order_papers,
     user_can_access_pos,
     user_can_manage_branches,
     user_can_manage_dining_tables,
@@ -71,6 +72,20 @@ class BranchViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         queryset = Branch.objects.filter(
             is_active=True,
             branch_type__in=(BranchType.STORES, BranchType.BRANCH),
+        ).order_by("name")
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="bakeries")
+    def bakeries(self, request):
+        """Active bakery locations for order papers (visible to requesters)."""
+        if not user_can_access_order_papers(request.user):
+            raise PermissionDenied(
+                "You do not have permission to list bakeries for order papers."
+            )
+        queryset = Branch.objects.filter(
+            is_active=True,
+            branch_type=BranchType.BAKERY,
         ).order_by("name")
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)

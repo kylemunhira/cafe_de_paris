@@ -141,6 +141,8 @@ data class LoginResponse(
     val can_access_kitchen: Boolean = false,
     val can_access_pos: Boolean = false,
     val can_access_bakery: Boolean = false,
+    val can_create_order_papers: Boolean = false,
+    val can_manage_bakery_order_papers: Boolean = false,
     val inclusive_tax_rate: Double = 15.5,
     val zta_levy_rate: Double = 2.0,
 ) {
@@ -242,6 +244,39 @@ data class ProductionSheet(
     val completedAt: String? = null,
     val destinations: List<ProductionDestination> = emptyList(),
     val lines: List<ProductionSheetLine> = emptyList(),
+)
+
+data class OrderPaperLine(
+    val id: Int = 0,
+    val productId: Int,
+    val productName: String,
+    val categoryName: String? = null,
+    val quantityRequested: String,
+    val quantityAccepted: String? = null,
+    val effectiveQuantity: String = quantityRequested,
+)
+
+data class OrderPaper(
+    val id: Int,
+    val requestingBranchId: Int,
+    val requestingBranchName: String,
+    val requestingBranchType: String? = null,
+    val bakeryId: Int,
+    val bakeryName: String,
+    val neededDate: String,
+    val status: String,
+    val statusDisplay: String,
+    val notes: String = "",
+    val productionSheetId: Int? = null,
+    val lineCount: Int = 0,
+    val totalUnits: String = "0",
+    val lines: List<OrderPaperLine> = emptyList(),
+)
+
+data class OrderPaperDemand(
+    val neededDate: String?,
+    val paperCount: Int,
+    val productTotals: List<Pair<String, String>>,
 )
 
 data class InventoryItem(

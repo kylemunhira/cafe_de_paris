@@ -32,6 +32,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -47,6 +49,7 @@ class MainActivity : KeepScreenOnActivity() {
     private val adapter = OrderAdapter()
     private var pollJob: Job? = null
     private var errorHideJob: Job? = null
+    private val refreshMutex = Mutex()
     private var loginInProgress = false
     private var loginBlockedForUpdate = false
     private var lastOpenOrderIds: Set<Int> = emptySet()
@@ -358,6 +361,10 @@ class MainActivity : KeepScreenOnActivity() {
             openPosAndFinish()
             return
         }
+        if (session.canAccessOrderPapers) {
+            openOrderPaperAndFinish()
+            return
+        }
         if (!session.canAccessKitchen) {
             binding.loginError.text = getString(R.string.login_not_allowed)
             binding.loginError.visibility = View.VISIBLE
@@ -376,6 +383,15 @@ class MainActivity : KeepScreenOnActivity() {
 
     private fun openBakeryAndFinish() {
         startActivity(Intent(this, BakeryProductionActivity::class.java))
+        finish()
+    }
+
+    private fun openOrderPaperAndFinish() {
+        startActivity(
+            Intent(this, OrderPaperActivity::class.java).apply {
+                putExtra(OrderPaperActivity.EXTRA_STANDALONE_HOME, true)
+            },
+        )
         finish()
     }
 
@@ -415,7 +431,7 @@ class MainActivity : KeepScreenOnActivity() {
         pollJob?.cancel()
         pollJob = lifecycleScope.launch {
             while (isActive) {
-                refreshOrders(manual = false)
+                refreshOrdersInternal(manual = false)
                 delay(POLL_INTERVAL_MS)
             }
         }
@@ -423,8 +439,14 @@ class MainActivity : KeepScreenOnActivity() {
 
     private fun refreshOrders(manual: Boolean) {
         if (!session.isLoggedIn) return
-
         lifecycleScope.launch {
+            refreshOrdersInternal(manual)
+        }
+    }
+
+    private suspend fun refreshOrdersInternal(manual: Boolean) {
+        if (!session.isLoggedIn) return
+        refreshMutex.withLock {
             if (manual) {
                 binding.refreshProgress.visibility = View.VISIBLE
             }
@@ -485,6 +507,8 @@ class MainActivity : KeepScreenOnActivity() {
             val items = order.items.ifEmpty { snapshotByOrder[order.id].orEmpty() }
             if (items.isEmpty()) continue
             val transferredTo = findDestinationOrderId(items, orders, excludeOrderId = order.id)
+            session.markCancelPrinted(order.id)
+            printedCancelIds.add(order.id)
             if (!printCancelTicket(
                     printerAddress,
                     order.copy(items = items),
@@ -492,10 +516,10 @@ class MainActivity : KeepScreenOnActivity() {
                     transferredToOrderId = transferredTo,
                 )
             ) {
+                session.restoreCancelPrinted(order.id)
+                printedCancelIds.remove(order.id)
                 return
             }
-            session.markCancelPrinted(order.id)
-            printedCancelIds.add(order.id)
             session.removePrintedItemSnapshot(order.id)
             session.markPrinted(order.id, SessionManager.orderPrintFingerprint(order.copy(items = items)))
         }
@@ -510,6 +534,8 @@ class MainActivity : KeepScreenOnActivity() {
             session.removePrintedItemSnapshot(orderId)
             if (remote?.status != "cancelled") continue
             val transferredTo = findDestinationOrderId(snapshot, orders, excludeOrderId = orderId)
+            session.markCancelPrinted(orderId)
+            printedCancelIds.add(orderId)
             if (!printCancelTicket(
                     printerAddress,
                     remote.copy(items = snapshot),
@@ -517,10 +543,10 @@ class MainActivity : KeepScreenOnActivity() {
                     transferredToOrderId = transferredTo,
                 )
             ) {
+                session.restoreCancelPrinted(orderId)
+                printedCancelIds.remove(orderId)
                 return
             }
-            session.markCancelPrinted(orderId)
-            printedCancelIds.add(orderId)
         }
 
         val fingerprints = session.getPrintedOrderFingerprints().toMutableMap()
@@ -569,6 +595,11 @@ class MainActivity : KeepScreenOnActivity() {
                 }
             }
 
+            // Claim the fingerprint before Bluetooth I/O. Printing can take longer
+            // than one poll, and overlapping jobs used to reprint the same ticket.
+            session.markPrinted(order.id, fingerprint)
+            fingerprints[order.id] = fingerprint
+
             if (newItems.isNotEmpty()) {
                 val ticket = if (previousKeys.isEmpty()) {
                     order
@@ -588,12 +619,16 @@ class MainActivity : KeepScreenOnActivity() {
                         transferredFromOrderId = transferredFrom,
                     )
                 ) {
+                    session.restorePrintedFingerprint(order.id, previous)
+                    if (previous == null) {
+                        fingerprints.remove(order.id)
+                    } else {
+                        fingerprints[order.id] = previous
+                    }
                     return
                 }
             }
 
-            session.markPrinted(order.id, fingerprint)
-            fingerprints[order.id] = fingerprint
             session.setPrintedItemSnapshot(order.id, order.items)
         }
     }

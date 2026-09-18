@@ -7,6 +7,9 @@ from catalog.constants import is_bakery_transfer_product
 from catalog.models import Product
 
 from .models import (
+    OrderPaper,
+    OrderPaperLine,
+    OrderPaperStatus,
     ProductionOrder,
     ProductionSheet,
     ProductionSheetAllocation,
@@ -14,15 +17,26 @@ from .models import (
     Recipe,
 )
 from .services import (
+    EmptyOrderPaperError,
+    EmptyProductionSheetError,
     InsufficientIngredientsError,
+    InvalidOrderPaperBakeryError,
+    InvalidOrderPaperBranchError,
+    InvalidOrderPaperStateError,
     InvalidProductionBranchError,
     InvalidProductionProductError,
     InvalidProductionSheetStateError,
     NoRecipeError,
+    accept_order_paper,
+    cancel_order_paper,
     complete_production,
+    create_order_paper,
     create_production_sheet,
+    create_production_sheet_from_order_papers,
     destination_column_label,
     production_destination_branches,
+    submit_order_paper,
+    update_order_paper,
     update_production_sheet_lines,
 )
 
@@ -435,6 +449,261 @@ class ProductionSheetLinesUpdateSerializer(serializers.Serializer):
         try:
             return update_production_sheet_lines(instance, validated_data["lines"])
         except InvalidProductionSheetStateError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+
+
+class OrderPaperLineSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    category_name = serializers.CharField(
+        source="product.category.name", read_only=True
+    )
+    effective_quantity = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+
+    class Meta:
+        model = OrderPaperLine
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "category_name",
+            "quantity_requested",
+            "quantity_accepted",
+            "effective_quantity",
+        ]
+
+
+class OrderPaperLineWriteSerializer(serializers.Serializer):
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True)
+    )
+    quantity_requested = serializers.DecimalField(max_digits=12, decimal_places=2)
+    quantity_accepted = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+
+    def validate_quantity_requested(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Quantity must be greater than zero.")
+        return value
+
+    def validate_product(self, product):
+        if not is_bakery_transfer_product(product):
+            raise serializers.ValidationError(
+                "Only finished bakery products can be ordered."
+            )
+        return product
+
+
+class OrderPaperSerializer(serializers.ModelSerializer):
+    requesting_branch_name = serializers.CharField(
+        source="requesting_branch.name", read_only=True
+    )
+    requesting_branch_type = serializers.CharField(
+        source="requesting_branch.branch_type", read_only=True
+    )
+    bakery_name = serializers.CharField(source="bakery.name", read_only=True)
+    status_display = serializers.CharField(
+        source="get_status_display", read_only=True
+    )
+    created_by_name = serializers.SerializerMethodField()
+    lines = OrderPaperLineSerializer(many=True, read_only=True)
+    line_count = serializers.IntegerField(read_only=True)
+    total_units = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderPaper
+        fields = [
+            "id",
+            "requesting_branch",
+            "requesting_branch_name",
+            "requesting_branch_type",
+            "bakery",
+            "bakery_name",
+            "needed_date",
+            "status",
+            "status_display",
+            "notes",
+            "production_sheet",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "submitted_at",
+            "accepted_at",
+            "fulfilled_at",
+            "lines",
+            "line_count",
+            "total_units",
+        ]
+        read_only_fields = [
+            "status",
+            "production_sheet",
+            "created_by",
+            "created_at",
+            "submitted_at",
+            "accepted_at",
+            "fulfilled_at",
+        ]
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        return obj.created_by.get_full_name() or obj.created_by.username
+
+    def get_total_units(self, obj):
+        total = Decimal("0")
+        for line in obj.lines.all():
+            total += line.effective_quantity or Decimal("0")
+        return total
+
+
+class OrderPaperCreateSerializer(serializers.Serializer):
+    requesting_branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(
+            is_active=True,
+            branch_type__in=(BranchType.BRANCH, BranchType.STORES),
+        )
+    )
+    bakery = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.BAKERY)
+    )
+    needed_date = serializers.DateField()
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    submit = serializers.BooleanField(required=False, default=False)
+    lines = OrderPaperLineWriteSerializer(many=True)
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("Provide at least one product line.")
+        seen = set()
+        for row in value:
+            product_id = row["product"].id
+            if product_id in seen:
+                raise serializers.ValidationError(
+                    "Each product may only appear once on an order paper."
+                )
+            seen.add(product_id)
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        created_by = request.user if request and request.user.is_authenticated else None
+        submit = validated_data.pop("submit", False)
+        lines_data = validated_data.pop("lines")
+        try:
+            return create_order_paper(
+                created_by=created_by,
+                submit=submit,
+                lines_data=lines_data,
+                **validated_data,
+            )
+        except InvalidOrderPaperBranchError as exc:
+            raise serializers.ValidationError(
+                {"requesting_branch": str(exc)}
+            ) from exc
+        except InvalidOrderPaperBakeryError as exc:
+            raise serializers.ValidationError({"bakery": str(exc)}) from exc
+        except EmptyOrderPaperError as exc:
+            raise serializers.ValidationError({"lines": str(exc)}) from exc
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+
+
+class OrderPaperUpdateSerializer(serializers.Serializer):
+    needed_date = serializers.DateField(required=False)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    lines = OrderPaperLineWriteSerializer(many=True, required=False)
+
+    def validate_lines(self, value):
+        if value is not None and not value:
+            raise serializers.ValidationError("Provide at least one product line.")
+        if value:
+            seen = set()
+            for row in value:
+                product_id = row["product"].id
+                if product_id in seen:
+                    raise serializers.ValidationError(
+                        "Each product may only appear once on an order paper."
+                    )
+                seen.add(product_id)
+        return value
+
+    def update(self, instance, validated_data):
+        try:
+            return update_order_paper(instance, **validated_data)
+        except InvalidOrderPaperStateError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+
+
+class OrderPaperAcceptLineSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    quantity_accepted = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
+
+
+class OrderPaperAcceptSerializer(serializers.Serializer):
+    lines = OrderPaperAcceptLineSerializer(many=True, required=False)
+
+    def update(self, instance, validated_data):
+        try:
+            return accept_order_paper(
+                instance, lines_data=validated_data.get("lines")
+            )
+        except InvalidOrderPaperStateError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+
+
+class ProductionSheetFromOrderPapersSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.BAKERY)
+    )
+    production_date = serializers.DateField()
+    order_paper_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        created_by = request.user if request and request.user.is_authenticated else None
+        papers = list(
+            OrderPaper.objects.filter(
+                id__in=validated_data["order_paper_ids"]
+            ).prefetch_related("lines")
+        )
+        found_ids = {paper.id for paper in papers}
+        missing = [
+            paper_id
+            for paper_id in validated_data["order_paper_ids"]
+            if paper_id not in found_ids
+        ]
+        if missing:
+            raise serializers.ValidationError(
+                {"order_paper_ids": f"Unknown order paper id(s): {missing}"}
+            )
+        try:
+            return create_production_sheet_from_order_papers(
+                validated_data["branch"],
+                validated_data["production_date"],
+                papers,
+                created_by=created_by,
+                notes=validated_data.get("notes", ""),
+            )
+        except InvalidProductionBranchError as exc:
+            raise serializers.ValidationError({"branch": str(exc)}) from exc
+        except InvalidOrderPaperStateError as exc:
             raise serializers.ValidationError({"detail": str(exc)}) from exc
         except ValueError as exc:
             raise serializers.ValidationError({"detail": str(exc)}) from exc

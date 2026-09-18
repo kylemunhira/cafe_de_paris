@@ -195,3 +195,97 @@ class ProductionSheetAllocation(models.Model):
             f"{self.line.product} → {self.destination_branch}: "
             f"{self.quantity if self.quantity is not None else '—'}"
         )
+
+
+class OrderPaperStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    SUBMITTED = "submitted", "Submitted"
+    ACCEPTED = "accepted", "Accepted"
+    FULFILLED = "fulfilled", "Fulfilled"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class OrderPaper(models.Model):
+    """Branch or central stores request for bakery products."""
+
+    requesting_branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="order_papers",
+        help_text="Outlet or central stores that needs the products.",
+    )
+    bakery = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="bakery_order_papers",
+        help_text="Central bakery that will produce the products.",
+    )
+    needed_date = models.DateField(
+        help_text="Date the products are needed (usually tomorrow's bake).",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=OrderPaperStatus.choices,
+        default=OrderPaperStatus.DRAFT,
+    )
+    notes = models.TextField(blank=True)
+    production_sheet = models.ForeignKey(
+        ProductionSheet,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_papers",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_papers_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    fulfilled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-needed_date", "-created_at"]
+
+    def __str__(self):
+        return (
+            f"Order paper #{self.pk} — {self.requesting_branch} "
+            f"({self.needed_date})"
+        )
+
+
+class OrderPaperLine(models.Model):
+    order_paper = models.ForeignKey(
+        OrderPaper,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="order_paper_lines",
+    )
+    quantity_requested = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity_accepted = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        unique_together = ("order_paper", "product")
+        ordering = ["product__category__name", "product__name"]
+
+    def __str__(self):
+        return f"{self.product} x {self.quantity_requested}"
+
+    @property
+    def effective_quantity(self):
+        if self.quantity_accepted is not None:
+            return self.quantity_accepted
+        return self.quantity_requested

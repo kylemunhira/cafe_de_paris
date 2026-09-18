@@ -459,6 +459,16 @@ def complete_production_sheet(sheet: ProductionSheet) -> ProductionSheet:
         sheet.status = ProductionSheetStatus.COMPLETED
         sheet.completed_at = timezone.now()
         sheet.save(update_fields=["status", "completed_at"])
+
+        from .models import OrderPaper, OrderPaperStatus
+
+        OrderPaper.objects.filter(
+            production_sheet=sheet,
+            status=OrderPaperStatus.ACCEPTED,
+        ).update(
+            status=OrderPaperStatus.FULFILLED,
+            fulfilled_at=sheet.completed_at,
+        )
     return sheet
 
 
@@ -469,4 +479,270 @@ def cancel_production_sheet(sheet: ProductionSheet) -> ProductionSheet:
         )
     sheet.status = ProductionSheetStatus.CANCELLED
     sheet.save(update_fields=["status"])
+    return sheet
+
+
+class InvalidOrderPaperBranchError(Exception):
+    def __init__(self, branch):
+        self.branch = branch
+        super().__init__(
+            "Order papers can only be created by outlet branches or central stores."
+        )
+
+
+class InvalidOrderPaperBakeryError(Exception):
+    def __init__(self, branch):
+        self.branch = branch
+        super().__init__("Order papers must be sent to an active central bakery.")
+
+
+class InvalidOrderPaperStateError(Exception):
+    def __init__(self, paper, expected, action):
+        self.paper = paper
+        self.expected = expected
+        self.action = action
+        super().__init__(
+            f"Order paper #{paper.pk} must be '{expected}' to {action}, "
+            f"currently '{paper.status}'."
+        )
+
+
+class EmptyOrderPaperError(Exception):
+    def __init__(self, paper):
+        self.paper = paper
+        super().__init__(f"Order paper #{paper.pk} has no line items.")
+
+
+def order_paper_requester_branches():
+    return list(
+        Branch.objects.filter(
+            is_active=True,
+            branch_type__in=(BranchType.BRANCH, BranchType.STORES),
+        ).order_by("branch_type", "name")
+    )
+
+
+def _replace_order_paper_lines(paper, lines_data: list) -> None:
+    from .models import OrderPaperLine
+
+    paper.lines.all().delete()
+    if not lines_data:
+        return
+    OrderPaperLine.objects.bulk_create(
+        [
+            OrderPaperLine(
+                order_paper=paper,
+                product=row["product"],
+                quantity_requested=row["quantity_requested"],
+                quantity_accepted=row.get("quantity_accepted"),
+            )
+            for row in lines_data
+        ]
+    )
+
+
+def create_order_paper(
+    *,
+    requesting_branch,
+    bakery,
+    needed_date,
+    lines_data,
+    notes="",
+    created_by=None,
+    submit=False,
+):
+    from .models import OrderPaper, OrderPaperStatus
+
+    if (
+        requesting_branch.branch_type not in (BranchType.BRANCH, BranchType.STORES)
+        or not requesting_branch.is_active
+    ):
+        raise InvalidOrderPaperBranchError(requesting_branch)
+    if bakery.branch_type != BranchType.BAKERY or not bakery.is_active:
+        raise InvalidOrderPaperBakeryError(bakery)
+    if not lines_data:
+        raise ValueError("Provide at least one product line.")
+
+    with transaction.atomic():
+        paper = OrderPaper.objects.create(
+            requesting_branch=requesting_branch,
+            bakery=bakery,
+            needed_date=needed_date,
+            notes=notes or "",
+            created_by=created_by,
+            status=OrderPaperStatus.DRAFT,
+        )
+        _replace_order_paper_lines(paper, lines_data)
+        if submit:
+            return submit_order_paper(paper)
+    return paper
+
+
+def update_order_paper(paper, *, needed_date=None, notes=None, lines_data=None):
+    from .models import OrderPaperStatus
+
+    if paper.status != OrderPaperStatus.DRAFT:
+        raise InvalidOrderPaperStateError(paper, OrderPaperStatus.DRAFT, "update")
+
+    update_fields = []
+    if needed_date is not None:
+        paper.needed_date = needed_date
+        update_fields.append("needed_date")
+    if notes is not None:
+        paper.notes = notes
+        update_fields.append("notes")
+
+    with transaction.atomic():
+        if update_fields:
+            paper.save(update_fields=update_fields)
+        if lines_data is not None:
+            if not lines_data:
+                raise ValueError("Provide at least one product line.")
+            _replace_order_paper_lines(paper, lines_data)
+    return paper
+
+
+def submit_order_paper(paper):
+    from .models import OrderPaperStatus
+
+    if paper.status != OrderPaperStatus.DRAFT:
+        raise InvalidOrderPaperStateError(paper, OrderPaperStatus.DRAFT, "submit")
+    if not paper.lines.exists():
+        raise EmptyOrderPaperError(paper)
+    paper.status = OrderPaperStatus.SUBMITTED
+    paper.submitted_at = timezone.now()
+    paper.save(update_fields=["status", "submitted_at"])
+    return paper
+
+
+def cancel_order_paper(paper):
+    from .models import OrderPaperStatus
+
+    if paper.status not in (
+        OrderPaperStatus.DRAFT,
+        OrderPaperStatus.SUBMITTED,
+    ):
+        raise InvalidOrderPaperStateError(
+            paper,
+            f"{OrderPaperStatus.DRAFT} or {OrderPaperStatus.SUBMITTED}",
+            "cancel",
+        )
+    paper.status = OrderPaperStatus.CANCELLED
+    paper.save(update_fields=["status"])
+    return paper
+
+
+def accept_order_paper(paper, lines_data=None):
+    """Bakery accepts a submitted paper; optional accepted quantities per line."""
+    from .models import OrderPaperStatus
+
+    if paper.status != OrderPaperStatus.SUBMITTED:
+        raise InvalidOrderPaperStateError(
+            paper, OrderPaperStatus.SUBMITTED, "accept"
+        )
+
+    with transaction.atomic():
+        if lines_data is not None:
+            lines_by_id = {
+                line.id: line for line in paper.lines.select_for_update()
+            }
+            for row in lines_data:
+                line = lines_by_id.get(row["id"])
+                if line is None:
+                    continue
+                qty = row.get("quantity_accepted")
+                if qty is not None and qty < Decimal("0"):
+                    raise ValueError("Accepted quantity cannot be negative.")
+                line.quantity_accepted = qty
+                line.save(update_fields=["quantity_accepted"])
+
+        paper.status = OrderPaperStatus.ACCEPTED
+        paper.accepted_at = timezone.now()
+        paper.save(update_fields=["status", "accepted_at"])
+    return paper
+
+
+def order_paper_demand_totals(papers):
+    """Sum effective quantities by (product_id, requesting_branch_id)."""
+    totals = defaultdict(lambda: Decimal("0"))
+    for paper in papers:
+        for line in paper.lines.all():
+            qty = line.effective_quantity
+            if qty and qty > 0:
+                totals[(line.product_id, paper.requesting_branch_id)] += qty
+    return dict(totals)
+
+
+def create_production_sheet_from_order_papers(
+    bakery,
+    production_date,
+    papers,
+    *,
+    created_by=None,
+    notes="",
+):
+    """Create a production sheet prefilled from submitted/accepted order papers."""
+    from .models import OrderPaperStatus
+
+    if bakery.branch_type != BranchType.BAKERY or not bakery.is_active:
+        raise InvalidProductionBranchError(bakery)
+
+    papers = list(papers)
+    if not papers:
+        raise ValueError("Select at least one order paper.")
+
+    for paper in papers:
+        if paper.bakery_id != bakery.id:
+            raise ValueError(
+                f"Order paper #{paper.pk} belongs to a different bakery."
+            )
+        if paper.status not in (
+            OrderPaperStatus.SUBMITTED,
+            OrderPaperStatus.ACCEPTED,
+        ):
+            raise InvalidOrderPaperStateError(
+                paper,
+                f"{OrderPaperStatus.SUBMITTED} or {OrderPaperStatus.ACCEPTED}",
+                "apply to production",
+            )
+        if paper.production_sheet_id:
+            raise ValueError(
+                f"Order paper #{paper.pk} is already linked to a production sheet."
+            )
+
+    with transaction.atomic():
+        sheet = create_production_sheet(
+            bakery,
+            production_date,
+            created_by=created_by,
+        )
+        if notes:
+            sheet.notes = notes
+            sheet.save(update_fields=["notes"])
+
+        demand = order_paper_demand_totals(papers)
+        lines = {
+            line.product_id: line
+            for line in sheet.lines.prefetch_related("allocations")
+        }
+        for (product_id, destination_id), quantity in demand.items():
+            line = lines.get(product_id)
+            if line is None:
+                continue
+            for allocation in line.allocations.all():
+                if allocation.destination_branch_id == destination_id:
+                    allocation.quantity = quantity
+                    allocation.save(update_fields=["quantity"])
+                    break
+
+        now = timezone.now()
+        for paper in papers:
+            if paper.status == OrderPaperStatus.SUBMITTED:
+                paper.status = OrderPaperStatus.ACCEPTED
+                paper.accepted_at = now
+            paper.production_sheet = sheet
+            paper.save(
+                update_fields=["status", "accepted_at", "production_sheet"]
+            )
+
     return sheet

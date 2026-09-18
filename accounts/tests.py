@@ -988,7 +988,39 @@ class MobileAppLoginTests(APITestCase):
         self.assertTrue(response.data["can_access_bakery"])
         self.assertFalse(response.data["can_access_pos"])
         self.assertFalse(response.data["can_access_kitchen"])
+        self.assertTrue(response.data["can_manage_bakery_order_papers"])
+        self.assertFalse(response.data["can_create_order_papers"])
         self.assertEqual(response.data["branch"]["id"], self.bakery.id)
+
+    def test_cashier_can_create_order_papers(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "cashier", "password": "secret"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["can_create_order_papers"])
+        self.assertFalse(response.data["can_manage_bakery_order_papers"])
+
+    def test_stores_staff_can_login_for_order_papers(self):
+        stores = Branch.objects.create(name="Central Stores", branch_type=BranchType.STORES)
+        stores_user = User.objects.create_user(username="storesmgr", password="secret")
+        StaffProfile.objects.create(
+            user=stores_user,
+            branch=stores,
+            role=StaffRole.BRANCH_MANAGER,
+            access_code="5555",
+        )
+        response = self.client.post(
+            self.login_url,
+            {"access_code": "5555"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["can_create_order_papers"])
+        self.assertFalse(response.data["can_access_pos"])
+        self.assertFalse(response.data["can_access_bakery"])
+        self.assertEqual(response.data["branch"]["id"], stores.id)
 
     def test_login_with_access_code(self):
         response = self.client.post(

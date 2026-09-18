@@ -12,11 +12,14 @@ Android app for branch staff:
 - Bluetooth ESC/POS thermal printer (80 mm), paired in Android settings
 - Staff account with **kitchen access** and/or **POS access**
 
+### Kitchen display / POS / Bakery / Order Paper
+
 | Role | App mode |
 |------|----------|
-| Cashier | Point of Sale (orders + payments) |
-| Branch manager | Point of Sale |
-| HQ admin | Point of Sale (pick operating branch at login) |
+| Cashier / branch manager | Point of Sale (☰ → Order Paper) |
+| Central stores staff | Order Paper (request bakery stock for invoices) |
+| HQ admin | Point of Sale (pick branch; Order Paper in ☰) |
+| Baker | Bakery Production (Order Paper button) |
 | Kitchen / branch staff | Kitchen display |
 
 ## Setup
@@ -96,6 +99,10 @@ Use **☰ → Fiscalise** to list **today's** paid fiscal invoices. Cashiers and
 - `POST /api/orders/` — place order
 - `PATCH /api/orders/{id}/` — link customer for account payment
 - `POST /api/orders/{id}/pay/` — collect payment (cash or account)
+- `GET/POST /api/order-papers/` — branch & stores bakery requests
+- `POST /api/order-papers/{id}/submit|cancel|accept/` — order paper actions
+- `GET /api/order-papers/demand/` — bakery demand totals
+- `POST /api/production-sheets/from-order-papers/` — prefill production from requests
 
 ## Server note
 

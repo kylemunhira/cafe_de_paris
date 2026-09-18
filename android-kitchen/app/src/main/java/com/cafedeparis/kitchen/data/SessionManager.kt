@@ -4,6 +4,10 @@ import android.content.Context
 
 class SessionManager(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    @Volatile
+    private var printedFingerprintsCache: Map<Int, String>? = null
+    @Volatile
+    private var printedCancelIdsCache: Set<Int>? = null
 
     var token: String?
         get() = prefs.getString(KEY_TOKEN, null)
@@ -52,6 +56,18 @@ class SessionManager(context: Context) {
     var canAccessBakery: Boolean
         get() = prefs.getBoolean(KEY_CAN_ACCESS_BAKERY, false)
         set(value) = prefs.edit().putBoolean(KEY_CAN_ACCESS_BAKERY, value).apply()
+
+    var canCreateOrderPapers: Boolean
+        get() = prefs.getBoolean(KEY_CAN_CREATE_ORDER_PAPERS, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_CREATE_ORDER_PAPERS, value).apply()
+
+    var canManageBakeryOrderPapers: Boolean
+        get() = prefs.getBoolean(KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS, value).apply()
+
+    var branchType: String?
+        get() = prefs.getString(KEY_BRANCH_TYPE, null)
+        set(value) = prefs.edit().putString(KEY_BRANCH_TYPE, value).apply()
 
     var fiscalizationEnabled: Boolean
         get() = prefs.getBoolean(KEY_FISCALIZATION_ENABLED, false)
@@ -110,17 +126,23 @@ class SessionManager(context: Context) {
     val canAccessGrv: Boolean
         get() = isSuperuser || userRole == "cashier" || userRole == "hq_admin"
 
+    val canAccessOrderPapers: Boolean
+        get() = canCreateOrderPapers || canManageBakeryOrderPapers
+
     fun saveLogin(response: LoginResponse) {
         val branch = response.branch
             ?: throw IllegalArgumentException("Branch is required to finish login")
         token = response.token
         branchId = branch.id
         branchName = branch.name
+        branchType = branch.branch_type
         displayName = response.user.display_name
         userRole = response.user.role
         canAccessKitchen = response.can_access_kitchen
         canAccessPos = response.can_access_pos
         canAccessBakery = response.can_access_bakery
+        canCreateOrderPapers = response.can_create_order_papers
+        canManageBakeryOrderPapers = response.can_manage_bakery_order_papers
         canCollectPayment = response.user.can_collect_payment
         isSuperuser = response.user.is_superuser
         kitchenStation = response.user.kitchen_station
@@ -138,11 +160,14 @@ class SessionManager(context: Context) {
             .remove(KEY_TOKEN)
             .remove(KEY_BRANCH_ID)
             .remove(KEY_BRANCH_NAME)
+            .remove(KEY_BRANCH_TYPE)
             .remove(KEY_DISPLAY_NAME)
             .remove(KEY_USER_ROLE)
             .remove(KEY_CAN_ACCESS_KITCHEN)
             .remove(KEY_CAN_ACCESS_POS)
             .remove(KEY_CAN_ACCESS_BAKERY)
+            .remove(KEY_CAN_CREATE_ORDER_PAPERS)
+            .remove(KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS)
             .remove(KEY_CAN_COLLECT_PAYMENT)
             .remove(KEY_IS_SUPERUSER)
             .remove(KEY_KITCHEN_STATION)
@@ -159,37 +184,59 @@ class SessionManager(context: Context) {
     fun markPrinted(orderId: Int, fingerprint: String = LEGACY_PRINT_FINGERPRINT) {
         val map = getPrintedOrderFingerprints().toMutableMap()
         map[orderId] = fingerprint
-        // Keep the map from growing forever across long shifts.
-        if (map.size > MAX_PRINTED_TRACKED) {
-            val keep = map.entries.sortedByDescending { it.key }.take(MAX_PRINTED_TRACKED)
-            map.clear()
-            keep.forEach { map[it.key] = it.value }
+        persistPrintedFingerprints(map)
+    }
+
+    fun restorePrintedFingerprint(orderId: Int, fingerprint: String?) {
+        val map = getPrintedOrderFingerprints().toMutableMap()
+        if (fingerprint == null) {
+            map.remove(orderId)
+        } else {
+            map[orderId] = fingerprint
         }
-        prefs.edit()
-            .putString(KEY_PRINTED_FINGERPRINTS, encodePrintedFingerprints(map))
-            .remove(KEY_PRINTED_IDS)
-            .apply()
+        persistPrintedFingerprints(map)
     }
 
     fun getPrintedOrderIds(): Set<Int> = getPrintedOrderFingerprints().keys
 
     fun getPrintedOrderFingerprints(): Map<Int, String> {
+        printedFingerprintsCache?.let { return it }
         val encoded = prefs.getString(KEY_PRINTED_FINGERPRINTS, null)
-        if (!encoded.isNullOrBlank()) {
-            return decodePrintedFingerprints(encoded)
+        val loaded = if (!encoded.isNullOrBlank()) {
+            decodePrintedFingerprints(encoded)
+        } else {
+            // Migrate legacy "printed once by id" set so we do not reprint every open ticket.
+            val legacyIds = prefs.getStringSet(KEY_PRINTED_IDS, emptySet())
+                ?.mapNotNull { it.toIntOrNull() }
+                .orEmpty()
+            if (legacyIds.isEmpty()) {
+                emptyMap()
+            } else {
+                legacyIds.associateWith { LEGACY_PRINT_FINGERPRINT }
+            }
         }
-        // Migrate legacy "printed once by id" set so we do not reprint every open ticket.
-        val legacyIds = prefs.getStringSet(KEY_PRINTED_IDS, emptySet())
-            ?.mapNotNull { it.toIntOrNull() }
-            .orEmpty()
-        if (legacyIds.isEmpty()) return emptyMap()
-        return legacyIds.associateWith { LEGACY_PRINT_FINGERPRINT }
+        printedFingerprintsCache = loaded
+        return loaded
     }
 
     fun clearPrintedOrderIds() {
+        printedFingerprintsCache = emptyMap()
         prefs.edit()
             .remove(KEY_PRINTED_IDS)
             .remove(KEY_PRINTED_FINGERPRINTS)
+            .apply()
+    }
+
+    private fun persistPrintedFingerprints(map: Map<Int, String>) {
+        val trimmed = if (map.size > MAX_PRINTED_TRACKED) {
+            map.entries.sortedByDescending { it.key }.take(MAX_PRINTED_TRACKED).associate { it.key to it.value }
+        } else {
+            map
+        }
+        printedFingerprintsCache = trimmed
+        prefs.edit()
+            .putString(KEY_PRINTED_FINGERPRINTS, encodePrintedFingerprints(trimmed))
+            .remove(KEY_PRINTED_IDS)
             .apply()
     }
 
@@ -204,30 +251,45 @@ class SessionManager(context: Context) {
     }
 
     fun getPrintedCancelOrderIds(): Set<Int> {
-        return prefs.getStringSet(KEY_PRINTED_CANCEL_IDS, emptySet())
+        printedCancelIdsCache?.let { return it }
+        val loaded = prefs.getStringSet(KEY_PRINTED_CANCEL_IDS, emptySet())
             ?.mapNotNull { it.toIntOrNull() }
             ?.toSet()
             .orEmpty()
+        printedCancelIdsCache = loaded
+        return loaded
     }
 
     fun markCancelPrinted(orderId: Int) {
         val ids = getPrintedCancelOrderIds().toMutableSet()
         ids.add(orderId)
-        if (ids.size > MAX_PRINTED_TRACKED) {
-            val keep = ids.sortedDescending().take(MAX_PRINTED_TRACKED)
-            ids.clear()
-            ids.addAll(keep)
-        }
-        prefs.edit()
-            .putStringSet(KEY_PRINTED_CANCEL_IDS, ids.map { it.toString() }.toSet())
-            .apply()
+        persistPrintedCancelIds(ids)
+    }
+
+    fun restoreCancelPrinted(orderId: Int) {
+        val ids = getPrintedCancelOrderIds().toMutableSet()
+        if (!ids.remove(orderId)) return
+        persistPrintedCancelIds(ids)
     }
 
     fun clearCancellationTracking() {
+        printedCancelIdsCache = emptySet()
         prefs.edit()
             .remove(KEY_CANCELLATION_POLL_SINCE)
             .remove(KEY_PRINTED_CANCEL_IDS)
             .remove(KEY_PRINTED_ITEM_SNAPSHOTS)
+            .apply()
+    }
+
+    private fun persistPrintedCancelIds(ids: Set<Int>) {
+        val trimmed = if (ids.size > MAX_PRINTED_TRACKED) {
+            ids.sortedDescending().take(MAX_PRINTED_TRACKED).toSet()
+        } else {
+            ids
+        }
+        printedCancelIdsCache = trimmed
+        prefs.edit()
+            .putStringSet(KEY_PRINTED_CANCEL_IDS, trimmed.map { it.toString() }.toSet())
             .apply()
     }
 
@@ -340,6 +402,9 @@ class SessionManager(context: Context) {
         private const val KEY_CAN_ACCESS_KITCHEN = "can_access_kitchen"
         private const val KEY_CAN_ACCESS_POS = "can_access_pos"
         private const val KEY_CAN_ACCESS_BAKERY = "can_access_bakery"
+        private const val KEY_CAN_CREATE_ORDER_PAPERS = "can_create_order_papers"
+        private const val KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS = "can_manage_bakery_order_papers"
+        private const val KEY_BRANCH_TYPE = "branch_type"
         private const val KEY_CAN_COLLECT_PAYMENT = "can_collect_payment"
         private const val KEY_IS_SUPERUSER = "is_superuser"
         private const val KEY_KITCHEN_STATION = "kitchen_station"
@@ -435,6 +500,11 @@ object JsonParsers {
             can_access_kitchen = json.optBoolean("can_access_kitchen", false),
             can_access_pos = json.optBoolean("can_access_pos", false),
             can_access_bakery = json.optBoolean("can_access_bakery", false),
+            can_create_order_papers = json.optBoolean("can_create_order_papers", false),
+            can_manage_bakery_order_papers = json.optBoolean(
+                "can_manage_bakery_order_papers",
+                false,
+            ),
             inclusive_tax_rate = json.optString("inclusive_tax_rate", "15.5").toDoubleOrNull() ?: 15.5,
             zta_levy_rate = json.optString("zta_levy_rate", "2").toDoubleOrNull() ?: 2.0,
         )
@@ -591,6 +661,86 @@ object JsonParsers {
                 ?.takeIf { it.isNotBlank() && it != "null" },
             destinations = destinations,
             lines = lines,
+        )
+    }
+
+    fun parseOrderPapers(body: String): List<OrderPaper> {
+        val json = org.json.JSONObject(body)
+        val results = json.optJSONArray("results") ?: org.json.JSONArray()
+        return (0 until results.length()).map { index ->
+            parseOrderPaperObject(results.getJSONObject(index))
+        }
+    }
+
+    fun parseOrderPaper(body: String): OrderPaper {
+        return parseOrderPaperObject(org.json.JSONObject(body))
+    }
+
+    private fun parseOrderPaperObject(json: org.json.JSONObject): OrderPaper {
+        val linesJson = json.optJSONArray("lines") ?: org.json.JSONArray()
+        val lines = (0 until linesJson.length()).map { index ->
+            val line = linesJson.getJSONObject(index)
+            val accepted = if (line.isNull("quantity_accepted")) {
+                null
+            } else {
+                jsonNumberAsString(line, "quantity_accepted", "")
+                    .takeIf { it.isNotBlank() }
+            }
+            OrderPaperLine(
+                id = line.optInt("id", 0),
+                productId = line.getInt("product"),
+                productName = line.optString("product_name", "Product"),
+                categoryName = line.optString("category_name", null)
+                    ?.takeIf { it.isNotBlank() && it != "null" },
+                quantityRequested = jsonNumberAsString(line, "quantity_requested", "0"),
+                quantityAccepted = accepted,
+                effectiveQuantity = jsonNumberAsString(
+                    line,
+                    "effective_quantity",
+                    jsonNumberAsString(line, "quantity_requested", "0"),
+                ),
+            )
+        }
+        val productionSheetId = if (json.isNull("production_sheet")) {
+            null
+        } else {
+            json.optInt("production_sheet").takeIf { it > 0 }
+        }
+        return OrderPaper(
+            id = json.getInt("id"),
+            requestingBranchId = json.getInt("requesting_branch"),
+            requestingBranchName = json.optString("requesting_branch_name", ""),
+            requestingBranchType = json.optString("requesting_branch_type", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            bakeryId = json.getInt("bakery"),
+            bakeryName = json.optString("bakery_name", ""),
+            neededDate = json.optString("needed_date", ""),
+            status = json.optString("status", "draft"),
+            statusDisplay = json.optString(
+                "status_display",
+                json.optString("status", "Draft"),
+            ),
+            notes = json.optString("notes", ""),
+            productionSheetId = productionSheetId,
+            lineCount = json.optInt("line_count", lines.size),
+            totalUnits = jsonNumberAsString(json, "total_units", "0"),
+            lines = lines,
+        )
+    }
+
+    fun parseOrderPaperDemand(body: String): OrderPaperDemand {
+        val json = org.json.JSONObject(body)
+        val totalsJson = json.optJSONArray("product_totals") ?: org.json.JSONArray()
+        val totals = (0 until totalsJson.length()).map { index ->
+            val row = totalsJson.getJSONObject(index)
+            row.optString("product_name", "Product") to
+                jsonNumberAsString(row, "quantity", "0")
+        }
+        return OrderPaperDemand(
+            neededDate = json.optString("needed_date", null)
+                ?.takeIf { it.isNotBlank() && it != "null" },
+            paperCount = json.optInt("paper_count", 0),
+            productTotals = totals,
         )
     }
 

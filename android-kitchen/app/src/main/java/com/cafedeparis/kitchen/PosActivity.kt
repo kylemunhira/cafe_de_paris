@@ -1614,6 +1614,7 @@ class PosActivity : KeepScreenOnActivity() {
         popup.menu.findItem(R.id.menu_day_end)?.isVisible = showReceiptActions
         popup.menu.findItem(R.id.menu_stock_take)?.isVisible = showReceiptActions
         popup.menu.findItem(R.id.menu_grv)?.isVisible = session.canAccessGrv
+        popup.menu.findItem(R.id.menu_order_paper)?.isVisible = session.canCreateOrderPapers
         popup.menu.findItem(R.id.menu_expense)?.isVisible = showReceiptActions
 
         popup.setOnMenuItemClickListener { item ->
@@ -1630,6 +1631,7 @@ class PosActivity : KeepScreenOnActivity() {
             R.id.menu_day_end -> openDayEndDialog()
             R.id.menu_stock_take -> openStockTake()
             R.id.menu_grv -> startActivity(Intent(this, GrvActivity::class.java))
+            R.id.menu_order_paper -> startActivity(Intent(this, OrderPaperActivity::class.java))
             R.id.menu_expense -> openExpenseDialog()
             R.id.menu_settings -> startActivity(Intent(this, SettingsActivity::class.java))
             else -> return false

@@ -41,6 +41,17 @@ class BranchListAccessTests(APITestCase):
         ids = {item["id"] for item in response.data["results"]}
         self.assertEqual(ids, {self.branch_a.id})
 
+    def test_cashier_can_list_bakeries_for_order_papers(self):
+        bakery = Branch.objects.create(
+            name="Central Bakery",
+            branch_type=BranchType.BAKERY,
+        )
+        self.client.force_authenticate(user=self.cashier)
+        response = self.client.get("/api/branches/bakeries/")
+        self.assertEqual(response.status_code, 200)
+        ids = {item["id"] for item in response.data}
+        self.assertEqual(ids, {bakery.id})
+
     def test_hq_admin_sees_all_branches_in_api_list(self):
         self.client.force_authenticate(user=self.hq_admin)
         response = self.client.get(reverse("branch-list"), {"page_size": 500})

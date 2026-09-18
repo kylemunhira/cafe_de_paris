@@ -65,6 +65,9 @@ class BakeryProductionActivity : KeepScreenOnActivity() {
         binding.transfersButton.setOnClickListener {
             startActivity(Intent(this, BakeryTransferActivity::class.java))
         }
+        binding.orderPaperButton.setOnClickListener {
+            startActivity(Intent(this, OrderPaperActivity::class.java))
+        }
         binding.refreshButton.setOnClickListener { loadPage() }
         binding.settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -75,7 +78,8 @@ class BakeryProductionActivity : KeepScreenOnActivity() {
         binding.completeSheetButton.setOnClickListener { confirmComplete() }
         binding.cancelSheetButton.setOnClickListener { confirmCancel() }
 
-        loadPage()
+        val preferSheetId = intent.getIntExtra(EXTRA_SHEET_ID, -1).takeIf { it > 0 }
+        loadPage(preferSheetId = preferSheetId)
     }
 
     override fun onDestroy() {
@@ -626,6 +630,7 @@ class BakeryProductionActivity : KeepScreenOnActivity() {
     }
 
     companion object {
+        const val EXTRA_SHEET_ID = "sheet_id"
         private const val ERROR_BANNER_MS = 6_000L
     }
 }

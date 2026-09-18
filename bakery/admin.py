@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from .models import (
+    OrderPaper,
+    OrderPaperLine,
     ProductionOrder,
     ProductionSheet,
     ProductionSheetAllocation,
@@ -52,3 +54,23 @@ class ProductionSheetLineAdmin(admin.ModelAdmin):
     list_display = ("id", "sheet", "product")
     list_filter = ("sheet__production_date",)
     inlines = [ProductionSheetAllocationInline]
+
+
+class OrderPaperLineInline(admin.TabularInline):
+    model = OrderPaperLine
+    extra = 0
+
+
+@admin.register(OrderPaper)
+class OrderPaperAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "requesting_branch",
+        "bakery",
+        "needed_date",
+        "status",
+        "created_by",
+        "created_at",
+    )
+    list_filter = ("status", "needed_date", "bakery", "requesting_branch")
+    inlines = [OrderPaperLineInline]

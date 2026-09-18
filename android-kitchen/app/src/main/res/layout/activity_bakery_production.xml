@@ -51,6 +51,14 @@
             android:text="@string/bakery_transfers" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/orderPaperButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="@string/order_paper" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/refreshButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="wrap_content"

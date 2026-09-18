@@ -19,6 +19,9 @@
         android:id="@+id/menu_grv"
         android:title="@string/grv" />
     <item
+        android:id="@+id/menu_order_paper"
+        android:title="@string/order_paper" />
+    <item
         android:id="@+id/menu_expense"
         android:title="@string/add_expense" />
     <item

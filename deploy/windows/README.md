@@ -26,8 +26,8 @@ Run Café de Paris as a Windows service using [Waitress](https://docs.pylonsproj
 
    - `DJANGO_DEBUG=false`
    - `DJANGO_SECRET_KEY` — a long random string
-   - `DJANGO_ALLOWED_HOSTS` — server IP/hostname
-   - `DJANGO_CSRF_TRUSTED_ORIGINS` — full URLs clients use
+   - `DJANGO_ALLOWED_HOSTS` — every hostname/IP clients use (e.g. LAN IP, public IP, domain)
+   - `DJANGO_CSRF_TRUSTED_ORIGINS` — full origin URLs for those same hosts (`http://IP:8000`, `https://domain`, …). Missing an origin here causes login CSRF failures on phones/other devices
    - PostgreSQL `DB_*` settings if using Postgres
 
 4. **Prepare the database and static files:**

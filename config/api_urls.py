@@ -19,7 +19,12 @@ from inventory.views import (
     StockTransferViewSet,
     WastageEntryViewSet,
 )
-from bakery.views import ProductionOrderViewSet, ProductionSheetViewSet, RecipeViewSet
+from bakery.views import (
+    OrderPaperViewSet,
+    ProductionOrderViewSet,
+    ProductionSheetViewSet,
+    RecipeViewSet,
+)
 from customers.views import CustomerViewSet
 from orders.views import ExpenseViewSet, OrderViewSet
 from orders.bill_reprint_views import BillReprintRequestViewSet
@@ -73,6 +78,7 @@ router.register("purchase-orders", PurchaseOrderViewSet, basename="purchase-orde
 router.register("recipes", RecipeViewSet, basename="recipe")
 router.register("production-orders", ProductionOrderViewSet, basename="production-order")
 router.register("production-sheets", ProductionSheetViewSet, basename="production-sheet")
+router.register("order-papers", OrderPaperViewSet, basename="order-paper")
 
 urlpatterns = [
     path("auth/desktop-login/", DesktopLoginView.as_view(), name="desktop-login"),
