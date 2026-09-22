@@ -85,6 +85,9 @@
       autocomplete="off"
     >
   </div>
+  <div class="category-tabs" id="branch-filter" style="margin-top: 0.75rem;">
+    <button type="button" class="category-tab active" data-branch="all">{% trans "All" %}</button>
+  </div>
 </div>
 
 <div class="card" style="padding: 0;">
@@ -113,6 +116,7 @@ const DEFAULT_BRANCH_ID = JSON.parse(
 let customers = [];
 let editingId = null;
 let searchQuery = "";
+let branchFilter = "all";
 
 const customerForm = document.getElementById("customer-form");
 const formTitle = document.getElementById("form-title");
@@ -130,7 +134,9 @@ const submitBtn = document.getElementById("submit-btn");
 const cancelBtn = document.getElementById("cancel-btn");
 const customersTable = document.getElementById("customers-table");
 const customerSearchInput = document.getElementById("customer-search");
+const branchFilterEl = document.getElementById("branch-filter");
 const csvUpload = document.getElementById("csv-upload");
+const customerAccountUrlTemplate = "{% url 'ui:customer-account-detail' 0 %}".replace("/0/", "/{id}/");
 const sortState = createSortState("created_at", "desc");
 
 const ACCOUNT_TYPE_LABELS = {
@@ -148,6 +154,7 @@ const CUSTOMER_SORT = {
   account_balance: (c) => Number(c.account_balance || 0),
   credit_limit: (c) => Number(c.credit_limit || 0),
   loyalty_points: (c) => Number(c.loyalty_points || 0),
+  is_active: (c) => (c.is_active === false ? 0 : 1),
   created_at: (c) => c.created_at || "",
 };
 
@@ -172,6 +179,19 @@ function populateBranchSelect(selectedId) {
       </option>
     `).join("")}
   `;
+}
+
+function populateBranchFilter() {
+  if (!branchFilterEl) return;
+  const tabs = [
+    `<button type="button" class="category-tab${branchFilter === "all" ? " active" : ""}" data-branch="all">${t("All")}</button>`,
+    ...HOME_BRANCHES.map((b) => `
+      <button type="button" class="category-tab${String(branchFilter) === String(b.id) ? " active" : ""}" data-branch="${b.id}">
+        ${homeBranchLabel(b)}
+      </button>
+    `),
+  ];
+  branchFilterEl.innerHTML = tabs.join("");
 }
 
 function resetForm() {
@@ -241,9 +261,13 @@ function branchShortLabel(customer) {
 }
 
 function filteredCustomers() {
-  if (!searchQuery) return customers;
+  let list = customers;
+  if (branchFilter !== "all") {
+    list = list.filter((c) => String(c.branch) === String(branchFilter));
+  }
+  if (!searchQuery) return list;
   const q = searchQuery.toLowerCase();
-  return customers.filter((c) => {
+  return list.filter((c) => {
     const haystack = [
       displayName(c),
       c.phone,
@@ -278,6 +302,7 @@ function render() {
           ${sortTh(t("Email"), "email", sortState)}
           ${sortTh(t("Branch"), "branch", sortState)}
           ${sortTh(t("Type"), "account_type", sortState)}
+          ${sortTh(t("Status"), "is_active", sortState)}
           ${sortTh(t("Account"), "account_balance", sortState)}
           ${sortTh(t("Credit limit"), "credit_limit", sortState)}
           ${sortTh(t("Loyalty"), "loyalty_points", sortState)}
@@ -286,20 +311,35 @@ function render() {
         </tr>
       </thead>
       <tbody>
-        ${sorted.map(c => `
-          <tr>
+        ${sorted.map(c => {
+          const active = c.is_active !== false;
+          const statusBadge = active
+            ? `<span class="badge badge-active">${t("Active")}</span>`
+            : `<span class="badge badge-inactive">${t("Inactive")}</span>`;
+          const rowStyle = active ? "" : ' style="opacity: 0.72;"';
+          const accountBtn = active
+            ? `<a href="${customerAccountUrlTemplate.replace("{id}", c.id)}" class="btn btn-ghost btn-sm">${t("View account")}</a>`
+            : "";
+          const toggleLabel = active ? t("Deactivate") : t("Activate");
+          return `
+          <tr${rowStyle}>
             <td><strong>${displayName(c)}</strong></td>
             <td>${c.phone || "—"}</td>
             <td>${c.email || "—"}</td>
             <td>${branchShortLabel(c)}</td>
             <td>${accountTypeLabel(c)}</td>
+            <td>${statusBadge}</td>
             <td>${formatCurrency(c.account_balance || 0)}</td>
             <td>${formatCurrency(c.credit_limit || 0)}</td>
             <td>${c.loyalty_points}</td>
             <td>${formatDate(c.created_at)}</td>
-            <td><button class="btn btn-ghost btn-sm edit-btn" data-id="${c.id}">${t("Edit")}</button></td>
-          </tr>
-        `).join("")}
+            <td style="white-space: nowrap;">
+              ${accountBtn}
+              <button type="button" class="btn btn-ghost btn-sm edit-btn" data-id="${c.id}">${t("Edit")}</button>
+              <button type="button" class="btn btn-ghost btn-sm toggle-active-btn" data-id="${c.id}" data-active="${active ? "1" : "0"}">${toggleLabel}</button>
+            </td>
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -307,7 +347,8 @@ function render() {
 
 async function loadCustomers() {
   // Must page through — default/max single-page fetch can miss later names (e.g. Terry).
-  customers = await fetchAllPages("/customers/");
+  // include_inactive so List Customer can manage deactivated accounts.
+  customers = await fetchAllPages("/customers/", { include_inactive: "1" });
   render();
 }
 
@@ -389,11 +430,31 @@ csvUpload.addEventListener("change", async (e) => {
   await handleCustomerImport(file);
 });
 
-customersTable.addEventListener("click", (e) => {
-  const btn = e.target.closest(".edit-btn");
-  if (!btn) return;
-  const customer = customers.find(c => String(c.id) === btn.dataset.id);
-  if (customer) startEdit(customer);
+customersTable.addEventListener("click", async (e) => {
+  const editBtn = e.target.closest(".edit-btn");
+  if (editBtn) {
+    const customer = customers.find(c => String(c.id) === editBtn.dataset.id);
+    if (customer) startEdit(customer);
+    return;
+  }
+
+  const toggleBtn = e.target.closest(".toggle-active-btn");
+  if (!toggleBtn) return;
+  const customer = customers.find(c => String(c.id) === toggleBtn.dataset.id);
+  if (!customer) return;
+
+  const makeActive = toggleBtn.dataset.active !== "1";
+  toggleBtn.disabled = true;
+  try {
+    const updated = await apiPatch(`/customers/${customer.id}/`, { is_active: makeActive });
+    const index = customers.findIndex(c => c.id === customer.id);
+    if (index >= 0) customers[index] = updated;
+    showToast(makeActive ? t("Customer activated") : t("Customer deactivated"));
+    render();
+  } catch (err) {
+    showToast(err.message, true);
+    toggleBtn.disabled = false;
+  }
 });
 
 customerSearchInput.addEventListener("input", () => {
@@ -401,9 +462,19 @@ customerSearchInput.addEventListener("input", () => {
   render();
 });
 
+branchFilterEl?.addEventListener("click", (e) => {
+  const tab = e.target.closest(".category-tab");
+  if (!tab) return;
+  branchFilter = tab.dataset.branch || "all";
+  branchFilterEl.querySelectorAll(".category-tab").forEach((el) => el.classList.remove("active"));
+  tab.classList.add("active");
+  render();
+});
+
 bindTableSort(customersTable, sortState, render);
 
 populateBranchSelect(DEFAULT_BRANCH_ID);
+populateBranchFilter();
 
 loadCustomers().catch(err => {
   customersTable.innerHTML = `<div class="empty-state">${t("Failed to load customers:")} ${err.message}</div>`;

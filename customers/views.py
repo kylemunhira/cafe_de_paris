@@ -45,15 +45,23 @@ class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         "loyalty_points",
         "credit_limit",
         "branch",
+        "is_active",
     )
     audit_label_field = ("first_name", "last_name")
 
     def get_queryset(self):
-        return filter_by_branch_field(
+        qs = filter_by_branch_field(
             super().get_queryset(),
             self.request.user,
             requested_branch_id=self.request.query_params.get("branch"),
         )
+        # List endpoints hide inactive customers unless explicitly requested
+        # (List Customer management screen). Detail actions still resolve them
+        # so staff can reactivate or review history.
+        if getattr(self, "action", None) == "list":
+            if self.request.query_params.get("include_inactive") != "1":
+                qs = qs.filter(is_active=True)
+        return qs
 
     def _import_default_branch(self):
         requested = self.request.data.get("branch") or self.request.query_params.get("branch")
@@ -123,6 +131,9 @@ class CustomerViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             "currency",
             "order",
             "recorded_by",
+        ).prefetch_related(
+            "order__items__product",
+            "order__items__addons",
         )
         branch = request.query_params.get("branch")
         if branch:

@@ -29,6 +29,13 @@ def _quantize(amount: Decimal) -> Decimal:
     return amount.quantize(Decimal("0.01"))
 
 
+def _ensure_customer_active(customer: Customer) -> None:
+    if not customer.is_active:
+        raise CustomerAccountError(
+            "This customer is inactive and cannot be used for account transactions."
+        )
+
+
 @transaction.atomic
 def deposit_to_account(
     *,
@@ -58,6 +65,7 @@ def deposit_to_account(
         credit_amount = _quantize(amount_received / rate)
 
     customer = Customer.objects.select_for_update().get(pk=customer.pk)
+    _ensure_customer_active(customer)
     # Deposits reduce balance (more negative = more prepaid credit).
     new_balance = _quantize(customer.account_balance - credit_amount)
     customer.account_balance = new_balance
@@ -77,7 +85,9 @@ def deposit_to_account(
 
 
 @transaction.atomic
-def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccountTransaction:
+def pay_order_from_account(
+    *, order: Order, recorded_by=None, tip_amount=None
+) -> CustomerAccountTransaction:
     if order.status not in (OrderStatus.OPEN, OrderStatus.UNPAID):
         raise CustomerAccountError("Only open or unpaid orders can be paid.")
     if not order.customer_id:
@@ -88,11 +98,16 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
         raise CustomerAccountError("Only open or unpaid orders can be paid.")
     from orders.tax import order_amount_due
 
-    charge_amount = _quantize(order_amount_due(order))
+    tip_base = _quantize(Decimal(tip_amount or 0))
+    if tip_base < Decimal("0"):
+        raise CustomerAccountError("Tip amount cannot be negative.")
+    bill_amount = _quantize(order_amount_due(order))
+    charge_amount = _quantize(bill_amount + tip_base)
     if charge_amount <= Decimal("0"):
         raise CustomerAccountError("Order total must be greater than zero.")
 
     customer = Customer.objects.select_for_update().get(pk=order.customer_id)
+    _ensure_customer_active(customer)
     # Charges increase balance (more positive = more owed).
     # Staff accounts may charge without a credit-limit check.
     new_balance = _quantize(customer.account_balance + charge_amount)
@@ -124,6 +139,7 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
     order.payment_currency = base_currency
     order.exchange_rate = Decimal("1")
     order.amount_paid = charge_amount
+    order.tip_amount = tip_base
     order.payment_method = PaymentMethod.ACCOUNT
     order.status = OrderStatus.PAID
     order.receipt_number = receipt_number
@@ -136,6 +152,7 @@ def pay_order_from_account(*, order: Order, recorded_by=None) -> CustomerAccount
             "payment_currency",
             "exchange_rate",
             "amount_paid",
+            "tip_amount",
             "payment_method",
             "status",
             "receipt_number",
@@ -221,6 +238,7 @@ def adjust_account_balance_by_amount(
             )
 
     customer = Customer.objects.select_for_update().get(pk=customer.pk)
+    _ensure_customer_active(customer)
     new_balance = _quantize(customer.account_balance + delta)
     customer.account_balance = new_balance
     customer.save(update_fields=["account_balance"])

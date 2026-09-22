@@ -26,13 +26,24 @@ object AddonPickerDialog {
         val selections = linkedMapOf<Int, MutableSet<Int>>()
         val density = activity.resources.displayMetrics.density
         val groupSpacing = (12 * density).toInt()
+        val hasAddons = product.hasActiveAddons()
 
         for (group in product.addon_groups.filter { groupHasAddons(it) }) {
             binding.addonGroupsContainer.addView(buildGroupSection(activity, group, selections, groupSpacing))
         }
 
+        binding.addonPickerHint.setText(
+            if (hasAddons) R.string.addon_picker_hint else R.string.order_notes_picker_hint,
+        )
+
+        val title = if (hasAddons) {
+            activity.getString(R.string.addon_picker_title, product.name)
+        } else {
+            product.name
+        }
+
         MaterialAlertDialogBuilder(activity)
-            .setTitle(activity.getString(R.string.addon_picker_title, product.name))
+            .setTitle(title)
             .setView(binding.root)
             .setNegativeButton(android.R.string.cancel) { _, _ ->
                 onConfirm(emptyList(), "")

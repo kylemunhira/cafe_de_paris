@@ -25,6 +25,10 @@ class SessionManager(context: Context) {
         get() = prefs.getString(KEY_DISPLAY_NAME, null)
         set(value) = prefs.edit().putString(KEY_DISPLAY_NAME, value).apply()
 
+    var userId: Int
+        get() = prefs.getInt(KEY_USER_ID, -1)
+        set(value) = prefs.edit().putInt(KEY_USER_ID, value).apply()
+
     var userRole: String?
         get() = prefs.getString(KEY_USER_ROLE, null)
         set(value) = prefs.edit().putString(KEY_USER_ROLE, value).apply()
@@ -60,6 +64,10 @@ class SessionManager(context: Context) {
     var canCreateOrderPapers: Boolean
         get() = prefs.getBoolean(KEY_CAN_CREATE_ORDER_PAPERS, false)
         set(value) = prefs.edit().putBoolean(KEY_CAN_CREATE_ORDER_PAPERS, value).apply()
+
+    var canApproveOrderPapers: Boolean
+        get() = prefs.getBoolean(KEY_CAN_APPROVE_ORDER_PAPERS, false)
+        set(value) = prefs.edit().putBoolean(KEY_CAN_APPROVE_ORDER_PAPERS, value).apply()
 
     var canManageBakeryOrderPapers: Boolean
         get() = prefs.getBoolean(KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS, false)
@@ -127,7 +135,7 @@ class SessionManager(context: Context) {
         get() = isSuperuser || userRole == "cashier" || userRole == "hq_admin"
 
     val canAccessOrderPapers: Boolean
-        get() = canCreateOrderPapers || canManageBakeryOrderPapers
+        get() = canCreateOrderPapers || canApproveOrderPapers || canManageBakeryOrderPapers
 
     fun saveLogin(response: LoginResponse) {
         val branch = response.branch
@@ -137,11 +145,13 @@ class SessionManager(context: Context) {
         branchName = branch.name
         branchType = branch.branch_type
         displayName = response.user.display_name
+        userId = response.user.id
         userRole = response.user.role
         canAccessKitchen = response.can_access_kitchen
         canAccessPos = response.can_access_pos
         canAccessBakery = response.can_access_bakery
         canCreateOrderPapers = response.can_create_order_papers
+        canApproveOrderPapers = response.can_approve_order_papers
         canManageBakeryOrderPapers = response.can_manage_bakery_order_papers
         canCollectPayment = response.user.can_collect_payment
         isSuperuser = response.user.is_superuser
@@ -162,11 +172,13 @@ class SessionManager(context: Context) {
             .remove(KEY_BRANCH_NAME)
             .remove(KEY_BRANCH_TYPE)
             .remove(KEY_DISPLAY_NAME)
+            .remove(KEY_USER_ID)
             .remove(KEY_USER_ROLE)
             .remove(KEY_CAN_ACCESS_KITCHEN)
             .remove(KEY_CAN_ACCESS_POS)
             .remove(KEY_CAN_ACCESS_BAKERY)
             .remove(KEY_CAN_CREATE_ORDER_PAPERS)
+            .remove(KEY_CAN_APPROVE_ORDER_PAPERS)
             .remove(KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS)
             .remove(KEY_CAN_COLLECT_PAYMENT)
             .remove(KEY_IS_SUPERUSER)
@@ -398,11 +410,13 @@ class SessionManager(context: Context) {
         private const val KEY_BRANCH_ID = "branch_id"
         private const val KEY_BRANCH_NAME = "branch_name"
         private const val KEY_DISPLAY_NAME = "display_name"
+        private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_ROLE = "user_role"
         private const val KEY_CAN_ACCESS_KITCHEN = "can_access_kitchen"
         private const val KEY_CAN_ACCESS_POS = "can_access_pos"
         private const val KEY_CAN_ACCESS_BAKERY = "can_access_bakery"
         private const val KEY_CAN_CREATE_ORDER_PAPERS = "can_create_order_papers"
+        private const val KEY_CAN_APPROVE_ORDER_PAPERS = "can_approve_order_papers"
         private const val KEY_CAN_MANAGE_BAKERY_ORDER_PAPERS = "can_manage_bakery_order_papers"
         private const val KEY_BRANCH_TYPE = "branch_type"
         private const val KEY_CAN_COLLECT_PAYMENT = "can_collect_payment"
@@ -501,6 +515,7 @@ object JsonParsers {
             can_access_pos = json.optBoolean("can_access_pos", false),
             can_access_bakery = json.optBoolean("can_access_bakery", false),
             can_create_order_papers = json.optBoolean("can_create_order_papers", false),
+            can_approve_order_papers = json.optBoolean("can_approve_order_papers", false),
             can_manage_bakery_order_papers = json.optBoolean(
                 "can_manage_bakery_order_papers",
                 false,
@@ -940,6 +955,9 @@ object JsonParsers {
             total_amount = json.optString("total_amount", "0"),
             status = json.optString("status", "open"),
             kitchen_status = json.optString("kitchen_status", "pending"),
+            created_by = json.optInt("created_by").takeIf {
+                json.has("created_by") && !json.isNull("created_by")
+            },
             created_by_name = json.optString("created_by_name", null),
             customer_name = json.optString("customer_name", null),
             created_at = json.optString("created_at", ""),
@@ -949,6 +967,7 @@ object JsonParsers {
             payment_currency_name = json.optString("payment_currency_name", null),
             payment_currency_symbol = json.optString("payment_currency_symbol", null),
             amount_paid = json.optString("amount_paid", null),
+            tip_amount = json.optString("tip_amount", null),
             receipt_number = json.optString("receipt_number", null),
             fiscal_receipt_number = json.optString("fiscal_receipt_number", null)?.takeIf { it.isNotBlank() }
                 ?: fiscalInfo?.invoiceNumber,
@@ -1059,6 +1078,12 @@ object JsonParsers {
                 name = item.getString("name"),
                 sort_order = item.optInt("sort_order", 0),
                 is_active = item.optBoolean("is_active", true),
+                is_occupied = item.optBoolean("is_occupied", false),
+                occupied_by = item.optInt("occupied_by").takeIf {
+                    item.has("occupied_by") && !item.isNull("occupied_by")
+                },
+                occupied_by_name = item.optString("occupied_by_name", null)
+                    ?.takeIf { it.isNotBlank() && it != "null" },
             )
         }
     }

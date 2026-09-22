@@ -12,6 +12,7 @@ from .branch_access import (
     user_can_access_pos,
     user_can_access_stores_transfers,
     user_can_approve_fiscal_receipt,
+    user_can_approve_order_papers,
     user_can_collect_payment,
     user_can_create_order_papers,
     user_can_create_purchase_orders,
@@ -50,6 +51,7 @@ def nav_access(request):
         and user_can_access_bakery_transfers(user),
         "show_order_papers_nav": user_can_access_order_papers(user),
         "can_create_order_papers": user_can_create_order_papers(user),
+        "can_approve_order_papers": user_can_approve_order_papers(user),
         "can_manage_bakery_order_papers": user_can_manage_bakery_order_papers(user),
         "show_stores_transfers_nav": management and user_can_access_stores_transfers(user),
         "show_branch_transfers_nav": user_can_access_branch_transfers(user)

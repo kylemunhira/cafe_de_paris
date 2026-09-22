@@ -88,6 +88,7 @@ function initDb() {
   ensureOrderColumn("paid_by_name", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("payment_method", "TEXT NOT NULL DEFAULT ''");
   ensureOrderColumn("payments_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureOrderColumn("tip_amount", "REAL NOT NULL DEFAULT 0");
   ensureTableColumn("products", "addon_groups_json", "TEXT NOT NULL DEFAULT '[]'");
   ensureTableColumn("order_items", "notes", "TEXT NOT NULL DEFAULT ''");
   ensureTableColumn("order_items", "addons_json", "TEXT NOT NULL DEFAULT '[]'");
@@ -480,6 +481,7 @@ function payOrder(
     currencyId,
     exchangeRate,
     amountPaid,
+    tipAmount = 0,
     receiptNumber,
     paidByName = "",
     paymentMethod = "cash",
@@ -497,6 +499,7 @@ function payOrder(
       payment_currency_id = ?,
       exchange_rate = ?,
       amount_paid = ?,
+      tip_amount = ?,
       receipt_number = ?,
       paid_at = ?,
       paid_by_name = ?,
@@ -508,6 +511,7 @@ function payOrder(
     currencyId,
     exchangeRate,
     amountPaid,
+    tipAmount || 0,
     receiptNumber,
     paidAt,
     paidByName || "",
@@ -544,6 +548,7 @@ function syncLocalPaymentFromServer(
     currencyId,
     exchangeRate,
     amountPaid,
+    tipAmount = 0,
     receiptNumber,
     paidByName = "",
     paymentMethod = "cash",
@@ -562,6 +567,7 @@ function syncLocalPaymentFromServer(
       currencyId,
       exchangeRate,
       amountPaid,
+      tipAmount,
       receiptNumber,
       paidByName,
       paymentMethod,

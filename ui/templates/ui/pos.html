@@ -141,6 +141,10 @@
             </div>
           </div>
         </div>
+        <div class="form-group" id="tip-amount-group" style="margin-bottom: 0.75rem;">
+          <label for="tip-amount-input">{% trans "Tip" %} <span style="font-weight:400;color:var(--color-muted);">({% trans "optional" %})</span></label>
+          <input type="number" id="tip-amount-input" min="0" step="0.01" placeholder="0.00" inputmode="decimal">
+        </div>
         <div class="receipt-totals" id="receipt-totals"></div>
       </div>
       <div class="cart-total">
@@ -384,12 +388,12 @@
 >
   <div class="card" style="width:min(520px, 100%); max-height:90vh; overflow:auto; padding:1rem 1rem 1.25rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
-      <h3 id="addon-modal-title" style="margin:0; font-size:1.05rem;">{% trans "Add-ons" %}</h3>
+      <h3 id="addon-modal-title" style="margin:0; font-size:1.05rem;">{% trans "Add to cart" %}</h3>
       <button type="button" class="btn btn-ghost btn-sm" id="addon-modal-close-btn">{% trans "Close" %}</button>
     </div>
     <div id="addon-modal-groups"></div>
     <div class="form-group" style="margin-top: 1rem;">
-      <label for="addon-modal-notes">{% trans "Order notes" %}</label>
+      <label for="addon-modal-notes">{% trans "Order notes (optional)" %}</label>
       <input type="text" id="addon-modal-notes" class="report-input" maxlength="200" placeholder="{% trans "Special instructions for kitchen…" %}">
     </div>
     <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top: 1rem;">
@@ -507,6 +511,7 @@ const paymentCurrencyToggle = document.getElementById("payment-currency-toggle")
 const receiptCustomerGroup = document.getElementById("receipt-customer-group");
 const posModeToggle = document.getElementById("pos-mode-toggle");
 const receiptTotals = document.getElementById("receipt-totals");
+const tipAmountInput = document.getElementById("tip-amount-input");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const dayendBtn = document.getElementById("dayend-btn");
 const expenseBtn = document.getElementById("expense-btn");
@@ -832,11 +837,22 @@ async function loadDiningTables() {
   }
 }
 
-function tableHeldByOtherUser(table) {
-  const holderId = table?.occupied_by;
+function orderHeldByOtherUser(order) {
+  const holderId = order?.created_by;
   if (holderId == null || holderId === "") return false;
   if (currentUserId == null) return true;
   return Number(holderId) !== Number(currentUserId);
+}
+
+function tableHeldByOtherUser(table) {
+  const holderId = table?.occupied_by;
+  if (holderId != null && holderId !== "") {
+    if (currentUserId == null) return true;
+    return Number(holderId) !== Number(currentUserId);
+  }
+  // Fallback when dining-table occupancy is stale/missing: hide if any open
+  // order on this table belongs to another staff member.
+  return openOrdersForTable(table?.name).some(orderHeldByOtherUser);
 }
 
 function visibleDiningTablesForPicker() {
@@ -1320,6 +1336,12 @@ splitPaymentEnabledInput?.addEventListener("change", () => {
   setSplitPaymentEnabled(splitPaymentEnabledInput.checked);
 });
 
+tipAmountInput?.addEventListener("input", () => {
+  if (!selectedOrder || posMode !== "receipt") return;
+  renderReceiptTotals(getOrderInclusiveTotal(selectedOrder));
+  updateCheckoutButtonState(getOrderInclusiveTotal(selectedOrder));
+});
+
 splitFillBaseBtn?.addEventListener("click", () => {
   if (!isSplitPaymentActive()) return;
   const orderTotal = getOrderTotalBase();
@@ -1601,12 +1623,47 @@ function renderPaymentCurrencyToggle() {
   }).join("");
 }
 
+function getTipAmountInput() {
+  if (!tipAmountInput) return 0;
+  const value = Number(tipAmountInput.value);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return roundMoney(value);
+}
+
+function tipAmountForPayPayload() {
+  return getTipAmountInput();
+}
+
+function tipBaseAmount() {
+  const tip = getTipAmountInput();
+  if (!tip) return 0;
+  if (paymentMethod === "account" || isSplitPaymentActive()) {
+    return tip;
+  }
+  const currency = getSelectedCurrency();
+  if (!currency) return tip;
+  if (currency.is_base) return tip;
+  const rate = Number(currency.current_rate);
+  if (!Number.isFinite(rate) || rate <= 0) return tip;
+  return roundMoney(tip / rate);
+}
+
 function renderReceiptTotals(inclusiveTotal) {
   const { subtotal, tax, zta, ztaRate, total } = computeTaxBreakdown(inclusiveTotal);
   const useFx = paymentMethod !== "account" && !isSplitPaymentActive();
   const { rate, amountDue, currency, hasRate } = useFx
     ? computePaymentAmounts(total)
     : { rate: null, amountDue: null, currency: null, hasRate: false };
+  const tip = getTipAmountInput();
+  const tipBase = tipBaseAmount();
+  const tipRow = tip
+    ? (useFx && currency && hasRate
+      ? `<div class="receipt-total-row"><span>${t("Tip")}${currency ? ` (${currency.name})` : ""}</span><span>${formatCurrencyAmount(tip, currency)}</span></div>`
+      : `<div class="receipt-total-row"><span>${t("Tip")}${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${formatCurrencyAmount(tipBase, baseCurrency)}</span></div>`)
+    : "";
+  const dueWithTip = useFx && hasRate && amountDue != null
+    ? roundMoney(amountDue + tip)
+    : roundMoney(total + tipBase);
   const rateRow = currency && !currency.is_base && hasRate
     ? `<div class="receipt-total-row"><span>Exchange rate</span><span>${rate}</span></div>`
     : "";
@@ -1614,8 +1671,8 @@ function renderReceiptTotals(inclusiveTotal) {
     ? `<div class="receipt-total-row" style="color: #b45309;"><span>No rate set</span><span>Add under Rates</span></div>`
     : "";
   const dueRow = useFx
-    ? `<div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? formatCurrencyAmount(amountDue, currency) : "—"}</span></div>`
-    : `<div class="receipt-total-row receipt-total-due"><span>Amount due${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${formatCurrencyAmount(total, baseCurrency)}</span></div>`;
+    ? `<div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? formatCurrencyAmount(dueWithTip, currency) : "—"}</span></div>`
+    : `<div class="receipt-total-row receipt-total-due"><span>Amount due${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${formatCurrencyAmount(dueWithTip, baseCurrency)}</span></div>`;
   const ztaRow = zta
     ? `<div class="receipt-total-row"><span>ZTA (${ztaRate}%)</span><span>${formatCurrencyAmount(zta, baseCurrency)}</span></div>`
     : "";
@@ -1625,15 +1682,16 @@ function renderReceiptTotals(inclusiveTotal) {
     ${ztaRow}
     <div class="receipt-total-row"><span>Tax (${INCLUSIVE_TAX_RATE}%)</span><span>${formatCurrencyAmount(tax, baseCurrency)}</span></div>
     <div class="receipt-total-row"><span>Total${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${formatCurrencyAmount(total, baseCurrency)}</span></div>
+    ${tipRow}
     ${rateRow}
     ${missingRate}
     ${dueRow}
   `;
   if (useFx && hasRate) {
-    cartTotal.textContent = formatCurrencyAmount(amountDue, currency);
+    cartTotal.textContent = formatCurrencyAmount(dueWithTip, currency);
     cartTotalLabel.textContent = currency && !currency.is_base ? "Amount due" : t("Total");
   } else {
-    cartTotal.textContent = formatCurrencyAmount(total, baseCurrency);
+    cartTotal.textContent = formatCurrencyAmount(dueWithTip, baseCurrency);
     cartTotalLabel.textContent = t("Total");
   }
   updateSplitPaymentRemaining();
@@ -1732,8 +1790,14 @@ function renderCart() {
   cartItems.innerHTML = existingHtml + newLinesHtml + emptyHint;
 
   cartTotal.textContent = formatCurrency(getCartTotal());
-  checkoutBtn.disabled = cart.size === 0 || !branchSelect.value;
+  checkoutBtn.disabled = !canPlaceOrder();
   clearBtn.disabled = cart.size === 0;
+}
+
+function canPlaceOrder() {
+  if (cart.size === 0 || !branchSelect.value) return false;
+  if (orderType.value === "dine_in" && !tableNumber.value.trim()) return false;
+  return true;
 }
 
 function renderReceiptPanel() {
@@ -2011,11 +2075,13 @@ function closeAddonModal() {
 
 function renderAddonModalGroups(product) {
   const groups = (product.addon_groups || []).filter(group => (group.addons || []).length);
-  addonModalTitle.textContent = `Add-ons — ${product.name}`;
+  addonModalTitle.textContent = groups.length
+    ? `${t("Add-ons")} — ${product.name}`
+    : product.name;
   addonModalNotes.value = "";
 
   if (!groups.length) {
-    addonModalGroups.innerHTML = `<p style="margin:0; color: var(--color-muted); font-size: 0.85rem;">No add-ons configured for this item.</p>`;
+    addonModalGroups.innerHTML = "";
     return;
   }
 
@@ -2104,11 +2170,7 @@ function addToCart(product, { addons = [], notes = "" } = {}) {
 }
 
 function handleProductTap(product) {
-  if (productHasAddons(product)) {
-    openAddonModal(product);
-    return;
-  }
-  addToCart(product);
+  openAddonModal(product);
 }
 
 function updateQty(lineKey, delta) {
@@ -2176,10 +2238,13 @@ function renderProducts() {
 
   productGrid.innerHTML = filtered.map(p => {
     const hasAddons = productHasAddons(p);
+    const hint = hasAddons
+      ? t("Tap for add-ons & notes")
+      : t("Tap for order notes");
     return `
-    <div class="card product-card${hasAddons ? " product-card--has-addons" : ""}" data-id="${p.id}">
+    <div class="card product-card product-card--has-addons" data-id="${p.id}">
       <div class="name">${p.name}</div>
-      ${hasAddons ? `<div class="product-addon-hint">Tap to choose add-ons</div>` : ""}
+      <div class="product-addon-hint">${hint}</div>
       <div class="price">${formatCurrency(p.selling_price)}</div>
     </div>
   `;
@@ -2447,7 +2512,7 @@ async function openOrderTransferModal() {
   const destinationOrderId = await openTakeawayOrderPicker({
     purpose: "transfer",
     title: "Transfer to order",
-    hint: "{% trans "Choose an open takeaway order, or start a new one." %}",
+    hint: t("Choose an open takeaway order, or start a new one."),
     newOrderLabel: "New order",
     newOrderMeta: "Start a fresh takeaway order with selected lines",
     candidates: openTakeawayOrdersForTransfer(),
@@ -2636,7 +2701,12 @@ checkoutBtn.addEventListener("click", async () => {
 });
 
 async function placeOrder() {
-  if (!branchSelect.value || cart.size === 0) return;
+  if (!canPlaceOrder()) {
+    if (orderType.value === "dine_in" && !tableNumber.value.trim()) {
+      showToast(t("Select a table for dine-in orders."), true);
+    }
+    return;
+  }
 
   let existingOrderId = null;
   if (orderType.value === "takeaway") {
@@ -2665,7 +2735,7 @@ async function placeOrder() {
         addon_ids: (item.addons || []).map(addon => addon.id),
       })),
     };
-    if (orderType.value === "dine_in" && tableNumber.value.trim()) {
+    if (orderType.value === "dine_in") {
       payload.table_number = tableNumber.value.trim();
     }
     if (existingOrderId) {
@@ -2712,7 +2782,7 @@ async function placeOrder() {
     checkoutBtn.textContent = existingOrdersForCurrentSelection().length
       ? t("Add to Order")
       : t("Place Order");
-    checkoutBtn.disabled = cart.size === 0 || !branchSelect.value;
+    checkoutBtn.disabled = !canPlaceOrder();
   }
 }
 
@@ -2763,9 +2833,10 @@ async function paySelectedOrder() {
         }
       }
       const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
-      if (allocated + 0.005 < orderTotal) {
+      const tipBase = tipBaseAmount();
+      if (allocated + 0.005 < orderTotal + tipBase) {
         showToast(
-          `Split payments must cover ${formatCurrencyAmount(orderTotal, baseCurrency)} (now ${formatCurrencyAmount(allocated, baseCurrency)})`,
+          `Split payments must cover ${formatCurrencyAmount(orderTotal + tipBase, baseCurrency)} (now ${formatCurrencyAmount(allocated, baseCurrency)})`,
           true,
         );
         return;
@@ -2787,6 +2858,7 @@ async function paySelectedOrder() {
   const printWindow = window.open("about:blank", "_blank");
 
   try {
+    const tipAmount = tipAmountForPayPayload();
     let payPayload;
     if (paymentMethod === "account") {
       payPayload = { payment_method: "account" };
@@ -2800,6 +2872,9 @@ async function paySelectedOrder() {
       };
     } else {
       payPayload = { currency_id: selectedCurrencyId, payment_method: "cash" };
+    }
+    if (tipAmount > 0) {
+      payPayload.tip_amount = tipAmount.toFixed(2);
     }
     const order = await apiPost(`/orders/${selectedOrder.id}/pay/`, payPayload);
     if (paymentMethod === "account") {
@@ -2832,6 +2907,7 @@ async function paySelectedOrder() {
     selectedOrder = null;
     receiptPaymentOrderKey = null;
     setSplitPaymentEnabled(false);
+    if (tipAmountInput) tipAmountInput.value = "";
     await loadOpenOrders();
     renderReceiptPanel();
   } catch (err) {

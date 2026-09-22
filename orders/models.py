@@ -89,6 +89,12 @@ class Order(models.Model):
         null=True,
         blank=True,
     )
+    tip_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Optional tip collected at payment, in base currency.",
+    )
     payment_method = models.CharField(
         max_length=20,
         choices=PaymentMethod.choices,
@@ -386,6 +392,7 @@ class DayEndClose(models.Model):
     notes = models.CharField(max_length=255, blank=True, default="")
     order_count = models.PositiveIntegerField(default=0)
     gross_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tips_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     expenses_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     variance_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     has_counted_entries = models.BooleanField(default=False)

@@ -65,6 +65,8 @@
     <string name="order_item_removed">Removed one %1$s</string>
     <string name="status_unpaid">Unpaid</string>
     <string name="total">Total</string>
+    <string name="tip_optional">Tip (optional)</string>
+    <string name="tip">Tip</string>
     <string name="amount_due">Amount due</string>
     <string name="exchange_rate_label">Exchange rate: %1$s</string>
     <string name="tap_products_hint">Tap products to add items</string>
@@ -78,6 +80,7 @@
     <string name="order_type_dine_in">Dine in</string>
     <string name="table_number">Table</string>
     <string name="choose_table">Choose table…</string>
+    <string name="select_table_for_dine_in">Select a table for dine-in orders.</string>
     <string name="select_table_title">Select table</string>
     <string name="transfer_to_table">Transfer to table…</string>
     <string name="transfer_to_order">Transfer to order…</string>
@@ -88,7 +91,7 @@
     <string name="transfer_destination_takeaway">Takeaway order</string>
     <string name="transfer_table_title">Transfer to table</string>
     <string name="transfer_order_title">Transfer to order</string>
-    <string name="transfer_table_hint">Choose any table, including ones already in use.</string>
+    <string name="transfer_table_hint">Choose a free table or one of yours. Tables held by other staff are hidden until payment.</string>
     <string name="transfer_order_hint">Choose an open takeaway order, or start a new one.</string>
     <string name="transfer_new_order">New order</string>
     <string name="transfer_no_other_orders">No other open takeaway orders</string>
@@ -104,9 +107,10 @@
     <string name="transfer_success">Transferred to table %1$s</string>
     <string name="transfer_success_order">Transferred to order #%1$d</string>
     <string name="transfer_success_new_order">Transferred to a new takeaway order</string>
-    <string name="table_picker_hint">Tap a table to select it. Highlighted tables have open dine-in orders.</string>
+    <string name="table_picker_hint">Available tables only. Tables held by other staff stay hidden until payment.</string>
     <string name="table_in_use">In use</string>
     <string name="table_available">Available</string>
+    <string name="all_tables_held_by_others">All configured tables are held by other staff until payment.</string>
     <string name="no_tables_configured">No tables configured. Ask a branch manager to set up tables.</string>
     <string name="no_tables_configured_manager">No tables configured yet.</string>
     <string name="open_orders_hint">Select an open or unpaid order to collect payment</string>
@@ -285,9 +289,11 @@
     <string name="day_end_stock_take_required">Completed daily stock take required</string>
     <string name="day_end_invalid_amount">Invalid amount for %1$s</string>
     <string name="day_end_printed">Day-end report printed</string>
-    <string name="tap_for_addons">Tap to choose add-ons</string>
+    <string name="tap_for_addons">Tap for add-ons &amp; notes</string>
+    <string name="tap_for_order_notes">Tap for order notes</string>
     <string name="addon_picker_title">Add-ons — %1$s</string>
     <string name="addon_picker_hint">Choose add-ons and optional kitchen notes, then add to cart.</string>
+    <string name="order_notes_picker_hint">Add optional kitchen notes, then add to cart.</string>
     <string name="addon_notes_hint">Order notes (optional)</string>
     <string name="add_to_cart">Add to cart</string>
     <string name="addon_price_extra">%1$s (+%2$s)</string>
@@ -447,7 +453,7 @@
     <string name="order_paper_back">Back</string>
     <string name="order_paper_access_denied">Order Paper is not available for this account.</string>
     <string name="order_paper_new">New order paper</string>
-    <string name="order_paper_create_hint">Request bakery products for a needed date. Branches and central stores use the same form.</string>
+    <string name="order_paper_create_hint">Request bakery products for a needed date. Branch submissions wait for back-office approval before bakery can act.</string>
     <string name="order_paper_needed_date">Needed date</string>
     <string name="order_paper_bakery">Central bakery</string>
     <string name="order_paper_product">Bakery product</string>
@@ -461,8 +467,12 @@
     <string name="order_paper_form_error">Choose bakery and needed date.</string>
     <string name="order_paper_no_bakery">No bakery is available. Ask HQ to add an active Bakery branch.</string>
     <string name="order_paper_need_date">Enter the needed date (YYYY-MM-DD).</string>
-    <string name="order_paper_submitted">Order paper submitted.</string>
+    <string name="order_paper_submitted">Order paper submitted for back-office approval.</string>
     <string name="order_paper_draft_saved">Draft saved.</string>
+    <string name="order_paper_updated">Order paper updated.</string>
+    <string name="order_paper_save_changes">Save changes</string>
+    <string name="order_paper_edit">Edit</string>
+    <string name="order_paper_review_hint">Edit lines above, then Save changes. Approve when ready for bakery.</string>
     <string name="order_paper_list">Order papers</string>
     <string name="order_paper_empty">No order papers found.</string>
     <string name="order_paper_list_title">#%1$d · %2$s · %3$s</string>
@@ -471,8 +481,9 @@
     <string name="order_paper_no_demand">No open demand for this date.</string>
     <string name="order_paper_demand_summary">%1$d paper(s):\n%2$s</string>
     <string name="order_paper_create_production">Create production from selected</string>
-    <string name="order_paper_select_papers">Select at least one submitted order paper.</string>
+    <string name="order_paper_select_papers">Select at least one approved order paper.</string>
     <string name="order_paper_production_created">Production sheet created from order papers.</string>
+    <string name="order_paper_approve">Approve</string>
     <string name="order_paper_accept">Accept</string>
     <string name="order_paper_cancel_title">Cancel order paper</string>
     <string name="order_paper_cancel_confirm">Cancel order paper #%1$d?</string>

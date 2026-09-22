@@ -50,6 +50,10 @@ class Customer(models.Model):
         blank=True,
         help_text="Home branch for this customer account.",
     )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive customers are hidden from POS and account pickers.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

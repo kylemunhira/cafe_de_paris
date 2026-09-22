@@ -585,6 +585,7 @@ def void_order(order, *, voided_by=None):
     order.payment_currency = None
     order.exchange_rate = None
     order.amount_paid = None
+    order.tip_amount = Decimal("0")
     order.payment_method = ""
     order.receipt_number = None
     order.paid_at = None
@@ -600,6 +601,7 @@ def void_order(order, *, voided_by=None):
             "payment_currency",
             "exchange_rate",
             "amount_paid",
+            "tip_amount",
             "payment_method",
             "receipt_number",
             "paid_at",
@@ -751,10 +753,12 @@ def mark_order_paid_with_tenders(
     receipt_number,
     paid_by=None,
     paid_at=None,
+    tip_amount=None,
 ):
     """Apply tender payment(s), allocate receipt fields, and mark the order paid.
 
-    Returns (order, change_base) where change_base is tendered surplus in base currency.
+    Returns (order, change_base) where change_base is tendered surplus in base currency
+    after covering the bill and tip (tip is not stored on OrderPayment lines).
     """
     from .tax import order_amount_due
 
@@ -772,12 +776,21 @@ def mark_order_paid_with_tenders(
             )
 
     amount_due = order_amount_due(order)
-    applied_lines, change_base = apply_tender_change(lines, amount_due)
+    tip_base = Decimal(tip_amount or 0).quantize(Decimal("0.01"))
+    if tip_base < 0:
+        raise PaymentValidationError("Tip amount cannot be negative.")
+    due_with_tip = (amount_due + tip_base).quantize(Decimal("0.01"))
+
+    # True change after bill + tip; then strip tip so stored tenders equal the bill only.
+    change_base = validate_tender_total(lines, due_with_tip)
+    applied_with_tip, _ = apply_tender_change(lines, due_with_tip)
+    applied_lines, _ = apply_tender_change(applied_with_tip, amount_due)
 
     save_order_tender_payments(order, applied_lines, amount_due=amount_due)
     # Keep amount_paid as the full amount tendered for single-currency change display.
     if len(lines) == 1:
         order.amount_paid = lines[0]["amount"]
+    order.tip_amount = tip_base
     order.status = OrderStatus.PAID
     order.receipt_number = receipt_number
     order.paid_at = paid_at or timezone.now()
@@ -789,6 +802,7 @@ def mark_order_paid_with_tenders(
             "payment_currency",
             "exchange_rate",
             "amount_paid",
+            "tip_amount",
             "payment_method",
             "status",
             "receipt_number",

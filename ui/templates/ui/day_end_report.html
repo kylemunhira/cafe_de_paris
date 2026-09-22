@@ -65,6 +65,10 @@
     <div class="stat-value" id="summary-gross">—</div>
   </div>
   <div class="card stat-card">
+    <div class="stat-label">{% trans "Total tips" %}</div>
+    <div class="stat-value" id="summary-tips">—</div>
+  </div>
+  <div class="card stat-card">
     <div class="stat-label">{% trans "Total expenses" %}</div>
     <div class="stat-value" id="summary-expenses">—</div>
   </div>
@@ -128,6 +132,7 @@ const printReportBtn = document.getElementById("print-report-btn");
 const summaryCount = document.getElementById("summary-count");
 const summaryOrders = document.getElementById("summary-orders");
 const summaryGross = document.getElementById("summary-gross");
+const summaryTips = document.getElementById("summary-tips");
 const summaryExpenses = document.getElementById("summary-expenses");
 const summaryVariance = document.getElementById("summary-variance");
 const totalsPanel = document.getElementById("totals-panel");
@@ -197,6 +202,7 @@ function aggregateTotals(rows) {
       acc.closeCount += 1;
       acc.orderCount += Number(row.order_count || 0);
       acc.grossTotal += Number(row.gross_total || 0);
+      acc.tipsTotal += Number(row.tips_total || 0);
       acc.expensesTotal += Number(row.expenses_total || 0);
       if (row.has_counted_entries) {
         acc.varianceTotal += Number(row.variance_total || 0);
@@ -208,6 +214,7 @@ function aggregateTotals(rows) {
       closeCount: 0,
       orderCount: 0,
       grossTotal: 0,
+      tipsTotal: 0,
       expensesTotal: 0,
       varianceTotal: 0,
       countedCloseCount: 0,
@@ -228,6 +235,7 @@ function computeBranchTotals(rows) {
         closeCount: 0,
         orderCount: 0,
         grossTotal: 0,
+        tipsTotal: 0,
         expensesTotal: 0,
         varianceTotal: 0,
         countedCloseCount: 0,
@@ -237,6 +245,7 @@ function computeBranchTotals(rows) {
     agg.closeCount += 1;
     agg.orderCount += Number(row.order_count || 0);
     agg.grossTotal += Number(row.gross_total || 0);
+    agg.tipsTotal += Number(row.tips_total || 0);
     agg.expensesTotal += Number(row.expenses_total || 0);
     if (row.has_counted_entries) {
       agg.varianceTotal += Number(row.variance_total || 0);
@@ -284,6 +293,7 @@ function renderTable() {
         <td>${row.closed_by_name || "—"}</td>
         <td style="text-align:right">${row.order_count ?? 0}</td>
         <td style="text-align:right">${money(row.gross_total)}</td>
+        <td style="text-align:right">${money(row.tips_total)}</td>
         <td style="text-align:right">${money(row.expenses_total)}</td>
         <td style="text-align:right" class="${vClass}">${variance}</td>
       </tr>
@@ -299,6 +309,7 @@ function renderTable() {
           <th>${t("Closed by")}</th>
           <th style="text-align:right">${t("Orders")}</th>
           <th style="text-align:right">${t("Gross")}</th>
+          <th style="text-align:right">${t("Tips")}</th>
           <th style="text-align:right">${t("Expenses")}</th>
           <th style="text-align:right">${t("Variance")}</th>
         </tr>
@@ -318,6 +329,7 @@ function updateSummary() {
   summaryCount.textContent = String(totals.closeCount);
   summaryOrders.textContent = String(totals.orderCount);
   summaryGross.textContent = money(totals.grossTotal);
+  summaryTips.textContent = money(totals.tipsTotal);
   summaryExpenses.textContent = money(totals.expensesTotal);
   summaryVariance.textContent = totals.countedCloseCount ? money(totals.varianceTotal) : "—";
   summaryVariance.className = `stat-value ${totals.countedCloseCount ? varianceClass(totals.varianceTotal) : ""}`;
@@ -354,6 +366,7 @@ function renderTotalsTable() {
         <td style="text-align:right">${row.closeCount}</td>
         <td style="text-align:right">${row.orderCount}</td>
         <td style="text-align:right">${money(row.grossTotal)}</td>
+        <td style="text-align:right">${money(row.tipsTotal)}</td>
         <td style="text-align:right">${money(row.expensesTotal)}</td>
         <td style="text-align:right" class="${vClass}">${variance}</td>
       </tr>
@@ -369,6 +382,7 @@ function renderTotalsTable() {
           <td style="text-align:right; font-weight:700;">${grand.closeCount}</td>
           <td style="text-align:right; font-weight:700;">${grand.orderCount}</td>
           <td style="text-align:right; font-weight:700;">${money(grand.grossTotal)}</td>
+          <td style="text-align:right; font-weight:700;">${money(grand.tipsTotal)}</td>
           <td style="text-align:right; font-weight:700;">${money(grand.expensesTotal)}</td>
           <td style="text-align:right; font-weight:700;" class="${grandVarianceClass}">${grandVariance}</td>
         </tr>
@@ -383,6 +397,7 @@ function renderTotalsTable() {
           <th style="text-align:right">${t("Closes")}</th>
           <th style="text-align:right">${t("Orders")}</th>
           <th style="text-align:right">${t("Gross")}</th>
+          <th style="text-align:right">${t("Tips")}</th>
           <th style="text-align:right">${t("Expenses")}</th>
           <th style="text-align:right">${t("Variance")}</th>
         </tr>
@@ -450,9 +465,17 @@ function activityHtml(snapshot) {
     const code = row.currency__code || "";
     return `<li>${row.description || t("Expense")}: ${money(row.amount)}${code ? ` ${code}` : ""}</li>`;
   }).join("");
-  const accountTransactions = (snapshot.account_transactions || []).map((row) => {
+  const accountDeposits = (snapshot.account_deposits || (snapshot.account_transactions || []).filter(
+    (row) => row.transaction_type === "deposit"
+  )).map((row) => {
     const sign = Number(row.amount) >= 0 ? "+" : "";
-    const detail = [row.statement_label || row.transaction_type || t("Transaction")]
+    return `<li>${row.customer_name || t("Customer")} — ${row.statement_label || t("Deposit")}: ${sign}${money(row.amount)}</li>`;
+  }).join("");
+  const accountWithdrawals = (snapshot.account_withdrawals || (snapshot.account_transactions || []).filter(
+    (row) => row.transaction_type === "payment"
+  )).map((row) => {
+    const sign = Number(row.amount) >= 0 ? "+" : "";
+    const detail = [row.statement_label || t("Withdrawal")]
       .concat(row.order_id ? [`${t("Order")} #${row.order_id}`] : [])
       .join(" · ");
     return `<li>${row.customer_name || t("Customer")} — ${detail}: ${sign}${money(row.amount)}</li>`;
@@ -468,12 +491,24 @@ function activityHtml(snapshot) {
         ${methods ? `<ul style="margin: 0; padding-left: 1.1rem;">${methods}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
       </div>
       <div>
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Tips")}</h4>
+        ${Number(snapshot.tips_total || 0)
+          ? `<p style="margin: 0;">${t("Total tips")}: ${money(snapshot.tips_total)}</p>`
+          : `<p class="report-panel-note">${t("None")}</p>`}
+      </div>
+      <div>
         <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Expenses")}</h4>
         ${expenses ? `<ul style="margin: 0; padding-left: 1.1rem;">${expenses}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
       </div>
       <div>
-        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Customer accounts")}</h4>
-        ${accountTransactions ? `<ul style="margin: 0; padding-left: 1.1rem;">${accountTransactions}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Deposits")}</h4>
+        ${accountDeposits ? `<ul style="margin: 0; padding-left: 1.1rem;">${accountDeposits}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
+        ${snapshot.account_deposits_total != null ? `<p class="report-panel-note">${t("Deposits total")}: ${money(snapshot.account_deposits_total)}</p>` : ""}
+      </div>
+      <div>
+        <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Withdrawals")}</h4>
+        ${accountWithdrawals ? `<ul style="margin: 0; padding-left: 1.1rem;">${accountWithdrawals}</ul>` : `<p class="report-panel-note">${t("None")}</p>`}
+        ${snapshot.account_withdrawals_total != null ? `<p class="report-panel-note">${t("Withdrawals total")}: ${money(snapshot.account_withdrawals_total)}</p>` : ""}
       </div>
       <div>
         <h4 style="margin: 0 0 0.5rem; font-size: 0.9rem;">${t("Top products")}</h4>
@@ -493,6 +528,7 @@ async function openDetail(id) {
       <div class="stat-grid" style="margin-bottom: 1rem;">
         <div class="card stat-card"><div class="stat-label">${t("Orders")}</div><div class="stat-value">${data.order_count ?? 0}</div></div>
         <div class="card stat-card"><div class="stat-label">${t("Gross")}</div><div class="stat-value">${money(data.gross_total)}</div></div>
+        <div class="card stat-card"><div class="stat-label">${t("Tips")}</div><div class="stat-value">${money(data.tips_total)}</div></div>
         <div class="card stat-card"><div class="stat-label">${t("Expenses")}</div><div class="stat-value">${money(data.expenses_total)}</div></div>
         <div class="card stat-card"><div class="stat-label">${t("Variance")}</div><div class="stat-value ${varianceClass(data.variance_total)}">${data.has_counted_entries ? money(data.variance_total) : "—"}</div></div>
       </div>

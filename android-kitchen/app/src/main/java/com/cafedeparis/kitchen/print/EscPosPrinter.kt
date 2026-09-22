@@ -532,6 +532,14 @@ class EscPosPrinter {
         suffix = formatMoney(tax.total),
       ),
     )
+    order.tip_amount?.toDoubleOrNull()?.takeIf { it > 0.005 }?.let { tip ->
+      output.write(
+        textLine(
+          "Tip",
+          suffix = formatMoney(tip),
+        ),
+      )
+    }
 
     if (order.payment_method == "account") {
       output.write(textLine("Paid from customer account", bold = true))
@@ -548,8 +556,9 @@ class EscPosPrinter {
       } else {
         null
       }
-      val changeAmount = if (paidAmount != null && appliedAmount != null && paidAmount > appliedAmount + 0.005) {
-        roundMoney(paidAmount - appliedAmount)
+      val tipAmount = order.tip_amount?.toDoubleOrNull()?.takeIf { it > 0.005 } ?: 0.0
+      val changeAmount = if (paidAmount != null && appliedAmount != null && paidAmount > appliedAmount + tipAmount + 0.005) {
+        roundMoney(paidAmount - appliedAmount - tipAmount)
       } else {
         null
       }
@@ -767,14 +776,23 @@ class EscPosPrinter {
       output.write(ALIGN_LEFT)
       for (i in 0 until payments.length()) {
         val payment = payments.getJSONObject(i)
-        val code = payment.optString("payment_currency__code", "")
-          .ifBlank { payment.optString("payment_currency__name", "") }
+        val label = payment.optString("payment_currency__name", "")
+          .ifBlank { payment.optString("payment_currency__code", "") }
         val symbol = payment.optString("payment_currency__symbol", "")
         val amount = payment.optString("total_paid", "0")
         val count = payment.optInt("order_count", 0)
         val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(amount)}" else formatMoney(amount)
-        output.write(textLine(code, suffix = "$formatted ($count)"))
+        output.write(textLine(label, suffix = "$formatted ($count)"))
       }
+    }
+
+    val tipsTotal = report.optString("tips_total", "0")
+    if (tipsTotal.isNotBlank() && tipsTotal != "0" && tipsTotal != "0.00") {
+      output.write(textLine("--------------------------------"))
+      output.write(ALIGN_CENTER)
+      output.write(textLine("Tips", bold = true))
+      output.write(ALIGN_LEFT)
+      output.write(textLine("Total tips", bold = true, suffix = formatMoney(tipsTotal)))
     }
 
     val expenses = report.optJSONArray("expenses") ?: JSONArray()
@@ -794,13 +812,27 @@ class EscPosPrinter {
     }
 
     val accountTransactions = report.optJSONArray("account_transactions") ?: JSONArray()
-    if (accountTransactions.length() > 0) {
+    val accountDeposits = report.optJSONArray("account_deposits")
+      ?: JSONArray().also { out ->
+        for (i in 0 until accountTransactions.length()) {
+          val txn = accountTransactions.getJSONObject(i)
+          if (txn.optString("transaction_type", "") == "deposit") out.put(txn)
+        }
+      }
+    val accountWithdrawals = report.optJSONArray("account_withdrawals")
+      ?: JSONArray().also { out ->
+        for (i in 0 until accountTransactions.length()) {
+          val txn = accountTransactions.getJSONObject(i)
+          if (txn.optString("transaction_type", "") == "payment") out.put(txn)
+        }
+      }
+    if (accountDeposits.length() > 0 || accountWithdrawals.length() > 0) {
       output.write(textLine("--------------------------------"))
       output.write(ALIGN_CENTER)
       output.write(textLine("Customer account transactions", bold = true))
       output.write(ALIGN_LEFT)
-      for (i in 0 until accountTransactions.length()) {
-        val txn = accountTransactions.getJSONObject(i)
+
+      fun writeAccountTxn(txn: org.json.JSONObject) {
         val customer = txn.optString("customer_name", "Customer")
         val label = txn.optString("statement_label", txn.optString("transaction_type", "Transaction"))
         val amount = txn.optString("amount", "0")
@@ -815,10 +847,10 @@ class EscPosPrinter {
             val received = txn.optString("amount_received", "")
             if (received.isNotBlank() && received != "0" && received != "0.00") {
               val symbol = txn.optString("currency__symbol", "")
-              val label = txn.optString("currency__name", "")
+              val curLabel = txn.optString("currency__name", "")
                 .ifBlank { txn.optString("currency__code", "") }
               val formatted = if (symbol.isNotBlank()) "$symbol${formatPlainAmount(received)}" else formatMoney(received)
-              add("$formatted $label".trim())
+              add("$formatted $curLabel".trim())
             }
           }
           txn.optString("notes", "").takeIf { it.isNotBlank() }?.let { add(it) }
@@ -826,6 +858,39 @@ class EscPosPrinter {
         if (details.isNotEmpty()) {
           output.write(textLine("  ${details.joinToString(" · ")}"))
         }
+      }
+
+      output.write(textLine("Deposits", bold = true))
+      if (accountDeposits.length() == 0) {
+        output.write(textLine("No deposits"))
+      } else {
+        for (i in 0 until accountDeposits.length()) {
+          writeAccountTxn(accountDeposits.getJSONObject(i))
+        }
+        output.write(
+          textLine(
+            "Deposits total",
+            bold = true,
+            suffix = formatMoney(report.optString("account_deposits_total", "0")),
+          ),
+        )
+      }
+
+      output.write(LF)
+      output.write(textLine("Withdrawals", bold = true))
+      if (accountWithdrawals.length() == 0) {
+        output.write(textLine("No withdrawals"))
+      } else {
+        for (i in 0 until accountWithdrawals.length()) {
+          writeAccountTxn(accountWithdrawals.getJSONObject(i))
+        }
+        output.write(
+          textLine(
+            "Withdrawals total",
+            bold = true,
+            suffix = formatMoney(report.optString("account_withdrawals_total", "0")),
+          ),
+        )
       }
     }
 
@@ -844,6 +909,12 @@ class EscPosPrinter {
         fun money(value: String?): String {
           if (value.isNullOrBlank()) return "—"
           return if (symbol.isNotBlank()) "$symbol${formatPlainAmount(value)}" else formatMoney(value)
+        }
+        val salesTotal = row.optString("total_paid", "0")
+        val depositsTotal = row.optString("deposits_total", "0")
+        output.write(textLine("${name.ifBlank { code }} sales", suffix = money(salesTotal)))
+        if (depositsTotal.isNotBlank() && depositsTotal != "0" && depositsTotal != "0.00") {
+          output.write(textLine("Customer deposits", suffix = money(depositsTotal)))
         }
         output.write(textLine("${name.ifBlank { code }} expected", suffix = money(row.optString("expected_total"))))
         val expensesTotal = row.optString("expenses_total", "")

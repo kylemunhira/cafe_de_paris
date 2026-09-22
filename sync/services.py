@@ -157,6 +157,7 @@ def _create_order(branch, validated_data, user=None):
 def _pay_order(order, payment_data, user=None):
     receipt_number = allocate_receipt_number(order.branch)
     paid_at = payment_data.get("paid_at") or timezone.now()
+    tip_raw = payment_data.get("tip_amount") or Decimal("0")
     try:
         consume_order_recipe_materials(order)
     except InsufficientOrderMaterialsError as exc:
@@ -164,6 +165,7 @@ def _pay_order(order, payment_data, user=None):
 
     payment_lines = payment_data.get("payments")
     if payment_lines:
+        tip_base = Decimal(tip_raw).quantize(Decimal("0.01"))
         lines = [
             {
                 "currency": line["currency"],
@@ -181,10 +183,12 @@ def _pay_order(order, payment_data, user=None):
                 f'No exchange rate configured for "{currency.name}". '
                 "Add a rate under Payment & Rates → Rates."
             )
+        tip_base = currency.convert_to_base(tip_raw).quantize(Decimal("0.01"))
+        due_with_tip = order_amount_due(order) + tip_base
         lines = [
             {
                 "currency": currency,
-                "amount": currency.convert_from_base(order_amount_due(order)),
+                "amount": currency.convert_from_base(due_with_tip),
                 "method": "cash",
             }
         ]
@@ -196,6 +200,7 @@ def _pay_order(order, payment_data, user=None):
             receipt_number=receipt_number,
             paid_by=user,
             paid_at=paid_at,
+            tip_amount=tip_base,
         )
     except PaymentValidationError as exc:
         raise ValueError(str(exc)) from exc

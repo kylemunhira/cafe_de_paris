@@ -10,7 +10,7 @@ def _quantize(amount: Decimal) -> Decimal:
 
 
 def build_customer_balances_report(*, search=None, non_zero_only=False):
-    qs = Customer.objects.select_related("branch").all()
+    qs = Customer.objects.select_related("branch").filter(is_active=True)
 
     if search:
         term = search.strip()

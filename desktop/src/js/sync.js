@@ -95,6 +95,9 @@ export function buildPushPayload(order) {
         amount: String(line.amount),
       }));
     }
+    if (Number(order.tip_amount) > 0) {
+      payload.payment.tip_amount = String(order.tip_amount);
+    }
   }
   return payload;
 }

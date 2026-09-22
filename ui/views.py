@@ -13,6 +13,7 @@ from accounts.branch_access import (
     user_can_access_order_papers,
     user_can_access_pos,
     user_can_access_stores_transfers,
+    user_can_approve_order_papers,
     user_can_create_order_papers,
     user_can_create_purchase_orders,
     user_can_manage_bakery_order_papers,
@@ -453,6 +454,9 @@ class OrderPapersView(BaseUIView):
         context["can_create_order_papers"] = user_can_create_order_papers(
             self.request.user
         )
+        context["can_approve_order_papers"] = user_can_approve_order_papers(
+            self.request.user
+        )
         context["can_manage_bakery_order_papers"] = user_can_manage_bakery_order_papers(
             self.request.user
         )
@@ -634,6 +638,11 @@ class CustomerAccountsView(BaseUIView):
         context["can_adjust_customer_balance"] = user_can_adjust_customer_balance(
             self.request.user
         )
+        preselected = self.kwargs.get("pk") or self.request.GET.get("customer")
+        try:
+            context["preselected_customer_id"] = int(preselected) if preselected else None
+        except (TypeError, ValueError):
+            context["preselected_customer_id"] = None
         return context
 
 
@@ -655,6 +664,9 @@ class CustomerAccountTransactionPrintView(
             "currency",
             "order",
             "recorded_by",
+        ).prefetch_related(
+            "order__items__product",
+            "order__items__addons",
         )
 
     def get_context_data(self, **kwargs):

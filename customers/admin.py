@@ -14,9 +14,10 @@ class CustomerAdmin(admin.ModelAdmin):
         "account_balance",
         "credit_limit",
         "loyalty_points",
+        "is_active",
         "created_at",
     )
-    list_filter = ("account_type", "branch")
+    list_filter = ("account_type", "branch", "is_active")
     search_fields = ("first_name", "last_name", "phone", "email")
 
 

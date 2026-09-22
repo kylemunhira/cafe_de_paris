@@ -5,6 +5,7 @@ from accounts.branch_access import (
     get_staff_branch_id,
     user_can_access_bakery_transfers,
     user_can_access_order_papers,
+    user_can_approve_order_papers,
     user_can_create_order_papers,
     user_can_manage_bakery_order_papers,
     user_has_global_branch_access,
@@ -38,6 +39,7 @@ from .services import (
     InvalidOrderPaperStateError,
     InvalidProductionSheetStateError,
     NoRecipeError,
+    approve_order_paper,
     cancel_order_paper,
     cancel_production_sheet,
     complete_production_sheet,
@@ -347,6 +349,9 @@ class OrderPaperViewSet(viewsets.ModelViewSet):
                     return queryset.none()
             if requesting_branch_id:
                 queryset = queryset.filter(requesting_branch_id=requesting_branch_id)
+            # Bakery staff only see papers after back-office approval.
+            if not user_can_approve_order_papers(user):
+                queryset = queryset.exclude(status=OrderPaperStatus.SUBMITTED)
         else:
             # Branch / stores requesters: only their own papers.
             queryset = filter_by_branch_field(
@@ -394,9 +399,27 @@ class OrderPaperViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         paper = self.get_object()
-        self._ensure_can_create()
-        self._ensure_owns_requester(paper.requesting_branch)
-        serializer = self.get_serializer(paper, data=request.data, partial=True)
+        user = request.user
+        by_back_office = False
+        if (
+            user_can_approve_order_papers(user)
+            and paper.status == OrderPaperStatus.SUBMITTED
+        ):
+            by_back_office = True
+        elif (
+            user_can_create_order_papers(user)
+            and paper.status == OrderPaperStatus.DRAFT
+        ):
+            self._ensure_owns_requester(paper.requesting_branch)
+        else:
+            raise PermissionDenied("You cannot edit this order paper.")
+
+        serializer = self.get_serializer(
+            paper,
+            data=request.data,
+            partial=True,
+        )
+        serializer.context["by_back_office"] = by_back_office
         serializer.is_valid(raise_exception=True)
         paper = serializer.save()
         return Response(self._serialize(paper))
@@ -418,13 +441,36 @@ class OrderPaperViewSet(viewsets.ModelViewSet):
         return self._run_requester_transition(request, submit_order_paper)
 
     @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        if not user_can_approve_order_papers(request.user):
+            raise PermissionDenied(
+                "Only back office (HQ) can approve order papers for the bakery."
+            )
+        paper = self.get_object()
+        try:
+            paper = approve_order_paper(paper)
+        except InvalidOrderPaperStateError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._serialize(paper))
+
+    @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         paper = self.get_object()
         user = request.user
-        if user_can_manage_bakery_order_papers(user) and paper.status == (
+        if user_can_approve_order_papers(user) and paper.status == (
             OrderPaperStatus.SUBMITTED
         ):
-            # Bakery may cancel an unaccepted request.
+            try:
+                paper = cancel_order_paper(paper)
+            except InvalidOrderPaperStateError as exc:
+                return Response(
+                    {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(self._serialize(paper))
+        if user_can_manage_bakery_order_papers(user) and paper.status == (
+            OrderPaperStatus.APPROVED
+        ):
+            # Bakery may cancel an approved but unaccepted request.
             if not user_has_global_branch_access(user):
                 if get_staff_branch_id(user) != paper.bakery_id:
                     raise PermissionDenied(
@@ -470,7 +516,7 @@ class OrderPaperViewSet(viewsets.ModelViewSet):
         bakery_id = request.query_params.get("bakery")
         queryset = self.get_queryset().filter(
             status__in=(
-                OrderPaperStatus.SUBMITTED,
+                OrderPaperStatus.APPROVED,
                 OrderPaperStatus.ACCEPTED,
             ),
             production_sheet__isnull=True,

@@ -181,6 +181,7 @@ const accountBalanceHint = document.getElementById("account-balance-hint");
 const receiptCreditLimit = document.getElementById("receipt-credit-limit");
 const costPriceHint = document.getElementById("cost-price-hint");
 const receiptTotals = document.getElementById("receipt-totals");
+const tipAmountInput = document.getElementById("tip-amount-input");
 const cartTotalLabel = document.getElementById("cart-total-label");
 const posModeToggle = document.getElementById("pos-mode-toggle");
 const addonPickerModal = document.getElementById("addon-picker-modal");
@@ -758,9 +759,11 @@ function ordersOnTable(tableName) {
 }
 
 function getOccupiedTablesSorted() {
+  // Only tables this staff member holds — other waiters' tables stay private.
   const occupied = occupiedTableNames();
-  const known = diningTables.map((table) => table.name).filter((name) => occupied.has(name));
-  const extra = [...occupied].filter((name) => !known.includes(name));
+  const mine = [...occupied].filter((name) => !tableNameHeldByOtherUser(name));
+  const known = diningTables.map((table) => table.name).filter((name) => mine.includes(name));
+  const extra = mine.filter((name) => !known.includes(name));
   return [...known, ...extra].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
@@ -821,6 +824,8 @@ function normalizeRemoteOrder(order) {
     kitchen_started_at: order.kitchen_started_at || null,
     kitchen_ready_at: order.kitchen_ready_at || null,
     created_at: order.created_at,
+    created_by: order.created_by ?? null,
+    created_by_name: order.created_by_name || "",
     customer: order.customer || null,
     is_remote: true,
     items: (order.items || []).map((item) => ({
@@ -1006,12 +1011,37 @@ async function loadDiningTables() {
   }
 }
 
+function currentStaffUserId() {
+  const id = session?.user?.id;
+  return id == null || id === "" ? null : Number(id);
+}
+
+function orderHeldByOtherUser(order) {
+  const holderId = order?.created_by;
+  if (holderId == null || holderId === "") return false;
+  const currentId = currentStaffUserId();
+  if (currentId == null) return true;
+  return Number(holderId) !== currentId;
+}
+
 function tableHeldByOtherUser(table) {
   const holderId = table?.occupied_by;
-  if (holderId == null || holderId === "") return false;
-  const currentId = session?.user?.id;
-  if (currentId == null) return true;
-  return Number(holderId) !== Number(currentId);
+  if (holderId != null && holderId !== "") {
+    const currentId = currentStaffUserId();
+    if (currentId == null) return true;
+    return Number(holderId) !== currentId;
+  }
+  const occupancy = ordersOnTable(table?.name);
+  return [...occupancy.local, ...occupancy.remote].some(orderHeldByOtherUser);
+}
+
+function tableNameHeldByOtherUser(tableName) {
+  const name = (tableName || "").trim();
+  if (!name) return false;
+  const table = diningTables.find((row) => row.name === name);
+  if (table) return tableHeldByOtherUser(table);
+  const occupancy = ordersOnTable(name);
+  return [...occupancy.local, ...occupancy.remote].some(orderHeldByOtherUser);
 }
 
 function visibleDiningTablesForPicker() {
@@ -1478,6 +1508,11 @@ splitPaymentEnabledInput?.addEventListener("change", () => {
   setSplitPaymentEnabled(splitPaymentEnabledInput.checked);
 });
 
+tipAmountInput?.addEventListener("input", () => {
+  if (!selectedOrder || posMode !== "receipt") return;
+  renderReceiptTotals(getOrderInclusiveTotal(selectedOrder));
+});
+
 splitFillBaseBtn?.addEventListener("click", () => {
   if (!isSplitPaymentActive()) return;
   const orderTotal = getOrderTotalBase();
@@ -1834,12 +1869,43 @@ function renderPaymentCurrencyToggle() {
     .join("");
 }
 
+function getTipAmountInput() {
+  if (!tipAmountInput) return 0;
+  const value = Number(tipAmountInput.value);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return roundMoney(value);
+}
+
+function tipBaseAmount() {
+  const tip = getTipAmountInput();
+  if (!tip) return 0;
+  if (paymentMethod === "account" || isSplitPaymentActive()) {
+    return tip;
+  }
+  const currency = getSelectedCurrency();
+  if (!currency) return tip;
+  if (currency.is_base) return tip;
+  const rate = Number(currency.current_rate);
+  if (!Number.isFinite(rate) || rate <= 0) return tip;
+  return roundMoney(tip / rate);
+}
+
 function renderReceiptTotals(inclusiveTotal) {
   const { subtotal, tax, zta, ztaRate, total } = computeTaxBreakdown(inclusiveTotal);
   const useFx = paymentMethod !== "account" && !isSplitPaymentActive();
   const { rate, amountDue, currency, hasRate } = useFx
     ? computePaymentAmounts(total)
     : { rate: null, amountDue: null, currency: null, hasRate: false };
+  const tip = getTipAmountInput();
+  const tipBase = tipBaseAmount();
+  const tipRow = tip
+    ? (useFx && currency && hasRate
+      ? `<div class="receipt-total-row"><span>Tip${currency ? ` (${currency.name})` : ""}</span><span>${money(tip, currency)}</span></div>`
+      : `<div class="receipt-total-row"><span>Tip${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(tipBase)}</span></div>`)
+    : "";
+  const dueWithTip = useFx && hasRate && amountDue != null
+    ? roundMoney(amountDue + tip)
+    : roundMoney(total + tipBase);
   const rateRow =
     currency && !currency.is_base && hasRate
       ? `<div class="receipt-total-row"><span>Exchange rate</span><span>${rate}</span></div>`
@@ -1849,8 +1915,8 @@ function renderReceiptTotals(inclusiveTotal) {
       ? `<div class="receipt-total-row" style="color: #b45309;"><span>No rate set</span><span>Add under Rates</span></div>`
       : "";
   const dueRow = useFx
-    ? `<div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? money(amountDue, currency) : "—"}</span></div>`
-    : `<div class="receipt-total-row receipt-total-due"><span>Amount due${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>`;
+    ? `<div class="receipt-total-row receipt-total-due"><span>Amount due${currency ? ` (${currency.name})` : ""}</span><span>${hasRate ? money(dueWithTip, currency) : "—"}</span></div>`
+    : `<div class="receipt-total-row receipt-total-due"><span>Amount due${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(dueWithTip)}</span></div>`;
   const ztaRow = zta
     ? `<div class="receipt-total-row"><span>ZTA (${ztaRate}%)</span><span>${money(zta)}</span></div>`
     : "";
@@ -1860,15 +1926,16 @@ function renderReceiptTotals(inclusiveTotal) {
     ${ztaRow}
     <div class="receipt-total-row"><span>Tax (${inclusiveTaxRate}%)</span><span>${money(tax)}</span></div>
     <div class="receipt-total-row"><span>Total${baseCurrency ? ` (${baseCurrency.name})` : ""}</span><span>${money(total)}</span></div>
+    ${tipRow}
     ${rateRow}
     ${missingRate}
     ${dueRow}
   `;
   if (useFx && hasRate) {
-    cartTotal.textContent = money(amountDue, currency);
+    cartTotal.textContent = money(dueWithTip, currency);
     cartTotalLabel.textContent = currency && !currency.is_base ? "Amount due" : "Total";
   } else {
-    cartTotal.textContent = money(total);
+    cartTotal.textContent = money(dueWithTip);
     cartTotalLabel.textContent = "Total";
   }
   updateSplitPaymentRemaining();
@@ -1931,8 +1998,14 @@ function renderCart() {
   cartItems.innerHTML = existingHtml + newLinesHtml + emptyHint;
 
   cartTotal.textContent = money(getCartTotal());
-  checkoutBtn.disabled = cart.size === 0;
+  checkoutBtn.disabled = !canPlaceOrder();
   clearBtn.disabled = cart.size === 0;
+}
+
+function canPlaceOrder() {
+  if (cart.size === 0) return false;
+  if (orderType.value === "dine_in" && !tableNumber.value.trim()) return false;
+  return true;
 }
 
 function renderReceiptPanel() {
@@ -2106,14 +2179,14 @@ function renderProducts() {
 
   productGrid.innerHTML = filtered
     .map((p) => {
-      const addonHint = productHasActiveAddons(p)
-        ? `<div class="addon-hint">Tap to choose add-ons</div>`
-        : "";
+      const hint = productHasActiveAddons(p)
+        ? "Tap for add-ons & notes"
+        : "Tap for order notes";
       return `
     <div class="card product-card" data-id="${p.id}">
       <div class="name">${p.name}</div>
       <div class="price">${money(p.selling_price)}</div>
-      ${addonHint}
+      <div class="addon-hint">${hint}</div>
     </div>`;
     })
     .join("");
@@ -2266,10 +2339,14 @@ function renderAddonPickerGroups(product) {
 
 function openAddonPickerModal(product) {
   addonPickerProduct = product;
-  addonPickerTitle.textContent = `Add-ons — ${product.name}`;
+  const hasAddons = productHasActiveAddons(product);
+  addonPickerTitle.textContent = hasAddons
+    ? `Add-ons — ${product.name}`
+    : product.name;
   addonNotesInput.value = "";
   renderAddonPickerGroups(product);
   addonPickerModal.hidden = false;
+  addonNotesInput.focus();
 }
 
 function collectSelectedAddons(product) {
@@ -2309,11 +2386,7 @@ productGrid.addEventListener("click", (e) => {
   if (!card) return;
   const product = products.find((p) => p.id === Number(card.dataset.id));
   if (!product) return;
-  if (productHasActiveAddons(product)) {
-    openAddonPickerModal(product);
-    return;
-  }
-  addProductToCart(product);
+  openAddonPickerModal(product);
 });
 
 receiptOrdersList.addEventListener("click", (e) => {
@@ -2623,7 +2696,12 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 async function placeOrder() {
-  if (cart.size === 0) return;
+  if (!canPlaceOrder()) {
+    if (orderType.value === "dine_in" && !tableNumber.value.trim()) {
+      showToast("Select a table for dine-in orders.", true);
+    }
+    return;
+  }
 
   let existingClientId = null;
   if (orderType.value === "takeaway") {
@@ -2704,7 +2782,7 @@ async function placeOrder() {
   } catch (err) {
     showToast(err.message, true);
   } finally {
-    checkoutBtn.disabled = cart.size === 0;
+    checkoutBtn.disabled = !canPlaceOrder();
   }
 }
 
@@ -2794,9 +2872,10 @@ async function paySelectedOrder() {
         }
       }
       const allocated = roundMoney(splitLines.reduce((sum, line) => sum + line.base_amount, 0));
-      if (allocated + 0.005 < orderTotal) {
+      const tipBase = tipBaseAmount();
+      if (allocated + 0.005 < orderTotal + tipBase) {
         showToast(
-          `Split payments must cover ${money(orderTotal)} (now ${money(allocated)})`,
+          `Split payments must cover ${money(orderTotal + tipBase)} (now ${money(allocated)})`,
           true,
         );
         return;
@@ -2860,6 +2939,7 @@ async function paySelectedOrder() {
           : selectedCurrencyId,
       exchangeRate: rate,
       amountPaid: tenderedAmountPaid,
+      tipAmount: getTipAmountInput(),
       receiptNumber: localReceipt,
       paidByName: session.user?.display_name || session.user?.username || "",
       paymentMethod: paymentMethodValue,
@@ -2898,6 +2978,10 @@ async function paySelectedOrder() {
           payment_method: "cash",
         };
       }
+      const tipAmount = getTipAmountInput();
+      if (tipAmount > 0) {
+        payPayload.tip_amount = tipAmount.toFixed(2);
+      }
 
       const apiOrder = await payServerOrder(session, selectedOrder.server_id, payPayload);
       order =
@@ -2905,6 +2989,7 @@ async function paySelectedOrder() {
           ...paymentRecord,
           receiptNumber: apiOrder.receipt_number || localReceipt,
           amountPaid: Number(apiOrder.amount_paid || amountDue),
+          tipAmount: Number(apiOrder.tip_amount || paymentRecord.tipAmount || 0),
           exchangeRate: apiOrder.exchange_rate || rate,
         })) || mapApiOrderForPrint(apiOrder, paymentRecord);
       if (apiOrder.change_given != null) {
@@ -2964,6 +3049,7 @@ async function paySelectedOrder() {
     selectedOrder = null;
     receiptPaymentOrderKey = null;
     setSplitPaymentEnabled(false);
+    if (tipAmountInput) tipAmountInput.value = "";
     await loadOpenOrders();
     await updateSyncBadge();
     runFullSyncIfOnline(session, { silent: true }).then(async (result) => {

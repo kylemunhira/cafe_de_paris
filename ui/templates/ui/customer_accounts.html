@@ -408,9 +408,21 @@ function renderTransactions() {
           const amountLabel = Number(txn.amount) >= 0 ? `+${formatCurrency(txn.amount)}` : formatCurrency(txn.amount);
           const userLabel = txn.recorded_by_username || txn.recorded_by_name || "—";
           const isAdjustment = txn.is_balance_adjustment || txn.transaction_type === "adjustment";
-          const details = txn.transaction_type === "deposit"
-            ? `Received in ${txn.currency_code || txn.currency_name || ""}${txn.amount_received != null ? ` ${formatCurrency(txn.amount_received, { code: txn.currency_code, symbol: txn.currency_symbol, name: txn.currency_name })}` : ""}${txn.notes ? ` · ${txn.notes}` : ""}`.trim()
-            : (txn.order_id ? `Order #${txn.order_id}` : (txn.notes || "—"));
+          const orderItems = Array.isArray(txn.order_items) ? txn.order_items : [];
+          const itemSummary = orderItems
+            .map((item) => `${item.quantity_display || item.quantity}× ${item.product_name}`)
+            .join(" · ");
+          let details;
+          if (txn.transaction_type === "deposit") {
+            details = `Received in ${txn.currency_code || txn.currency_name || ""}${txn.amount_received != null ? ` ${formatCurrency(txn.amount_received, { code: txn.currency_code, symbol: txn.currency_symbol, name: txn.currency_name })}` : ""}${txn.notes ? ` · ${txn.notes}` : ""}`.trim();
+          } else if (txn.order_id) {
+            details = `
+              <div>Order #${txn.order_id}</div>
+              ${itemSummary ? `<div style="margin-top: 0.2rem; color: var(--color-muted); font-size: 0.85rem;">${itemSummary}</div>` : ""}
+            `;
+          } else {
+            details = txn.notes || "—";
+          }
           const typeLabel = isAdjustment
             ? `<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:4px;background:#fff3cd;color:#856404;font-weight:600;">${txn.statement_label || txn.transaction_type_display}</span>`
             : (txn.statement_label || txn.transaction_type_display);
@@ -598,6 +610,37 @@ adjustForm?.addEventListener("submit", async (e) => {
 
 adjustAmount?.addEventListener("input", updateAdjustPreview);
 
+const preselectedCustomerId = (() => {
+  const fromServer = {{ preselected_customer_id|default:"null" }};
+  if (fromServer != null && Number(fromServer) > 0) return Number(fromServer);
+  const fromQuery = Number(new URLSearchParams(window.location.search).get("customer"));
+  return Number.isFinite(fromQuery) && fromQuery > 0 ? fromQuery : null;
+})();
+
+async function resolvePreselectedCustomer() {
+  const customerId = Number(preselectedCustomerId);
+  if (!Number.isFinite(customerId) || customerId <= 0) return null;
+
+  let customer = customers.find((c) => Number(c.id) === customerId);
+  if (!customer) {
+    try {
+      customer = await apiGet(`/customers/${customerId}/`);
+      if (customer?.id != null && customer.is_active !== false
+          && !customers.some((c) => Number(c.id) === Number(customer.id))) {
+        customers.unshift(customer);
+      }
+    } catch (err) {
+      showToast(err.message || t("Failed to load customers:"), true);
+      return null;
+    }
+  }
+  if (customer && customer.is_active === false) {
+    showToast(t("This customer is inactive."), true);
+    return null;
+  }
+  return customer || null;
+}
+
 async function init() {
   // Default to this month so Print statement uses a period unless All time is chosen.
   const defaults = defaultStatementDates();
@@ -609,7 +652,8 @@ async function init() {
       fetchAllPages("/customers/"),
       apiGet("/currencies/?page_size=100"),
     ]);
-    customers = unwrapList(customerData);
+    // fetchAllPages already returns a flat array
+    customers = Array.isArray(customerData) ? customerData : unwrapList(customerData);
     currencies = unwrapList(currencyData).filter(c => c.is_active);
     setBaseCurrency(currencies.find((c) => c.is_base) || null);
 
@@ -623,7 +667,27 @@ async function init() {
       return `<option value="${c.id}">${label}${symbol}</option>`;
     }).join("");
 
+    const preselected = await resolvePreselectedCustomer();
+    if (preselected) {
+      // Keep the selected customer visible in the picker list.
+      searchQuery = displayName(preselected).toLowerCase();
+      if (customerSearch) customerSearch.value = displayName(preselected);
+      branchFilter = "all";
+      accountTypeFilter = "all";
+      branchFilterEl?.querySelectorAll(".category-tab").forEach((el) => {
+        el.classList.toggle("active", (el.dataset.branch || "all") === "all");
+      });
+      accountTypeFilterEl?.querySelectorAll(".category-tab").forEach((el) => {
+        el.classList.toggle("active", (el.dataset.type || "all") === "all");
+      });
+    }
+
     renderCustomerPicker();
+
+    if (preselected) {
+      await selectCustomer(preselected);
+      accountPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   } catch (err) {
     showToast(`Failed to load: ${err.message}`, true);
   }

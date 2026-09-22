@@ -227,7 +227,7 @@ function renderBrandHeader(branch, { onlyIfFiscal = false } = {}) {
     </div>`;
 }
 
-function renderTotalsSection(tax, baseCurrency, { showTaxBreakdown = true } = {}) {
+function renderTotalsSection(tax, baseCurrency, { showTaxBreakdown = true, tipAmount = 0 } = {}) {
   const baseLabel = baseCurrency ? ` (${currencyCode(baseCurrency)})` : "";
   const rows = showTaxBreakdown
     ? [
@@ -239,6 +239,9 @@ function renderTotalsSection(tax, baseCurrency, { showTaxBreakdown = true } = {}
         [`Total${baseLabel}`, money(tax?.total)],
       ]
     : [[`Total${baseLabel}`, money(tax?.total)]];
+  if (Number(tipAmount) > 0) {
+    rows.push([`Tip${baseLabel}`, money(tipAmount)]);
+  }
   return renderSummaryBlock(rows);
 }
 
@@ -404,7 +407,10 @@ function renderReceiptHtml(data) {
       <hr class="divider">
       ${renderItemsBlock(order.items)}
       <hr class="divider">
-      ${renderTotalsSection(tax, baseCurrency, { showTaxBreakdown: !!branch?.fiscalization_enabled })}
+      ${renderTotalsSection(tax, baseCurrency, {
+        showTaxBreakdown: !!branch?.fiscalization_enabled,
+        tipAmount: order.tip_amount || payment?.tipAmount || 0,
+      })}
       ${paymentBlock}
       ${renderPaymentOptions(paymentOptions)}
       ${renderFiscalBlock(fiscal)}
@@ -643,7 +649,8 @@ function renderDayEndReportHtml(data) {
 
   const paymentLines = (report.payments || []).map((payment) => formatPaymentLine(payment));
   const expenseLines = (report.expenses || []).map((expense) => formatExpenseLine(expense));
-  const accountTransactionLines = (report.account_transactions || []).map((txn) => {
+
+  function formatAccountTxnLine(txn) {
     const sign = Number(txn.amount) >= 0 ? "+" : "";
     const label = `${txn.customer_name || "Customer"} — ${txn.statement_label || txn.transaction_type || "Transaction"}`;
     const suffix = `${sign}${money(txn.amount)}`;
@@ -657,7 +664,41 @@ function renderDayEndReportHtml(data) {
     if (txn.notes) details.push(txn.notes);
     const detailText = details.length ? `\n  ${details.join(" · ")}` : "";
     return padLine(label, suffix, LINE_CHARS) + detailText;
-  });
+  }
+
+  const accountDeposits =
+    report.account_deposits ||
+    (report.account_transactions || []).filter((txn) => txn.transaction_type === "deposit");
+  const accountWithdrawals =
+    report.account_withdrawals ||
+    (report.account_transactions || []).filter((txn) => txn.transaction_type === "payment");
+  const depositsTotal =
+    report.account_deposits_total != null
+      ? report.account_deposits_total
+      : accountDeposits.reduce((sum, txn) => sum + -Number(txn.amount || 0), 0);
+  const withdrawalsTotal =
+    report.account_withdrawals_total != null
+      ? report.account_withdrawals_total
+      : accountWithdrawals.reduce((sum, txn) => sum + Number(txn.amount || 0), 0);
+
+  const accountTransactionBlocks = [];
+  if (accountDeposits.length || accountWithdrawals.length) {
+    const depositLines = accountDeposits.length
+      ? accountDeposits.map(formatAccountTxnLine).concat([
+          padLine("Deposits total", money(depositsTotal), LINE_CHARS),
+        ])
+      : ["No deposits"];
+    const withdrawalLines = accountWithdrawals.length
+      ? accountWithdrawals.map(formatAccountTxnLine).concat([
+          padLine("Withdrawals total", money(withdrawalsTotal), LINE_CHARS),
+        ])
+      : ["No withdrawals"];
+    accountTransactionBlocks.push(
+      ["Deposits", ...depositLines].join("\n"),
+      ["Withdrawals", ...withdrawalLines].join("\n")
+    );
+  }
+
   const cashupRows = report.cashup_rows || [];
   const cashupBlocks = cashupRows
     .map((row) => {
@@ -669,8 +710,13 @@ function renderDayEndReportHtml(data) {
         "—";
       const symbol = row.payment_currency__symbol || row.currency?.symbol || "";
       const lines = [
-        formatCashupLine(`${code} expected`, row.expected_total, symbol),
+        formatCashupLine(`${code} sales`, row.total_paid, symbol),
       ];
+      const depositsTotalRow = row.deposits_total;
+      if (depositsTotalRow && depositsTotalRow !== "0" && depositsTotalRow !== "0.00") {
+        lines.push(formatCashupLine("Customer deposits", depositsTotalRow, symbol));
+      }
+      lines.push(formatCashupLine(`${code} expected`, row.expected_total, symbol));
       const expensesTotal = row.expenses_total;
       if (expensesTotal && expensesTotal !== "0" && expensesTotal !== "0.00") {
         lines.push(formatCashupLine("Less expenses", expensesTotal, symbol));
@@ -723,6 +769,16 @@ function renderDayEndReportHtml(data) {
           : ""
       }
       ${
+        Number(report.tips_total || report.tipsTotal || 0) > 0
+          ? `
+      <hr class="divider">
+      <div class="center meta"><p><strong>Tips${esc(baseLabel)}</strong></p></div>
+      <pre class="lines">${esc(
+        padLine("Total tips", money(report.tips_total || report.tipsTotal), LINE_CHARS)
+      )}</pre>`
+          : ""
+      }
+      ${
         expenseLines.length
           ? `
       <hr class="divider">
@@ -731,11 +787,13 @@ function renderDayEndReportHtml(data) {
           : ""
       }
       ${
-        accountTransactionLines.length
+        accountTransactionBlocks.length
           ? `
       <hr class="divider">
       <div class="center meta"><p><strong>Customer account transactions</strong></p></div>
-      <pre class="lines">${esc(accountTransactionLines.join("\n"))}</pre>`
+      <pre class="lines">${esc(accountTransactionBlocks[0])}</pre>
+      <br>
+      <pre class="lines">${esc(accountTransactionBlocks[1])}</pre>`
           : ""
       }
       ${

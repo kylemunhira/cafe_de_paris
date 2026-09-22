@@ -64,6 +64,7 @@ data class KitchenOrder(
     val total_amount: String,
     val status: String,
     val kitchen_status: String,
+    val created_by: Int? = null,
     val created_by_name: String?,
     val customer_name: String?,
     val created_at: String,
@@ -73,6 +74,7 @@ data class KitchenOrder(
     val payment_currency_name: String? = null,
     val payment_currency_symbol: String? = null,
     val amount_paid: String? = null,
+    val tip_amount: String? = null,
     val receipt_number: String? = null,
     val fiscal_receipt_number: String? = null,
     val fiscal: FiscalReceiptInfo? = null,
@@ -142,6 +144,7 @@ data class LoginResponse(
     val can_access_pos: Boolean = false,
     val can_access_bakery: Boolean = false,
     val can_create_order_papers: Boolean = false,
+    val can_approve_order_papers: Boolean = false,
     val can_manage_bakery_order_papers: Boolean = false,
     val inclusive_tax_rate: Double = 15.5,
     val zta_levy_rate: Double = 2.0,
@@ -337,6 +340,9 @@ data class DiningTable(
     val name: String,
     val sort_order: Int,
     val is_active: Boolean,
+    val is_occupied: Boolean = false,
+    val occupied_by: Int? = null,
+    val occupied_by_name: String? = null,
 )
 
 data class CartAddon(

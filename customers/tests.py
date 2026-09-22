@@ -561,3 +561,89 @@ class CustomerAccountTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Customer account statement")
         self.assertContains(response, "Withdrawal")
+
+    def test_statement_withdrawal_includes_order_items(self):
+        self.customer.account_balance = Decimal("-20.00")
+        self.customer.save(update_fields=["account_balance"])
+        order = Order.objects.create(branch=self.branch, customer=self.customer)
+        order.items.create(
+            product=self.product,
+            quantity=Decimal("2"),
+            price=Decimal("3.50"),
+        )
+        order.recalculate_total()
+        pay_order_from_account(order=order, recorded_by=self.user)
+
+        response = self.client.get(
+            f"/api/customers/{self.customer.id}/statement/?all=1"
+        )
+        self.assertEqual(response.status_code, 200)
+        payment = next(
+            t
+            for t in response.data["transactions"]
+            if t["transaction_type"] == "payment"
+        )
+        self.assertEqual(payment["order_id"], order.id)
+        self.assertEqual(len(payment["order_items"]), 1)
+        self.assertEqual(payment["order_items"][0]["product_name"], "Espresso")
+        self.assertEqual(payment["order_items"][0]["quantity_display"], "2")
+
+    def test_inactive_customers_hidden_from_default_list(self):
+        inactive = Customer.objects.create(
+            first_name="Inactive",
+            last_name="Person",
+            branch=self.branch,
+            is_active=False,
+        )
+        response = self.client.get("/api/customers/?page_size=1000")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.customer.id, ids)
+        self.assertNotIn(inactive.id, ids)
+
+        include = self.client.get("/api/customers/?page_size=1000&include_inactive=1")
+        self.assertEqual(include.status_code, 200)
+        include_ids = {row["id"] for row in include.data["results"]}
+        self.assertIn(inactive.id, include_ids)
+
+    def test_cannot_deposit_to_inactive_customer(self):
+        self.customer.is_active = False
+        self.customer.save(update_fields=["is_active"])
+        response = self.client.post(
+            f"/api/customers/{self.customer.id}/deposit/",
+            {
+                "branch": self.branch.id,
+                "currency_id": self.usd.id,
+                "amount": "10.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("inactive", response.data["detail"].lower())
+
+    def test_deactivate_and_reactivate_via_api(self):
+        response = self.client.patch(
+            f"/api/customers/{self.customer.id}/",
+            {"is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["is_active"])
+        self.customer.refresh_from_db()
+        self.assertFalse(self.customer.is_active)
+
+        response = self.client.patch(
+            f"/api/customers/{self.customer.id}/",
+            {"is_active": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["is_active"])
+
+    def test_inactive_customer_excluded_from_balances_report(self):
+        self.customer.account_balance = Decimal("-5.00")
+        self.customer.is_active = False
+        self.customer.save(update_fields=["account_balance", "is_active"])
+        report = build_customer_balances_report()
+        ids = {row["id"] for row in report["customers"]}
+        self.assertNotIn(self.customer.id, ids)

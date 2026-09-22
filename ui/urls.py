@@ -71,6 +71,11 @@ urlpatterns = [
         views.CustomerFullStatementPrintView.as_view(),
         name="customer-full-statement-print",
     ),
+    path(
+        "customer-accounts/<int:pk>/",
+        views.CustomerAccountsView.as_view(),
+        name="customer-account-detail",
+    ),
     path("suppliers/", views.SuppliersView.as_view(), name="suppliers"),
     path("purchase-orders/", views.PurchaseOrdersView.as_view(), name="purchase-orders"),
     path(

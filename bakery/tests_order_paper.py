@@ -26,6 +26,10 @@ class OrderPaperFlowTests(TestCase):
             branch_type=BranchType.BRANCH,
             code="HIG",
         )
+        self.hq = Branch.objects.create(
+            name="HQ",
+            branch_type=BranchType.HQ,
+        )
         self.stores = Branch.objects.filter(branch_type=BranchType.STORES).first()
         if self.stores is None:
             self.stores = Branch.objects.create(
@@ -52,6 +56,12 @@ class OrderPaperFlowTests(TestCase):
             branch=self.bakery,
             role=StaffRole.BAKER,
         )
+        self.hq_admin = User.objects.create_user(username="hq-admin", password="pass")
+        StaffProfile.objects.create(
+            user=self.hq_admin,
+            branch=self.hq,
+            role=StaffRole.HQ_ADMIN,
+        )
 
         pastries = ProductCategory.objects.create(name="Breads & pastries")
         ingredients = ProductCategory.objects.create(name="Ingredients")
@@ -77,70 +87,83 @@ class OrderPaperFlowTests(TestCase):
         )
         self.needed = (date.today() + timedelta(days=1)).isoformat()
 
-    def test_branch_and_stores_can_submit_order_papers(self):
-        self.client.force_login(self.manager)
-        branch_resp = self.client.post(
+    def _submit_paper(self, user, requesting_branch, qty):
+        self.client.force_login(user)
+        return self.client.post(
             "/api/order-papers/",
             {
-                "requesting_branch": self.highlands.id,
+                "requesting_branch": requesting_branch.id,
                 "bakery": self.bakery.id,
                 "needed_date": self.needed,
                 "submit": True,
                 "lines": [
-                    {"product": self.croissant.id, "quantity_requested": "12"},
+                    {"product": self.croissant.id, "quantity_requested": str(qty)},
                 ],
             },
             format="json",
         )
+
+    def test_branch_and_stores_can_submit_order_papers(self):
+        branch_resp = self._submit_paper(self.manager, self.highlands, "12")
         self.assertEqual(branch_resp.status_code, 201, branch_resp.content)
         self.assertEqual(branch_resp.data["status"], OrderPaperStatus.SUBMITTED)
 
-        self.client.force_login(self.stores_user)
-        stores_resp = self.client.post(
-            "/api/order-papers/",
-            {
-                "requesting_branch": self.stores.id,
-                "bakery": self.bakery.id,
-                "needed_date": self.needed,
-                "submit": True,
-                "lines": [
-                    {"product": self.croissant.id, "quantity_requested": "20"},
-                ],
-            },
-            format="json",
-        )
+        stores_resp = self._submit_paper(self.stores_user, self.stores, "20")
         self.assertEqual(stores_resp.status_code, 201, stores_resp.content)
         self.assertEqual(stores_resp.data["status"], OrderPaperStatus.SUBMITTED)
 
+    def test_bakery_cannot_see_submitted_papers_until_back_office_approves(self):
+        hig = self._submit_paper(self.manager, self.highlands, "12")
+        self.assertEqual(hig.status_code, 201, hig.content)
+
+        self.client.force_login(self.baker)
+        listing = self.client.get("/api/order-papers/")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(len(listing.data.get("results", listing.data)), 0)
+
+        demand = self.client.get(
+            f"/api/order-papers/demand/?needed_date={self.needed}&bakery={self.bakery.id}"
+        )
+        self.assertEqual(demand.status_code, 200)
+        self.assertEqual(demand.data["paper_count"], 0)
+
+        accept = self.client.post(f"/api/order-papers/{hig.data['id']}/accept/", {}, format="json")
+        self.assertEqual(accept.status_code, 404)
+
+        self.client.force_login(self.hq_admin)
+        approved = self.client.post(
+            f"/api/order-papers/{hig.data['id']}/approve/",
+            {},
+            format="json",
+        )
+        self.assertEqual(approved.status_code, 200, approved.content)
+        self.assertEqual(approved.data["status"], OrderPaperStatus.APPROVED)
+
+        self.client.force_login(self.baker)
+        listing = self.client.get("/api/order-papers/")
+        self.assertEqual(listing.status_code, 200)
+        results = listing.data.get("results", listing.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], OrderPaperStatus.APPROVED)
+
+        demand = self.client.get(
+            f"/api/order-papers/demand/?needed_date={self.needed}&bakery={self.bakery.id}"
+        )
+        self.assertEqual(demand.status_code, 200)
+        self.assertEqual(demand.data["paper_count"], 1)
+
     def test_bakery_creates_production_sheet_from_order_papers(self):
-        self.client.force_login(self.manager)
-        hig = self.client.post(
-            "/api/order-papers/",
-            {
-                "requesting_branch": self.highlands.id,
-                "bakery": self.bakery.id,
-                "needed_date": self.needed,
-                "submit": True,
-                "lines": [
-                    {"product": self.croissant.id, "quantity_requested": "12"},
-                ],
-            },
-            format="json",
-        )
-        self.client.force_login(self.stores_user)
-        stores = self.client.post(
-            "/api/order-papers/",
-            {
-                "requesting_branch": self.stores.id,
-                "bakery": self.bakery.id,
-                "needed_date": self.needed,
-                "submit": True,
-                "lines": [
-                    {"product": self.croissant.id, "quantity_requested": "8"},
-                ],
-            },
-            format="json",
-        )
+        hig = self._submit_paper(self.manager, self.highlands, "12")
+        stores = self._submit_paper(self.stores_user, self.stores, "8")
+
+        self.client.force_login(self.hq_admin)
+        for paper in (hig, stores):
+            approved = self.client.post(
+                f"/api/order-papers/{paper.data['id']}/approve/",
+                {},
+                format="json",
+            )
+            self.assertEqual(approved.status_code, 200, approved.content)
 
         self.client.force_login(self.baker)
         demand = self.client.get(
@@ -179,20 +202,7 @@ class OrderPaperFlowTests(TestCase):
         self.assertEqual(paper.data["production_sheet"], sheet_resp.data["id"])
 
     def test_branch_cannot_see_other_branch_papers(self):
-        self.client.force_login(self.manager)
-        self.client.post(
-            "/api/order-papers/",
-            {
-                "requesting_branch": self.highlands.id,
-                "bakery": self.bakery.id,
-                "needed_date": self.needed,
-                "submit": True,
-                "lines": [
-                    {"product": self.croissant.id, "quantity_requested": "5"},
-                ],
-            },
-            format="json",
-        )
+        self._submit_paper(self.manager, self.highlands, "5")
         other = User.objects.create_user(username="other-mgr", password="pass")
         other_branch = Branch.objects.create(
             name="Other Branch",
@@ -208,3 +218,59 @@ class OrderPaperFlowTests(TestCase):
         listing = self.client.get("/api/order-papers/")
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(len(listing.data.get("results", listing.data)), 0)
+
+    def test_baker_cannot_approve_order_papers(self):
+        hig = self._submit_paper(self.manager, self.highlands, "5")
+        self.client.force_login(self.baker)
+        # Baker cannot see submitted papers, so approve is not available.
+        resp = self.client.post(
+            f"/api/order-papers/{hig.data['id']}/approve/",
+            {},
+            format="json",
+        )
+        self.assertIn(resp.status_code, (403, 404))
+
+    def test_back_office_can_edit_submitted_order_paper_lines(self):
+        pastry = ProductCategory.objects.get(name="Breads & pastries")
+        baguette = Product.objects.create(
+            name="Baguette",
+            category=pastry,
+            selling_price=Decimal("1.50"),
+        )
+        submitted = self._submit_paper(self.manager, self.highlands, "12")
+        paper_id = submitted.data["id"]
+
+        self.client.force_login(self.hq_admin)
+        updated = self.client.patch(
+            f"/api/order-papers/{paper_id}/",
+            {
+                "notes": "Reduced croissants, added baguettes",
+                "lines": [
+                    {"product": self.croissant.id, "quantity_requested": "8"},
+                    {"product": baguette.id, "quantity_requested": "10"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(updated.status_code, 200, updated.content)
+        self.assertEqual(updated.data["status"], OrderPaperStatus.SUBMITTED)
+        self.assertEqual(updated.data["notes"], "Reduced croissants, added baguettes")
+        by_product = {
+            row["product"]: Decimal(str(row["quantity_requested"]))
+            for row in updated.data["lines"]
+        }
+        self.assertEqual(by_product[self.croissant.id], Decimal("8"))
+        self.assertEqual(by_product[baguette.id], Decimal("10"))
+        self.assertEqual(len(updated.data["lines"]), 2)
+
+        self.client.force_login(self.manager)
+        denied = self.client.patch(
+            f"/api/order-papers/{paper_id}/",
+            {
+                "lines": [
+                    {"product": self.croissant.id, "quantity_requested": "99"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 403)

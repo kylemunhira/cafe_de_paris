@@ -13,6 +13,7 @@ from accounts.branch_access import (
 from audit.mixins import AuditedModelMixin
 from audit.models import AuditAction
 from audit.services import diff_dicts, record_entity_change, snapshot_fields
+from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -231,8 +232,11 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
         serializer = OrderPaySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payment_method = serializer.validated_data.get("payment_method", PaymentMethod.CASH)
+        tip_raw = serializer.validated_data.get("tip_amount") or Decimal("0")
 
         if payment_method == PaymentMethod.ACCOUNT:
+            # Account tip is always in base currency.
+            tip_base = tip_raw.quantize(Decimal("0.01"))
             try:
                 with transaction.atomic():
                     order = (
@@ -245,7 +249,11 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                             "Only open or unpaid orders can be paid."
                         )
                     order = consolidate_table_orders(order)
-                    pay_order_from_account(order=order, recorded_by=request.user)
+                    pay_order_from_account(
+                        order=order,
+                        recorded_by=request.user,
+                        tip_amount=tip_base,
+                    )
             except InsufficientAccountBalance as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             except CustomerAccountError as exc:
@@ -267,6 +275,8 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+            # Split/multi: tip_amount is already in base currency.
+            tip_base = tip_raw.quantize(Decimal("0.01"))
         else:
             if currency is None:
                 return Response(
@@ -282,6 +292,8 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            # Single-currency: tip_amount is in the tender currency.
+            tip_base = currency.convert_to_base(tip_raw).quantize(Decimal("0.01"))
 
         with transaction.atomic():
             order = (
@@ -316,7 +328,7 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                                 "required": str(item.required),
                                 "available": str(item.available),
                             }
-                            for item in exc.shortages
+                            for item in (exc.shortages)
                         ],
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -325,10 +337,11 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
             if not payment_lines:
                 from .tax import order_amount_due
 
+                due_with_tip = order_amount_due(order) + tip_base
                 payment_lines = [
                     {
                         "currency": currency,
-                        "amount": currency.convert_from_base(order_amount_due(order)),
+                        "amount": currency.convert_from_base(due_with_tip),
                         "method": (
                             payment_method
                             if payment_method in TenderMethod.values
@@ -343,6 +356,7 @@ class OrderViewSet(AuditedModelMixin, viewsets.ModelViewSet):
                     payment_lines=payment_lines,
                     receipt_number=receipt_number,
                     paid_by=request.user,
+                    tip_amount=tip_base,
                 )
             except PaymentValidationError as exc:
                 return Response(

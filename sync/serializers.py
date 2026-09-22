@@ -49,9 +49,18 @@ class SyncOrderPaymentSerializer(serializers.Serializer):
     )
     paid_at = serializers.DateTimeField(required=False)
     payments = SyncOrderPaymentLineSerializer(many=True, required=False)
+    tip_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0"),
+        default=Decimal("0"),
+    )
 
     def validate(self, attrs):
         payments = attrs.get("payments")
+        tip_amount = attrs.get("tip_amount") or Decimal("0")
+        attrs["tip_amount"] = tip_amount.quantize(Decimal("0.01"))
         if payments:
             for line in payments:
                 if not line.get("currency") and not attrs.get("payment_currency"):
@@ -82,6 +91,13 @@ class SyncOrderPushSerializer(serializers.Serializer):
         request = self.context.get("request")
         user = request.user if request and request.user.is_authenticated else None
         code = normalize_access_code(attrs.pop("access_code", None))
+
+        table_number = (attrs.get("table_number") or "").strip()
+        attrs["table_number"] = table_number
+        if attrs.get("order_type") == "dine_in" and not table_number:
+            raise serializers.ValidationError(
+                {"table_number": "Select a table for dine-in orders."}
+            )
 
         if user is not None and user_is_waiter(user):
             try:

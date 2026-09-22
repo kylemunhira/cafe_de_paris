@@ -535,6 +535,7 @@ class OrderPaperSerializer(serializers.ModelSerializer):
             "created_by_name",
             "created_at",
             "submitted_at",
+            "approved_at",
             "accepted_at",
             "fulfilled_at",
             "lines",
@@ -547,6 +548,7 @@ class OrderPaperSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "submitted_at",
+            "approved_at",
             "accepted_at",
             "fulfilled_at",
         ]
@@ -635,8 +637,15 @@ class OrderPaperUpdateSerializer(serializers.Serializer):
         return value
 
     def update(self, instance, validated_data):
+        by_back_office = bool(self.context.get("by_back_office"))
+        lines_data = validated_data.pop("lines", None)
         try:
-            return update_order_paper(instance, **validated_data)
+            return update_order_paper(
+                instance,
+                by_back_office=by_back_office,
+                lines_data=lines_data,
+                **validated_data,
+            )
         except InvalidOrderPaperStateError as exc:
             raise serializers.ValidationError({"detail": str(exc)}) from exc
         except ValueError as exc:

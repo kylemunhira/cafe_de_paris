@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.cafedeparis.kitchen.R
 import com.cafedeparis.kitchen.data.Product
 import com.cafedeparis.kitchen.databinding.ItemProductBinding
 import java.text.NumberFormat
@@ -29,8 +30,14 @@ class ProductAdapter(
         fun bind(product: Product) {
             binding.productName.text = product.name
             binding.productPrice.text = formatMoney(product.selling_price)
-            binding.productAddonHint.visibility =
-                if (product.hasActiveAddons()) android.view.View.VISIBLE else android.view.View.GONE
+            binding.productAddonHint.visibility = android.view.View.VISIBLE
+            binding.productAddonHint.setText(
+                if (product.hasActiveAddons()) {
+                    R.string.tap_for_addons
+                } else {
+                    R.string.tap_for_order_notes
+                },
+            )
             binding.root.setOnClickListener { onProductClick(product) }
         }
     }

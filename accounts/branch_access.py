@@ -339,14 +339,21 @@ def user_can_create_order_papers(user):
 
 
 def user_can_manage_bakery_order_papers(user):
-    """Bakery staff review submitted order papers and apply them to production."""
+    """Bakery staff review back-office-approved order papers and apply them to production."""
     return user_can_access_bakery_transfers(user)
 
 
+def user_can_approve_order_papers(user):
+    """HQ / back office releases branch submissions to the bakery."""
+    return user_has_global_branch_access(user)
+
+
 def user_can_access_order_papers(user):
-    """Anyone who creates papers or bakery staff who fulfil them."""
-    return user_can_create_order_papers(user) or user_can_manage_bakery_order_papers(
-        user
+    """Anyone who creates papers, approves them, or bakery staff who fulfil them."""
+    return (
+        user_can_create_order_papers(user)
+        or user_can_approve_order_papers(user)
+        or user_can_manage_bakery_order_papers(user)
     )
 
 

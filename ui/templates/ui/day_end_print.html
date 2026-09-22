@@ -107,6 +107,28 @@
     </table>
     {% endif %}
 
+    {% if report.tips_total %}
+    <hr class="divider">
+    <div class="center meta"><p><strong>{% trans "Tips" %}{% if base_currency %} ({{ base_currency.code|default:base_currency.name }}){% endif %}</strong></p></div>
+    <table class="summary">
+      <tr>
+        <td class="col-label">{% trans "Total tips" %}</td>
+        <td class="col-amt">{{ report.tips_total|floatformat:2 }}</td>
+      </tr>
+      {% for row in report.tips_by_currency %}
+      <tr>
+        <td class="col-label">
+          {{ row.payment_currency__name|default:row.payment_currency__code|default:"—" }}
+        </td>
+        <td class="col-amt">
+          {{ row.tips_total|floatformat:2 }}
+          ({{ row.order_count }})
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
     {% if report.expenses %}
     <hr class="divider">
     <div class="center meta"><p><strong>{% trans "Expenses" %}</strong></p></div>
@@ -124,11 +146,43 @@
     </table>
     {% endif %}
 
-    {% if report.account_transactions %}
+    {% if report.account_deposits or report.account_withdrawals or report.account_transactions %}
     <hr class="divider">
     <div class="center meta"><p><strong>{% trans "Customer account transactions" %}</strong></p></div>
+
+    <div class="center meta"><p><strong>{% trans "Deposits" %}</strong></p></div>
     <table class="summary">
-      {% for row in report.account_transactions %}
+      {% for row in report.account_deposits %}
+      <tr>
+        <td class="col-label">
+          {{ row.customer_name }} — {{ row.statement_label }}
+          <div class="item-detail">{{ row.created_at|date:"H:i" }}{% if row.notes %} · {{ row.notes }}{% endif %}</div>
+        </td>
+        <td class="col-amt">
+          {% if row.amount >= 0 %}+{% endif %}{{ row.amount|floatformat:2 }}
+          {% if row.amount_received %}
+          <div class="item-detail">{% if row.currency__symbol %}{{ row.currency__symbol }}{% endif %}{{ row.amount_received|floatformat:2 }} {{ row.currency__code|default:row.currency__name }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td class="col-label" colspan="2">{% trans "No deposits" %}</td>
+      </tr>
+      {% endfor %}
+      {% if report.account_deposits %}
+      <tr>
+        <td class="col-label"><strong>{% trans "Deposits total" %}</strong></td>
+        <td class="col-amt"><strong>{{ report.account_deposits_total|floatformat:2 }}</strong></td>
+      </tr>
+      {% endif %}
+    </table>
+
+    <br>
+
+    <div class="center meta"><p><strong>{% trans "Withdrawals" %}</strong></p></div>
+    <table class="summary">
+      {% for row in report.account_withdrawals %}
       <tr>
         <td class="col-label">
           {{ row.customer_name }} — {{ row.statement_label }}
@@ -136,12 +190,19 @@
         </td>
         <td class="col-amt">
           {% if row.amount >= 0 %}+{% endif %}{{ row.amount|floatformat:2 }}
-          {% if row.transaction_type == "deposit" and row.amount_received %}
-          <div class="item-detail">{% if row.currency__symbol %}{{ row.currency__symbol }}{% endif %}{{ row.amount_received|floatformat:2 }} {{ row.currency__code|default:row.currency__name }}</div>
-          {% endif %}
         </td>
       </tr>
+      {% empty %}
+      <tr>
+        <td class="col-label" colspan="2">{% trans "No withdrawals" %}</td>
+      </tr>
       {% endfor %}
+      {% if report.account_withdrawals %}
+      <tr>
+        <td class="col-label"><strong>{% trans "Withdrawals total" %}</strong></td>
+        <td class="col-amt"><strong>{{ report.account_withdrawals_total|floatformat:2 }}</strong></td>
+      </tr>
+      {% endif %}
     </table>
     {% endif %}
 
@@ -150,6 +211,22 @@
     <div class="center meta"><p><strong>{% trans "Cash-up reconciliation" %}</strong></p></div>
     <table class="summary">
       {% for row in report.cashup_rows %}
+      <tr>
+        <td class="col-label">
+          {{ row.payment_currency__name|default:row.payment_currency__code|default:"—" }} {% trans "sales" %}
+        </td>
+        <td class="col-amt">
+          {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.total_paid|floatformat:2 }}
+        </td>
+      </tr>
+      {% if row.deposits_total %}
+      <tr>
+        <td class="col-label">{% trans "Customer deposits" %}</td>
+        <td class="col-amt">
+          {% if row.payment_currency__symbol %}{{ row.payment_currency__symbol }}{% endif %}{{ row.deposits_total|floatformat:2 }}
+        </td>
+      </tr>
+      {% endif %}
       <tr>
         <td class="col-label">
           {{ row.payment_currency__name|default:row.payment_currency__code|default:"—" }} {% trans "expected" %}

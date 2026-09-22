@@ -215,6 +215,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "payment_currency_symbol",
             "exchange_rate",
             "amount_paid",
+            "tip_amount",
             "payment_method",
             "payment_method_display",
             "payments",
@@ -241,7 +242,13 @@ class OrderSerializer(serializers.ModelSerializer):
             "items",
             "created_at",
         ]
-        read_only_fields = ["total_amount", "exchange_rate", "amount_paid", "created_at"]
+        read_only_fields = [
+            "total_amount",
+            "exchange_rate",
+            "amount_paid",
+            "tip_amount",
+            "created_at",
+        ]
 
     def get_created_by_name(self, obj):
         return staff_display_name(obj.created_by)
@@ -309,10 +316,19 @@ class OrderPaySerializer(serializers.Serializer):
         default=PaymentMethod.CASH,
     )
     payments = OrderPaymentLineSerializer(many=True, required=False)
+    tip_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0"),
+        default=Decimal("0"),
+    )
 
     def validate(self, attrs):
         payment_method = attrs.get("payment_method", PaymentMethod.CASH)
         payments = attrs.get("payments")
+        tip_amount = attrs.get("tip_amount") or Decimal("0")
+        attrs["tip_amount"] = tip_amount.quantize(Decimal("0.01"))
 
         if payment_method == PaymentMethod.ACCOUNT:
             if payments:
@@ -354,6 +370,8 @@ class OrderUpdateSerializer(serializers.ModelSerializer):
             return customer
         if not Customer.objects.filter(pk=customer.pk).exists():
             raise serializers.ValidationError("Customer not found.")
+        if not customer.is_active:
+            raise serializers.ValidationError("This customer is inactive.")
         return customer
 
     def validate(self, attrs):
@@ -401,10 +419,24 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "access_code",
         ]
 
+    def validate_customer(self, customer):
+        if customer is None:
+            return customer
+        if not customer.is_active:
+            raise serializers.ValidationError("This customer is inactive.")
+        return customer
+
     def validate(self, attrs):
         request = self.context.get("request")
         user = request.user if request and request.user.is_authenticated else None
         code = normalize_access_code(attrs.pop("access_code", None))
+
+        table_number = (attrs.get("table_number") or "").strip()
+        attrs["table_number"] = table_number
+        if attrs.get("order_type") == OrderType.DINE_IN and not table_number:
+            raise serializers.ValidationError(
+                {"table_number": "Select a table for dine-in orders."}
+            )
 
         if user is not None and user_is_waiter(user):
             try:

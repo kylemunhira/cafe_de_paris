@@ -328,6 +328,33 @@ class ApiClient(
         return JsonParsers.parseOrderPaper(body)
     }
 
+    fun updateOrderPaper(
+        paperId: Int,
+        neededDate: String,
+        notes: String,
+        lines: List<Pair<Int, String>>,
+    ): OrderPaper {
+        val token = requireToken()
+        val linesJson = JSONArray()
+        lines.forEach { (productId, qty) ->
+            linesJson.put(
+                JSONObject()
+                    .put("product", productId)
+                    .put("quantity_requested", qty),
+            )
+        }
+        val payload = JSONObject()
+            .put("needed_date", neededDate)
+            .put("notes", notes)
+            .put("lines", linesJson)
+        val body = patchJson(
+            "${config.serverUrl}/api/order-papers/$paperId/",
+            payload,
+            token,
+        )
+        return JsonParsers.parseOrderPaper(body)
+    }
+
     fun cancelOrderPaper(paperId: Int): OrderPaper {
         val token = requireToken()
         val body = postJson(
@@ -342,6 +369,16 @@ class ApiClient(
         val token = requireToken()
         val body = postJson(
             "${config.serverUrl}/api/order-papers/$paperId/accept/",
+            JSONObject(),
+            token,
+        )
+        return JsonParsers.parseOrderPaper(body)
+    }
+
+    fun approveOrderPaper(paperId: Int): OrderPaper {
+        val token = requireToken()
+        val body = postJson(
+            "${config.serverUrl}/api/order-papers/$paperId/approve/",
             JSONObject(),
             token,
         )
@@ -900,11 +937,14 @@ class ApiClient(
         )
     }
 
-    fun payOrderCash(orderId: Int, currencyId: Int): KitchenOrder {
+    fun payOrderCash(orderId: Int, currencyId: Int, tipAmount: String? = null): KitchenOrder {
         val token = requireToken()
         val payload = JSONObject()
             .put("currency_id", currencyId)
             .put("payment_method", "cash")
+        if (!tipAmount.isNullOrBlank()) {
+            payload.put("tip_amount", tipAmount)
+        }
         val body = postJson("${config.serverUrl}/api/orders/$orderId/pay/", payload, token)
         return JsonParsers.parseOrder(body)
     }
@@ -912,6 +952,7 @@ class ApiClient(
     fun payOrderWithTenders(
         orderId: Int,
         payments: List<Pair<Int, String>>,
+        tipAmount: String? = null,
     ): KitchenOrder {
         val token = requireToken()
         val lines = org.json.JSONArray()
@@ -926,13 +967,19 @@ class ApiClient(
         val payload = JSONObject()
             .put("payment_method", paymentMethod)
             .put("payments", lines)
+        if (!tipAmount.isNullOrBlank()) {
+            payload.put("tip_amount", tipAmount)
+        }
         val body = postJson("${config.serverUrl}/api/orders/$orderId/pay/", payload, token)
         return JsonParsers.parseOrder(body)
     }
 
-    fun payOrderFromAccount(orderId: Int): KitchenOrder {
+    fun payOrderFromAccount(orderId: Int, tipAmount: String? = null): KitchenOrder {
         val token = requireToken()
         val payload = JSONObject().put("payment_method", "account")
+        if (!tipAmount.isNullOrBlank()) {
+            payload.put("tip_amount", tipAmount)
+        }
         val body = postJson("${config.serverUrl}/api/orders/$orderId/pay/", payload, token)
         return JsonParsers.parseOrder(body)
     }

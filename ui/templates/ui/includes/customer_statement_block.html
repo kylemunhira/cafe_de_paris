@@ -65,6 +65,16 @@
       <td class="col-amt" style="text-align: right;">#{{ transaction.order_id }}</td>
     </tr>
     {% endif %}
+    {% if transaction.order_id and transaction.order %}
+    {% for item in transaction.order.items.all %}
+    <tr>
+      <td class="col-label" style="padding-left: 0.75rem;">
+        {{ item.quantity|floatformat:"-2" }}× {{ item.product.name }}{% for addon in item.addons.all %} (+{{ addon.name }}){% endfor %}
+      </td>
+      <td class="col-amt" style="text-align: right;">{{ item.line_total|floatformat:2 }}</td>
+    </tr>
+    {% endfor %}
+    {% endif %}
     {% if transaction.notes %}
     <tr>
       <td class="col-label">{% trans "Notes" %}</td>
@@ -153,6 +163,11 @@
             {% trans "Balance" %} {{ txn.balance_after|floatformat:2 }}{% if base_currency %} {{ base_currency.code }}{% endif %}
             {% if txn.transaction_type == "deposit" and txn.currency %} · {% trans "Received in" %} {{ txn.currency.code|default:txn.currency.name }}{% if txn.amount_received %} {% if txn.currency.symbol %}{{ txn.currency.symbol }}{% endif %}{{ txn.amount_received|floatformat:2 }}{% endif %}{% endif %}
             {% if txn.order_id %} · {% trans "Order" %} #{{ txn.order_id }}{% endif %}
+            {% if txn.order_id and txn.order %}
+              {% for item in txn.order.items.all %}
+                · {{ item.quantity|floatformat:"-2" }}× {{ item.product.name }}{% for addon in item.addons.all %} (+{{ addon.name }}){% endfor %}
+              {% endfor %}
+            {% endif %}
             {% if txn.notes %} · {{ txn.notes }}{% endif %}
             {% if txn.recorded_by %} · {% trans "By" %} {{ txn.recorded_by.username }}{% endif %}
             {% if txn.transaction_type == "adjustment" %} · ★ {% trans "Balance adjustment" %}{% endif %}

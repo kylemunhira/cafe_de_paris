@@ -61,8 +61,10 @@ def build_customer_statement_report(
 
     if all_time or from_date is None or to_date is None:
         opening_balance = Decimal("0")
-        period_qs = qs.select_related("branch", "currency", "order", "recorded_by").order_by(
-            "created_at", "id"
+        period_qs = (
+            qs.select_related("branch", "currency", "order", "recorded_by")
+            .prefetch_related("order__items__product", "order__items__addons")
+            .order_by("created_at", "id")
         )
         transactions = list(period_qs[:500])
         closing_balance = (
@@ -83,6 +85,7 @@ def build_customer_statement_report(
                 created_at__date__lte=to_date,
             )
             .select_related("branch", "currency", "order", "recorded_by")
+            .prefetch_related("order__items__product", "order__items__addons")
             .order_by("created_at", "id")
         )
         transactions = list(period_qs)

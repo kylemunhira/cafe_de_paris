@@ -39,6 +39,7 @@ class CustomerSerializer(serializers.ModelSerializer):
             "branch",
             "branch_name",
             "branch_type",
+            "is_active",
             "created_at",
         ]
         read_only_fields = ["created_at", "account_balance"]
@@ -94,6 +95,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
     recorded_by_name = serializers.SerializerMethodField()
     recorded_by_username = serializers.SerializerMethodField()
     order_id = serializers.IntegerField(source="order.id", read_only=True, default=None)
+    order_items = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomerAccountTransaction
@@ -114,6 +116,7 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
             "currency_symbol",
             "amount_received",
             "order_id",
+            "order_items",
             "notes",
             "recorded_by",
             "recorded_by_name",
@@ -131,6 +134,33 @@ class CustomerAccountTransactionSerializer(serializers.ModelSerializer):
         if not obj.recorded_by:
             return None
         return obj.recorded_by.username
+
+    def get_order_items(self, obj):
+        if not obj.order_id:
+            return []
+        items = obj.order.items.all()
+        # Prefer already-prefetched related sets to avoid N+1 queries.
+        result = []
+        for item in items:
+            addon_names = [addon.name for addon in item.addons.all()]
+            qty = item.quantity
+            if qty == qty.to_integral_value():
+                qty_display = str(int(qty))
+            else:
+                qty_display = format(qty.normalize(), "f")
+            name = item.product.name if item.product_id else "Item"
+            if addon_names:
+                name = f"{name} (+{', '.join(addon_names)})"
+            result.append(
+                {
+                    "product_name": name,
+                    "quantity": qty,
+                    "quantity_display": qty_display,
+                    "price": item.price,
+                    "notes": item.notes or "",
+                }
+            )
+        return result
 
 
 class CustomerDepositSerializer(serializers.Serializer):

@@ -38,6 +38,8 @@ class OrderPaperActivity : KeepScreenOnActivity() {
     private var bakeryProducts: List<Product> = emptyList()
     private var papers: List<OrderPaper> = emptyList()
     private val draftLines = mutableListOf<Pair<Product, String>>()
+    private var editingPaperId: Int? = null
+    private var editingSubmitted = false
     private val selectedPaperIds = linkedSetOf<Int>()
     private var loading = false
     private var errorHideJob: Job? = null
@@ -74,11 +76,15 @@ class OrderPaperActivity : KeepScreenOnActivity() {
         }
         binding.logoutButton.setOnClickListener { logout() }
 
-        if (session.canCreateOrderPapers) {
+        if (session.canCreateOrderPapers || session.canApproveOrderPapers) {
             binding.createCard.visibility = View.VISIBLE
             binding.addLineButton.setOnClickListener { addDraftLine() }
             binding.saveDraftButton.setOnClickListener { savePaper(submit = false) }
             binding.submitButton.setOnClickListener { savePaper(submit = true) }
+            if (!session.canCreateOrderPapers) {
+                binding.saveDraftButton.visibility = View.GONE
+                binding.submitButton.text = getString(R.string.order_paper_save_changes)
+            }
         } else {
             binding.createCard.visibility = View.GONE
         }
@@ -105,7 +111,7 @@ class OrderPaperActivity : KeepScreenOnActivity() {
         binding.errorBanner.visibility = View.GONE
         lifecycleScope.launch {
             try {
-                if (session.canCreateOrderPapers) {
+                if (session.canCreateOrderPapers || session.canApproveOrderPapers) {
                     val bakeries = withContext(Dispatchers.IO) { api.fetchBakeryBranches() }
                     bakeryBranches = bakeries
                     populateBakerySpinner()
@@ -226,27 +232,39 @@ class OrderPaperActivity : KeepScreenOnActivity() {
             Toast.makeText(this, R.string.order_paper_need_date, Toast.LENGTH_SHORT).show()
             return
         }
+        val paperId = editingPaperId
         showLoading(true)
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    api.createOrderPaper(
-                        requestingBranchId = session.branchId,
-                        bakeryId = bakery.id,
-                        neededDate = neededDate,
-                        notes = binding.notesInput.text?.toString()?.trim().orEmpty(),
-                        submit = submit,
-                        lines = draftLines.map { it.first.id to it.second },
-                    )
+                    if (paperId != null && editingSubmitted) {
+                        api.updateOrderPaper(
+                            paperId = paperId,
+                            neededDate = neededDate,
+                            notes = binding.notesInput.text?.toString()?.trim().orEmpty(),
+                            lines = draftLines.map { it.first.id to it.second },
+                        )
+                    } else {
+                        api.createOrderPaper(
+                            requestingBranchId = session.branchId,
+                            bakeryId = bakery.id,
+                            neededDate = neededDate,
+                            notes = binding.notesInput.text?.toString()?.trim().orEmpty(),
+                            submit = submit,
+                            lines = draftLines.map { it.first.id to it.second },
+                        )
+                    }
                 }
                 Toast.makeText(
                     this@OrderPaperActivity,
-                    if (submit) R.string.order_paper_submitted else R.string.order_paper_draft_saved,
+                    when {
+                        paperId != null && editingSubmitted -> R.string.order_paper_updated
+                        submit -> R.string.order_paper_submitted
+                        else -> R.string.order_paper_draft_saved
+                    },
                     Toast.LENGTH_SHORT,
                 ).show()
-                draftLines.clear()
-                binding.notesInput.setText("")
-                renderDraftLines()
+                clearDraftForm()
                 loadPage()
             } catch (err: ApiException) {
                 handleApiError(err)
@@ -256,6 +274,50 @@ class OrderPaperActivity : KeepScreenOnActivity() {
                 showLoading(false)
             }
         }
+    }
+
+    private fun clearDraftForm() {
+        editingPaperId = null
+        editingSubmitted = false
+        draftLines.clear()
+        binding.notesInput.setText("")
+        binding.submitButton.text = getString(
+            if (session.canCreateOrderPapers) R.string.order_paper_submit
+            else R.string.order_paper_save_changes,
+        )
+        if (session.canCreateOrderPapers) {
+            binding.saveDraftButton.visibility = View.VISIBLE
+        }
+        renderDraftLines()
+    }
+
+    private fun beginReviewEdit(paper: OrderPaper) {
+        if (!session.canApproveOrderPapers || paper.status != "submitted") return
+        editingPaperId = paper.id
+        editingSubmitted = true
+        draftLines.clear()
+        paper.lines.forEach { line ->
+            val product = bakeryProducts.find { it.id == line.productId }
+                ?: Product(
+                    id = line.productId,
+                    name = line.productName,
+                    category = null,
+                    category_name = line.categoryName,
+                    selling_price = "0",
+                )
+            draftLines.add(product to line.quantityRequested)
+        }
+        binding.neededDateInput.setText(paper.neededDate)
+        binding.notesInput.setText(paper.notes.orEmpty())
+        val bakeryIndex = bakeryBranches.indexOfFirst { it.id == paper.bakeryId }
+        if (bakeryIndex >= 0) {
+            binding.bakerySpinner.setSelection(bakeryIndex)
+        }
+        binding.saveDraftButton.visibility = View.GONE
+        binding.submitButton.text = getString(R.string.order_paper_save_changes)
+        renderDraftLines()
+        binding.createCard.visibility = View.VISIBLE
+        Toast.makeText(this, R.string.order_paper_review_hint, Toast.LENGTH_SHORT).show()
     }
 
     private fun selectedBakery(): Branch? {
@@ -292,7 +354,7 @@ class OrderPaperActivity : KeepScreenOnActivity() {
                 setPadding(0, 10, 0, 10)
             }
             val selectable = session.canManageBakeryOrderPapers &&
-                (paper.status == "submitted" || (paper.status == "accepted" && paper.productionSheetId == null))
+                (paper.status == "approved" || (paper.status == "accepted" && paper.productionSheetId == null))
 
             if (selectable) {
                 card.addView(
@@ -350,13 +412,22 @@ class OrderPaperActivity : KeepScreenOnActivity() {
             }
             if (
                 (session.canCreateOrderPapers && paper.status in listOf("draft", "submitted")) ||
-                (session.canManageBakeryOrderPapers && paper.status == "submitted")
+                (session.canApproveOrderPapers && paper.status == "submitted") ||
+                (session.canManageBakeryOrderPapers && paper.status == "approved")
             ) {
                 actions.addView(actionButton(R.string.cancel) {
                     confirmCancel(paper)
                 })
             }
-            if (session.canManageBakeryOrderPapers && paper.status == "submitted") {
+            if (session.canApproveOrderPapers && paper.status == "submitted") {
+                actions.addView(actionButton(R.string.order_paper_edit) {
+                    beginReviewEdit(paper)
+                })
+                actions.addView(actionButton(R.string.order_paper_approve) {
+                    runPaperAction { api.approveOrderPaper(paper.id) }
+                })
+            }
+            if (session.canManageBakeryOrderPapers && paper.status == "approved") {
                 actions.addView(actionButton(R.string.order_paper_accept) {
                     runPaperAction { api.acceptOrderPaper(paper.id) }
                 })

@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import StaffProfile, StaffRole
 from branches.models import Branch, BranchType
-from catalog.models import Product, ProductCategory
+from catalog.models import MenuAddon, MenuAddonGroup, Product, ProductCategory, ProductMenuAddonGroup
 from inventory.models import StockTake, StockTakeStatus, StockTakeType
 from orders.day_end import build_day_end_report
 from orders.models import (
@@ -17,6 +17,7 @@ from orders.models import (
     FiscalApprovalStatus,
     KitchenStatus,
     Order,
+    OrderItemAddon,
     OrderPayment,
     OrderStatus,
     OrderType,
@@ -166,6 +167,57 @@ class OrderPayTests(TestCase):
         self.assertEqual(self.order.payments.get().amount, Decimal("7.00"))
         self.assertEqual(response.data.get("change_given"), "3.00")
         self.assertEqual(response.data.get("change_given_base"), "3.00")
+
+    def test_pay_with_tip_stores_tip_not_in_tenders(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "currency_id": self.usd.id,
+                "payment_method": "cash",
+                "tip_amount": "2.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertEqual(self.order.tip_amount, Decimal("2.00"))
+        self.assertEqual(self.order.payments.get().amount, Decimal("7.00"))
+        self.assertEqual(self.order.amount_paid, Decimal("9.00"))
+        self.assertIsNone(response.data.get("change_given"))
+        self.assertEqual(response.data["tip_amount"], "2.00")
+
+    def test_pay_with_tip_and_overpayment_change(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "payments": [
+                    {"currency_id": self.usd.id, "amount": "12.00"},
+                ],
+                "tip_amount": "2.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.tip_amount, Decimal("2.00"))
+        self.assertEqual(self.order.payments.get().amount, Decimal("7.00"))
+        self.assertEqual(response.data.get("change_given"), "3.00")
+        self.assertEqual(response.data.get("change_given_base"), "3.00")
+
+    def test_pay_with_tip_in_foreign_currency(self):
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/pay/",
+            {
+                "currency_id": self.zwl.id,
+                "tip_amount": "51.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.tip_amount, Decimal("2.00"))
+        self.assertEqual(self.order.payments.get().amount, Decimal("178.50"))
 
     def test_split_payment_mixed_codes_blocked_on_fiscal_branch(self):
         self.branch.fiscalization_enabled = True
@@ -823,8 +875,62 @@ class DayEndReportTests(TestCase):
         report = build_day_end_report(self.branch)
         self.assertEqual(report["order_count"], 2)
         self.assertEqual(report["gross_total"], Decimal("11.50"))
+        self.assertEqual(report["tips_total"], Decimal("0"))
         self.assertEqual(len(report["products"]), 2)
         self.assertEqual(report["tax_breakdown"]["total"], Decimal("11.50"))
+
+    def test_build_day_end_report_includes_priced_addons(self):
+        group = MenuAddonGroup.objects.create(name="Milk")
+        almond = MenuAddon.objects.create(
+            group=group,
+            name="Almond Milk",
+            selling_price=Decimal("1.00"),
+        )
+        ProductMenuAddonGroup.objects.create(product=self.latte, group=group)
+
+        order = self._create_paid_order(product=self.latte, quantity=Decimal("2"))
+        item = order.items.get()
+        OrderItemAddon.objects.create(
+            order_item=item,
+            menu_addon=almond,
+            name=almond.name,
+            price=almond.selling_price,
+        )
+        addon_total = almond.selling_price * Decimal("2")
+        order.total_amount = order.total_amount + addon_total
+        order.amount_paid = order.total_amount
+        order.save(update_fields=["total_amount", "amount_paid"])
+
+        report = build_day_end_report(self.branch)
+        by_name = {row["product__name"]: row for row in report["products"]}
+        self.assertIn("Almond Milk", by_name)
+        self.assertEqual(by_name["Almond Milk"]["quantity"], Decimal("2"))
+        self.assertEqual(by_name["Almond Milk"]["revenue"], Decimal("2.00"))
+        self.assertEqual(by_name["Latte"]["quantity"], Decimal("2"))
+        self.assertEqual(by_name["Latte"]["revenue"], Decimal("8.00"))
+
+    def test_build_day_end_report_includes_tips_without_affecting_cashup(self):
+        order = self._create_paid_order(product=self.latte, quantity=Decimal("2"))
+        order.tip_amount = Decimal("1.50")
+        order.save(update_fields=["tip_amount"])
+        OrderPayment.objects.create(
+            order=order,
+            method=TenderMethod.CASH,
+            currency=self.usd,
+            amount=Decimal("8.00"),
+            exchange_rate=Decimal("1"),
+        )
+        report = build_day_end_report(
+            self.branch,
+            counted_by_currency={self.usd.id: "8.00"},
+        )
+        self.assertEqual(report["tips_total"], Decimal("1.50"))
+        self.assertEqual(len(report["tips_by_currency"]), 1)
+        self.assertEqual(report["tips_by_currency"][0]["tips_total"], Decimal("1.50"))
+        row = report["cashup_rows"][0]
+        self.assertEqual(row["expected_total"], Decimal("8.00"))
+        self.assertEqual(row["net_expected_total"], Decimal("8.00"))
+        self.assertEqual(row["variance"], Decimal("0.00"))
 
     def test_build_day_end_report_with_counted_cashup(self):
         self._create_paid_order(product=self.latte, quantity=Decimal("2"))
@@ -893,12 +999,22 @@ class DayEndReportTests(TestCase):
 
         report = build_day_end_report(self.branch)
         self.assertEqual(len(report["account_transactions"]), 2)
+        self.assertEqual(len(report["account_deposits"]), 1)
+        self.assertEqual(len(report["account_withdrawals"]), 1)
+        self.assertEqual(report["account_deposits_total"], Decimal("10.00"))
+        self.assertEqual(report["account_withdrawals_total"], Decimal("4.00"))
         self.assertEqual(report["account_transactions"][0]["customer_name"], "Jane Doe")
         self.assertEqual(report["account_transactions"][0]["statement_label"], "Payment received")
         self.assertEqual(report["account_transactions"][0]["amount"], Decimal("-10.00"))
         self.assertEqual(report["account_transactions"][1]["statement_label"], "Withdrawal")
         self.assertEqual(report["account_transactions"][1]["amount"], Decimal("4.00"))
         self.assertEqual(report["account_transactions"][1]["order_id"], order.id)
+        # Withdrawal sales stay out of cash-up expected; deposit cash is included.
+        self.assertEqual(len(report["cashup_rows"]), 1)
+        self.assertEqual(report["cashup_rows"][0]["total_paid"], Decimal("0"))
+        self.assertEqual(report["cashup_rows"][0]["deposits_total"], Decimal("10.00"))
+        self.assertEqual(report["cashup_rows"][0]["expected_total"], Decimal("10.00"))
+        self.assertEqual(report["account_payments_total"], Decimal("4.00"))
 
     def test_build_day_end_report_groups_payments_by_currency_name(self):
         usd_cash_alt = Currency.objects.create(
@@ -937,9 +1053,13 @@ class DayEndReportTests(TestCase):
 
     def test_day_end_print_view_includes_account_transactions(self):
         from customers.models import Customer
-        from customers.services import deposit_to_account
+        from customers.services import deposit_to_account, pay_order_from_account
 
-        customer = Customer.objects.create(first_name="Jane", last_name="Doe")
+        customer = Customer.objects.create(
+            first_name="Jane",
+            last_name="Doe",
+            account_balance=Decimal("-20.00"),
+        )
         deposit_to_account(
             customer=customer,
             branch=self.branch,
@@ -947,13 +1067,31 @@ class DayEndReportTests(TestCase):
             amount_received=Decimal("10.00"),
             recorded_by=self.user,
         )
+        order = Order.objects.create(
+            branch=self.branch,
+            customer=customer,
+            status=OrderStatus.OPEN,
+        )
+        order.items.create(
+            product=self.latte,
+            quantity=Decimal("1"),
+            price=self.latte.selling_price,
+        )
+        order.refresh_from_db()
+        pay_order_from_account(order=order, recorded_by=self.user)
         self._complete_daily_stock_take()
 
         response = self.client.get(f"/pos/day-end/print/?branch={self.branch.id}")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Customer account transactions")
+        self.assertContains(response, "Deposits")
+        self.assertContains(response, "Withdrawals")
         self.assertContains(response, "Jane Doe")
         self.assertContains(response, "Payment received")
+        self.assertContains(response, "Withdrawal")
+        self.assertContains(response, "Deposits total")
+        self.assertContains(response, "Withdrawals total")
+        self.assertContains(response, "Customer deposits")
 
     def test_day_end_print_view(self):
         self._create_paid_order(product=self.latte, quantity=Decimal("1"))
@@ -1295,6 +1433,20 @@ class TableOrderCombineTests(TestCase):
         order.items.create(product=product, quantity=quantity, price=product.selling_price)
         order.recalculate_total()
         return order
+
+    def test_dine_in_requires_table_number(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "branch": self.branch.id,
+                "order_type": OrderType.DINE_IN,
+                "items": [{"product_id": self.latte.id, "quantity": "1"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("table_number", response.data)
+        self.assertEqual(Order.objects.filter(status=OrderStatus.OPEN).count(), 0)
 
     def test_adding_to_occupied_table_appends_items(self):
         existing = self._create_table_order("T1")

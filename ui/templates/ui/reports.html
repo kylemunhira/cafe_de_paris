@@ -68,7 +68,7 @@ const summaryTotal = document.getElementById("summary-total");
 const reportTable = document.getElementById("report-table");
 const reportGeneratedAt = document.getElementById("report-generated-at");
 
-const customerAccountsUrl = "{% url 'ui:customer-accounts' %}";
+const customerAccountUrlTemplate = "{% url 'ui:customer-account-detail' 0 %}".replace("/0/", "/{id}/");
 let reportData = null;
 const sortState = createSortState("full_name", "asc");
 
@@ -134,7 +134,7 @@ function renderReport(data) {
               <td>${c.phone || "—"}</td>
               <td>${c.email || "—"}</td>
               <td class="${balanceClass}" style="text-align: right; font-weight: 600;">${formatCurrency(balance)}</td>
-              <td><a href="${customerAccountsUrl}" class="btn btn-ghost btn-sm">${t("View account")}</a></td>
+              <td><a href="${customerAccountUrlTemplate.replace("{id}", c.id)}" class="btn btn-ghost btn-sm">${t("View account")}</a></td>
             </tr>
           `;
         }).join("")}

@@ -989,6 +989,7 @@ class MobileAppLoginTests(APITestCase):
         self.assertFalse(response.data["can_access_pos"])
         self.assertFalse(response.data["can_access_kitchen"])
         self.assertTrue(response.data["can_manage_bakery_order_papers"])
+        self.assertFalse(response.data["can_approve_order_papers"])
         self.assertFalse(response.data["can_create_order_papers"])
         self.assertEqual(response.data["branch"]["id"], self.bakery.id)
 
@@ -1000,6 +1001,7 @@ class MobileAppLoginTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["can_create_order_papers"])
+        self.assertFalse(response.data["can_approve_order_papers"])
         self.assertFalse(response.data["can_manage_bakery_order_papers"])
 
     def test_stores_staff_can_login_for_order_papers(self):

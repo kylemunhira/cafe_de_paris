@@ -200,6 +200,7 @@ class ProductionSheetAllocation(models.Model):
 class OrderPaperStatus(models.TextChoices):
     DRAFT = "draft", "Draft"
     SUBMITTED = "submitted", "Submitted"
+    APPROVED = "approved", "Approved"
     ACCEPTED = "accepted", "Accepted"
     FULFILLED = "fulfilled", "Fulfilled"
     CANCELLED = "cancelled", "Cancelled"
@@ -245,6 +246,7 @@ class OrderPaper(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
     fulfilled_at = models.DateTimeField(null=True, blank=True)
 

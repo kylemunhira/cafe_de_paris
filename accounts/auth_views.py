@@ -23,6 +23,7 @@ from accounts.branch_access import (
     user_can_access_order_papers,
     user_can_access_pos,
     user_can_approve_fiscal_receipt,
+    user_can_approve_order_papers,
     user_can_collect_payment,
     user_can_create_order_papers,
     user_can_manage_bakery_order_papers,
@@ -190,6 +191,7 @@ class MobileAppLoginView(APIView):
             and user_can_access_bakery_transfers(user)
         )
         can_create_order_papers = user_can_create_order_papers(user)
+        can_approve_order_papers = user_can_approve_order_papers(user)
         can_manage_order_papers = user_can_manage_bakery_order_papers(user)
         can_order_papers = user_can_access_order_papers(user)
         if not can_kitchen and not can_pos and not can_bakery and not can_order_papers:
@@ -218,6 +220,7 @@ class MobileAppLoginView(APIView):
             "can_access_pos": can_pos,
             "can_access_bakery": can_bakery,
             "can_create_order_papers": can_create_order_papers,
+            "can_approve_order_papers": can_approve_order_papers,
             "can_manage_bakery_order_papers": can_manage_order_papers,
             "inclusive_tax_rate": str(settings.INCLUSIVE_TAX_RATE),
             "zta_levy_rate": str(settings.ZTA_LEVY_RATE),

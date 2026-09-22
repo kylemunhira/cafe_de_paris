@@ -900,7 +900,7 @@ class CentralInvoiceCreateSerializer(serializers.Serializer):
         queryset=Branch.objects.filter(is_active=True, branch_type=BranchType.STORES)
     )
     customer = serializers.PrimaryKeyRelatedField(
-        queryset=Customer.objects.all()
+        queryset=Customer.objects.filter(is_active=True)
     )
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     lines = CentralInvoiceLineCreateSerializer(many=True)

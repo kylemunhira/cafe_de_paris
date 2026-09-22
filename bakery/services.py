@@ -578,11 +578,26 @@ def create_order_paper(
     return paper
 
 
-def update_order_paper(paper, *, needed_date=None, notes=None, lines_data=None):
+def update_order_paper(
+    paper,
+    *,
+    needed_date=None,
+    notes=None,
+    lines_data=None,
+    by_back_office=False,
+):
     from .models import OrderPaperStatus
 
-    if paper.status != OrderPaperStatus.DRAFT:
-        raise InvalidOrderPaperStateError(paper, OrderPaperStatus.DRAFT, "update")
+    allowed = {OrderPaperStatus.DRAFT}
+    if by_back_office:
+        allowed.add(OrderPaperStatus.SUBMITTED)
+    if paper.status not in allowed:
+        expected = (
+            f"{OrderPaperStatus.DRAFT} or {OrderPaperStatus.SUBMITTED}"
+            if by_back_office
+            else OrderPaperStatus.DRAFT
+        )
+        raise InvalidOrderPaperStateError(paper, expected, "update")
 
     update_fields = []
     if needed_date is not None:
@@ -603,6 +618,7 @@ def update_order_paper(paper, *, needed_date=None, notes=None, lines_data=None):
 
 
 def submit_order_paper(paper):
+    """Branch/stores submit for back-office review before bakery can act."""
     from .models import OrderPaperStatus
 
     if paper.status != OrderPaperStatus.DRAFT:
@@ -615,16 +631,34 @@ def submit_order_paper(paper):
     return paper
 
 
+def approve_order_paper(paper):
+    """Back office releases a submitted paper to the bakery."""
+    from .models import OrderPaperStatus
+
+    if paper.status != OrderPaperStatus.SUBMITTED:
+        raise InvalidOrderPaperStateError(
+            paper, OrderPaperStatus.SUBMITTED, "approve"
+        )
+    paper.status = OrderPaperStatus.APPROVED
+    paper.approved_at = timezone.now()
+    paper.save(update_fields=["status", "approved_at"])
+    return paper
+
+
 def cancel_order_paper(paper):
     from .models import OrderPaperStatus
 
     if paper.status not in (
         OrderPaperStatus.DRAFT,
         OrderPaperStatus.SUBMITTED,
+        OrderPaperStatus.APPROVED,
     ):
         raise InvalidOrderPaperStateError(
             paper,
-            f"{OrderPaperStatus.DRAFT} or {OrderPaperStatus.SUBMITTED}",
+            (
+                f"{OrderPaperStatus.DRAFT}, {OrderPaperStatus.SUBMITTED}, "
+                f"or {OrderPaperStatus.APPROVED}"
+            ),
             "cancel",
         )
     paper.status = OrderPaperStatus.CANCELLED
@@ -633,12 +667,12 @@ def cancel_order_paper(paper):
 
 
 def accept_order_paper(paper, lines_data=None):
-    """Bakery accepts a submitted paper; optional accepted quantities per line."""
+    """Bakery accepts a back-office-approved paper; optional accepted quantities."""
     from .models import OrderPaperStatus
 
-    if paper.status != OrderPaperStatus.SUBMITTED:
+    if paper.status != OrderPaperStatus.APPROVED:
         raise InvalidOrderPaperStateError(
-            paper, OrderPaperStatus.SUBMITTED, "accept"
+            paper, OrderPaperStatus.APPROVED, "accept"
         )
 
     with transaction.atomic():
@@ -681,7 +715,7 @@ def create_production_sheet_from_order_papers(
     created_by=None,
     notes="",
 ):
-    """Create a production sheet prefilled from submitted/accepted order papers."""
+    """Create a production sheet prefilled from approved/accepted order papers."""
     from .models import OrderPaperStatus
 
     if bakery.branch_type != BranchType.BAKERY or not bakery.is_active:
@@ -697,12 +731,12 @@ def create_production_sheet_from_order_papers(
                 f"Order paper #{paper.pk} belongs to a different bakery."
             )
         if paper.status not in (
-            OrderPaperStatus.SUBMITTED,
+            OrderPaperStatus.APPROVED,
             OrderPaperStatus.ACCEPTED,
         ):
             raise InvalidOrderPaperStateError(
                 paper,
-                f"{OrderPaperStatus.SUBMITTED} or {OrderPaperStatus.ACCEPTED}",
+                f"{OrderPaperStatus.APPROVED} or {OrderPaperStatus.ACCEPTED}",
                 "apply to production",
             )
         if paper.production_sheet_id:
@@ -737,7 +771,7 @@ def create_production_sheet_from_order_papers(
 
         now = timezone.now()
         for paper in papers:
-            if paper.status == OrderPaperStatus.SUBMITTED:
+            if paper.status == OrderPaperStatus.APPROVED:
                 paper.status = OrderPaperStatus.ACCEPTED
                 paper.accepted_at = now
             paper.production_sheet = sheet

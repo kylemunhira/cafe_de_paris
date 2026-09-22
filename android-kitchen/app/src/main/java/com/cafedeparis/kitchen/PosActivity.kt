@@ -1452,17 +1452,47 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun occupiedTableNames(orders: List<KitchenOrder>): Set<String> {
         return orders.filter { order ->
-            order.status == "open" &&
+            (order.status == "open" || order.status == "unpaid") &&
                 order.order_type == "dine_in" &&
                 order.table_number.isNotBlank()
-        }.map { it.table_number }.toSet()
+        }.map { it.table_number.trim() }.toSet()
+    }
+
+    private fun orderHeldByOtherUser(order: KitchenOrder): Boolean {
+        val holderId = order.created_by ?: return false
+        val currentId = session.userId
+        if (currentId <= 0) return false
+        return holderId != currentId
+    }
+
+    private fun tableHeldByOtherUser(table: DiningTable, orders: List<KitchenOrder>): Boolean {
+        val currentId = session.userId
+        table.occupied_by?.let { holderId ->
+            if (currentId <= 0) return false
+            return holderId != currentId
+        }
+        if (currentId <= 0) return false
+        return orders.filter {
+            (it.status == "open" || it.status == "unpaid") &&
+                it.order_type == "dine_in" &&
+                it.table_number.trim() == table.name
+        }.any(::orderHeldByOtherUser)
+    }
+
+    private fun visibleDiningTables(
+        tables: List<DiningTable>,
+        orders: List<KitchenOrder>,
+    ): List<DiningTable> {
+        return tables.filter { !tableHeldByOtherUser(it, orders) }
     }
 
     private fun openOrdersForTable(tableNumber: String): List<KitchenOrder> {
         val table = tableNumber.trim()
         if (table.isEmpty()) return emptyList()
         return openOrders.filter {
-            it.status == "open" && it.order_type == "dine_in" && it.table_number == table
+            (it.status == "open" || it.status == "unpaid") &&
+                it.order_type == "dine_in" &&
+                it.table_number == table
         }
     }
 
@@ -1506,7 +1536,8 @@ class PosActivity : KeepScreenOnActivity() {
                 }
                 diningTables = tables.filter { it.is_active }.sortedBy { it.sort_order }
                 openOrders = orders
-                showTablePickerDialog(diningTables, occupiedTableNames(orders), purpose)
+                val visible = visibleDiningTables(diningTables, orders)
+                showTablePickerDialog(visible, occupiedTableNames(orders), purpose, allHidden = diningTables.isNotEmpty() && visible.isEmpty())
             } catch (err: ApiException) {
                 handleApiError(err)
             } catch (err: Exception) {
@@ -1521,6 +1552,7 @@ class PosActivity : KeepScreenOnActivity() {
         tables: List<DiningTable>,
         occupied: Set<String>,
         purpose: TablePickerPurpose,
+        allHidden: Boolean = false,
     ) {
         val dialogBinding = DialogTablePickerBinding.inflate(layoutInflater)
         val sourceTable = if (purpose == TablePickerPurpose.TRANSFER) {
@@ -1557,10 +1589,10 @@ class PosActivity : KeepScreenOnActivity() {
         dialogBinding.tableGrid.visibility = if (hasTables) View.VISIBLE else View.GONE
         dialogBinding.tableEmptyLabel.visibility = if (hasTables) View.GONE else View.VISIBLE
         if (!hasTables) {
-            dialogBinding.tableEmptyLabel.text = if (session.canManageDiningTables) {
-                getString(R.string.no_tables_configured_manager)
-            } else {
-                getString(R.string.no_tables_configured)
+            dialogBinding.tableEmptyLabel.text = when {
+                allHidden -> getString(R.string.all_tables_held_by_others)
+                session.canManageDiningTables -> getString(R.string.no_tables_configured_manager)
+                else -> getString(R.string.no_tables_configured)
             }
         }
 
@@ -1767,6 +1799,13 @@ class PosActivity : KeepScreenOnActivity() {
             (row.getChildAt(1) as? EditText)?.setText("")
         }
         updateSplitPaymentRemaining()
+    }
+
+    private fun tipAmountForPayload(): String? {
+        val raw = binding.tipAmountInput.text?.toString()?.trim().orEmpty()
+        val value = raw.toDoubleOrNull() ?: return null
+        if (value <= 0.0) return null
+        return String.format("%.2f", value)
     }
 
     /** Triple(currencyId, amountInCurrency, amountInBase) */
@@ -2287,13 +2326,9 @@ class PosActivity : KeepScreenOnActivity() {
     }
 
     private fun handleProductTap(product: Product) {
-        if (product.hasActiveAddons()) {
-            AddonPickerDialog.show(this, product) { addons, notes ->
-                addToCart(product, addons, notes)
-            }
-            return
+        AddonPickerDialog.show(this, product) { addons, notes ->
+            addToCart(product, addons, notes)
         }
-        addToCart(product)
     }
 
     private fun addToCart(
@@ -2360,7 +2395,8 @@ class PosActivity : KeepScreenOnActivity() {
         binding.cartList.visibility = if (hasLines) View.VISIBLE else View.GONE
         binding.clearButton.visibility = View.VISIBLE
         binding.clearButton.isEnabled = hasLines
-        binding.checkoutButton.isEnabled = hasLines
+        val needsTable = currentOrderType() == "dine_in" && selectedTableName.isNullOrBlank()
+        binding.checkoutButton.isEnabled = hasLines && !needsTable
         binding.transferItemsButton.visibility = View.GONE
         val total = lines.sumOf { it.price * it.quantity }
         binding.totalCaption.setText(
@@ -2756,6 +2792,14 @@ class PosActivity : KeepScreenOnActivity() {
 
     private fun placeOrder() {
         if (cart.isEmpty()) return
+        if (currentOrderType() == "dine_in" && selectedTableName.isNullOrBlank()) {
+            Toast.makeText(
+                this,
+                getString(R.string.select_table_for_dine_in),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
         if (!session.canCollectPayment) {
             promptWaiterAccessCode { accessCode ->
                 if (accessCode != null) {
@@ -2940,27 +2984,30 @@ class PosActivity : KeepScreenOnActivity() {
         binding.checkoutButton.isEnabled = false
         lifecycleScope.launch {
             try {
+                val tipAmount = tipAmountForPayload()
                 val paid = withContext(Dispatchers.IO) {
                     if (paymentMethod == PaymentMethod.ACCOUNT) {
                         val customerId = selectedCustomer()?.id
                         if (order.customer != customerId) {
                             api.updateOrderCustomer(order.id, customerId)
                         }
-                        api.payOrderFromAccount(order.id)
+                        api.payOrderFromAccount(order.id, tipAmount)
                     } else {
                         val lines = if (isSplitPaymentActive()) splitPaymentLines() else emptyList()
                         if (lines.isNotEmpty()) {
                             api.payOrderWithTenders(
                                 order.id,
                                 lines.map { it.first to String.format("%.2f", it.second) },
+                                tipAmount,
                             )
                         } else {
-                            api.payOrderCash(order.id, selectedCurrency()!!.id)
+                            api.payOrderCash(order.id, selectedCurrency()!!.id, tipAmount)
                         }
                     }
                 }
                 binding.splitPaymentEnabled.isChecked = false
                 clearSplitPaymentInputs()
+                binding.tipAmountInput.setText("")
                 printReceipt(paid)
                 if (paymentMethod == PaymentMethod.ACCOUNT && paid.customer != null) {
                     val updatedBalance = paid.customer_account_balance

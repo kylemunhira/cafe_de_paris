@@ -6,7 +6,17 @@ from django.db.models import Count, Min, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .models import Expense, Order, OrderItem, OrderPayment, OrderStatus, OrderType, PaymentMethod, TenderMethod
+from .models import (
+    Expense,
+    Order,
+    OrderItem,
+    OrderItemAddon,
+    OrderPayment,
+    OrderStatus,
+    OrderType,
+    PaymentMethod,
+    TenderMethod,
+)
 from .tax import line_amount, split_inclusive_total
 
 ORDER_TYPE_LABELS = dict(OrderType.choices)
@@ -57,6 +67,24 @@ def build_day_end_report(
     gross_total = orders_qs.aggregate(
         total=Coalesce(Sum("total_amount"), Decimal("0"))
     )["total"]
+    tips_total = orders_qs.aggregate(
+        total=Coalesce(Sum("tip_amount"), Decimal("0"))
+    )["total"]
+
+    tips_by_currency = list(
+        orders_qs.exclude(tip_amount=0)
+        .values(
+            "payment_currency__id",
+            "payment_currency__code",
+            "payment_currency__name",
+            "payment_currency__symbol",
+        )
+        .annotate(
+            order_count=Count("id"),
+            tips_total=Coalesce(Sum("tip_amount"), Decimal("0")),
+        )
+        .order_by("payment_currency__name")
+    )
 
     order_types = [
         {
@@ -139,6 +167,10 @@ def build_day_end_report(
     }
 
     account_transactions = []
+    account_deposits = []
+    account_withdrawals = []
+    account_deposits_total = Decimal("0")
+    account_withdrawals_total = Decimal("0")
     for txn in (
         CustomerAccountTransaction.objects.filter(
             branch=branch,
@@ -148,26 +180,34 @@ def build_day_end_report(
         .select_related("customer", "currency", "order", "recorded_by")
         .order_by("created_at", "id")
     ):
-        account_transactions.append(
-            {
-                "id": txn.id,
-                "customer_name": str(txn.customer),
-                "transaction_type": txn.transaction_type,
-                "statement_label": txn.statement_label,
-                "amount": txn.amount,
-                "amount_received": txn.amount_received,
-                "balance_after": txn.balance_after,
-                "order_id": txn.order_id,
-                "notes": txn.notes,
-                "created_at": txn.created_at,
-                "currency__id": txn.currency_id,
-                "currency__code": txn.currency.code if txn.currency else None,
-                "currency__name": txn.currency.name if txn.currency else None,
-                "currency__symbol": txn.currency.symbol if txn.currency else None,
-                "recorded_by__username": txn.recorded_by.username if txn.recorded_by else None,
-            }
-        )
+        row = {
+            "id": txn.id,
+            "customer_name": str(txn.customer),
+            "transaction_type": txn.transaction_type,
+            "statement_label": txn.statement_label,
+            "amount": txn.amount,
+            "amount_received": txn.amount_received,
+            "balance_after": txn.balance_after,
+            "order_id": txn.order_id,
+            "notes": txn.notes,
+            "created_at": txn.created_at,
+            "currency__id": txn.currency_id,
+            "currency__code": txn.currency.code if txn.currency else None,
+            "currency__name": txn.currency.name if txn.currency else None,
+            "currency__symbol": txn.currency.symbol if txn.currency else None,
+            "recorded_by__username": txn.recorded_by.username if txn.recorded_by else None,
+        }
+        account_transactions.append(row)
+        if txn.transaction_type == CustomerAccountTransactionType.DEPOSIT:
+            account_deposits.append(row)
+            # Amount is signed base-currency delta (negative for money onto account).
+            account_deposits_total += -(txn.amount or Decimal("0"))
+        elif txn.transaction_type == CustomerAccountTransactionType.PAYMENT:
+            account_withdrawals.append(row)
+            account_withdrawals_total += txn.amount or Decimal("0")
 
+    # Account-paid sales (withdrawals) are tracked separately and must not enter
+    # cash-up expected — expected uses tender OrderPayment totals + deposits only.
     account_payments_total = orders_qs.filter(
         payment_method=PaymentMethod.ACCOUNT
     ).aggregate(total=Coalesce(Sum("total_amount"), Decimal("0")))["total"]
@@ -183,8 +223,27 @@ def build_day_end_report(
     ).values_list("product_id", "product__name", "quantity", "price")
 
     for product_id, product_name, quantity, price in item_rows:
-        bucket = product_totals[product_id]
+        bucket = product_totals[("product", product_id)]
         bucket["product__name"] = product_name
+        bucket["quantity"] += Decimal(quantity)
+        bucket["revenue"] += line_amount(quantity, price)
+
+    # Priced menu add-ons (e.g. almond milk) are separate sold lines.
+    addon_rows = OrderItemAddon.objects.filter(
+        order_item__order__branch=branch,
+        order_item__order__status=OrderStatus.PAID,
+        order_item__order__paid_at__gte=start,
+        order_item__order__paid_at__lt=end,
+    ).values_list(
+        "menu_addon_id",
+        "name",
+        "order_item__quantity",
+        "price",
+    )
+
+    for menu_addon_id, addon_name, quantity, price in addon_rows:
+        bucket = product_totals[("addon", menu_addon_id)]
+        bucket["product__name"] = addon_name
         bucket["quantity"] += Decimal(quantity)
         bucket["revenue"] += line_amount(quantity, price)
 
@@ -249,6 +308,7 @@ def build_day_end_report(
 
     for currency_id in sorted(currency_meta.keys()):
         payment = payment_by_currency.get(currency_id, {})
+        # Tender/sales collected only (OrderPayment). Account withdrawals excluded.
         sales_total = payment.get("total_paid") or Decimal("0")
         deposits_total = deposits_by_currency.get(currency_id, Decimal("0"))
         expected = sales_total + deposits_total
@@ -278,12 +338,18 @@ def build_day_end_report(
         "report_date": report_date,
         "order_count": order_count,
         "gross_total": gross_total,
+        "tips_total": tips_total,
+        "tips_by_currency": tips_by_currency,
         "tax_breakdown": tax_breakdown,
         "order_types": order_types,
         "payments": payments,
         "payments_by_method": payments_by_method,
         "account_payments_total": account_payments_total,
         "account_transactions": account_transactions,
+        "account_deposits": account_deposits,
+        "account_withdrawals": account_withdrawals,
+        "account_deposits_total": account_deposits_total,
+        "account_withdrawals_total": account_withdrawals_total,
         "cashup_rows": cashup_rows,
         "has_counted_entries": has_counted_entries,
         "variance_total": variance_total,

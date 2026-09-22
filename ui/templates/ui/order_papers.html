@@ -11,11 +11,11 @@
 {% endblock %}
 
 {% block content %}
-{% if can_create_order_papers %}
+{% if can_create_order_papers or can_approve_order_papers %}
 <div class="card" id="paper-form-card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
   <h3 id="paper-form-title" style="margin: 0 0 1rem; font-size: 1.05rem;">{% trans "New order paper" %}</h3>
-  <p style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
-    {% trans "Branches and central stores request bakery products for a needed date. Submit so the bakery can bake and deliver." %}
+  <p id="paper-form-hint" style="margin: 0 0 1rem; font-size: 0.85rem; color: var(--color-muted);">
+    {% trans "Branches and central stores request bakery products for a needed date. Submit for back-office approval before the bakery can bake and deliver." %}
   </p>
   <form id="paper-form">
     <div class="form-row">
@@ -68,8 +68,9 @@
       </table>
     </div>
     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Submit to bakery" %}</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>{% trans "Submit for approval" %}</button>
       <button type="button" class="btn btn-ghost" id="draft-btn" disabled>{% trans "Save as draft" %}</button>
+      <button type="button" class="btn btn-primary" id="save-review-btn" style="display: none;" disabled>{% trans "Save changes" %}</button>
       <button type="button" class="btn btn-ghost" id="cancel-edit-btn" style="display: none;">{% trans "Cancel editing" %}</button>
     </div>
   </form>
@@ -91,7 +92,7 @@
     </div>
   </div>
   <p style="margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--color-muted);">
-    {% trans "Select submitted order papers below, then create a production sheet prefilled for each requesting branch (including central stores)." %}
+    {% trans "Select back-office-approved order papers below, then create a production sheet prefilled for each requesting branch (including central stores)." %}
   </p>
   <div class="table-wrap" id="demand-table" style="margin-top: 1rem;"></div>
 </div>
@@ -102,6 +103,7 @@
     <button class="category-tab active" data-filter="all">{% trans "All" %}</button>
     <button class="category-tab" data-filter="draft">{% trans "Draft" %}</button>
     <button class="category-tab" data-filter="submitted">{% trans "Submitted" %}</button>
+    <button class="category-tab" data-filter="approved">{% trans "Approved" %}</button>
     <button class="category-tab" data-filter="accepted">{% trans "Accepted" %}</button>
     <button class="category-tab" data-filter="fulfilled">{% trans "Fulfilled" %}</button>
     <div class="form-group" style="margin: 0 0 0 auto; min-width: 160px;">
@@ -120,15 +122,18 @@ import { apiGet, apiPost, apiPatch, unwrapList, formatDate, statusBadge, showToa
 
 const t = (msgid) => window.CDP.t(msgid);
 const CAN_CREATE = {{ can_create_order_papers|yesno:"true,false" }};
+const CAN_APPROVE = {{ can_approve_order_papers|yesno:"true,false" }};
 const CAN_MANAGE = {{ can_manage_bakery_order_papers|yesno:"true,false" }};
 const STAFF_BRANCH_ID = "{{ staff_branch_id|default_if_none:'' }}";
 const CAN_FILTER_ANY = {{ can_filter_any_branch|yesno:"true,false" }};
+const CAN_USE_FORM = CAN_CREATE || CAN_APPROVE;
 
 let requesterBranches = [];
 let bakeryBranches = [];
 let bakeryProducts = [];
 let draftLines = [];
 let editingId = null;
+let editingSubmitted = false;
 let allPapers = [];
 let activeFilter = "all";
 let selectedPaperIds = new Set();
@@ -145,6 +150,36 @@ function formatQty(value) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
 }
 
+function setBranchFieldsLocked(locked) {
+  const req = document.getElementById("requesting-branch");
+  const bakery = document.getElementById("bakery-branch");
+  if (req) req.disabled = !!locked;
+  if (bakery) bakery.disabled = !!locked;
+}
+
+function syncFormMode() {
+  const submitBtn = document.getElementById("submit-btn");
+  const draftBtn = document.getElementById("draft-btn");
+  const saveReviewBtn = document.getElementById("save-review-btn");
+  const hint = document.getElementById("paper-form-hint");
+  if (editingSubmitted) {
+    if (submitBtn) submitBtn.style.display = "none";
+    if (draftBtn) draftBtn.style.display = "none";
+    if (saveReviewBtn) saveReviewBtn.style.display = "";
+    if (hint) {
+      hint.textContent = t("Adjust products and quantities, then save. Approve from the list when ready for bakery.");
+    }
+  } else {
+    if (submitBtn) submitBtn.style.display = CAN_CREATE ? "" : "none";
+    if (draftBtn) draftBtn.style.display = CAN_CREATE ? "" : "none";
+    if (saveReviewBtn) saveReviewBtn.style.display = "none";
+    if (hint) {
+      hint.textContent = t("Branches and central stores request bakery products for a needed date. Submit for back-office approval before the bakery can bake and deliver.");
+    }
+  }
+  updateFormButtons();
+}
+
 function renderLines() {
   const wrap = document.getElementById("lines-wrap");
   const body = document.getElementById("lines-body");
@@ -159,12 +194,28 @@ function renderLines() {
   body.innerHTML = draftLines.map((line, idx) => `
     <tr>
       <td>${line.product_name}</td>
-      <td style="text-align:right;">${formatQty(line.quantity_requested)}</td>
+      <td style="text-align:right;">
+        <input type="number" min="0.01" step="0.01" value="${formatQty(line.quantity_requested)}"
+          data-qty-idx="${idx}" style="width:5.5rem;text-align:right;">
+      </td>
       <td style="text-align:right;">
         <button type="button" class="btn btn-ghost btn-sm" data-remove="${idx}">${t("Remove")}</button>
       </td>
     </tr>
   `).join("");
+  body.querySelectorAll("[data-qty-idx]").forEach(input => {
+    input.addEventListener("change", () => {
+      const idx = Number(input.dataset.qtyIdx);
+      const qty = Number(input.value);
+      if (!(qty > 0)) {
+        input.value = formatQty(draftLines[idx].quantity_requested);
+        showToast(t("Quantity must be greater than zero."), true);
+        return;
+      }
+      draftLines[idx].quantity_requested = qty;
+      updateFormButtons();
+    });
+  });
   body.querySelectorAll("[data-remove]").forEach(btn => {
     btn.addEventListener("click", () => {
       draftLines.splice(Number(btn.dataset.remove), 1);
@@ -178,12 +229,15 @@ function updateFormButtons() {
   const hasLines = draftLines.length > 0;
   const submitBtn = document.getElementById("submit-btn");
   const draftBtn = document.getElementById("draft-btn");
+  const saveReviewBtn = document.getElementById("save-review-btn");
   if (submitBtn) submitBtn.disabled = !hasLines;
   if (draftBtn) draftBtn.disabled = !hasLines;
+  if (saveReviewBtn) saveReviewBtn.disabled = !hasLines;
 }
 
 function resetForm() {
   editingId = null;
+  editingSubmitted = false;
   draftLines = [];
   const title = document.getElementById("paper-form-title");
   if (title) title.textContent = t("New order paper");
@@ -193,6 +247,8 @@ function resetForm() {
   if (needed) needed.value = tomorrowISO();
   const cancelEdit = document.getElementById("cancel-edit-btn");
   if (cancelEdit) cancelEdit.style.display = "none";
+  setBranchFieldsLocked(false);
+  syncFormMode();
   renderLines();
 }
 
@@ -234,6 +290,10 @@ function paperPayload(submit) {
 
 async function savePaper(submit) {
   if (!draftLines.length) return;
+  if (editingSubmitted) {
+    await saveBackOfficeReview();
+    return;
+  }
   try {
     if (editingId) {
       await apiPatch(`/order-papers/${editingId}/`, {
@@ -247,10 +307,10 @@ async function savePaper(submit) {
       if (submit) {
         await apiPost(`/order-papers/${editingId}/submit/`, {});
       }
-      showToast(submit ? t("Order paper submitted.") : t("Draft saved."));
+      showToast(submit ? t("Order paper submitted for back-office approval.") : t("Draft saved."));
     } else {
       await apiPost("/order-papers/", paperPayload(submit));
-      showToast(submit ? t("Order paper submitted.") : t("Draft saved."));
+      showToast(submit ? t("Order paper submitted for back-office approval.") : t("Draft saved."));
     }
     resetForm();
     await loadPapers();
@@ -260,9 +320,35 @@ async function savePaper(submit) {
   }
 }
 
-async function editDraft(paper) {
+async function saveBackOfficeReview() {
+  if (!editingId || !draftLines.length) return;
+  try {
+    await apiPatch(`/order-papers/${editingId}/`, {
+      needed_date: document.getElementById("needed-date").value,
+      notes: document.getElementById("paper-notes").value || "",
+      lines: draftLines.map(l => ({
+        product: l.product,
+        quantity_requested: l.quantity_requested,
+      })),
+    });
+    showToast(t("Order paper updated."));
+    resetForm();
+    await loadPapers();
+    if (CAN_MANAGE) await loadDemand();
+  } catch (err) {
+    showToast(err.message || t("Could not save order paper."), true);
+  }
+}
+
+async function editPaper(paper, { submitted = false } = {}) {
   editingId = paper.id;
-  document.getElementById("paper-form-title").textContent = `${t("Edit draft")} #${paper.id}`;
+  editingSubmitted = !!submitted;
+  const title = document.getElementById("paper-form-title");
+  if (title) {
+    title.textContent = submitted
+      ? `${t("Review order paper")} #${paper.id}`
+      : `${t("Edit draft")} #${paper.id}`;
+  }
   document.getElementById("requesting-branch").value = String(paper.requesting_branch);
   document.getElementById("bakery-branch").value = String(paper.bakery);
   document.getElementById("needed-date").value = paper.needed_date;
@@ -273,6 +359,8 @@ async function editDraft(paper) {
     quantity_requested: Number(l.quantity_requested),
   }));
   document.getElementById("cancel-edit-btn").style.display = "";
+  setBranchFieldsLocked(submitted);
+  syncFormMode();
   renderLines();
   document.getElementById("paper-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -308,7 +396,7 @@ function renderPapers() {
       </thead>
       <tbody>
         ${rows.map(p => {
-          const selectable = p.status === "submitted" || (p.status === "accepted" && !p.production_sheet);
+          const selectable = p.status === "approved" || (p.status === "accepted" && !p.production_sheet);
           const checked = selectedPaperIds.has(p.id) ? "checked" : "";
           const linesPreview = (p.lines || []).slice(0, 4).map(l =>
             `${formatQty(l.effective_quantity || l.quantity_requested)} × ${l.product_name}`
@@ -320,10 +408,15 @@ function renderPapers() {
             actions.push(`<button type="button" class="btn btn-primary btn-sm" data-submit="${p.id}">${t("Submit")}</button>`);
             actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
           }
-          if (CAN_CREATE && p.status === "submitted" && !CAN_MANAGE) {
+          if (CAN_CREATE && p.status === "submitted" && !CAN_APPROVE && !CAN_MANAGE) {
             actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
           }
-          if (CAN_MANAGE && p.status === "submitted") {
+          if (CAN_APPROVE && p.status === "submitted") {
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-review="${p.id}">${t("Edit")}</button>`);
+            actions.push(`<button type="button" class="btn btn-primary btn-sm" data-approve="${p.id}">${t("Approve")}</button>`);
+            actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
+          }
+          if (CAN_MANAGE && p.status === "approved") {
             actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-accept="${p.id}">${t("Accept")}</button>`);
             actions.push(`<button type="button" class="btn btn-ghost btn-sm" data-cancel="${p.id}">${t("Cancel")}</button>`);
           }
@@ -356,18 +449,36 @@ function renderPapers() {
   table.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const paper = allPapers.find(p => String(p.id) === btn.dataset.edit);
-      if (paper) await editDraft(paper);
+      if (paper) await editPaper(paper, { submitted: false });
+    });
+  });
+  table.querySelectorAll("[data-review]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const paper = allPapers.find(p => String(p.id) === btn.dataset.review);
+      if (paper) await editPaper(paper, { submitted: true });
     });
   });
   table.querySelectorAll("[data-submit]").forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
         await apiPost(`/order-papers/${btn.dataset.submit}/submit/`, {});
-        showToast(t("Order paper submitted."));
+        showToast(t("Order paper submitted for back-office approval."));
         await loadPapers();
         if (CAN_MANAGE) await loadDemand();
       } catch (err) {
         showToast(err.message || t("Could not submit."), true);
+      }
+    });
+  });
+  table.querySelectorAll("[data-approve]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost(`/order-papers/${btn.dataset.approve}/approve/`, {});
+        showToast(t("Order paper approved for bakery."));
+        await loadPapers();
+        if (CAN_MANAGE) await loadDemand();
+      } catch (err) {
+        showToast(err.message || t("Could not approve."), true);
       }
     });
   });
@@ -452,7 +563,7 @@ async function loadDemand() {
 
 async function applyToProduction() {
   if (!selectedPaperIds.size) {
-    showToast(t("Select at least one submitted order paper."), true);
+    showToast(t("Select at least one approved order paper."), true);
     return;
   }
   const bakeryId = bakeryBranches[0]?.id;
@@ -487,7 +598,7 @@ async function init() {
     b.is_active && b.branch_type === "bakery"
   );
 
-  if (CAN_CREATE) {
+  if (CAN_USE_FORM) {
     // Same filter as Android / Bakery Transfers: finished sellable bakery goods only.
     bakeryProducts = unwrapList(
       await apiGet("/products/?bakery_transfer=true&page_size=1000")
@@ -521,9 +632,11 @@ async function init() {
     });
     document.getElementById("paper-form")?.addEventListener("submit", (e) => {
       e.preventDefault();
-      savePaper(true);
+      if (editingSubmitted) saveBackOfficeReview();
+      else savePaper(true);
     });
     document.getElementById("draft-btn")?.addEventListener("click", () => savePaper(false));
+    document.getElementById("save-review-btn")?.addEventListener("click", () => saveBackOfficeReview());
     document.getElementById("cancel-edit-btn")?.addEventListener("click", resetForm);
   }
 
