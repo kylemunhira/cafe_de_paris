@@ -8,8 +8,19 @@ from payments.models import Currency
 
 from .day_end import _decimal_or_none, build_day_end_report, local_day_range
 from .day_end_serialization import serialize_day_end_report
-from .models import DayEndCashLine, DayEndClose
+from .models import DayEndCashLine, DayEndClose, Order, OrderStatus
 from .serializers import staff_display_name
+
+
+def live_paid_order_count(branch, report_date) -> int:
+    """Count paid orders for the business day (same filter as day-end report)."""
+    start, end, _ = local_day_range(report_date)
+    return Order.objects.filter(
+        branch=branch,
+        status=OrderStatus.PAID,
+        paid_at__gte=start,
+        paid_at__lt=end,
+    ).count()
 
 
 class DayEndValidationError(Exception):
@@ -123,7 +134,12 @@ def save_day_end_close(
     return close, report
 
 
-def serialize_day_end_close(close: DayEndClose, *, include_snapshot: bool = False) -> dict:
+def serialize_day_end_close(
+    close: DayEndClose,
+    *,
+    include_snapshot: bool = False,
+    live_order_count: int | None = None,
+) -> dict:
     cash_lines = []
     for line in close.cash_lines.select_related("currency").all():
         cash_lines.append(
@@ -146,6 +162,8 @@ def serialize_day_end_close(close: DayEndClose, *, include_snapshot: bool = Fals
             }
         )
 
+    if live_order_count is None:
+        live_order_count = live_paid_order_count(close.branch, close.report_date)
     payload = {
         "id": close.id,
         "branch": {
@@ -159,6 +177,8 @@ def serialize_day_end_close(close: DayEndClose, *, include_snapshot: bool = Fals
         "closed_by_name": staff_display_name(close.closed_by) if close.closed_by_id else "",
         "notes": close.notes or "",
         "order_count": close.order_count,
+        "live_order_count": live_order_count,
+        "has_newer_sales": live_order_count != close.order_count,
         "gross_total": str(close.gross_total),
         "tips_total": str(close.tips_total),
         "expenses_total": str(close.expenses_total),
@@ -169,6 +189,29 @@ def serialize_day_end_close(close: DayEndClose, *, include_snapshot: bool = Fals
     if include_snapshot:
         payload["activity_snapshot"] = close.activity_snapshot or {}
     return payload
+
+
+def serialize_day_end_closes(closes) -> list[dict]:
+    """Serialize many closes, caching live order counts per branch/date."""
+    closes = list(closes)
+    if not closes:
+        return []
+
+    live_by_branch_date = {}
+    for close in closes:
+        key = (close.branch_id, close.report_date)
+        if key not in live_by_branch_date:
+            live_by_branch_date[key] = live_paid_order_count(
+                close.branch, close.report_date
+            )
+
+    return [
+        serialize_day_end_close(
+            close,
+            live_order_count=live_by_branch_date[(close.branch_id, close.report_date)],
+        )
+        for close in closes
+    ]
 
 
 def parse_report_date_param(value) -> str | None:

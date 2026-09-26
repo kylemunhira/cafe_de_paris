@@ -1136,6 +1136,37 @@ class DayEndReportTests(TestCase):
         self.assertEqual(response.data["report"]["order_count"], 1)
         self.assertTrue(response.data["report"]["has_counted_entries"])
 
+    def test_day_end_close_flags_newer_sales_after_save(self):
+        from orders.day_end_close import save_day_end_close, serialize_day_end_close
+
+        self._create_paid_order(product=self.latte, quantity=Decimal("1"))
+        self._complete_daily_stock_take()
+        close, _report = save_day_end_close(
+            self.branch,
+            self.today,
+            counted_by_currency={self.usd.id: "4.00"},
+            user=self.user,
+        )
+        self.assertEqual(close.order_count, 1)
+        payload = serialize_day_end_close(close)
+        self.assertEqual(payload["live_order_count"], 1)
+        self.assertFalse(payload["has_newer_sales"])
+
+        self._create_paid_order(product=self.espresso, quantity=Decimal("1"))
+        payload = serialize_day_end_close(close)
+        self.assertEqual(payload["order_count"], 1)
+        self.assertEqual(payload["live_order_count"], 2)
+        self.assertTrue(payload["has_newer_sales"])
+
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        response = api.get(f"/api/reports/day-end-closes/?branch={self.branch.id}")
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.data["results"] if item["id"] == close.id)
+        self.assertEqual(row["order_count"], 1)
+        self.assertEqual(row["live_order_count"], 2)
+        self.assertTrue(row["has_newer_sales"])
+
     def test_fiscal_day_end_allows_mixed_currency_codes(self):
         self.branch.fiscalization_enabled = True
         self.branch.save(update_fields=["fiscalization_enabled"])

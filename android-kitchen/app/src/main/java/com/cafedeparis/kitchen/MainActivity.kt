@@ -319,7 +319,7 @@ class MainActivity : KeepScreenOnActivity() {
         binding.branchSpinner.isEnabled = true
 
         val labels = mutableListOf(getString(R.string.select_branch_placeholder))
-        ..addAll(
+        labels.addAll(
             branches.map { branch ->
                 if (branch.location.isNullOrBlank()) branch.name else "${branch.name} · ${branch.location}"
             }

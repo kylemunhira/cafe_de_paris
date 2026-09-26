@@ -284,6 +284,19 @@ _add("With cash count", "Avec comptage de caisse", "Con conteo de caja", "مع �
 _add("Total variance", "Écart total", "Variación total", "إجمالي الفروقات", "总差异")
 _add("Saved day-end closes", "Clôtures enregistrées", "Cierres de día guardados", "إغلاقات نهاية اليوم المحفوظة", "已保存的日结")
 _add("Variance and activity saved when day end is printed from POS.", "Écart et activité enregistrés lors de l'impression de la clôture depuis le PDV.", "Variación y actividad guardadas al imprimir el cierre desde el TPV.", "الفروقات والنشاط المحفوظان عند طباعة نهاية اليوم من نقطة البيع.", "从收银打印日结时保存的差异与活动。")
+_add(
+    "Variance and activity saved when day end is printed from POS. If more orders are paid after that print, re-print day end to refresh this report.",
+    "Écart et activité enregistrés lors de l'impression de la clôture depuis le PDV. Si d'autres commandes sont payées après, réimprimez la clôture pour actualiser ce rapport.",
+    "Variación y actividad guardadas al imprimir el cierre desde el TPV. Si se pagan más pedidos después, vuelva a imprimir el cierre para actualizar este informe.",
+    "الفروقات والنشاط المحفوظان عند طباعة نهاية اليوم من نقطة البيع. إذا دُفعت طلبات إضافية بعد ذلك، أعد طباعة نهاية اليوم لتحديث هذا التقرير.",
+    "从收银打印日结时保存差异与活动。若之后还有已付订单，请重新打印日结以刷新本报表。",
+)
+_add("Saved at close", "Enregistré à la clôture", "Guardado al cierre", "محفوظ عند الإغلاق", "日结时保存")
+_add("updated", "mis à jour", "actualizado", "محدّث", "已更新")
+_add("More orders were paid after this day end was saved.", "D'autres commandes ont été payées après cette clôture.", "Se pagaron más pedidos después de guardar este cierre.", "تم دفع طلبات إضافية بعد حفظ نهاية اليوم هذه.", "日结保存后还有更多已付订单。")
+_add("Saved", "Enregistré", "Guardado", "محفوظ", "已保存")
+_add("Current paid orders", "Commandes payées actuelles", "Pedidos pagados actuales", "الطلبات المدفوعة الحالية", "当前已付订单")
+_add("Re-print day end from POS to refresh.", "Réimprimez la clôture depuis le PDV pour actualiser.", "Vuelva a imprimir el cierre desde el TPV para actualizar.", "أعد طباعة نهاية اليوم من نقطة البيع للتحديث.", "请从收银重新打印日结以刷新。")
 _add("Day-end detail", "Détail de clôture", "Detalle de cierre", "تفاصيل نهاية اليوم", "日结明细")
 _add("Closed by", "Clôturé par", "Cerrado por", "أغلقه", "日结人")
 _add("Gross", "Brut", "Bruto", "الإجمالي", "毛额")

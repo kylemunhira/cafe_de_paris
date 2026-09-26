@@ -29,6 +29,7 @@ from orders.day_end_close import (
     parse_report_date_param,
     save_day_end_close,
     serialize_day_end_close,
+    serialize_day_end_closes,
     validate_fiscal_counted_currencies,
 )
 from orders.day_end_serialization import parse_counted_by_currency, serialize_day_end_report
@@ -382,7 +383,7 @@ class DayEndCloseListView(APIView):
                 status=400,
             )
 
-        results = [serialize_day_end_close(close) for close in qs[:500]]
+        results = serialize_day_end_closes(qs[:500])
         return Response({"count": len(results), "results": results})
 
 

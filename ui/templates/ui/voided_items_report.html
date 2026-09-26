@@ -70,7 +70,7 @@ import { createSortState, sortItems, sortTh, bindTableSort } from "{% static 'ui
 
 const t = (msgid) => window.CDP.t(msgid);
 
-const canFilterAnyBranch = {{ can_filter_any_branch|yesno:"true,false" }};
+const canFilterAnyBranch = "{{ can_filter_any_branch|yesno:'true,false' }}" === "true";
 
 const filterDate = document.getElementById("filter-date");
 const filterBranch = document.getElementById("filter-branch");
